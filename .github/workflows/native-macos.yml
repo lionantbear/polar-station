@@ -117,6 +117,13 @@ jobs:
           printf '%s\n' "$result" > "$evidence/license-scan-exit-code.txt"
           echo "Artifact inventory exit code: $result (2 = release blocked by audit gaps, not cleared)." >> "$GITHUB_STEP_SUMMARY"
           test -s "$evidence/macos-bom.json"
+      - name: Collect build provenance and hash-bound evidence candidates
+        shell: bash
+        run: |
+          python3 automation/polar_station/collect_macos_build_evidence.py \
+            --source "$GITHUB_WORKSPACE" --native "$RUNNER_TEMP/station-native" \
+            --bom "$RUNNER_TEMP/station-evidence/macos-bom.json" \
+            --output "$RUNNER_TEMP/station-evidence/build-provenance"
       - name: Validate temporary DMG installation and limited launch
         shell: bash
         run: |

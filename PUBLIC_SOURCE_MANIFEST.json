@@ -64,7 +64,7 @@
   "distribution_scope": "source-only preview; binary release gates remain separate; see SOURCE_DISTRIBUTION.md",
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
-    ".github/workflows/native-macos.yml": "b63d66abf47e93acc6f6258c594a3caa512f60f233d64284e2504c6d9275609d",
+    ".github/workflows/native-macos.yml": "39c0e37b8e3e795f060636c9228c9e0bd865dd7c0a0f66fefc674b59c0bf2d9e",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "9e66be58363104ef8179293afe246e2345697472ea8cb35b72f7d5c6bee9b7e6",
     "CI.md": "9cb491b97abc45c5d05594855d9ba2fa963ef4a2fe5ff4a5f2a9b425d4712f27",
@@ -326,7 +326,7 @@
     "automation/polar_station/public_native_cleanup.json": "452985bc5bbbe3e0e3e77c4ba76edc72232fe7e1b5f71a0e363f28dbcc637da1",
     "automation/polar_station/public_profile.py": "b12e0f4e7d3519b416b82b01bdbe216af2ce1c95ad0623f57d5ade918b30fcb2",
     "automation/polar_station/public_release.py": "79130c9456724c7a20d369b6b1a9f06b70a4e9a640c6e31891051242b7258908",
-    "automation/polar_station/public_release_policy.json": "b561c2ac655549930bcc124af5d2c06999fb60108c9a767922c82d842ac261d5",
+    "automation/polar_station/public_release_policy.json": "a98be16782dfe3663784b5c36baf0a2c6c16f8f2150dd433e4fd524d5bf2572b",
     "automation/polar_station/public_sync.py": "1637196ac9cb73540aa269cd7e6b1d138216d6d372df1eb45b4ee06e9897006e",
     "automation/polar_station/public_test_cleanup.json": "a8cbfd7dc28cb85578be43659eaa99d986d5e0665789b4061e9f2d7bb833467e",
     "automation/polar_station/source_hygiene.py": "77290a9113a65ea95b017948c0fda4589811f48192b4e7874b70e31fe40ecc24",
@@ -1849,7 +1849,8 @@
     "vendor/grammers-tl-gen/src/lib.rs": "46767dcf9dc1b3cc15d5cb80bf284887a26c6c85b8f572fa6f452b2bee73532f",
     "vendor/grammers-tl-gen/src/metadata.rs": "e625828bf9a6d46b33c9271bc1360cc8ecda524d3c4a80a9035121ab2af044e1",
     "vendor/grammers-tl-gen/src/rustifier.rs": "0b5181ce39d8ee78fca9b3c355d24546516f9d4a75b81afd87bac5f27daf86d4",
-    "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86"
+    "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86",
+    "automation/polar_station/collect_macos_build_evidence.py": "62544173f5bf29c0349b83d03f0624faa1b3b7e88195cab71939be18778dc048"
   },
   "license_present": true,
   "missing_inputs": [],

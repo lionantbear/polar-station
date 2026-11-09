@@ -45,7 +45,8 @@
     "automation/polar_station/build_rust_runtime.py",
     "automation/polar_station/public_native_cleanup.json",
     "automation/polar_station/source_hygiene.py",
-    "automation/polar_station/public_sync.py"
+    "automation/polar_station/public_sync.py",
+    "automation/polar_station/collect_macos_build_evidence.py"
   ],
   "root_inputs": [
     "Cargo.lock",
