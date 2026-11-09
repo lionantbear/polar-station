@@ -106,6 +106,7 @@ jobs:
       - name: Inspect artifact dependency and license gaps
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           evidence="$RUNNER_TEMP/station-evidence"
           mkdir -p "$evidence"

@@ -64,7 +64,7 @@
   "distribution_scope": "source-only preview; binary release gates remain separate; see SOURCE_DISTRIBUTION.md",
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
-    ".github/workflows/native-macos.yml": "ae8aa8b98b871f2171d5d078fccca15a4ad9976b581b4283730c764966dad2ba",
+    ".github/workflows/native-macos.yml": "b63d66abf47e93acc6f6258c594a3caa512f60f233d64284e2504c6d9275609d",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "9e66be58363104ef8179293afe246e2345697472ea8cb35b72f7d5c6bee9b7e6",
     "CI.md": "9cb491b97abc45c5d05594855d9ba2fa963ef4a2fe5ff4a5f2a9b425d4712f27",
@@ -320,7 +320,7 @@
     "automation/polar_station/install_macos.sh": "369585a76b2f796e7c38275371754e23c0ecf947efe0d0b0e33721adc072d520",
     "automation/polar_station/license_audit.py": "e2b60e983977e330c1828873ce0bb90bc363625dd1320fa74811adf6caf3ca97",
     "automation/polar_station/license_policy.json": "a5d995d4a41b127e9ec26bd1820c09d99e7b4ed086f53e4549a35990671e07c1",
-    "automation/polar_station/macos_binary_inventory.py": "7f4273c791d3995b99f33c06ac6ca3e8666b7fa4acb5b77e29b1c52760fa01b6",
+    "automation/polar_station/macos_binary_inventory.py": "da6f718fe1c7ba45047dd2ede8311a2d21aad9394d9080ee9a4ac17de1ddd773",
     "automation/polar_station/native_action_overlay.py": "3cd63d14588680a89e4a17787f015a9660b65bb703bc5900785a5fbb1bac316c",
     "automation/polar_station/package_macos_free.sh": "fca526dcebd53b33a045d7e881d176c9c429cc9fa9ccfa6d0fbeb67951b5b677",
     "automation/polar_station/public_native_cleanup.json": "452985bc5bbbe3e0e3e77c4ba76edc72232fe7e1b5f71a0e363f28dbcc637da1",

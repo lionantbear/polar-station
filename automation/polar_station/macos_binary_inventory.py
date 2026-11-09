@@ -45,12 +45,24 @@ def is_macho(path: Path) -> bool:
 
 
 def otool_links(output: str) -> list[str]:
-    """Take install names from `otool -L` (first line is file name)."""
-    result = []
-    for line in output.splitlines()[1:]:
-        candidate = line.strip().split(" (compatibility version", 1)[0].strip()
-        if candidate and (candidate.startswith("@") or candidate.startswith("/")):
-            result.append(candidate)
+    """Read dependency load commands from otool -l, excluding LC_ID_DYLIB.
+
+    Fat-binary architecture headings and a dylib's own install name are not
+    dependencies. Unknown/external actual dependency names remain fail-closed.
+    """
+    result: list[str] = []
+    active = False
+    commands = {"LC_LOAD_DYLIB", "LC_LOAD_WEAK_DYLIB", "LC_REEXPORT_DYLIB",
+                "LC_LAZY_LOAD_DYLIB", "LC_LOAD_UPWARD_DYLIB"}
+    for line in output.splitlines():
+        value = line.strip()
+        if value.startswith("cmd "):
+            active = value[4:] in commands
+        elif active and value.startswith("name "):
+            name = value[5:].split(" (offset ", 1)[0]
+            if name and name not in result:
+                result.append(name)
+            active = False
     return result
 
 
@@ -144,14 +156,13 @@ def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
             relative = binary.relative_to(root).as_posix()
             checksum = hash_file(binary)
             try:
-                links = subprocess.check_output(["otool", "-L", str(binary)], text=True)
                 load = subprocess.check_output(["otool", "-l", str(binary)], text=True)
             except (OSError, subprocess.CalledProcessError) as exc:
                 blockers.append(f"otool inspection failed: {relative}: {exc}")
                 continue
             rpaths = otool_rpaths(load)
             dependencies = [resolve_link(link, binary, rpaths, root / "Contents/MacOS", root)
-                            for link in otool_links(links)]
+                            for link in otool_links(load)]
             for dependency in dependencies:
                 if dependency["classification"] == "UNRESOLVED_OR_EXTERNAL":
                     blockers.append(f"Unresolved or external dylib: {relative} → {dependency['install_name']}")
