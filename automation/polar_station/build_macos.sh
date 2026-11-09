@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap 'rc=$?; printf "Station build failed at line %s (exit %s)\n" "$LINENO" "$rc" >&2; exit "$rc"' ERR
 
 usage() {
     echo "usage: build_macos.sh [--configuration Debug|Release] [--ghostty-checkout PATH]" >&2
@@ -225,7 +226,14 @@ done
 # Deep bundle signing must preserve the independently signed Host entitlement.
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)
 printf '%s' "$host_entitlements" | python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
-/usr/bin/codesign -d -r- "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -q 'com.polarealm.polar-station.host'
+# An ad-hoc designated requirement may be only a cdhash. Check the actual
+# signed Identifier field instead of expecting it in the requirement expression.
+host_signature=$(/usr/bin/codesign --display --verbose=2 "$helpers/polar-tmux" 2>&1)
+printf '%s\n' "$host_signature" | /usr/bin/grep -Fx 'Identifier=com.polarealm.polar-station.host' >/dev/null || {
+    printf '%s\n' "$host_signature" >&2
+    echo 'Signed Host identifier mismatch.' >&2
+    exit 81
+}
 
 mkdir -p "$output_root"
 if [ -e "$output_app" ]; then

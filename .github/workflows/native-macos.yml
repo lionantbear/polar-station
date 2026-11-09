@@ -80,6 +80,20 @@ jobs:
           bash apps/polar-station-macos/ghostty-overlay/apply-overlay.sh "$probe"
           /usr/bin/xcodebuild -resolvePackageDependencies \
             -project "$probe/macos/Ghostty.xcodeproj" -scheme Ghostty
+      - name: Preflight free Host signing contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/station-signing-probe"
+          printf 'int main(void) { return 0; }\n' | /usr/bin/cc -x c - -o "$probe"
+          /usr/bin/codesign --force --identifier com.polarealm.polar-station.host \
+            --options runtime --entitlements automation/polar_station/host-macos.entitlements \
+            --sign - "$probe"
+          /usr/bin/codesign --verify --strict "$probe"
+          signature=$(/usr/bin/codesign --display --verbose=2 "$probe" 2>&1)
+          printf '%s\n' "$signature" | grep -Fx 'Identifier=com.polarealm.polar-station.host'
+          /usr/bin/codesign -d --entitlements :- "$probe" 2>/dev/null | \
+            python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
       - name: Build embedded Godot and graphics resources
         run: bash automation/polar_station/build_macos_graphics.sh
       - name: Build complete native application with ad-hoc signing
