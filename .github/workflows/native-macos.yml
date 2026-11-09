@@ -71,6 +71,15 @@ jobs:
           printf 'const std = @import("std"); pub fn build(b: *std.Build) void { _ = b; }\n' > "$probe/build.zig"
           cd "$probe"
           "$POLAR_STATION_ZIG" build --help > /dev/null
+      - name: Preflight standalone Xcode package resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/station-xcode-probe"
+          git clone --local "$POLAR_STATION_GHOSTTY_CHECKOUT" "$probe"
+          bash apps/polar-station-macos/ghostty-overlay/apply-overlay.sh "$probe"
+          /usr/bin/xcodebuild -resolvePackageDependencies \
+            -project "$probe/macos/Ghostty.xcodeproj" -scheme Ghostty
       - name: Build embedded Godot and graphics resources
         run: bash automation/polar_station/build_macos_graphics.sh
       - name: Build complete native application with ad-hoc signing

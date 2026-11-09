@@ -64,7 +64,7 @@
   "distribution_scope": "source-only preview; binary release gates remain separate; see SOURCE_DISTRIBUTION.md",
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
-    ".github/workflows/native-macos.yml": "cf96d79c1cd6cdf832794246b02f4cd84aa6f852d960eb73a4dd8fa2e023e6af",
+    ".github/workflows/native-macos.yml": "c2b8c75b591a81f562ad31dcf24c5e5773e4438a9ca8200a5c0af41470fafd28",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "9e66be58363104ef8179293afe246e2345697472ea8cb35b72f7d5c6bee9b7e6",
     "CI.md": "9cb491b97abc45c5d05594855d9ba2fa963ef4a2fe5ff4a5f2a9b425d4712f27",
@@ -293,7 +293,7 @@
     "apps/polar-station-macos/ghostty-module/PolarStationShortcuts.swift": "70feabedc0baa6007579d62cabdf95170188451b4cea7ca0d8c2e54f28e84627",
     "apps/polar-station-macos/ghostty-module/merge-static-libs.sh": "f151266fa9a8730591310a3734ec5a73e8ad71acb9c2e76e49e185ac77e48a05",
     "apps/polar-station-macos/ghostty-overlay/.gitattributes": "fb25a78a6381f5646d71aacea4486f6aeeeb03c4d71740227011024be0d20a8f",
-    "apps/polar-station-macos/ghostty-overlay/apply-overlay.sh": "94c7fbcd88ee05ee9487a2814edbbde4d1c114f34cb4c794ef907446b55cd4cd",
+    "apps/polar-station-macos/ghostty-overlay/apply-overlay.sh": "bf98d1675a0155c00843f2357aac1d9f3b87cfa47c6d204e91c7d1b1b131d2fe",
     "apps/polar-station-macos/ghostty-overlay/ghostty-v1.3.1.patch": "05394a859346835feda727f84bb0e005b7c7813c4d246efdd9bc15dd41ea022e",
     "apps/polar-station-macos/ghostty-overlay/upstream.lock.json": "fca2ec640b650875317fd6c53671de333b300132cdc991bc291459c55005dd53",
     "apps/polar-tmux-shared/dictate/capture_probe.py": "fdf69b49d0a83ecacb9e5a4b912dfa44ea1f2acb074f45fa8d61bf43127e9c6a",
