@@ -1,0 +1,76 @@
+name: macOS 26 native app validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/native-macos.yml'
+permissions:
+  contents: read
+concurrency:
+  group: native-macos-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 150
+    env:
+      CARGO_BUILD_JOBS: '3'
+      POLAR_GRAPHICS_JOBS: '3'
+      POLAR_STATION_CODESIGN_IDENTITY: '-'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare pinned upstream sources and tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/station-native"
+          mkdir -p "$root"
+          brew install gettext graphviz
+          python3 -m venv "$root/venv"
+          "$root/venv/bin/pip" install 'scons==4.9.1'
+          for spec in 'ghostty-org/ghostty ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28' 'godotengine/godot godot ed1daf0bf001b61586d9930840f2f1394092c079'; do
+            read -r repo dir sha <<< "$spec"
+            git init "$root/$dir"
+            git -C "$root/$dir" remote add origin "https://github.com/$repo.git"
+            git -C "$root/$dir" fetch --depth 1 origin "$sha"
+            git -C "$root/$dir" checkout --detach FETCH_HEAD
+            test "$(git -C "$root/$dir" rev-parse HEAD)" = "$sha"
+          done
+          curl --fail --location --retry 3 https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz -o "$root/zig.tar.xz"
+          echo "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b  $root/zig.tar.xz" | shasum -a 256 -c -
+          tar -xJf "$root/zig.tar.xz" -C "$root"
+          curl --fail --location --retry 3 https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_macos.universal.zip -o "$root/godot.zip"
+          echo "c58a24e31d720be9d62f60cb5627c4e695fb72f21b0cfe1bc9ccaa9a3b3ba63e  $root/godot.zip" | shasum -a 256 -c -
+          ditto -xk "$root/godot.zip" "$root/editor"
+          rustup target add aarch64-apple-darwin
+          {
+            echo "POLAR_STATION_GHOSTTY_CHECKOUT=$root/ghostty"
+            echo "POLAR_STATION_ZIG=$root/zig-aarch64-macos-0.15.2/zig"
+            echo "POLAR_STATION_MSGFMT=$(brew --prefix gettext)/bin/msgfmt"
+            echo "POLAR_GRAPHICS_GODOT_CHECKOUT=$root/godot"
+            echo "POLAR_GRAPHICS_SCONS=$root/venv/bin/scons"
+            echo "POLAR_GRAPHICS_EDITOR=$root/editor/Godot.app/Contents/MacOS/Godot"
+            echo "POLAR_GRAPHICS_GRAPHVIZ=$(brew --prefix graphviz)"
+          } >> "$GITHUB_ENV"
+          sw_vers
+          xcodebuild -version
+          brew list --versions graphviz gettext
+      - name: Build embedded Godot and graphics resources
+        run: bash automation/polar_station/build_macos_graphics.sh
+      - name: Build complete native application with ad-hoc signing
+        run: bash automation/polar_station/build_macos.sh --configuration Release
+      - name: Verify signature and build unnotarized DMG locally
+        run: |
+          bash automation/polar_station/package_macos_free.sh \
+            --app "$GITHUB_WORKSPACE/target/polar-station-macos/Release/Polar Station.app" \
+            --output "$RUNNER_TEMP/Polar-Station-unnotarized.dmg"
+      - name: Record validation boundary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          This is native build/package validation, not a public binary release. The workflow does not upload the app/DMG, create a release, enroll in Apple programs, notarize, or disable Gatekeeper.
+          Successful packaging is not proof of GUI launch, installation, TCC permissions or graphics functionality. Exact bundled dependency attribution and runtime/install testing remain release gates. Graphviz's resolved Homebrew versions are logged but not yet a reproducible release pin.
+          SUMMARY

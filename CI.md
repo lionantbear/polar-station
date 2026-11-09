@@ -29,3 +29,14 @@ No secrets are required. Jobs have read-only repository permissions, a
 60-minute timeout and two Cargo build workers. New runs supersede obsolete
 runs on the same branch. Initial build results must be read from Actions;
 adding this workflow is not itself evidence of a successful build.
+
+## Native macOS 26 validation
+
+`macOS 26 native app validation` is a separate manual workflow (also runs when
+its workflow file changes on main). It attempts the real embedded Godot,
+Ghostty/native app and ad-hoc signed DMG pipeline on Apple Silicon macOS 26.
+Ghostty/Godot sources are commit-pinned; downloaded Zig and Godot editor
+archives are SHA-256 checked. It deliberately does not upload binaries or
+create a Release. Build success is distinct from fresh-machine install/launch,
+graphics/TCC testing and exact bundled-license clearance. Homebrew Graphviz
+versions are recorded but not yet locked as reproducible release inputs.
