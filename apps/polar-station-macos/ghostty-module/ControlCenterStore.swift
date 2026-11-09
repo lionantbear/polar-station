@@ -15,8 +15,7 @@ struct SessionCreationContext {
 /// Thin application state for the native Control Center renderer.
 ///
 /// Production always loads and mutates through the authenticated local Rust
-/// Host. A fixture source is injectable only for deterministic unit and
-/// screenshot tests.
+/// Host.
 @MainActor
 final class ControlCenterStore: ObservableObject {
     @Published var sessionCreationRecovery: AgentSessionResumeV1?
@@ -92,8 +91,6 @@ final class ControlCenterStore: ObservableObject {
     @Published private(set) var backendAvailability:
         PolarStationBackendAvailability = .starting
 
-    private let fixtureSource:
-        (any ControlCenterProjectionSource)?
     var inboxOriginSource: (@MainActor (PolarTmuxSessionKey) -> [TerminalOriginHandleV1])?
 
     func setExtensionInputHandler(_ handler: @escaping PolarTmuxHostClient.ExtensionInputHandler) async {
@@ -140,13 +137,11 @@ final class ControlCenterStore: ObservableObject {
     var visibleLayoutWorkspaces: (@MainActor () -> [String])?
 
     init(
-        source: (any ControlCenterProjectionSource)? = nil,
         backendSession: PolarStationBackendSession =
             PolarStationBackendSession(),
         awaitsHostReadiness: Bool = false,
         intentSink: @escaping IntentSink = { _ in }
     ) {
-        fixtureSource = source
         self.backendSession = backendSession
         hostIsReady = !awaitsHostReadiness
         frontendSessionID =
@@ -237,15 +232,6 @@ final class ControlCenterStore: ObservableObject {
         }
         projectionLoadInFlight = true
         isLoading = true
-        if let fixtureSource {
-            defer { finishProjectionLoad() }
-            do {
-                try accept(fixtureSource.loadProjection())
-            } catch {
-                failProjectionLoad(error)
-            }
-            return
-        }
         Task {
             defer { finishProjectionLoad() }
             do {
@@ -690,29 +676,12 @@ final class ControlCenterStore: ObservableObject {
         )
         lastIntent = intent
 
-        guard let fixtureSource =
-            fixtureSource
-                as? any ControlCenterFixtureInteractionSource
-        else {
-            submitHostIntent(
-                hydrateNativeIdentity(
-                    in: intent.operation,
-                    projection: projection
-                )
+        submitHostIntent(
+            hydrateNativeIdentity(
+                in: intent.operation,
+                projection: projection
             )
-            return
-        }
-        do {
-            if let nextProjection = try fixtureSource.nextProjection(
-                after: intent,
-                current: projection
-            ) {
-                accept(nextProjection)
-            }
-            intentSink(intent)
-        } catch {
-            loadError = error.localizedDescription
-        }
+        )
     }
 
     func submitSSHTarget(
@@ -779,27 +748,6 @@ final class ControlCenterStore: ObservableObject {
             operation: hydratedOperation
         )
         lastIntent = currentIntent
-        if let fixtureSource =
-            fixtureSource
-                as? any ControlCenterFixtureInteractionSource
-        {
-            do {
-                if let nextProjection =
-                    try fixtureSource.nextProjection(
-                        after: currentIntent,
-                        current: projection
-                    )
-                {
-                    accept(nextProjection)
-                }
-                intentSink(currentIntent)
-                completion(nil)
-            } catch {
-                loadError = error.localizedDescription
-                completion(error.localizedDescription)
-            }
-            return
-        }
         submitHostIntent(
             currentIntent.operation,
             completion: completion

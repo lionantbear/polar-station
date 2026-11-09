@@ -258,69 +258,8 @@ fn takeSequence(next: *u64) u64 {
     return value;
 }
 
-test "channel identity remains unique across warm window replacement" {
-    const allocator = std.testing.allocator;
-    var lifecycle = Lifecycle.init(allocator, 4108582, "frontend-run-22");
-    defer lifecycle.deinit();
 
-    var first = try lifecycle.allocateChannel(allocator, "/run/user/1000");
-    defer first.deinit(allocator);
-    var replacement = try lifecycle.allocateChannel(
-        allocator,
-        "/run/user/1000",
-    );
-    defer replacement.deinit(allocator);
 
-    try std.testing.expect(!std.mem.eql(
-        u8,
-        first.channel_id,
-        replacement.channel_id,
-    ));
-    try std.testing.expect(!std.mem.eql(
-        u8,
-        first.control_socket,
-        replacement.control_socket,
-    ));
-    try std.testing.expect(std.mem.indexOf(
-        u8,
-        replacement.control_socket,
-        "pane-4108582-",
-    ) != null);
-}
 
-test "failed exact retirement remains retryable until completion" {
-    const allocator = std.testing.allocator;
-    var lifecycle = Lifecycle.init(allocator, 44, "run-a");
-    defer lifecycle.deinit();
 
-    const lease_id = try lifecycle.beginRetirement(.{
-        .channel_id = "linux-surface-44-a-1",
-        .channel_generation = 1,
-        .content_revision = 2,
-        .control_socket = "/run/user/1000/polar-tmux/pane-44-a-1.sock",
-    });
-    lifecycle.markRetirementAttempt(lease_id);
-    try std.testing.expectEqual(@as(usize, 1), lifecycle.pendingRetirementCount());
-    try std.testing.expectEqual(@as(u32, 1), lifecycle.retirement(lease_id).?.attempt_count);
 
-    const duplicate = try lifecycle.beginRetirement(.{
-        .channel_id = "linux-surface-44-a-1",
-        .channel_generation = 1,
-        .content_revision = 2,
-        .control_socket = "/run/user/1000/polar-tmux/pane-44-a-1.sock",
-    });
-    try std.testing.expectEqual(lease_id, duplicate);
-    try std.testing.expect(lifecycle.completeRetirement(lease_id));
-    try std.testing.expectEqual(@as(usize, 0), lifecycle.pendingRetirementCount());
-}
-
-test "missing exact retirement endpoint completes idempotently" {
-    try std.testing.expectEqual(
-        RetirementFailureDisposition.already_retired,
-        classifyRetirementTransportFailure(error.FileNotFound),
-    );
-    try std.testing.expectEqual(
-        RetirementFailureDisposition.retry,
-        classifyRetirementTransportFailure(error.ConnectionRefused),
-    );
-}

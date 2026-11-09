@@ -49,6 +49,7 @@ def apply(root: Path) -> None:
             view.write_text(text[:start] + UNAVAILABLE_VIEW + text[end:], encoding="utf-8")
 
     apply_test_cleanup(root)
+    apply_test_cleanup(root, "public_native_cleanup.json")
 
     # Standalone SwiftPM test targets refer to excluded private Tests directories.
     manifest = root / "apps/polar-station-macos/Package.swift"
@@ -93,10 +94,10 @@ def apply_first_party_license(root: Path) -> None:
         manifest.write_text(text)
 
 
-def apply_test_cleanup(root: Path) -> None:
+def apply_test_cleanup(root: Path, filename: str = "public_test_cleanup.json") -> None:
     """Replay reviewed AST removals, refusing drift before mutating any file."""
     import json, hashlib
-    specification = root / "automation/polar_station/public_test_cleanup.json"
+    specification = root / "automation/polar_station" / filename
     if not specification.is_file():
         return
     data = json.loads(specification.read_text())

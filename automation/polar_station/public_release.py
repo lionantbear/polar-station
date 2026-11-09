@@ -314,6 +314,9 @@ def reduced_manifest(closure: CargoClosure) -> str:
 # The retired PyGObject frontend is not part of the public Station product.
 # Do not exclude Python globally: build/export/license helpers remain required.
 RETIRED_LINUX_FRONTEND = (
+    "apps/polar-station-linux/src",
+    "apps/polar-station-linux/pyproject.toml",
+    "apps/polar-station-linux/run-dev",
     "apps/polar-tmux-linux/src",
     "apps/polar-tmux-linux/pyproject.toml",
     "apps/polar-tmux-linux/run-dev",
@@ -607,6 +610,11 @@ def verify(destination: Path) -> dict[str, Any]:
     if any(part.lower() in {".git", ".agents", "tests", "handoff", "history"}
            for rel in actual for part in Path(rel).parts):
         raise ExportError("internal history/test content leaked into source")
+    for rel in actual:
+        if rel.startswith("apps/") and rel.endswith(".zig"):
+            if re.search(r'^\s*test(?:\s+"[^"\n]*")?\s*\{',
+                         (destination / rel).read_text(), re.MULTILINE):
+                raise ExportError(f"first-party Zig test block leaked into export: {rel}")
     unexpected = actual - set(expected) - {PUBLIC_MANIFEST}
     missing = set(expected) - actual
     changed = [rel for rel, digest in expected.items()

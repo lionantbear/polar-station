@@ -293,10 +293,4 @@ pub fn resolveSocketPath(allocator: std.mem.Allocator) ![]u8 {
     return std.fs.path.join(allocator, &.{ runtime_dir, "polar-tmux", "host.sock" });
 }
 
-test "Zig adapter owns only wake drain and explicit endpoint selection" {
-    const source = @embedFile("ipc_client.zig");
-    try std.testing.expect(std.mem.indexOf(u8, source, "connectUnix" ++ "Socket") == null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "connection_" ++ "generation") == null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "polar_station_desktop_client_new") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "POLAR_TMUX_IPC_SOCKET") != null);
-}
+

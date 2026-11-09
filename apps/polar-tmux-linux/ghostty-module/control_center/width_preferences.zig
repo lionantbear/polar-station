@@ -153,40 +153,8 @@ fn parseMapWidth(content: []const u8) ?c_int {
     return std.fmt.parseInt(c_int, content[number_start..cursor], 10) catch null;
 }
 
-test "width preference JSON parses one bounded integer" {
-    try std.testing.expectEqual(
-        @as(?c_int, 345),
-        parseMapWidth("{\"map_width\":345}"),
-    );
-    try std.testing.expectEqual(@as(?c_int, null), parseMapWidth("{}"));
-}
 
-test "editor dimensions and map width preserve each other's native preferences" {
-    var temp = std.testing.tmpDir(.{});
-    defer temp.cleanup();
-    const dir = try temp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(dir);
-    var prefs = Preferences{ .allocator = std.testing.allocator, .path = try std.fs.path.join(std.testing.allocator, &.{ dir, "preferences.json" }) };
-    defer prefs.deinit();
-    try prefs.save(300);
-    try prefs.saveEditorSize(false, .{ 760, 380 });
-    try prefs.saveEditorSize(true, .{ 1040, 700 });
-    try prefs.save(340);
-    try std.testing.expectEqual(@as(c_int, 340), prefs.loadOrDefault(1280));
-    try std.testing.expectEqual([2]c_int{ 1040, 700 }, prefs.loadEditorSize(false).?);
-    try std.testing.expectEqual([2]c_int{ 1040, 700 }, prefs.loadEditorSize(true).?);
-}
 
-test "large editor ignores legacy compact geometry while retaining map width" {
-    var temp = std.testing.tmpDir(.{});
-    defer temp.cleanup();
-    try temp.dir.writeFile(.{ .sub_path = "preferences.json", .data = "{\"editor_width\":1040,\"editor_height\":700,\"map_width\":320}" });
-    const dir = try temp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(dir);
-    var prefs = Preferences{ .allocator = std.testing.allocator, .path = try std.fs.path.join(std.testing.allocator, &.{dir, "preferences.json"}) };
-    defer prefs.deinit();
-    try std.testing.expect(prefs.loadEditorSize(false) == null);
-    try std.testing.expectEqual(@as(c_int, 320), prefs.loadOrDefault(1280));
-    try prefs.saveEditorSize(false, .{1152, 720});
-    try std.testing.expectEqual([2]c_int{1152, 720}, prefs.loadEditorSize(true).?);
-}
+
+
+

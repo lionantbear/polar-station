@@ -6,7 +6,17 @@ Read-only to dependency caches. Output contains no machine-local source paths.
 import argparse, hashlib, json, pathlib, re
 
 def sha(b): return hashlib.sha256(b).hexdigest()
+# License-like filenames can also name implementation or test programs.
+# Keep legal-text suffixes and license-family variants (LICENSE-2.0,
+# NOTICE.httprouter, COPYING.info-zip), but never auto-collect source code.
+_CODE_SUFFIXES = {'.rs', '.star', '.pm', '.py', '.pyi', '.pyc', '.sh', '.bash',
+                  '.c', '.h', '.cc', '.cpp', '.hpp', '.m', '.mm', '.swift',
+                  '.zig', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx',
+                  '.go', '.rb', '.pl', '.lua', '.java', '.kt', '.cs',
+                  '.bzl', '.cmake', '.toml', '.json', '.yaml', '.yml'}
 def legal(p):
+    if p.suffix.lower() in _CODE_SUFFIXES:
+        return False
     return re.match(r'^(licen[cs]e|copying|copyright|notice)([._-].*|$)', p.name, re.I) is not None
 
 def collect(metadata, output):
@@ -50,7 +60,8 @@ def collect(metadata, output):
             # remain valid; do not silently discard supplemental evidence.
             for item in prior.get('legal_texts', []):
                 f=output.parent/item['path']
-                if (not pathlib.Path(item['path']).is_absolute() and f.resolve().is_relative_to(output.resolve())
+                if (legal(pathlib.Path(item.get('upstream_path', '')))
+                        and not pathlib.Path(item['path']).is_absolute() and f.resolve().is_relative_to(output.resolve())
                         and f.is_file() and sha(f.read_bytes())==item.get('sha256')):
                     evidence.append(item)
         checksum=root/'.cargo-checksum.json'

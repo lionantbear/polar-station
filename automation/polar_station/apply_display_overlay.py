@@ -31,19 +31,11 @@ def replace_one(text: str, before: str, after: str, label: str) -> str:
 
 
 def renderer_edits() -> dict[str, list[tuple[str, str]]]:
-    """Shared renderer corrections and provider tests for both native backends."""
+    """Shared production renderer corrections for both native backends."""
     out: dict[str, list[tuple[str, str]]] = {}
     def add(path: str, before: str, after: str) -> None:
         out.setdefault(path, []).append((before, after))
 
-    # Behavioral tests exercise the real provider, including a zero-allocation
-    # path; they are also compiled by the upstream filtered unit-test target.
-    before = 'test "renderCellMap" {'
-    add("src/renderer/link.zig", before,
-        (ROOT / 'apps/polar-tmux-shared/ghostty/StationLinkTests.zig').read_text() + '\n' + before)
-    before = "            try texture.replaceRegion(0, 0, atlas.size, atlas.size, atlas.data);\n        }\n    };\n}\n"
-    add("src/renderer/generic.zig", before, before + '\n' +
-        (ROOT / 'apps/polar-tmux-shared/ghostty/StationRendererTests.zig').read_text())
     generic = "src/renderer/generic.zig"
     before = "                self.terminal_state = .empty;\n            }\n            self.terminal_state_frame_count += 1;"
     add(generic, before, "                self.terminal_state = .empty;\n                self.terminal_state_frame_count = 0;\n            }\n            self.terminal_state_frame_count += 1;")

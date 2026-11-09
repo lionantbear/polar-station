@@ -367,23 +367,4 @@ fn encodeIntent(
     }, .{});
 }
 
-test "replacement validation and retirement carry the same verified identity without Workspace layout" {
-    const selection = SessionReplacementSelection{
-        .execution_target_id = "ssh-dev",
-        .tmux_session_id = "station-session-old",
-        .replacement = .{ .execution_target_id = "ssh-dev", .tmux_session_id = "$1", .server_generation = "new-server", .created_unix_seconds = 123 },
-        .workspace_id = "current-workspace",
-        .confirmation_id = "confirmed",
-    };
-    inline for (.{ false, true }) |retire| {
-        const action: Action = if (retire) .{ .retire_lost_session = selection } else .{ .use_existing_session = selection };
-        const bytes = try encodeAction(std.testing.allocator, "request", "frontend", 7, action);
-        defer std.testing.allocator.free(bytes);
-        const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, bytes, .{});
-        defer parsed.deinit();
-        const intent = parsed.value.object.get("request").?.object.get("command").?.object.get("intent").?.object;
-        try std.testing.expectEqual(retire, intent.get("retire").?.bool);
-        try std.testing.expectEqualStrings("new-server", intent.get("replacement").?.object.get("server_generation").?.string);
-        try std.testing.expect(intent.get("workspace_id") == null);
-    }
-}
+

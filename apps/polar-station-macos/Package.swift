@@ -27,10 +27,7 @@ let package = Package(
     targets: [
         .target(
             name: "PolarTmuxHostClient",
-            dependencies: ["CPolarStationDesktopClient"],
-            resources: [
-                .copy("Resources"),
-            ]
+            dependencies: ["CPolarStationDesktopClient"]
         ),
         .target(
             name: "CPolarStationDesktopClient",

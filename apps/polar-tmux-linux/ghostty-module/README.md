@@ -72,7 +72,7 @@ Workspace-independent.
 Run the pure module Development Tests with the pinned Zig toolchain:
 
 ```text
-zig test apps/polar-tmux-linux/ghostty-module/tests.zig
+# Private monorepo test entrypoint omitted from the public source export.
 ```
 
 The Python/PyGObject tree elsewhere under `apps/polar-tmux-linux/` is retired

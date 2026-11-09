@@ -69,26 +69,6 @@ pub const Content = struct {
     }
 };
 
-test "semantic identity is distinct for node actor and kind" {
-    const a: Content = .{ .target_id = "embedded", .node_id = "node-a", .owner = "node-a", .thread = "same", .actor = "node-a" };
-    var b = a; b.node_id = "node-b";
-    try std.testing.expect(!a.eql(b));
-    const fa = try a.fingerprint(std.testing.allocator); defer std.testing.allocator.free(fa);
-    const fb = try b.fingerprint(std.testing.allocator); defer std.testing.allocator.free(fb);
-    try std.testing.expect(!std.mem.eql(u8, fa, fb));
-    var invalid = a; invalid.thread = "x\x1b";
-    try std.testing.expectError(error.InvalidContentIdentity, invalid.validate());
-}
 
-test "Idea Tree round trips without conversation fields" {
-    const value: Content = .{ .kind = .idea_tree, .view_id = "idea-tree-main" };
-    try value.validate();
-    const json = try std.json.Stringify.valueAlloc(std.testing.allocator, value, .{});
-    defer std.testing.allocator.free(json);
-    try std.testing.expectEqualStrings("{\"kind\":\"idea_tree\",\"view_id\":\"idea-tree-main\"}", json);
-    var parsed = try std.json.parseFromSlice(Content, std.testing.allocator, json, .{});
-    defer parsed.deinit();
-    try std.testing.expect(value.eql(parsed.value));
-    var invalid = value; invalid.thread = "fake";
-    try std.testing.expectError(error.InvalidContentIdentity, invalid.validate());
-}
+
+

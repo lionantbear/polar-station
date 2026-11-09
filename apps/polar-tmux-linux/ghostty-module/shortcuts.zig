@@ -101,42 +101,8 @@ fn physicalDigit(keycode: c_uint) ?u8 {
     return null;
 }
 
-test "both held shows and either modifier release hides" {
-    var state: ModifierState = .{};
-    state.press(gdk.KEY_Control_L, .{});
-    try std.testing.expect(!state.visible());
-    state.press(gdk.KEY_Shift_R, .{});
-    try std.testing.expect(state.visible());
-    state.release(gdk.KEY_Control_L);
-    try std.testing.expect(!state.visible());
-    state.press(gdk.KEY_Control_R, .{});
-    try std.testing.expect(state.visible());
-    state.release(gdk.KEY_Shift_R);
-    try std.testing.expect(!state.visible());
-}
 
-test "ordinary key reconciles modifier releases received by a popover" {
-    var state: ModifierState = .{};
-    state.press(gdk.KEY_Y, .{ .control_mask = true, .shift_mask = true });
-    try std.testing.expect(state.visible());
-    state.press(gdk.KEY_1, .{});
-    try std.testing.expect(!state.visible());
-}
 
-test "approved Linux keys do not duplicate Ghostty tab or search keys" {
-    try std.testing.expectEqual(Action.control_center_toggle, resolve(gdk.KEY_S, 0).?);
-    try std.testing.expectEqual(Action.workspace_mode_toggle, resolve(gdk.KEY_M, 0).?);
-    try std.testing.expectEqual(Action.focus_previous, resolve(gdk.KEY_Up, 0).?);
-    try std.testing.expectEqual(Action.focus_next, resolve(gdk.KEY_Down, 0).?);
-    try std.testing.expectEqual(Action.rename_workspace, resolve(gdk.KEY_R, 0).?);
-    try std.testing.expectEqual(Action.open_idea_tree, resolve(gdk.KEY_B, 0).?);
-    try std.testing.expectEqual(Action.resume_codex, resolve(gdk.KEY_L, 0).?);
-    try std.testing.expectEqual(Action.close_focused_pane, resolve(gdk.KEY_X, 0).?);
-    const nine_keycode = for (input.keycodes.entries) |entry| {
-        if (entry.key == .digit_9) break entry.native;
-    } else unreachable;
-    try std.testing.expectEqual(Action{ .focus_pane_number = 9 }, resolve(gdk.KEY_9, nine_keycode).?);
-    try std.testing.expect(resolve(gdk.KEY_P, 0) == null);
-    try std.testing.expect(resolve(gdk.KEY_F, 0) == null);
-    try std.testing.expect(resolve(gdk.KEY_Tab, 0) == null);
-}
+
+
+

@@ -10,7 +10,4 @@ description = "Deterministic, data-only 3D graph layout adapted from pinned d3-f
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-[[bin]]
-name = "polar-force-oracle"
-path = "src/bin/oracle.rs"
 

@@ -24,3 +24,18 @@ Export with --normalize-lock after populating the approved Cargo dependency
 cache. This prunes the copied monorepo lock offline and rejects any new package
 identity or changed checksum. Cleanup refuses source drift; re-review patches
 for the next monorepo revision rather than bypassing the guard.
+
+## Native source cleanup
+
+The public profile also removes reviewed first-party Zig test declarations,
+standalone benchmarks and experimental test programs, native overlay test
+injection, and the macOS DEBUG fixture mode/resources. Production overlay
+rules, Host-backed control-center behavior, and user-facing diagnostic features
+(such as microphone/provider connection tests) are retained. Upstream legal and
+provenance files are retained separately from first-party test material.
+
+`public_native_cleanup.json` stores hashes and minimal edit ranges for these
+reviewed changes. It is a release transformation manifest, not a test suite.
+Reapplying the cleanup is idempotent; changed source fails closed for review.
+Snapshot verification rejects first-party Zig test declarations and retired
+Linux Python frontend paths under either old or renamed source directories.

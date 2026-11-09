@@ -43,37 +43,6 @@ pub const Batch = struct {
     }
 };
 
-test "1,220 Session events are split into bounded one-render batches" {
-    var remaining: usize = 1_220;
-    var batch_count: usize = 0;
-    var projection_count: usize = 0;
-    var render_count: usize = 0;
 
-    while (remaining > 0) {
-        var batch: Batch = .{};
-        while (remaining > 0 and batch.canPop()) {
-            batch.observedFrame();
-            batch.requestSessionProjection();
-            remaining -= 1;
-        }
-        try std.testing.expect(batch.processed <= max_frames_per_tick);
-        if (batch.takeSessionProjection()) {
-            projection_count += 1;
-            batch.requestRender();
-        }
-        try std.testing.expect(!batch.takeSessionProjection());
-        if (batch.takeRender()) render_count += 1;
-        try std.testing.expect(!batch.takeRender());
-        batch_count += 1;
-    }
 
-    try std.testing.expectEqual(@as(usize, 10), batch_count);
-    try std.testing.expectEqual(batch_count, projection_count);
-    try std.testing.expectEqual(batch_count, render_count);
-}
 
-test "a Host frame batch without a display-state change does not render" {
-    var batch: Batch = .{};
-    batch.observedFrame();
-    try std.testing.expect(!batch.takeRender());
-}

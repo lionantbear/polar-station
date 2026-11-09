@@ -609,17 +609,7 @@
         ]
 
         override private init() {
-            #if DEBUG
-                if ProcessInfo.processInfo.environment[
-                    "POLAR_STATION_UI_TEST_AUXILIARY"
-                ] == "resources" {
-                    model = ControlCenterStore(source: ControlCenterFixtureSource())
-                } else {
-                    model = ControlCenterStore(awaitsHostReadiness: true)
-                }
-            #else
-                model = ControlCenterStore(awaitsHostReadiness: true)
-            #endif
+            model = ControlCenterStore(awaitsHostReadiness: true)
             super.init()
         }
 
@@ -684,13 +674,6 @@
                 ghostty: ghostty
             )
             model.prepareForPresentation()
-            #if DEBUG
-                if ProcessInfo.processInfo.environment[
-                    "POLAR_STATION_UI_TEST_AUXILIARY"
-                ] == "resources" {
-                    requestAuxiliaryPresentation(.resources)
-                }
-            #endif
             model.startHostConnection()
             if !startHost() { scheduleHostRestart() }
         }

@@ -50,39 +50,15 @@ fn encodePlain(alloc: std.mem.Allocator, operation: Operation, text: []const u8)
     return output;
 }
 
-test "display encoder emits only its own control sequences" {
-    const bytes = try encode(std.testing.allocator, .replace_window, "Polar\n对话\t🙂");
-    defer std.testing.allocator.free(bytes);
-    try std.testing.expectEqualStrings(reset_prefix ++ "Polar\r\n对话\t🙂", bytes);
-}
 
-test "append does not reset the existing grid or scrollback" {
-    const bytes = try encode(std.testing.allocator, .append_text, "a\nb");
-    defer std.testing.allocator.free(bytes);
-    try std.testing.expectEqualStrings("a\r\nb", bytes);
-}
 
-test "empty replacement clears previous conversation" {
-    const bytes = try encode(std.testing.allocator, .replace_window, "");
-    defer std.testing.allocator.free(bytes);
-    try std.testing.expectEqualStrings(reset_prefix, bytes);
-}
 
-test "untrusted terminal controls and invalid utf8 never reach parser" {
-    for ([_][]const u8{ "a\x1b]52;c;secret\x07", "\xc2\x9b31m", "\x00", "\r", "\x7f", "\xff", "\xc0\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80" }) |text| {
-        try std.testing.expectError(error.UnsafeText, encode(std.testing.allocator, .append_text, text));
-    }
-}
 
-test "capacity and allocation failure have no partial output" {
-    const text = try std.testing.allocator.alloc(u8, max_text_bytes + 1);
-    defer std.testing.allocator.free(text);
-    @memset(text, 'x');
-    try std.testing.expectError(error.TextLimit, encode(std.testing.allocator, .append_text, text));
-    var buffer: [1]u8 = undefined;
-    var fixed = std.heap.FixedBufferAllocator.init(&buffer);
-    try std.testing.expectError(error.OutOfMemory, encode(fixed.allocator(), .replace_window, "text"));
-}
+
+
+
+
+
 
 const BackgroundRole = enum { message_header, message_body, reference };
 const Style = struct { source_grapheme: usize = 0, source: ?struct { start: usize, end: usize } = null, background: ?BackgroundRole = null, bold: bool = false, italic: bool = false, dim: bool = false, strike: bool = false, code: bool = false, foreground: ?u8 = null, link: ?[]const u8 = null };
@@ -139,33 +115,9 @@ fn encodeRuns(alloc: std.mem.Allocator, operation: Operation, json: []const u8, 
     return output.toOwnedSlice(alloc);
 }
 
-test "typed styles encode safely and reject escaped controls" {
-    const bytes = try encode(std.testing.allocator, .replace_runs,
-        "[{\"text\":\"hello\",\"style\":{\"bold\":true}}]");
-    defer std.testing.allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\x1b[1mhello") != null);
-    try std.testing.expectError(error.UnsafeText, encode(std.testing.allocator, .replace_runs,
-        "[{\"text\":\"\\u001b]52;x\"}]"));
-    try std.testing.expectError(error.UnsafeText, encode(std.testing.allocator, .append_runs,
-        "[{\"text\":\"click\",\"style\":{\"link\":\"file:///tmp/a\"}}]"));
-}
-
-test "code has a subdued actual-theme background without inverse video" {
-    const json = "[{\"text\":\"code\",\"style\":{\"code\":true}}]";
-    for ([_]struct { fg: u8, bg: u8, shade: []const u8 }{ .{ .fg = 240, .bg = 16, .shade = "38;38;38" }, .{ .fg = 16, .bg = 240, .shade = "217;217;217" } }) |theme| {
-        const encoded = try encodeThemed(std.testing.allocator, .replace_runs, json, @splat(theme.fg), @splat(theme.bg));
-        defer std.testing.allocator.free(encoded);
-        try std.testing.expect(std.mem.indexOf(u8, encoded, theme.shade) != null);
-        try std.testing.expect(std.mem.indexOf(u8, encoded, "\x1b[7m") == null);
-    }
-}
 
 
-test "message backgrounds use semantic theme roles and reject arbitrary values" {
-    const json = "[{\"text\":\"card\",\"style\":{\"background\":\"message_body\"}}]";
-    const encoded = try encodeThemed(std.testing.allocator, .replace_runs, json, .{240,240,240}, .{16,16,16});
-    defer std.testing.allocator.free(encoded);
-    try std.testing.expect(std.mem.indexOf(u8, encoded, "\x1b[48;2;24;24;24m") != null);
-    try std.testing.expectError(error.InvalidEnumTag, encode(std.testing.allocator, .replace_runs,
-        "[{\"text\":\"card\",\"style\":{\"background\":\"arbitrary\"}}]"));
-}
+
+
+
+

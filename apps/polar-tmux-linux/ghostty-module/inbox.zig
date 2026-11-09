@@ -166,9 +166,4 @@ pub fn encodeReceipt(allocator: std.mem.Allocator, request_id: []const u8, messa
     return encode(allocator, request_id, .{ .kind = "record_delivery", .message_id = message_id, .expected_revision = revision, .state = state });
 }
 
-test "Inbox approval is revisioned and defaults are explicit" {
-    const value = try encodeApprove(std.testing.allocator, "inbox-1", "message-1", 4, "insert", "nonce-1");
-    defer std.testing.allocator.free(value);
-    try std.testing.expect(std.mem.indexOf(u8, value, "\"expected_revision\":4") != null);
-    try std.testing.expect(std.mem.indexOf(u8, value, "\"delivery_mode\":\"insert\"") != null);
-}
+

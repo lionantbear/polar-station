@@ -315,17 +315,4 @@ fn encodeMutation(
     }, .{ .whitespace = .minified });
 }
 
-test "Resources requests keep reads unbound and mutations revision-bound" {
-    const allocator = std.testing.allocator;
-    const get = try encodeGetProjection(allocator, "resources-get-1");
-    defer allocator.free(get);
-    try std.testing.expect(std.mem.indexOf(u8, get, "\"expected_revision\":null") != null);
-    const restart = try encodeRestart(
-        allocator,
-        "resources-restart-1",
-        7,
-        "11111111-2222-4333-8444-555555555555",
-    );
-    defer allocator.free(restart);
-    try std.testing.expect(std.mem.indexOf(u8, restart, "\"expected_revision\":7") != null);
-}
+

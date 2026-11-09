@@ -1173,363 +1173,41 @@ fn renderedHasPane(panes: []const renderpkg.Pane, pane_id: []const u8) bool {
     return false;
 }
 
-test "Linux immediate reorder and move preserve exact Pane and Tab identities" {
-    var panes = [_]renderpkg.Pane{
-        try controlPane(std.testing.allocator, "p1", "local", "s1", .online),
-        try controlPane(std.testing.allocator, "p2", "local", "s2", .online),
-        try controlPane(std.testing.allocator, "p3", "local", "s3", .online),
-    };
-    defer for (panes) |pane| {
-        std.testing.allocator.free(pane.attach_fingerprint);
-    };
-    try applyPaneOrdering(panes[0..], "tab-1", .{ .reorder_pane = .{
-        .tab_id = "tab-1",
-        .pane_id = "p3",
-        .to_index = 0,
-    } });
-    try std.testing.expectEqualStrings("p3", panes[0].id);
-    try std.testing.expectEqualStrings("p1", panes[1].id);
-    try std.testing.expectEqualStrings("p2", panes[2].id);
 
-    var tabs = [_]renderpkg.Tab{
-        .{
-            .id = "tab-1",
-            .title = "One",
-            .display_mode = .monitor,
-            .focused_pane_id = null,
-            .layout = .{ .pane_order = &.{}, .slots = &.{}, .fingerprint = "native" },
-            .panes = &.{},
-        },
-        .{
-            .id = "tab-2",
-            .title = "Two",
-            .display_mode = .monitor,
-            .focused_pane_id = null,
-            .layout = .{ .pane_order = &.{}, .slots = &.{}, .fingerprint = "native" },
-            .panes = &.{},
-        },
-    };
-    try applyTabOrdering(tabs[0..], .{ .reorder_tab = .{
-        .tab_id = "tab-2",
-        .to_index = 0,
-    } });
-    try std.testing.expectEqualStrings("tab-2", tabs[0].id);
-    try std.testing.expectEqualStrings("tab-1", tabs[1].id);
-}
 
-test "Linux assignment helpers honor captured Tab instead of later selection" {
-    const action = control_intent.Action{ .toggle_session_assignment = .{
-        .tab_id = "tab-target",
-        .execution_target_id = "local",
-        .tmux_session_id = "$7",
-        .pane_id = "pane-7",
-    } };
-    const inert_action: controller_model.Action = .{
-        .id = "tab.action",
-        .label = "Tab action",
-        .role = .secondary,
-        .enabled = true,
-        .selected = false,
-        .disabled_reason = null,
-        .confirmation = null,
-        .accessibility_label = "Tab action",
-    };
-    const target: controller_model.Tab = .{
-        .id = "tab-target",
-        .title = "Target",
-        .selected = false,
-        .display_mode = .monitor,
-        .focused_pane_id = null,
-        .rename_action = inert_action,
-        .delete_action = inert_action,
-        .panes = &.{},
-    };
-    const later_selected: controller_model.Tab = .{
-        .id = "tab-later",
-        .title = "Later",
-        .selected = true,
-        .display_mode = .monitor,
-        .focused_pane_id = null,
-        .rename_action = inert_action,
-        .delete_action = inert_action,
-        .panes = &.{},
-    };
 
-    try std.testing.expectEqual(
-        @as(isize, 1),
-        paneCountDelta("tab-later", target, action),
-    );
-    try std.testing.expectEqual(
-        @as(isize, 0),
-        paneCountDelta("tab-later", later_selected, action),
-    );
-    try std.testing.expect(assignmentAddition(
-        "tab-later",
-        target,
-        action,
-    ) != null);
-}
 
-fn fixtureState() !State {
-    const allocator = std.testing.allocator;
-    const pane: renderpkg.Pane = .{ .id = "p1", .execution_target_id = "local", .tmux_session_id = "$1", .transport_status = .online, .attach_fingerprint = "fixture", .attach_plan = .{ .program = "", .args = &.{} } };
-    const empty: renderpkg.Tab = .{ .id = "tab-2", .title = "Two", .display_mode = .monitor, .focused_pane_id = null, .layout = .{ .pane_order = &.{}, .slots = &.{}, .fingerprint = "native" }, .panes = &.{} };
-    var first = empty;
-    first.id = "tab-1";
-    first.title = "One";
-    first.panes = &.{pane};
-    first.visual_pane_ids = &.{"p1"};
-    return .{ .allocator = allocator, .catalog = try native_workspace_store.OwnedCatalog.clone(allocator, .{ .catalog_revision = 1, .selected_workspace_id = "workspace", .workspaces = &.{.{ .workspace_id = "workspace", .workspace_name = "Workspace", .workspace_revision = 1, .font_size_points = 14, .selected_tab_id = "tab-1", .tabs = &.{ first, empty }, .snapshot_fingerprint = "fixture" }} }) };
-}
 
-test "native observation adopts second Tab once without changing Pane identity or binding" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    try state.begin();
-    try std.testing.expectError(error.NativeTransactionInProgress, state.begin());
-    const planned = try state.planAction(arena.allocator(), .{ .select_tab = .{ .tab_id = "tab-2" } }, "tab-2");
-    var previous = state.accept(try state.prepareAcceptance(try state.prepareWorkspace(planned)));
-    defer if (previous) |*old| old.deinit();
-    state.end();
-    try std.testing.expectEqualStrings("tab-2", state.snapshot().?.selected_tab_id);
-    try std.testing.expectEqualStrings("p1", state.snapshot().?.tabs[0].panes[0].id);
-    try std.testing.expectEqualStrings("$1", state.snapshot().?.tabs[0].panes[0].tmux_session_id);
-    try std.testing.expectEqual(@as(usize, 0), state.snapshot().?.tabs[1].panes.len);
-    try std.testing.expectEqual(@as(u64, 1), state.mutation_revision);
-}
 
-test "captured second Tab assignment survives a later first Tab selection" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const planned = try state.planAction(arena.allocator(), .{ .toggle_session_assignment = .{ .tab_id = "tab-2", .pane_id = "p2", .execution_target_id = "local", .tmux_session_id = "$2" } }, "tab-1");
-    try std.testing.expectEqualStrings("tab-1", planned.selected_tab_id);
-    try std.testing.expectEqual(@as(usize, 1), planned.tabs[0].panes.len);
-    try std.testing.expectEqualStrings("p2", planned.tabs[1].panes[0].id);
-    try std.testing.expectEqualStrings("$2", planned.tabs[1].panes[0].tmux_session_id);
-    try std.testing.expectEqual(@as(usize, 0), state.snapshot().?.tabs[1].panes.len);
-}
 
-test "Monitor Pane keyboard selection belongs to State and cannot leak into another Tab" {
-    var state = try fixtureState();
-    defer state.deinit();
-    try std.testing.expect(try state.observePane("p1"));
-    try std.testing.expect(!try state.observePane("p1"));
-    try std.testing.expectEqualStrings("p1", state.selectedPane("tab-1").?);
-    try std.testing.expect(state.selectedPane("tab-2") == null);
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const map = try view.build(arena.allocator(), state.snapshot().?, null, null, state.observed_pane_id);
-    try std.testing.expect(map.tabs[0].panes[0].selected);
-    try std.testing.expect(map.tabs[0].selected);
-    try std.testing.expect(!map.tabs[1].selected);
-    try std.testing.expectEqual(@as(u64, 1), state.snapshot().?.workspace_revision);
-}
 
-test "invalid observed Tab and stale captured target fail before acceptance" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    try std.testing.expectError(error.UnknownTab, state.planAction(arena.allocator(), null, "gone"));
-    try std.testing.expectError(error.UnknownTab, state.planAction(arena.allocator(), .{ .toggle_session_assignment = .{ .tab_id = "gone", .execution_target_id = "local", .tmux_session_id = "$2", .pane_id = "p2" } }, "tab-1"));
-    try std.testing.expectEqualStrings("tab-1", state.snapshot().?.selected_tab_id);
-    try std.testing.expectEqual(@as(u64, 1), state.catalogView().?.catalog_revision);
-}
 
-test "typed conversation open and cross Tab move preserve identity without terminal binding" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const content: renderpkg.Content = .{ .target_id = "target-a", .node_id = "node-a", .owner = "node-a", .actor = "node-a", .thread = "same-thread" };
-    const opened = try state.planOpenContent(arena.allocator(), content);
-    try std.testing.expectEqual(@as(usize, 1), state.snapshot().?.tabs[0].panes.len);
-    try std.testing.expectEqualStrings("$1", opened.snapshot.tabs[0].panes[0].tmux_session_id);
-    var previous = state.accept(try state.prepareAcceptance(try state.prepareWorkspace(opened.snapshot)));
-    defer if (previous) |*old| old.deinit();
-    const moved = try state.planAction(arena.allocator(), .{ .move_pane = .{
-        .pane_id = opened.pane_id,
-        .from_tab_id = opened.tab_id,
-        .to_tab_id = "tab-2",
-        .to_index = 0,
-    } }, opened.tab_id);
-    const pane = moved.tabs[1].panes[0];
-    try std.testing.expectEqualStrings(opened.pane_id, pane.id);
-    try std.testing.expect(pane.content.?.eql(content));
-    try std.testing.expect(!pane.isTerminal());
-    try std.testing.expectEqualStrings("", pane.tmux_session_id);
-    try std.testing.expectEqualStrings("$1", moved.tabs[0].panes[0].tmux_session_id);
-    var restored = try state.prepareWorkspace(moved);
-    defer restored.deinit();
-    try std.testing.expect(restored.value.workspaces[0].tabs[1].panes[0].content.?.eql(content));
-}
 
-test "chat thread replacement retains Pane slot and unrelated terminal identity" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const content: renderpkg.Content = .{ .target_id = "target", .node_id = "node", .owner = "node", .actor = "node", .thread = "first" };
-    const opened = try state.planOpenContent(arena.allocator(), content);
-    var previous = state.accept(try state.prepareAcceptance(try state.prepareWorkspace(opened.snapshot)));
-    defer if (previous) |*old| old.deinit();
-    var next = content;
-    next.thread = "second";
-    const replacement = try state.planReplaceContent(arena.allocator(), opened.pane_id, next);
-    try std.testing.expectEqualStrings(opened.pane_id, replacement.pane_id);
-    try std.testing.expectEqual(opened.snapshot.tabs.len, replacement.snapshot.tabs.len);
-    try std.testing.expectEqual(opened.snapshot.tabs[0].panes.len, replacement.snapshot.tabs[0].panes.len);
-    try std.testing.expectEqualStrings("$1", replacement.snapshot.tabs[0].panes[0].tmux_session_id);
-    try std.testing.expectEqualStrings("second", replacement.snapshot.tabs[0].panes[1].content.?.thread);
-    try std.testing.expectError(error.NotConversationPane, state.planReplaceContent(arena.allocator(), "p1", next));
-}
+
+
+
+
+
+
+
 
 // Both windows share stored mappings but retain their own selected Workspace.
-test "window mutation retains the other window Workspace and later edits" {
-    var root = try fixtureState();
-    defer root.deinit();
-    var prior = root.accept(try root.prepareAcceptance(try root.prepareCatalogAction(.{ .create_workspace = .{ .name = "Second" } })));
-    if (prior) |*old| old.deinit();
-    const second_id = try std.testing.allocator.dupe(u8, root.snapshot().?.workspace_id);
-    defer std.testing.allocator.free(second_id);
-    prior = root.accept(try root.prepareAcceptance(try root.prepareCatalogAction(.{ .select_workspace = .{ .workspace_id = "workspace" } })));
-    if (prior) |*old| old.deinit();
-    var second = try State.initShared(&root, second_id);
-    defer second.deinit();
-    try std.testing.expect(second.snapshot() != null);
-    try std.testing.expectEqualStrings(second_id, second.snapshot().?.workspace_id);
-    try second.begin();
-    try std.testing.expectError(error.NativeTransactionInProgress, root.begin());
-    second.end();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const renamed = try second.planAction(arena.allocator(), .{ .rename_workspace = .{ .name = "Second renamed" } }, null);
-    prior = second.accept(try second.prepareAcceptance(try second.prepareWorkspace(renamed)));
-    if (prior) |*old| old.deinit();
-    const root_edit = try root.planAction(arena.allocator(), .{ .rename_tab = .{ .tab_id = "tab-1", .title = "First edited" } }, null);
-    prior = root.accept(try root.prepareAcceptance(try root.prepareWorkspace(root_edit)));
-    if (prior) |*old| old.deinit();
-    try std.testing.expectEqualStrings("workspace", root.snapshot().?.workspace_id);
-    try std.testing.expectEqualStrings("Second renamed", second.snapshot().?.workspace_name);
-    try std.testing.expectEqualStrings("First edited", root.snapshot().?.tabs[0].title);
-    try std.testing.expectEqual(@as(usize, 2), second.catalogView().?.workspaces.len);
-}
-
-test "legacy delete rejects without replacing or destroying a Workspace" {
-    var root = try fixtureState();
-    defer root.deinit();
-    try std.testing.expectError(error.WorkspaceDeletionForbidden, root.prepareCatalogAction(.{ .delete_workspace = .{ .confirmation_id = "confirmed" } }));
-    try std.testing.expectEqual(@as(usize, 1), root.catalogView().?.workspaces.len);
-    try std.testing.expectEqualStrings("workspace", root.snapshot().?.workspace_id);
-}
-
-test "a new unbound window shares the catalog without creating a Workspace" {
-    var root = try fixtureState();
-    defer root.deinit();
-    var other = try State.initShared(&root, null);
-    defer other.deinit();
-    try std.testing.expect(other.snapshot() == null);
-    try std.testing.expectEqual(@as(usize, 1), root.catalogView().?.workspaces.len);
-    var previous = other.accept(try other.prepareAcceptance(try other.prepareCatalogAction(.{ .create_workspace = .{ .name = "Explicit" } })));
-    if (previous) |*old| old.deinit();
-    try std.testing.expectEqualStrings("workspace", root.snapshot().?.workspace_id);
-    try std.testing.expectEqualStrings("Explicit", other.snapshot().?.workspace_name);
-    try std.testing.expectEqual(@as(usize, 2), root.catalogView().?.workspaces.len);
-}
 
 
-test "batch assignment deduplicates preserves order focus and preflights capacity" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const source = state.snapshot().?;
-    const sessions = [_]controller_model.SessionIdentity{
-        .{ .execution_target_id = "local", .tmux_session_id = "$1" },
-        .{ .execution_target_id = "remote", .tmux_session_id = "$1" },
-        .{ .execution_target_id = "local", .tmux_session_id = "$2" },
-        .{ .execution_target_id = "local", .tmux_session_id = "$2" },
-    };
-    const planned = try State.planAddSessions(arena.allocator(), source, "tab-1", &sessions);
-    try std.testing.expectEqual(@as(usize, 3), planned.tabs[0].panes.len);
-    try std.testing.expectEqualStrings("p1", planned.tabs[0].panes[0].id);
-    try std.testing.expectEqualStrings("remote", planned.tabs[0].panes[1].execution_target_id);
-    try std.testing.expectEqualStrings("$2", planned.tabs[0].panes[2].tmux_session_id);
-    try std.testing.expectEqualStrings(source.selected_tab_id, planned.selected_tab_id);
-    try std.testing.expectEqual(source.tabs[0].focused_pane_id, planned.tabs[0].focused_pane_id);
-    var too_many: [9]controller_model.SessionIdentity = undefined;
-    for (&too_many, 0..) |*session, index| session.* = .{ .execution_target_id = "remote", .tmux_session_id = try std.fmt.allocPrint(arena.allocator(), "${d}", .{index}) };
-    try std.testing.expectError(error.TabFull, State.planAddSessions(arena.allocator(), source, "tab-1", &too_many));
-    try std.testing.expectEqual(@as(usize, 1), state.snapshot().?.tabs[0].panes.len);
-    try std.testing.expectError(error.UnknownTab, State.planAddSessions(arena.allocator(), source, "closed", &sessions));
-}
-
-test "opening an existing Session in another Tab retains both views" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const first = state.snapshot().?.tabs[0].panes[0];
-    const planned = try state.planAction(arena.allocator(), .{ .toggle_session_assignment = .{
-        .tab_id = "tab-2", .pane_id = "other-view", .execution_target_id = first.execution_target_id, .tmux_session_id = first.tmux_session_id,
-    } }, "tab-1");
-    try std.testing.expectEqual(@as(usize, 1), planned.tabs[0].panes.len);
-    try std.testing.expectEqual(@as(usize, 1), planned.tabs[1].panes.len);
-    try std.testing.expectEqualStrings(first.tmux_session_id, planned.tabs[1].panes[0].tmux_session_id);
-}
 
 
-test "Idea Tree views mix in the current Tab and retain identity across moves" {
-    var state = try fixtureState();
-    defer state.deinit();
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const first = try state.planOpenContent(arena.allocator(), .{ .kind = .idea_tree, .view_id = "view-a" });
-    try std.testing.expectEqualStrings("tab-1", first.tab_id);
-    try std.testing.expectEqual(@as(usize, 2), first.snapshot.tabs[0].panes.len);
-    var old = state.accept(try state.prepareAcceptance(try state.prepareWorkspace(first.snapshot)));
-    defer if (old) |*value| value.deinit();
-    const second = try state.planOpenContent(arena.allocator(), .{ .kind = .idea_tree, .view_id = "view-b" });
-    try std.testing.expectEqualStrings(first.tab_id, second.tab_id);
-    try std.testing.expect(!std.mem.eql(u8, first.pane_id, second.pane_id));
-    try std.testing.expectEqual(@as(usize, 3), second.snapshot.tabs[0].panes.len);
-    const added = second.snapshot.tabs[0].panes[2];
-    try std.testing.expectEqualStrings("", added.tmux_session_id);
-    try std.testing.expectEqualStrings("view-b", added.content.?.view_id);
-}
 
 
-test "default Workspace window names are distinct without renaming existing mappings" {
-    var state = try fixtureState();
-    defer state.deinit();
-    for ([_][]const u8{ "Workspace 2", "Workspace 3" }) |expected| {
-        var previous = state.accept(try state.prepareAcceptance(try state.prepareCatalogAction(.{ .create_workspace = .{ .name = "Workspace" } })));
-        if (previous) |*old| old.deinit();
-        try std.testing.expectEqualStrings(expected, state.snapshot().?.workspace_name);
-    }
-    try std.testing.expectEqualStrings("Workspace", state.catalogView().?.workspaces[0].workspace_name);
-}
 
 
-test "cross Workspace transfer is one candidate and does not mutate the source on cancellation" {
-    var state = try fixtureState();
-    defer state.deinit();
-    const original = try native_workspace_store.encodeCatalog(std.testing.allocator, state.catalogView().?);
-    defer std.testing.allocator.free(original);
-    var candidate = try state.prepareTabTransfer("tab-1", null, "Destination");
-    defer candidate.deinit();
-    try std.testing.expectEqual(@as(u64, 2), candidate.value.catalog_revision);
-    try std.testing.expectEqualStrings("tab-2", candidate.value.workspaces[0].tabs[0].id);
-    const destination = candidate.value.selected().?;
-    const moved = destination.tab("tab-1").?;
-    try std.testing.expectEqualStrings("p1", moved.panes[0].id);
-    try std.testing.expectEqualStrings("$1", moved.panes[0].tmux_session_id);
-    try std.testing.expectError(error.UnknownTab, state.prepareTabTransfer("gone", null, "Destination"));
-    const after = try native_workspace_store.encodeCatalog(std.testing.allocator, state.catalogView().?);
-    defer std.testing.allocator.free(after);
-    try std.testing.expectEqualStrings(original, after);
-}
+
+
+
+
+
+
+
+
+
+
+

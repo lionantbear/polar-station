@@ -68,7 +68,7 @@ sequence, starting at zero; replay, reordering, gaps, wrong direction, bad
 authentication, or cleartext application JSON is fatal.
 
 The canonical cross-language vectors live in
-`fixtures/v1/phase4_v1.json`. Mobile DTOs deliberately omit client, PID, TTY,
+the private monorepo protocol fixtures (not included in this source export). Mobile DTOs deliberately omit client, PID, TTY,
 command, working-path, raw-error, terminal-window, and secret fields. The
 mobile command policy allows sanitized reads, constrained session creation,
 and the typed `activate`, `open_session`, `focus_pane`, and `refresh` frontend

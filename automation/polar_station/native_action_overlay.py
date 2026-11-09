@@ -1,5 +1,4 @@
 """Pinned Ghostty ingress hooks; native adapters own all implementation/state."""
-from pathlib import Path
 
 def edits(platform):
     rules = {}
@@ -10,9 +9,6 @@ def edits(platform):
         for suffix, code in [('b', 'D'), ('f', 'C')]:
             add(config, '.{ .esc = "' + suffix + '" },',
                 '.{ .csi = "1;3' + code + '" },')
-        test_anchor = '    test "parseCLI chain applies to most recent table binding" {'
-        test_source = Path(__file__).resolve().parents[2] / 'apps/polar-tmux-shared/ghostty/StationOptionArrowTests.zig'
-        add(config, test_anchor, test_source.read_text() + '\n' + test_anchor)
         terminal = 'macos/Sources/Features/Terminal/TerminalController.swift'
         base = 'macos/Sources/Features/Terminal/BaseTerminalController.swift'
         def hook(path, anchor, action, result='return'):

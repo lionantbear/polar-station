@@ -80,9 +80,6 @@ install -m 0644 \
 install -m 0644 \
     "$repo_root/apps/polar-station-macos/Resources/PolarStation.icns" \
     "$source_dir/macos/Sources/PolarStation/PolarStation.icns"
-install -m 0644 \
-    "$repo_root/apps/polar-station-macos/ghostty-module/GhosttyUITests/PolarStationMouseStateUITests.swift" \
-    "$source_dir/macos/GhosttyUITests/PolarStationMouseStateUITests.swift"
 
 install -m 0644 \
     "$repo_root/apps/polar-station-macos/ghostty-module/PolarStationDisplaySurface.swift" \

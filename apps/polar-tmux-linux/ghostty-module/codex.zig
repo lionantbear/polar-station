@@ -166,36 +166,5 @@ pub fn encodeAction(allocator: std.mem.Allocator, id: []const u8, state: State, 
     return error.UnsupportedAction;
 }
 
-test "native confirmation keeps original owner binding revision and turn" {
-    const allocator = std.testing.allocator;
-    var state: State = .{ .binding = .{ .owner_host_id = "owner-a", .binding_id = "binding", .revision = 7, .session = .{ .execution_target = "local", .tmux_session_id = "$1" }, .endpoint_id = "endpoint", .thread_id = "thread", .imessage_enabled = false }, .connection = "connected", .activity = "active", .turn_id = "turn-a", .can_queue = true, .can_steer = true, .can_interrupt = true };
-    var action: controls.Action = .{ .id = "interrupt", .label = "Interrupt", .role = .destructive, .enabled = true, .selected = false, .disabled_reason = null, .confirmation = null, .accessibility_label = "Interrupt" };
-    const payload = try encodeAction(allocator, "unique-intent", state, action, "");
-    defer allocator.free(payload);
-    state.turn_id = "turn-b";
-    state.binding.revision = 8;
-    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, payload, .{});
-    defer parsed.deinit();
-    const request = parsed.value.object.get("request").?.object;
-    const command = request.get("command").?.object;
-    try std.testing.expectEqualStrings("owner-a", request.get("owner_host_id").?.string);
-    try std.testing.expectEqualStrings("turn-a", command.get("turn_id").?.string);
-    try std.testing.expectEqual(@as(i64, 7), command.get("expected_revision").?.integer);
-    action.enabled = false;
-    try std.testing.expectError(error.ActionDisabled, encodeAction(allocator, "later", state, action, ""));
-}
-test "Codex original input and typed receipt do not pass through terminal commands" {
-    const allocator = std.testing.allocator;
-    const wire = try encode(allocator, "rpc", "owner", .{ .kind = "steer", .binding_id = "binding", .expected_revision = 7, .intent_id = "intent", .expected_turn_id = "turn", .text = "/literal\nexact text" });
-    defer allocator.free(wire);
-    var value = try std.json.parseFromSlice(std.json.Value, allocator, wire, .{});
-    defer value.deinit();
-    const request = value.value.object.get("request").?.object;
-    try std.testing.expectEqualStrings("owner", request.get("owner_host_id").?.string);
-    const command = request.get("command").?.object;
-    try std.testing.expectEqualStrings("/literal\nexact text", command.get("text").?.string);
-    try std.testing.expectEqualStrings("turn", command.get("expected_turn_id").?.string);
-    var response = try decode(allocator, "{\"type\":\"application_response\",\"response\":{\"protocol_version\":1,\"api\":\"codex_v1\",\"owner_host_id\":\"owner\",\"request_id\":\"rpc\",\"result\":{\"kind\":\"receipt\",\"receipt\":{\"intent_id\":\"intent\",\"status\":\"unknown\"}}}}");
-    defer response.deinit();
-    try std.testing.expectEqualStrings("unknown", response.value.response.result.receipt.?.status);
-}
+
+

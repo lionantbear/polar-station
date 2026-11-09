@@ -17,13 +17,7 @@ pub fn terminalFocusPaneId(
     return if (mode == .focus) main_pane_id else selected_pane_id;
 }
 
-test "Focus input follows MAIN while Monitor retains its explicit terminal" {
-    try std.testing.expectEqualStrings("main", terminalFocusPaneId(.focus, "main", "sidebar").?);
-    try std.testing.expectEqualStrings("next", terminalFocusPaneId(.focus, "next", "main").?);
-    try std.testing.expectEqualStrings("former-main", terminalFocusPaneId(.monitor, null, "former-main").?);
-    try std.testing.expectEqualStrings("selected", terminalFocusPaneId(.monitor, null, "selected").?);
-    try std.testing.expect(terminalFocusPaneId(.focus, null, null) == null);
-}
+
 
 pub const Plan = struct {
     reused_surface_ids: [9][]const u8 = undefined,
@@ -140,55 +134,10 @@ fn contains(pane_ids: []const []const u8, wanted: []const u8) bool {
     return false;
 }
 
-test "pure Linux layout and Focus changes reuse every Surface and never call Rust" {
-    const monitor_order = [_][]const u8{ "p1", "p2", "p3", "p4", "p5", "p6" };
-    const focus_order = [_][]const u8{ "p6", "p1", "p2", "p3", "p4", "p5" };
-    const transition = try plan(monitor_order[0..], focus_order[0..]);
-    try std.testing.expectEqual(@as(usize, 6), transition.reused_count);
-    try std.testing.expectEqual(@as(usize, 0), transition.created_count);
-    try std.testing.expectEqual(@as(usize, 0), transition.retired_count);
-    try std.testing.expectEqual(@as(usize, 0), transition.rust_content_request_count);
-    try std.testing.expect(transition.replace_native_tree);
-}
 
-test "Linux add and remove mutate one Surface and one content binding" {
-    const two = [_][]const u8{ "p1", "p2" };
-    const three = [_][]const u8{ "p1", "p2", "p3" };
-    const add = try plan(two[0..], three[0..]);
-    try std.testing.expectEqualSlices([]const u8, &.{"p3"}, add.created());
-    try std.testing.expectEqual(@as(usize, 1), add.rust_content_request_count);
 
-    const remove = try plan(three[0..], two[0..]);
-    try std.testing.expectEqualSlices([]const u8, &.{"p3"}, remove.retired());
-    try std.testing.expectEqual(@as(usize, 1), remove.rust_content_request_count);
-}
 
-test "Linux cross-Tab move transfers the same pointer without touching content" {
-    const source = [_][]const u8{ "p1", "p2" };
-    const target = [_][]const u8{"p3"};
-    const move = try planCrossTabMove("p2", source[0..], target[0..]);
-    try std.testing.expect(move.detach_pointer_from_source_tree);
-    try std.testing.expect(move.attach_same_pointer_to_target_tree);
-    try std.testing.expectEqual(@as(usize, 0), move.created_surface_count);
-    try std.testing.expectEqual(@as(usize, 0), move.retired_surface_count);
-    try std.testing.expectEqual(@as(usize, 0), move.rust_content_request_count);
-}
 
-test "Linux independently plans Surface movement and Rust content mutation" {
-    try std.testing.expectEqual(
-        ContentMutation.reuse_surface,
-        planContentMutation("tab-1", "local-$1", "tab-1", "local-$1"),
-    );
-    try std.testing.expectEqual(
-        ContentMutation.rebind_content,
-        planContentMutation("tab-1", "local-$1", "tab-1", "local-$2"),
-    );
-    try std.testing.expectEqual(
-        ContentMutation.move_surface,
-        planContentMutation("tab-1", "local-$1", "tab-2", "local-$1"),
-    );
-    try std.testing.expectEqual(
-        ContentMutation.move_and_rebind,
-        planContentMutation("tab-1", "local-$1", "tab-2", "ssh-$8"),
-    );
-}
+
+
+

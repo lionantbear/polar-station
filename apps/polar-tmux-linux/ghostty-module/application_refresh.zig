@@ -77,17 +77,4 @@ pub const RenderedInputs = struct {
     }
 };
 
-test "equal displayed content retains widgets while order status and action changes invalidate" {
-    const std = @import("std");
-    const Inputs = struct { names: []const []const u8, online: bool, enabled: bool };
-    var inputs: RenderedInputs = .{};
-    defer inputs.deinit(std.testing.allocator);
-    const original = Inputs{ .names = &.{ "one", "two" }, .online = true, .enabled = true };
-    try std.testing.expect(inputs.changed(std.testing.allocator, original));
-    const copy = try std.testing.allocator.dupe(u8, "one");
-    defer std.testing.allocator.free(copy);
-    try std.testing.expect(!inputs.changed(std.testing.allocator, Inputs{ .names = &.{ copy, "two" }, .online = true, .enabled = true }));
-    try std.testing.expect(inputs.changed(std.testing.allocator, Inputs{ .names = &.{ "two", "one" }, .online = true, .enabled = true }));
-    try std.testing.expect(inputs.changed(std.testing.allocator, Inputs{ .names = &.{ "two", "one" }, .online = false, .enabled = true }));
-    try std.testing.expect(inputs.changed(std.testing.allocator, Inputs{ .names = &.{ "two", "one" }, .online = false, .enabled = false }));
-}
+

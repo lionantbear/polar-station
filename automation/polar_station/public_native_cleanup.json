@@ -1,0 +1,846 @@
+{
+  "schema_version": 1,
+  "description": "Reviewed first-party native test/fixture/benchmark removals; hashes reject source drift. Not test source.",
+  "edits": [
+    {
+      "path": "apps/polar-station-macos/Package.swift",
+      "before": "bc9a014f5566beacfdbf66f144530b8af6bd58ad1b2d7e3362ba45e7ca4b9b51",
+      "after": "82ad4f266e4d6a973a0460d20125583be34c05617904905e2b86fcbbcc4b4e93",
+      "ranges": [
+        [
+          923,
+          1056,
+          "            dependencies: [\"CPolarStationDesktopClient\"]\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-macos/ghostty-module/ControlCenterStore.swift",
+      "before": "49821ccb4059cba50c309b7f2270136885cfeea85899b157bf4de205921989ea",
+      "after": "23111ff15275d34ccc530a408a1c2b8b1f779154f239ccab144c0b70c596d4bb",
+      "ranges": [
+        [
+          504,
+          599,
+          "/// Host.\n"
+        ],
+        [
+          4198,
+          4274,
+          ""
+        ],
+        [
+          6630,
+          6690,
+          ""
+        ],
+        [
+          6888,
+          6919,
+          ""
+        ],
+        [
+          9409,
+          9668,
+          ""
+        ],
+        [
+          26385,
+          26694,
+          "        submitHostIntent(\n            hydrateNativeIdentity(\n                in: intent.operation,\n                projection: projection\n"
+        ],
+        [
+          26708,
+          27066,
+          "        )\n"
+        ],
+        [
+          29429,
+          30109,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-macos/ghostty-module/PolarStationRuntime.swift",
+      "before": "d58a6bff0d3cc4a1946b2bc44acb25b25774311b87f2cc30f09980dbbf3f9d71",
+      "after": "b2263b03de04a8839f622815d51711e17608aedce2aed4062a19e77ab532788e",
+      "ranges": [
+        [
+          27907,
+          28383,
+          "            model = ControlCenterStore(awaitsHostReadiness: true)\n"
+        ],
+        [
+          31267,
+          31532,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-macos/ghostty-overlay/apply-overlay.sh",
+      "before": "db98c94ba6551346c392c089d0f2f7e928eecccca123f0f46278238e82020602",
+      "after": "94c7fbcd88ee05ee9487a2814edbbde4d1c114f34cb4c794ef907446b55cd4cd",
+      "ranges": [
+        [
+          4243,
+          4446,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/README.md",
+      "before": "236ebdeecb50046c38bad5aa3fd5d50a32680bcbd2a2d800a391dd80536228fb",
+      "after": "26b679d42628980ec9d835024957ab93e35c0cecebc2cc412b9df0ef09db98cf",
+      "ranges": [
+        [
+          4024,
+          4080,
+          "# Private monorepo test entrypoint omitted from the public source export.\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/application_refresh.zig",
+      "before": "ba8af4f7b6e5454edb3d1fde8d8026af4017e126a1be49c745881cf36b161bb3",
+      "after": "6c99d90e5be42e8cead6cf3275bfe98e76a48e1edb4637b82a0a2ba8bafe30b2",
+      "ranges": [
+        [
+          2311,
+          3448,
+          "\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/codex.zig",
+      "before": "8094b6321cd5ef6264b25f5109b30d7a0ad63b224f0047918fab4f598309bca5",
+      "after": "f7f76d832c42a5ee9d55b1856cd2391c7e5872141adcefe311b75d0a4cb44279",
+      "ranges": [
+        [
+          6678,
+          9514,
+          "\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/content_lifecycle.zig",
+      "before": "bd60c40e8848a36389c6f1f8cd249939191b31eb5b387dfcb841fd99c3962698",
+      "after": "fa3b94ff308d9f11ff1f298e37722883e4edc02702c699d4f5a4e10c7bbc8a26",
+      "ranges": [
+        [
+          8993,
+          9215,
+          ""
+        ],
+        [
+          9216,
+          9473,
+          ""
+        ],
+        [
+          9474,
+          9855,
+          ""
+        ],
+        [
+          9856,
+          10059,
+          ""
+        ],
+        [
+          10060,
+          10529,
+          ""
+        ],
+        [
+          10530,
+          11363,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/control_center/intent.zig",
+      "before": "9feac413032001e9d53e1877c282eae236c4291e661d07edd733b3ceb2a81342",
+      "after": "9411b064d976621e0c4f448d8461b1f3b792e5867771b49c24dfe81987264adf",
+      "ranges": [
+        [
+          15934,
+          17269,
+          "\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/control_center/width_preferences.zig",
+      "before": "51baeab6630a0dee3e22b69333fb961bcd7503fde0b6720e1a6fc37250cf7661",
+      "after": "8a550a5212e1393a8aeddcfc9f15bfbde406f91b2e2e9c06ada63423c487b5d1",
+      "ranges": [
+        [
+          7168,
+          7413,
+          ""
+        ],
+        [
+          7414,
+          8260,
+          ""
+        ],
+        [
+          8261,
+          9116,
+          "\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/host_frame_batch.zig",
+      "before": "c7ce8f67018d55badef6040f47c91d35b9a75ca78a39217830930f2d0e48fc56",
+      "after": "a23ebb1c45d83f7f650535fda5e1300a768c6bef798a11bf61fd843e446a102b",
+      "ranges": [
+        [
+          1293,
+          1501,
+          ""
+        ],
+        [
+          1502,
+          2129,
+          ""
+        ],
+        [
+          2130,
+          2318,
+          ""
+        ],
+        [
+          2319,
+          2500,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/inbox.zig",
+      "before": "d8c59c2d18043db6cd96bb986780613453ebd3f006e08d5f28fdf25decdd3af2",
+      "after": "0ed9e01d2be3cff5c224a1ac6cc210d2d03382a5c5b17a4a792d7333b7cf6911",
+      "ranges": [
+        [
+          6739,
+          7145,
+          "\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/ipc_client.zig",
+      "before": "a7b12d84368829204d7a319f21650600c5fad757aa555d629be7503f5a4b2733",
+      "after": "2a863af4272409e2214dbdb36c7f992807238b2650c1b6db80367b56db8a7bba",
+      "ranges": [
+        [
+          12889,
+          13393,
+          "\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/native_surface_transition.zig",
+      "before": "42a9249f75d115cd93158804f8d349a63ede1237544b14c1cca57fdd0211ecdc",
+      "after": "8231b6032feca7f7f958c7390f797c9fd857f74beeb5d344a55f33222d8721af",
+      "ranges": [
+        [
+          735,
+          1297,
+          "\n"
+        ],
+        [
+          4885,
+          5567,
+          ""
+        ],
+        [
+          5568,
+          5943,
+          ""
+        ],
+        [
+          5944,
+          6159,
+          ""
+        ],
+        [
+          6160,
+          6771,
+          ""
+        ],
+        [
+          6772,
+          7452,
+          "\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/native_workspace_layout.zig",
+      "before": "7d04b37808a52fc2322992c269a767f7c44fb97c53b46773df6f621eb7923fb8",
+      "after": "2c672e8167e3a6e5c3210579281088a234e678bde59d27a086dc959c17d2e868",
+      "ranges": [
+        [
+          13234,
+          13821,
+          ""
+        ],
+        [
+          13822,
+          14415,
+          ""
+        ],
+        [
+          14416,
+          15093,
+          ""
+        ],
+        [
+          15094,
+          15791,
+          ""
+        ],
+        [
+          15792,
+          16397,
+          ""
+        ],
+        [
+          16398,
+          17176,
+          ""
+        ],
+        [
+          17177,
+          17381,
+          ""
+        ],
+        [
+          17382,
+          17689,
+          ""
+        ],
+        [
+          17690,
+          18013,
+          ""
+        ],
+        [
+          18014,
+          18518,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/native_workspace_state.zig",
+      "before": "895c4146b1170c1ad447f9a7f0eacc298940709e188ff42f474014adbfcbebe5",
+      "after": "64365cfb4606f9621ed8759b8c0088ccb691caa70dd8b389986b1a461d474d70",
+      "ranges": [
+        [
+          48104,
+          48891,
+          ""
+        ],
+        [
+          48892,
+          49705,
+          ""
+        ],
+        [
+          49706,
+          50917,
+          ""
+        ],
+        [
+          50918,
+          51276,
+          ""
+        ],
+        [
+          51277,
+          52315,
+          ""
+        ],
+        [
+          52316,
+          53375,
+          ""
+        ],
+        [
+          53376,
+          54212,
+          ""
+        ],
+        [
+          54213,
+          55072,
+          ""
+        ],
+        [
+          55073,
+          55812,
+          ""
+        ],
+        [
+          55813,
+          57400,
+          ""
+        ],
+        [
+          57401,
+          58754,
+          "\n\n\n\n\n\n\n"
+        ],
+        [
+          58834,
+          62039,
+          ""
+        ],
+        [
+          62041,
+          64650,
+          ""
+        ],
+        [
+          64652,
+          65826,
+          ""
+        ],
+        [
+          65828,
+          66441,
+          ""
+        ],
+        [
+          66443,
+          67600,
+          "\n\n\n\n\n\n\n\n\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/native_workspace_store.zig",
+      "before": "cbcf55cbda859cccd45b2875839c7178f0509fdefdeaa62604b43d592c64c6ac",
+      "after": "7aa4eeb898202c32b7590bba93fa78e1d5b2c49e5a43882678f5aa545531ab55",
+      "ranges": [
+        [
+          22985,
+          27061,
+          ""
+        ],
+        [
+          27063,
+          28671,
+          ""
+        ],
+        [
+          28673,
+          29952,
+          "\n\n\n\n\n\n\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/pane_content.zig",
+      "before": "3cf82543a56b0e69b98598784be508ded185071a8d3b5461c7e34bdc344dbc68",
+      "after": "532ea2e490b271096ae773e7467538b0ad2b9f1df2fb20b3b8630c1125892df8",
+      "ranges": [
+        [
+          10700,
+          11693,
+          ""
+        ],
+        [
+          11694,
+          12539,
+          ""
+        ],
+        [
+          12540,
+          12913,
+          ""
+        ],
+        [
+          12914,
+          13766,
+          ""
+        ],
+        [
+          13767,
+          14497,
+          "\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/protocol.zig",
+      "before": "dcd51993d5937d15f9a1d0897f1e805567b98874e47133a919e9e7b70e60e23c",
+      "after": "57747389416f1fec87cfe3b3c4f0583a43c70d8e51cb8c2b95b3834c71aead7c",
+      "ranges": [
+        [
+          11635,
+          12262,
+          "\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/resources.zig",
+      "before": "08197251f1b82e4f5c82f55fd46e5eb60697e536f47260d376d3693268bb7916",
+      "after": "68c6cb9f1a9728f401ff208a7b71b9e985a19be3773464303b2c3d04a845df10",
+      "ranges": [
+        [
+          8390,
+          8990,
+          "\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/session_runtime.zig",
+      "before": "9706877bd70936439c5737a1a05dc685af464adfdc84c3f88d3685eeb27359e4",
+      "after": "de36839919e89f1fbc971eede7420e3ba3f8b867b27ffec7b1503d8c8c39cf45",
+      "ranges": [
+        [
+          13332,
+          14699,
+          ""
+        ],
+        [
+          14700,
+          15545,
+          ""
+        ],
+        [
+          15546,
+          16048,
+          "\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/settings.zig",
+      "before": "31d6afab5d31bf5a4e38adb3400594d6def1140b90611b61d2448d9599ab64f8",
+      "after": "6190604c30af75c1b0b3594f60af3ae06a3521bec8acbbcdba70954474cdeec5",
+      "ranges": [
+        [
+          6644,
+          7204,
+          ""
+        ],
+        [
+          7205,
+          7602,
+          ""
+        ],
+        [
+          7603,
+          7890,
+          ""
+        ],
+        [
+          7891,
+          8372,
+          ""
+        ],
+        [
+          8373,
+          8898,
+          "\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/shortcuts.zig",
+      "before": "4f384d2251236e1353640b77b6044e13cd1b982a052aaf1fec6da0a6c120314d",
+      "after": "e6ffb275140993df7ca7ffc22f61bc95e04179cf6ba4e2181afddfd21d255837",
+      "ranges": [
+        [
+          3621,
+          4141,
+          ""
+        ],
+        [
+          4142,
+          4452,
+          ""
+        ],
+        [
+          4453,
+          5619,
+          "\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/station_content.zig",
+      "before": "e495d64773c206a42330ed268650d77788d34f3849f26c1ead901ab226683346",
+      "after": "7724de24cdc425d8f1914b72cc55e9877979f78a5cdde306a3db5bb3af66ac4a",
+      "ranges": [
+        [
+          3734,
+          4379,
+          ""
+        ],
+        [
+          4380,
+          5086,
+          "\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-tmux-shared/ghostty/StationDisplay.zig",
+      "before": "7cdad6bda672c8f520e9faeb80114a49cfd32dedf53aa5ed935ceb8d90de1765",
+      "after": "6f657a808a033d5d41be677a522acca721d180cd8cfef9f045c975d7d1c15654",
+      "ranges": [
+        [
+          2472,
+          2762,
+          ""
+        ],
+        [
+          2763,
+          3005,
+          ""
+        ],
+        [
+          3006,
+          3244,
+          ""
+        ],
+        [
+          3245,
+          3585,
+          ""
+        ],
+        [
+          3586,
+          4095,
+          "\n\n\n\n\n"
+        ],
+        [
+          7431,
+          8712,
+          ""
+        ],
+        [
+          8714,
+          9306,
+          "\n\n\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "automation/polar_station/apply_display_overlay.py",
+      "before": "3a4d12935675be4a313f800a75d1c0a543dc2118f8c37f75817de78f6ad3b180",
+      "after": "830b97c7e36bd74446427116e905fcc76ea4dde703ebd9dbd916a1336cbe9db3",
+      "ranges": [
+        [
+          1247,
+          1330,
+          "    \"\"\"Shared production renderer corrections for both native backends.\"\"\"\n"
+        ],
+        [
+          1492,
+          2096,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "automation/polar_station/native_action_overlay.py",
+      "before": "652019754c7ac738c3a33dd68a83c08eec7bafc2d96cf6e7b0170fee9899553e",
+      "after": "3cd63d14588680a89e4a17787f015a9660b65bb703bc5900785a5fbb1bac316c",
+      "ranges": [
+        [
+          82,
+          107,
+          ""
+        ],
+        [
+          467,
+          756,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-force-layout-core/Cargo.toml",
+      "before": "cede025ab8ab0a7b1b4de08b041bbfed8797d65cf9565596a3617674746d88db",
+      "after": "0e3187e1e5a997600669846280a095c3e5ba42855de617da3c609a4a1029df03",
+      "ranges": [
+        [
+          288,
+          351,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-protocol/README.md",
+      "before": "fc3d04680c2699026d61896b8103ce3a54bde0ff39a37887c23eaec0d3293142",
+      "after": "1c956c98fcd63d670aaadef32af96a2907aaa6922cefb2a122b78754fee2e1e1",
+      "ranges": [
+        [
+          2742,
+          2820,
+          "the private monorepo protocol fixtures (not included in this source export). Mobile DTOs deliberately omit client, PID, TTY,\n"
+        ]
+      ]
+    }
+  ],
+  "deletions": [
+    {
+      "path": "apps/polar-ideacave-godot/graphics_reuse_test.gd",
+      "sha256": "8710608e741b9b3fbcb1bf5c5e41e7fab3588bbd57f58baf07d83b7d47c22c19"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_experiment.gd",
+      "sha256": "13a57f9c9ddd45e268642e6a7294ed6f59c2f3ab019a1fe827af5199b79f209b"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_experiment.tscn",
+      "sha256": "bb4e1ec117573eea86a937f4a8ec7f33bd44fd8fcfc744f86ba8d63894e914db"
+    },
+    {
+      "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/ControlCenterFixtureSource.swift",
+      "sha256": "3ac9f5977fe50f812816699ef84d7454aca1550219a965a7c6b5ca7dd3ba203a"
+    },
+    {
+      "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/Resources/ControlCenterFixtures/controller-sessions-closed.json",
+      "sha256": "9e0650f9045e04d04f173d8fc092f51501dc923e719aed7700f33bac332279bf"
+    },
+    {
+      "path": "apps/polar-station-macos/ghostty-module/GhosttyUITests/PolarStationMouseStateUITests.swift",
+      "sha256": "0db08cab0d037eee6a6da2b9dc7c340d058a2383665de270aaf804d261a18c93"
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/desktop_semantics_test.zig",
+      "sha256": "a7bc0253729fe38b652d356fcad310f1f8f695ee1b1fae1aa744a30df14b922d"
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/fixtures/controller-sessions-closed.json",
+      "sha256": "5fa035bce1e9db13ff5c2cb1152040738ae393e03d7d26bce92e3b0641a101a3"
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/pane_drag_test.zig",
+      "sha256": "81c0f91937cbe79ddd1e9ea66ac1200ef2ef9898551aa2e3946562fa03f283ed"
+    },
+    {
+      "path": "apps/polar-tmux-linux/ghostty-module/tests.zig",
+      "sha256": "c8b99add9cf3232f396a5d862d52c98679a25082f2adb013254adf2199a7e42b"
+    },
+    {
+      "path": "apps/polar-tmux-linux/session-editor-tests.zig",
+      "sha256": "821ccb9cf4406de1f59ac62f07171d1afbbef13a79dd096904aa886b687233dc"
+    },
+    {
+      "path": "apps/polar-tmux-linux/tools/test-controller-measurement.mjs",
+      "sha256": "72c6c90a0c6c25f0d8d38ea8254808a2472b9149e092d69b20b8c491f8fe216e"
+    },
+    {
+      "path": "apps/polar-tmux-shared/dictate/test_audio_linux.c",
+      "sha256": "959d9c5354ae273e64e8c00165619206241416721d8ba88c9dbafa945e0a66ca"
+    },
+    {
+      "path": "apps/polar-tmux-shared/ghostty/StationLinkTests.zig",
+      "sha256": "6a9f54ea2583dcada31fa8dee544999344fdbf8c6d4f75f8872d337253d4b5f2"
+    },
+    {
+      "path": "apps/polar-tmux-shared/ghostty/StationOptionArrowTests.zig",
+      "sha256": "33acfdab7f6a9fcfec59b6d19e677cc2b4d069216e0f0ea662dff473fe5d5a4e"
+    },
+    {
+      "path": "apps/polar-tmux-shared/ghostty/StationRendererTests.zig",
+      "sha256": "06032bc2b2d9242ff7996d50cdaca22f41b43307bf2f199ba1010700a92bd1fa"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench.rs",
+      "sha256": "6b8d32baefaf1280fac376099044e7334d3f386e8b1e0393e16836c8e43dab9d"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/accounting.rs",
+      "sha256": "5a276237126369ad322f37cf94901150a35afc20dae782f00d0c66be6f62469f"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/catalog.rs",
+      "sha256": "009e2f64383d00de18050eba98e9bb9e97ac64e19d1c92580d8f7a772190582d"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/cold.rs",
+      "sha256": "52c207a31a5ed12bb0278616cf958bb250c1ff34b5c03ff46a12ddd75e5eb790"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/concurrency.rs",
+      "sha256": "2d33bd336e2be7abea3446a7c61b4bdd6026aa4793699ae39f235268ae02f591"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/direct.rs",
+      "sha256": "b0eae1a9a207646182ddc327e604a201bf58aa83c3a3c7cab36d4b65228e19c4"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/foundation.rs",
+      "sha256": "5f0c20435924f6452a43b0a879c96e74bf6a1ff69b0b1f72eb29564636d76c2e"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/growth.rs",
+      "sha256": "9922090a420b2d046fa4636d99451742f9af5ea81951878ba5c19bafb33063a1"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/matrix.rs",
+      "sha256": "feaf8878a0a463e97eb109501b6fdca6d42bf9da8f98dc0f57aed946d9efd6be"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/paging.rs",
+      "sha256": "91602f0000079f35642c96b2252cd06b8e2dc80638ef0b3463f1cb2ac8024fc9"
+    },
+    {
+      "path": "crates/polar-cas-local/examples/search_index_bench/snapshot.rs",
+      "sha256": "29d9fc17eb024f3c2a305ab9505854fee6098c92d2dfe887f03ca04d0e3b58f7"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment.rs",
+      "sha256": "020be7d726f9898815dad9680e35447351ee07858d313e53816e1a2f27c8bba0"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment/versions.rs",
+      "sha256": "4e2110a8bfe773c03081a88e84a2d6276c3aa6beecfee9258a1eda53b58e2d60"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment/versions/deferred.rs",
+      "sha256": "9f85dad7924053ea72999110a0f7ffec75a427165da2b371bd1fdfe84631047f"
+    },
+    {
+      "path": "crates/polar-force-layout-core/src/bin/oracle.rs",
+      "sha256": "0550a305c10694f20550bd33821d495829262287caee71336f0ab86788d969cd"
+    },
+    {
+      "path": "crates/polar-tmux-protocol/fixtures/control-center/v1/controller-sessions-closed.json",
+      "sha256": "f37ce26b8dcdf7481e3d9f26805ace768206fae964cf7c03a82b1202af87e768"
+    },
+    {
+      "path": "crates/polar-tmux-protocol/fixtures/control-center/v1/intent-traces.json",
+      "sha256": "f5586eb87fe82a60cb44ddb9754f8f4cb8829a04360d31307543df2331a16d14"
+    },
+    {
+      "path": "crates/polar-tmux-protocol/fixtures/v1/phase4_v1.json",
+      "sha256": "91e03a5b29bb45e90f55054350a47c4d18ea01d2d7292e934e28f195b5a7abe7"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_forwarding_benchmark.rs",
+      "sha256": "bc36eb9e27a08f99121aa8863335d3cddc3c28c53a7d26bfea6972c0b7b609fe"
+    }
+  ]
+}

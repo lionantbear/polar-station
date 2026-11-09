@@ -657,153 +657,16 @@ fn statePath(allocator: std.mem.Allocator) ![]u8 {
     );
 }
 
-test "Workspace V2 round trips without physical or backend lifecycle facts" {
-    const panes = [_]renderpkg.Pane{.{
-        .id = "pane-1",
-        .execution_target_id = "local",
-        .tmux_session_id = "$1",
-        .transport_status = .online,
-        .attach_fingerprint = "ignored",
-        .attach_plan = .{ .program = "ignored", .args = &.{"ignored"} },
-    }};
-    const tabs = [_]renderpkg.Tab{.{
-        .id = "tab-1",
-        .title = "Main",
-        .display_mode = .focus,
-        .focused_pane_id = "pane-1",
-        .visual_pane_ids = &.{"pane-1"},
-        .layout = .{
-            .pane_order = &.{"pane-1"},
-            .slots = &.{},
-            .fingerprint = "ignored",
-        },
-        .panes = &panes,
-    }};
-    const snapshot: renderpkg.Snapshot = .{
-        .workspace_id = "workspace-1",
-        .workspace_name = "Primary",
-        .workspace_revision = 9,
-        .font_size_points = 14,
-        .selected_tab_id = "tab-1",
-        .tabs = &tabs,
-        .snapshot_fingerprint = "ignored",
-    };
-    const json = try encode(std.testing.allocator, snapshot);
-    defer std.testing.allocator.free(json);
-    try std.testing.expect(std.mem.indexOf(u8, json, "schema_version\":2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "physical_") == null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "transport_status") == null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "attach_plan") == null);
-    var decoded = try decode(std.testing.allocator, json);
-    defer decoded.deinit();
-    try std.testing.expect(mappingEqual(snapshot, decoded.value));
-}
-
-test "native Workspace catalog round trips selected workspace and all mappings" {
-    const tabs = [_]renderpkg.Tab{.{
-        .id = "tab-1",
-        .title = "Main",
-        .display_mode = .monitor,
-        .focused_pane_id = null,
-        .visual_pane_ids = &.{},
-        .layout = .{
-            .pane_order = &.{},
-            .slots = &.{},
-            .fingerprint = "native-owned",
-        },
-        .panes = &.{},
-    }};
-    const workspaces = [_]renderpkg.Snapshot{
-        .{
-            .workspace_id = "workspace-1",
-            .workspace_name = "Primary",
-            .workspace_revision = 1,
-            .font_size_points = 14,
-            .selected_tab_id = "tab-1",
-            .tabs = &tabs,
-            .snapshot_fingerprint = "native:workspace-1:1",
-        },
-        .{
-            .workspace_id = "workspace-2",
-            .workspace_name = "Operations",
-            .workspace_revision = 1,
-            .font_size_points = 16,
-            .selected_tab_id = "tab-1",
-            .tabs = &tabs,
-            .snapshot_fingerprint = "native:workspace-2:1",
-        },
-    };
-    const catalog: Catalog = .{
-        .catalog_revision = 9,
-        .open_workspace_ids = &.{ "workspace-1", "workspace-2" },
-        .selected_workspace_id = "workspace-2",
-        .workspaces = &workspaces,
-    };
-
-    const json = try encodeCatalog(std.testing.allocator, catalog);
-    defer std.testing.allocator.free(json);
-    try std.testing.expect(std.mem.indexOf(u8, json, "schema_version\":2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, json, "catalog_revision\":9") != null);
-    var decoded = try decodeCatalog(std.testing.allocator, json);
-    defer decoded.deinit();
-    try std.testing.expectEqualStrings(
-        "workspace-2",
-        decoded.value.selected_workspace_id,
-    );
-    try std.testing.expectEqual(@as(usize, 2), decoded.value.workspaces.len);
-    try std.testing.expectEqual(@as(u64, 9), decoded.value.catalog_revision);
-    try std.testing.expectEqual(@as(usize, 2), decoded.value.open_workspace_ids.len);
-    try std.testing.expectEqualStrings("workspace-1", decoded.value.open_workspace_ids[0]);
-    try std.testing.expectEqualStrings(
-        "Operations",
-        decoded.value.selected().?.workspace_name,
-    );
-}
-
-test "old layouts are rejected without conversion" {
-    try std.testing.expectError(error.UnknownField, decodeCatalog(std.testing.allocator, "{\"schema_version\":2,\"workspace\":{}}"));
-}
 
 
-test "native catalog preserves semantic identity without a fabricated tmux session" {
-    const json =
-        \\{"schema_version":1,"catalog_revision":2,"selected_workspace_id":"w","workspaces":[{"id":"w","name":"Work","revision":2,"selected_tab_id":"t","managed_terminal_font_size_points":14,"tabs":[{"id":"t","title":"Main","display_mode":"monitor","main_pane_id":null,"canonical_pane_ids":["p"],"visual_pane_ids":["p"],"panes":[{"id":"p","content":{"kind":"lgp_text","target_id":"embedded","node_id":"n","owner":"n","thread":"thread","actor":"n"}}]}]}]}
-    ;
-    var c = try decodeCatalog(std.testing.allocator, json); defer c.deinit();
-    const pane = c.value.workspaces[0].tabs[0].panes[0];
-    try std.testing.expect(!pane.isTerminal());
-    try std.testing.expectEqualStrings("thread", pane.content.?.thread);
-    try std.testing.expectEqual(@as(usize, 0), pane.attach_plan.program.len);
-    var clone = try OwnedCatalog.clone(std.testing.allocator, c.value); defer clone.deinit();
-    try std.testing.expect(catalogEqual(c.value, clone.value));
-    try std.testing.expect(clone.value.workspaces[0].tabs[0].panes[0].content.?.eql(pane.content.?));
-}
-
-test "hybrid semantic and terminal binding is rejected before persistence" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator); defer arena.deinit();
-    try std.testing.expectError(error.InvalidPane, nativePane(arena.allocator(), .{
-        .id = "p", .execution_target_id = "local", .tmux_session_id = "$1",
-        .content = .{ .target_id = "embedded", .node_id = "n", .owner = "n", .thread = "t", .actor = "n" },
-    }));
-}
 
 
-test "Workspace panel visibility survives encoding independently of another Workspace" {
-    const allocator = std.testing.allocator;
-    const first: renderpkg.Snapshot = .{
-        .workspace_id = "one", .workspace_name = "One", .workspace_revision = 1,
-        .font_size_points = 14, .selected_tab_id = "tab", .snapshot_fingerprint = "panel",
-        .tabs = &.{.{ .id = "tab", .title = "Main",  .display_mode = .monitor, .focused_pane_id = null, .layout = .{ .pane_order = &.{}, .slots = &.{}, .fingerprint = "empty" }, .panes = &.{}, .visual_pane_ids = &.{} }},
-        .layout_map_visible = false, .inbox_visible = false,
-    };
-    var second = first;
-    second.workspace_id = "two";
-    second.inbox_visible = true;
-    const bytes = try encodeCatalog(allocator, .{ .catalog_revision = 1, .selected_workspace_id = "one", .workspaces = &.{first, second} });
-    defer allocator.free(bytes);
-    var restored = try decodeCatalog(allocator, bytes);
-    defer restored.deinit();
-    try std.testing.expectEqual(@as(?bool, false), restored.value.workspaces[0].inbox_visible);
-    try std.testing.expectEqual(@as(?bool, false), restored.value.workspaces[0].layout_map_visible);
-    try std.testing.expectEqual(@as(?bool, true), restored.value.workspaces[1].inbox_visible);
-}
+
+
+
+
+
+
+
+
+

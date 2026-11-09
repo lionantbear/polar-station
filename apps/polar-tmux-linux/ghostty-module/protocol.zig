@@ -384,12 +384,4 @@ pub fn registeredSupportsNotification(allocator: std.mem.Allocator, payload: []c
     return if (parsed.value.host_control_versions) |versions| versions.notification == 1 else false;
 }
 
-test "shared desktop contract metadata decodes before optional Host controls" {
-    const allocator = std.testing.allocator;
-    const frame = "{\"type\":\"registered\",\"registration_id\":\"r\",\"protocol_version\":1,\"host_id\":\"owner\",\"host_control_versions\":{\"desktop\":1,\"codex\":2,\"notification\":1}}";
-    var parsed = try decodeRegisteredFrame(allocator, frame);
-    defer parsed.deinit();
-    try std.testing.expectEqualStrings("owner", parsed.value.host_id);
-    try std.testing.expect(registeredSupportsCodex(allocator, frame));
-    try std.testing.expect(registeredSupportsNotification(allocator, frame));
-}
+

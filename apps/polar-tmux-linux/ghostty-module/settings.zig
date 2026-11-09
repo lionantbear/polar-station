@@ -124,45 +124,10 @@ fn encodeMutation(allocator: std.mem.Allocator, request_id: []const u8, revision
     } }, .{ .whitespace = .minified });
 }
 
-test "Settings reads are unbound and mutations use revision CAS" {
-    const get = try encodeGetProjection(std.testing.allocator, "settings-get-1");
-    defer std.testing.allocator.free(get);
-    try std.testing.expect(std.mem.indexOf(u8, get, "\"expected_revision\":null") != null);
-    const update = try encodeUpdateAttention(std.testing.allocator, "settings-notify-1", 4, .{ .system_notifications_enabled = true });
-    defer std.testing.allocator.free(update);
-    try std.testing.expect(std.mem.indexOf(u8, update, "\"expected_revision\":4") != null);
-}
 
-test "Settings wire preserves shared interface scale and summary quiet period" {
-    const appearance = try encodeUpdateAppearance(std.testing.allocator, "settings-appearance-1", 4, .{
-        .interface_text_scale_percent = 140,
-    });
-    defer std.testing.allocator.free(appearance);
-    try std.testing.expect(std.mem.indexOf(u8, appearance, "\"interface_text_scale_percent\":140") != null);
 
-    const summary = try encodeUpdateSessionSummary(std.testing.allocator, "settings-summary-1", 5, .{
-        .quiet_period_ms = 7_000,
-    });
-    defer std.testing.allocator.free(summary);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "\"quiet_period_ms\":7000") != null);
-}
 
-test "Settings wire exposes the shared event monitor owner" {
-    const update = try encodeUpdateMonitoring(std.testing.allocator, "settings-monitor-1", 6, .{
-        .quiet_period_ms = 8_000,
-        .codex_title_detection = false,
-    });
-    defer std.testing.allocator.free(update);
-    try std.testing.expect(std.mem.indexOf(u8, update, "\"kind\":\"update_monitoring\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, update, "\"quiet_period_ms\":8000") != null);
-}
 
-test "Appearance mutations preserve theme and other sections" {
-    const encoded = try encodeUpdateAppearance(std.testing.allocator, "theme-save", 9, .{
-        .theme = .{ .mode = "preset", .preset = "nord", .terminal_theme = "Dracula" },
-        .layout_map_width = 260,
-    });
-    defer std.testing.allocator.free(encoded);
-    try std.testing.expect(std.mem.indexOf(u8, encoded, "\"terminal_theme\":\"Dracula\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, encoded, "\"layout_map_width\":260") != null);
-}
+
+
+

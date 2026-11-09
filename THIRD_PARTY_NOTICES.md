@@ -65,8 +65,8 @@ This is **not a completed dependency or binary license clearance**.
 - Locked all-features Cargo metadata now covers 1,363 packages: 56 local,
   1,168 registry and 139 Git packages. Portable metadata claims and retained
   legal texts are in `licenses/cargo-evidence.json`; no local filesystem paths
-  are included. Of 1,307 external packages, 1,285 have collected legal texts;
-  22 remain without complete collected texts and are explicitly reported.
+  are included. Of 1,307 external packages, 1,283 have collected legal texts;
+  24 remain without complete collected texts and are explicitly reported.
 - Every one of the 1,168 registry archive SHA-256 hashes matches `Cargo.lock`
   (`licenses/cargo-archive-integrity.json`). For 21 MPL registry packages,
   632 source files match their original archives byte-for-byte. The two Git

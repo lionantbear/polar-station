@@ -405,44 +405,8 @@ fn cacheKey(
     );
 }
 
-test "snapshot, contiguous delta, duplicate, and gap semantics" {
-    var cache = Cache.init(std.testing.allocator);
-    defer cache.deinit();
-    try cache.applySnapshot(
-        "{\"type\":\"session_feed_snapshot\",\"snapshot\":{\"epoch\":\"host-1\",\"revision\":7,\"sessions\":[{\"key\":{\"execution_target\":\"local\",\"tmux_session_id\":\"$1\"},\"display_name\":\"agent\",\"lifecycle\":\"ready\",\"revision\":7}]}}",
-    );
-    try cache.applyEvent(
-        "{\"type\":\"session_feed_event\",\"event\":{\"epoch\":\"host-1\",\"revision\":8,\"changes\":[{\"type\":\"upsert\",\"session\":{\"key\":{\"execution_target\":\"local\",\"tmux_session_id\":\"$1\"},\"display_name\":\"agent\",\"lifecycle\":\"recovering\",\"revision\":8}}]}}",
-    );
-    try cache.applyEvent(
-        "{\"type\":\"session_feed_event\",\"event\":{\"epoch\":\"host-1\",\"revision\":8,\"changes\":[{\"type\":\"remove\",\"key\":{\"execution_target\":\"local\",\"tmux_session_id\":\"$1\"}}]}}",
-    );
-    try std.testing.expectEqual(Lifecycle.recovering, cache.lifecycle("local", "$1").?);
-    try std.testing.expectError(
-        error.FeedGap,
-        cache.applyEvent(
-            "{\"type\":\"session_feed_event\",\"event\":{\"epoch\":\"host-1\",\"revision\":10,\"changes\":[{\"type\":\"remove\",\"key\":{\"execution_target\":\"local\",\"tmux_session_id\":\"$1\"}}]}}",
-        ),
-    );
-}
 
-test "attention payload survives the feed cache with summary content" {
-    var cache = Cache.init(std.testing.allocator);
-    defer cache.deinit();
-    try cache.applySnapshot(
-        "{\"type\":\"session_feed_snapshot\",\"snapshot\":{\"epoch\":\"host-1\",\"revision\":7,\"sessions\":[{\"key\":{\"execution_target\":\"local\",\"tmux_session_id\":\"$1\"},\"display_name\":\"agent\",\"lifecycle\":\"ready\",\"revision\":7,\"attention\":{\"summary_revision\":4,\"summary_sections\":[\"Tests need review\"],\"state\":\"review_ready\",\"freshness\":\"fresh\",\"unread\":true}}]}}",
-    );
-    const value = cache.attention("local", "$1").?;
-    try std.testing.expectEqual(AttentionState.review_ready, value.state);
-    try std.testing.expectEqualStrings("Tests need review", value.summary_sections[0]);
-    try std.testing.expect(value.unread);
-}
 
-test "accepted Ending feed remains observable without final Ended" {
-    var cache = Cache.init(std.testing.allocator);
-    defer cache.deinit();
-    try cache.applySnapshot(
-        \\{"type":"session_feed_snapshot","snapshot":{"epoch":"host-ending","revision":1,"sessions":[{"key":{"execution_target":"local","tmux_session_id":"$1"},"display_name":"original","lifecycle":"ending","revision":1}]}}
-    );
-    try std.testing.expectEqualStrings("ending", @tagName(cache.lifecycle("local", "$1").?));
-}
+
+
+
