@@ -64,10 +64,10 @@
   "distribution_scope": "source-only preview; binary release gates remain separate; see SOURCE_DISTRIBUTION.md",
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
-    ".github/workflows/native-macos.yml": "53394e65429dace681931063b5f5277b40b3c0317e26557ffa8da6c23d4602fd",
+    ".github/workflows/native-macos.yml": "cf96d79c1cd6cdf832794246b02f4cd84aa6f852d960eb73a4dd8fa2e023e6af",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "9e66be58363104ef8179293afe246e2345697472ea8cb35b72f7d5c6bee9b7e6",
-    "CI.md": "37e2511e68d54fdcf145d56f6560c2655a27f6a801fefe340c2a55109c19e7f4",
+    "CI.md": "9cb491b97abc45c5d05594855d9ba2fa963ef4a2fe5ff4a5f2a9b425d4712f27",
     "Cargo.lock": "8592a437fb723be8b543fb90f74bfc3bff92031598209deef81619f9c692d391",
     "Cargo.toml": "6cda834415b7609a4d3c11bfc1eed625b805a0abd3eeea6b6adc17836cbe809b",
     "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
@@ -305,7 +305,7 @@
     "automation/polar_station/apply_display_overlay.py": "830b97c7e36bd74446427116e905fcc76ea4dde703ebd9dbd916a1336cbe9db3",
     "automation/polar_station/build_linux_ghostty.sh": "a58b9b486740d5ee084212c240d61d4e89c8c1d97dabb4df8049ba0a223f73ae",
     "automation/polar_station/build_linux_graphics.sh": "88cd16b236867fe15fa867d8ba8d53ff74d9f9a8e5150cfef3268f8228f7a2b2",
-    "automation/polar_station/build_macos.sh": "7627584340c2d3f8224b7c20b9f33135c217a517455181226ee36a9d99ab9ea4",
+    "automation/polar_station/build_macos.sh": "7f2440b8b3fccb2632c4e004c5586bb6091c9a29bfcb7cf92741b11c48036788",
     "automation/polar_station/build_macos_graphics.sh": "be519c22d8e39bda64ce96b235f571704dea1f5a273d1a50ca02464c0cd0881e",
     "automation/polar_station/build_rust_runtime.py": "8b4296d0974430369bf5054a9c38a99a5c213b6edbb3f7c63053d07b348e902e",
     "automation/polar_station/collect_cargo_licenses.py": "b62a9a3ea8cc9f20d5c89cb4eece5e53532b3965a730b147dd9a9153d3d812c8",
@@ -1876,7 +1876,6 @@
   "symlinks": {
     "apps/polar-ideacave-godot/addons/polar_graphics": "../../../crates/polar-graphics-godot/godot/addons/polar_graphics"
   },
-  "third_party_license_audit": "pending",
   "sync_managed_paths": [
     ".gitignore",
     "BUILD_MACOS.md",
@@ -3662,5 +3661,6 @@
     "vendor/grammers-tl-gen/src/metadata.rs",
     "vendor/grammers-tl-gen/src/rustifier.rs",
     "vendor/grammers-tl-gen/src/structs.rs"
-  ]
+  ],
+  "third_party_license_audit": "pending"
 }

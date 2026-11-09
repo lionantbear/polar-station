@@ -127,6 +127,7 @@ export POLAR_STATION_CLIENT_LIB_DIR
     # The pinned build.nu has no architecture override. Use the same project,
     # scheme and output contract directly, without modifying upstream sources.
     /usr/bin/env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+        DEVELOPER_DIR="${DEVELOPER_DIR:-$(/usr/bin/xcode-select -p)}" \
         /usr/bin/xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
         -configuration "$configuration" "SYMROOT=$build_source/macos/build" \
         ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \

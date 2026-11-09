@@ -41,3 +41,15 @@ archives are SHA-256 checked. It deliberately does not upload binaries or
 create a Release. Build success is distinct from fresh-machine install/launch,
 graphics/TCC testing and exact bundled-license clearance. Homebrew Graphviz
 versions are recorded but not yet locked as reproducible release inputs.
+
+### macOS 26 toolchain compatibility
+
+The initial native run on macOS 26 completed Godot/graphics and the Rust release
+build, then failed while Zig 0.15.2 linked its build runner against Xcode 26.6
+(`__availability_version_check` and libc symbols unresolved). Ghostty upstream
+tracks this as [issue 11991](https://github.com/ghostty-org/ghostty/issues/11991).
+The native workflow now selects the already-installed Xcode 26.3 using only
+`DEVELOPER_DIR`, keeps that selection for Xcode invocation, and tests a minimal
+Zig build runner before expensive compilation. The OS remains macOS 26; no
+compiler pin, Apple security setting, or SDK content is modified. This fix must
+be confirmed by the new native run, not assumed from the previous source CI.

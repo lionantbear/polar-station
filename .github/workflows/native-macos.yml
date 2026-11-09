@@ -15,6 +15,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 150
     env:
+      # Zig 0.15.2 cannot parse the libSystem stubs in Xcode 26.4+.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       CARGO_BUILD_JOBS: '3'
       POLAR_GRAPHICS_JOBS: '3'
       POLAR_STATION_CODESIGN_IDENTITY: '-'
@@ -26,6 +28,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -d "$DEVELOPER_DIR"
+          /usr/bin/xcrun --sdk macosx --show-sdk-path
           root="$RUNNER_TEMP/station-native"
           mkdir -p "$root"
           brew install gettext graphviz
@@ -58,6 +62,15 @@ jobs:
           sw_vers
           xcodebuild -version
           brew list --versions graphviz gettext
+      - name: Preflight pinned Zig build runner against selected SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/station-zig-probe"
+          mkdir -p "$probe"
+          printf 'const std = @import("std"); pub fn build(b: *std.Build) void { _ = b; }\n' > "$probe/build.zig"
+          cd "$probe"
+          "$POLAR_STATION_ZIG" build --help > /dev/null
       - name: Build embedded Godot and graphics resources
         run: bash automation/polar_station/build_macos_graphics.sh
       - name: Build complete native application with ad-hoc signing
