@@ -103,6 +103,62 @@ jobs:
           bash automation/polar_station/package_macos_free.sh \
             --app "$GITHUB_WORKSPACE/target/polar-station-macos/Release/Polar Station.app" \
             --output "$RUNNER_TEMP/Polar-Station-unnotarized.dmg"
+      - name: Inspect artifact dependency and license gaps
+        shell: bash
+        run: |
+          set -uo pipefail
+          evidence="$RUNNER_TEMP/station-evidence"
+          mkdir -p "$evidence"
+          python3 automation/polar_station/macos_binary_inventory.py \
+            --app "$GITHUB_WORKSPACE/target/polar-station-macos/Release/Polar Station.app" \
+            --output "$evidence/macos-bom.json"
+          result=$?
+          printf '%s\n' "$result" > "$evidence/license-scan-exit-code.txt"
+          echo "Artifact inventory exit code: $result (2 = release blocked by audit gaps, not cleared)." >> "$GITHUB_STEP_SUMMARY"
+          test -s "$evidence/macos-bom.json"
+      - name: Validate temporary DMG installation and limited launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/station-evidence"
+          mountpoint="$RUNNER_TEMP/station-dmg-mount"
+          installroot="$RUNNER_TEMP/station-install-probe"
+          mkdir -p "$mountpoint" "$installroot" "$evidence"
+          trap '/usr/bin/hdiutil detach "$mountpoint" >/dev/null 2>&1 || true' EXIT
+          /usr/bin/hdiutil attach "$RUNNER_TEMP/Polar-Station-unnotarized.dmg" \
+            -readonly -nobrowse -mountpoint "$mountpoint" > "$evidence/dmg-attach.txt"
+          /usr/bin/ditto --rsrc --extattr "$mountpoint/Polar Station.app" "$installroot/Polar Station.app"
+          /usr/bin/codesign --verify --deep --strict "$installroot/Polar Station.app"
+          python3 - "$installroot/Polar Station.app" "$evidence" <<'PY_LAUNCH'
+          import json, os, plistlib, signal, subprocess, sys, time
+          from pathlib import Path
+          app, evidence = map(Path, sys.argv[1:])
+          plist = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+          executable = app / 'Contents/MacOS' / plist['CFBundleExecutable']
+          report = {'scope': 'Temporary DMG mount/copy/strict signature verification and 15-second direct executable launch only; not interactive GUI/TCC/upgrade validation', 'bundle_id': plist.get('CFBundleIdentifier'), 'executable': executable.name, 'temporary_copy_signature': 'passed', 'release_ready': False}
+          with (evidence / 'launch-stdout.txt').open('wb') as out, (evidence / 'launch-stderr.txt').open('wb') as err:
+              proc = subprocess.Popen([str(executable)], stdout=out, stderr=err, start_new_session=True)
+              time.sleep(15)
+              report['exit_code_before_cleanup'] = proc.poll()
+              report['alive_after_15_seconds'] = proc.poll() is None
+              if proc.poll() is None:
+                  os.killpg(proc.pid, signal.SIGTERM)
+                  try: proc.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      os.killpg(proc.pid, signal.SIGKILL)
+                      proc.wait(timeout=5)
+              report['cleanup_exit_code'] = proc.returncode
+          (evidence / 'installation-launch.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PY_LAUNCH
+      - name: Preserve audit reports only, never binary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos26-audit-evidence
+          path: ${{ runner.temp }}/station-evidence/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Record validation boundary
         if: always()
         run: |
