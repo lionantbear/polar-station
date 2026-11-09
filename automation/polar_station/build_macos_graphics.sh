@@ -43,8 +43,9 @@ if [ -z "$scons" ]; then scons=$(command -v scons || true); fi
     vulkan=no metal=no angle=no opengl3=yes debug_symbols=no optimize=speed disable_path_overrides=no \
     module_jolt_physics_enabled=no module_godot_physics_2d_enabled=no module_godot_physics_3d_enabled=no \
     custom_modules="$root/apps/polar-graphics-native/godot-modules"
-cargo build --locked --release --manifest-path "$root/Cargo.toml" \
-    --target aarch64-apple-darwin -p polar-graphics-godot
+mkdir -p "$root/target/build-evidence"
+cargo build --message-format=json-render-diagnostics --locked --release --manifest-path "$root/Cargo.toml" \
+    --target aarch64-apple-darwin -p polar-graphics-godot | tee "$root/target/build-evidence/cargo-graphics.jsonl"
 editor=${POLAR_GRAPHICS_EDITOR:-"$cache/Godot.app/Contents/MacOS/Godot"}
 [ -x "$editor" ] || { echo "Pinned Godot 4.7.2 editor required at $editor" >&2; exit 67; }
 "$editor" --version | grep -Eq '^4[.]7[.]2([.]|$)' || {

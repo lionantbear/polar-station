@@ -114,8 +114,9 @@ rustup target list --installed | grep -Fxq "$rust_target" || {
     echo "Polar Station requires installed Rust target $rust_target." >&2
     exit 78
 }
-cargo build --locked $host_flags --manifest-path "$repo_root/Cargo.toml" \
-    --target "$rust_target" -p polar-tmux --bin polar-tmux --lib
+mkdir -p "$repo_root/target/build-evidence"
+cargo build --message-format=json-render-diagnostics --locked $host_flags --manifest-path "$repo_root/Cargo.toml" \
+    --target "$rust_target" -p polar-tmux --bin polar-tmux --lib | tee "$repo_root/target/build-evidence/cargo-host.jsonl"
 client_dir="$repo_root/target/polar-station-client/current"
 mkdir -p "$client_dir"
 cp "$repo_root/target/$rust_target/$host_profile/libpolar_tmux.a" \

@@ -159,6 +159,22 @@ jobs:
           (evidence / 'installation-launch.json').write_text(json.dumps(report, indent=2) + '\n')
           print(json.dumps(report, indent=2))
           PY_LAUNCH
+      - name: Record explicit blocked release gate
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/station-evidence"
+          python3 - "$RUNNER_TEMP/station-evidence" <<'PY_GATE'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          bom = json.loads((root/'macos-bom.json').read_text()) if (root/'macos-bom.json').exists() else {}
+          evidence = root/'build-provenance/provenance.json'
+          gaps = json.loads(evidence.read_text()).get('gaps', []) if evidence.exists() else ['Build provenance missing']
+          gate = {'release_ready': False, 'binary_upload_authorized_by_this_workflow': False, 'inventory_status': bom.get('status', 'missing'), 'inventory_blockers': bom.get('blockers', ['Inventory missing']), 'provenance_gaps': gaps, 'remaining': ['Reviewed artifact-specific licenses, source/relink obligations and static link coverage', 'Interactive clean-Mac GUI/TCC/upgrade/uninstall validation']}
+          (root/'release-gate.json').write_text(json.dumps(gate, indent=2)+'\n')
+          print('Release gate: BLOCKED; successful validation CI is not publication approval.')
+          PY_GATE
       - name: Preserve audit reports only, never binary artifacts
         if: always()
         uses: actions/upload-artifact@v4
