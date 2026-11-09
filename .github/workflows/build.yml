@@ -1,0 +1,61 @@
+name: Station source build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: station-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust workspace (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev libdbus-1-dev libclang-dev
+      - name: Select pinned Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+          cmake --version
+      - name: Compile and link Rust workspace
+        run: cargo build --workspace --locked
+      - name: Compile macOS Swift libraries
+        if: runner.os == 'macOS'
+        env:
+          POLAR_STATION_CLIENT_LIB_DIR: ${{ github.workspace }}/target/debug
+        run: |
+          swift --version
+          swift build --package-path apps/polar-station-macos -c debug
+      - name: Record build coverage
+        if: always()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Scope
+          This job compiles and links the pinned Rust workspace. On macOS it also builds the Swift package libraries against the Rust static library.
+          It does **not** build or validate the complete Ghostty/Godot GUI app, installer, signing, notarization, Companion, or a distributable binary release. No service is started and no release is published.
+          See CI.md for the remaining native-app prerequisites.
+          SUMMARY
