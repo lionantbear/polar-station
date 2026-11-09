@@ -10,9 +10,8 @@ child pane inside that active Ghostty window. The existing terminal remains
 the adjacent right child, and no controller toplevel or second taskbar surface
 is created.
 
-The older PyGObject source in this directory is migration evidence only and is
-not the product runtime. Both frontends are thin clients of the per-user Rust
-Host:
+The retired Python/PyGObject frontend is excluded from this public repository.
+The managed Zig frontend is a thin client of the per-user Rust Host:
 
 - the Host owns execution targets, tmux inspection, mutations, revisions, and
   typed attachment plans;
@@ -57,12 +56,14 @@ confirmation UX, and the global Resources engine are not delivered by this
 slice. The retired Python bootstrap is not launched, imported, packaged, or a
 supported development path.
 
-## Retired bootstrap
+## Public source scope
 
-Historical Python/PyGObject files may remain temporarily as migration evidence.
-They receive no fixes or product behavior and are not prerequisites for the
-managed application. Reusable fixtures move to Rust/Zig ownership before those
-files are removed in a separately reviewed cleanup.
+The obsolete Python frontend, its UI resources, pip package, development launcher,
+and tests are not exported. Python scripts under `automation/polar_station/`
+are build/export/license utilities, not the retired UI, and remain necessary.
+The compatible `polar-tmux-linux` source directory and Rust Host/IPC identifiers
+remain unchanged. The public exporter excludes the retired paths and rejects
+snapshots that reintroduce them.
 
 Ghostty's `new-window-command` action accepts Ghostty CLI arguments rather than
 the child command directly. The adapter therefore prepends Ghostty's fixed

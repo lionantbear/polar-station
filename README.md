@@ -51,3 +51,5 @@ Current remaining gates: exact resolved third-party license evidence;
 native GUI builds and clean installation. Linux default workspace cargo check
 has passed before and after first-party test-only-source cleanup. Vendored
 upstream source remains intact.
+
+The retired Linux Python/PyGObject frontend is excluded. The supported Linux frontend is the Zig module embedded in managed Ghostty; Python build and release utilities remain included.

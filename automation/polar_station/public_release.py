@@ -311,6 +311,20 @@ def reduced_manifest(closure: CargoClosure) -> str:
     return result
 
 
+# The retired PyGObject frontend is not part of the public Station product.
+# Do not exclude Python globally: build/export/license helpers remain required.
+RETIRED_LINUX_FRONTEND = (
+    "apps/polar-tmux-linux/src",
+    "apps/polar-tmux-linux/pyproject.toml",
+    "apps/polar-tmux-linux/run-dev",
+)
+
+
+def is_retired_linux_frontend(relative: str) -> bool:
+    return any(relative == prefix or relative.startswith(prefix + "/")
+               for prefix in RETIRED_LINUX_FRONTEND)
+
+
 def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) -> tuple[set[str], dict[str, str], list[str]]:
     ignored_dirs = {name.lower() for name in policy["ignored_directory_names"]}
     ignored_suffixes = tuple(policy["ignored_suffixes"])
@@ -320,6 +334,8 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
     missing: list[str] = []
 
     def add_link(path: Path) -> None:
+        if is_retired_linux_frontend(path.relative_to(source).as_posix()):
+            return
         target = path.resolve()
         if not target.exists() or not target.is_relative_to(source):
             raise ExportError(f"broken or external source link: {path}")
@@ -327,6 +343,8 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
         links[rel] = os.readlink(path)
 
     def add_file(path: Path) -> None:
+        if is_retired_linux_frontend(path.relative_to(source).as_posix()):
+            return
         relative = "/" + path.relative_to(source).as_posix() + "/"
         if any(fragment in relative for fragment in blocked_fragments):
             raise ExportError(f"proprietary path reached public export: {relative}")
@@ -338,6 +356,8 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
         paths.add(relative.strip("/"))
 
     def add_root(relative: str) -> None:
+        if is_retired_linux_frontend(relative):
+            return
         root = within(source, relative)
         if not root.exists():
             missing.append(relative)
@@ -352,6 +372,9 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
             current = Path(current_dir)
             for name in list(subdirectories):
                 item = current / name
+                if is_retired_linux_frontend(item.relative_to(source).as_posix()):
+                    subdirectories.remove(name)
+                    continue
                 if item.is_symlink():
                     add_link(item)
                     subdirectories.remove(name)
@@ -574,6 +597,8 @@ def verify(destination: Path) -> dict[str, Any]:
               if p.is_file() and not p.is_symlink()}
     links = {p.relative_to(destination).as_posix(): os.readlink(p)
              for p in destination.rglob("*") if p.is_symlink()}
+    if any(is_retired_linux_frontend(rel) for rel in actual | set(links)):
+        raise ExportError("retired Linux Python frontend leaked into source")
     if links != record.get("symlinks", {}):
         raise ExportError("exported symlink set differs from pinned source")
     if any(not (destination / rel).resolve().is_relative_to(destination)
