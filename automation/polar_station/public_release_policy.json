@@ -41,7 +41,8 @@
     "automation/polar_station/collect_cargo_licenses.py",
     "automation/polar_station/fetch_cargo_legal_texts.py",
     "automation/polar_station/verify_cargo_archives.py",
-    "automation/polar_station/first_party_licensing.json"
+    "automation/polar_station/first_party_licensing.json",
+    "automation/polar_station/build_rust_runtime.py"
   ],
   "root_inputs": [
     "Cargo.lock",

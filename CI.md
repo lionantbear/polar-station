@@ -13,11 +13,12 @@ SwiftPM contains library targets, not the full Ghostty application.
 
 ## Full native-app build gaps
 
-The published Linux export currently references an absent
-`automation.polar_station.build_rust_runtime` module and an absent root
-`justfile`; these must be repaired before its native build scripts are
-self-contained. The Linux installer also requires icon inputs not included in
-the export. Fixes are separate from this CI setup and from the legacy-name audit.
+The standalone Rust runtime builder is now included, and Linux graphics builds
+invoke Cargo directly instead of depending on an absent monorepo justfile. These
+are build-entry repairs, not evidence of a successful full Linux GUI build.
+The Linux installer still requires icon inputs not included in the export and
+a relocatable end-user package. See RELEASE_PLAN.md. Legacy-name cleanup remains
+a separate task.
 
 Both full GUI builds require the exact documented Ghostty/Godot revisions,
 Zig, SCons, editor and Graphviz resources. macOS packaging uses ad-hoc signing;
