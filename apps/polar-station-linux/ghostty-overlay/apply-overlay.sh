@@ -42,7 +42,7 @@ git -C "$source_dir" apply "$overlay_dir/ghostty-v1.3.1.patch"
 python3 "$repo_root/automation/polar_station/apply_display_overlay.py" \
     --source "$source_dir" --platform linux
 install -d -m 0755 "$source_dir/src/apprt/gtk/polar_tmux"
-cp -R "$repo_root/apps/polar-tmux-linux/ghostty-module/." \
+cp -R "$repo_root/apps/polar-station-linux/ghostty-module/." \
     "$source_dir/src/apprt/gtk/polar_tmux/"
 install -m 0644 "$repo_root/apps/polar-tmux-shared/display/station_display.h" \
     "$source_dir/src/apprt/gtk/polar_tmux/station_display.h"

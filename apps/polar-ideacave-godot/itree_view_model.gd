@@ -44,10 +44,13 @@ static func _freeze(value: Variant) -> void:
 func load_input() -> bool:
 	if not OS.get_environment("POLAR_LAB_GRAPH").is_empty():
 		return _load_projection(OS.get_environment("POLAR_LAB_GRAPH"))
-	var path := "res://itree-koala-sample.json"
+	var path := ""
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--itree="):
 			path = arg.substr(8)
+	if path.is_empty():
+		error = "Open an Idea Tree file to continue."
+		return false
 	return _load_itree(path)
 
 func _reset_state() -> void:

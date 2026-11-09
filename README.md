@@ -53,3 +53,5 @@ has passed before and after first-party test-only-source cleanup. Vendored
 upstream source remains intact.
 
 The retired Linux Python/PyGObject frontend is excluded. The supported Linux frontend is the Zig module embedded in managed Ghostty; Python build and release utilities remain included.
+
+For reviewed updates that delete obsolete managed files without rewriting Git history, see [SYNC_PUBLIC_REPO.md](SYNC_PUBLIC_REPO.md).

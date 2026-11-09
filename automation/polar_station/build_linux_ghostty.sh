@@ -100,9 +100,9 @@ polar_source_fingerprint() {
         # Guard this product's source inputs, not unrelated workspace projects.
         set -- \
             Cargo.toml Cargo.lock \
-            apps/polar-tmux-linux/gnome-extension \
-            apps/polar-tmux-linux/ghostty-module \
-            apps/polar-tmux-linux/ghostty-overlay \
+            apps/polar-station-linux/gnome-extension \
+            apps/polar-station-linux/ghostty-module \
+            apps/polar-station-linux/ghostty-overlay \
             apps/polar-tmux-shared/display apps/polar-tmux-shared/ghostty \
             automation/polar_station/apply_display_overlay.py \
             automation/polar_station/native_action_overlay.py \
@@ -141,7 +141,7 @@ materialize_staging_checkout() {
     checkout=$1
     repo_root=$2
     source_head_before=$3
-    overlay_dir="$repo_root/apps/polar-tmux-linux/ghostty-overlay"
+    overlay_dir="$repo_root/apps/polar-station-linux/ghostty-overlay"
     overlay_patch="$overlay_dir/ghostty-v1.3.1.patch"
     staging_root="$repo_root/target/polar-station/ghostty-builds"
     install -d -m 0755 "$staging_root"
@@ -164,7 +164,7 @@ materialize_staging_checkout() {
         exit 72
     fi
     install -d -m 0755 "$staging_checkout/src/apprt/gtk/polar_tmux"
-    cp -R "$repo_root/apps/polar-tmux-linux/ghostty-module/." \
+    cp -R "$repo_root/apps/polar-station-linux/ghostty-module/." \
         "$staging_checkout/src/apprt/gtk/polar_tmux/"
     cp "$repo_root/crates/polar-tmux/include/polar_station_desktop_client.h" \
         "$staging_checkout/src/apprt/gtk/polar_tmux/polar_station_desktop_client.h"
@@ -359,8 +359,8 @@ build_managed_ghostty() {
     themes_path="$staging_checkout/zig-out/share/ghostty/themes"
     themes_digest=$(python3 "$repo_root/automation/polar_station/theme_resources.py" "$themes_path")
     shortcuts_path="$staging_checkout/zig-out/share/polar-station/gnome-shortcuts"
-    shortcuts_digest=$(python3 "$repo_root/automation/polar_station/gnome_shortcuts.py" "$repo_root/apps/polar-tmux-linux/gnome-extension")
-    python3 "$repo_root/automation/polar_station/theme_resources.py" "$repo_root/apps/polar-tmux-linux/gnome-extension" --expected "$shortcuts_digest" --destination "$shortcuts_path" >/dev/null
+    shortcuts_digest=$(python3 "$repo_root/automation/polar_station/gnome_shortcuts.py" "$repo_root/apps/polar-station-linux/gnome-extension")
+    python3 "$repo_root/automation/polar_station/theme_resources.py" "$repo_root/apps/polar-station-linux/gnome-extension" --expected "$shortcuts_digest" --destination "$shortcuts_path" >/dev/null
     runtime_set_id=$({ printf '%s\n' \
         "$polar_source_commit" \
         "$polar_source_state_before" \

@@ -39,3 +39,11 @@ reviewed changes. It is a release transformation manifest, not a test suite.
 Reapplying the cleanup is idempotent; changed source fails closed for review.
 Snapshot verification rejects first-party Zig test declarations and retired
 Linux Python frontend paths under either old or renamed source directories.
+
+The additional source-hygiene gate checks Rust, Zig, Swift, Python, C/C++,
+JavaScript and GDScript test declarations/frameworks, plus test declarations
+added by upstream overlay patches. It runs during export as well as verification.
+It does not indiscriminately remove `test` strings: provider/microphone tests,
+query metrics, configured runtime mock providers and upstream patch context
+remain functional product or provenance material. Unused identity fixtures,
+Adam write-fault injection and development sample-view packages are excluded.

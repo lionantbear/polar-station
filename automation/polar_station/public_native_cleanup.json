@@ -3,6 +3,35 @@
   "description": "Reviewed first-party native test/fixture/benchmark removals; hashes reject source drift. Not test source.",
   "edits": [
     {
+      "path": "apps/polar-ideacave-godot/IMPORT.json",
+      "before": "55f84984efb79df31bc903e7972dc49b965dd3ccdf38f7011bc37e4368703799",
+      "after": "ab9f2fbba79a1503541e9c011023b3ad9fd8322742fb31c289e87149a2f5d2bf",
+      "ranges": [
+        [
+          13696,
+          13696,
+          "  ],\n  \"public_export_note\": \"This is a historical import provenance ledger, not the current distribution inventory. Development examples, tests and oracle material may be excluded; PUBLIC_SOURCE_MANIFEST.json is authoritative for included files.\",\n  \"public_export_excluded_files\": [\n    \"apps/polar-ideacave-godot/itree-koala-sample.json\",\n    \"apps/polar-ideacave-godot/itree_card.gdshader\",\n    \"apps/polar-ideacave-godot/itree_dual_map_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_graph_projection_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_navigation_state_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_tree_projection_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_zoom_selftest.gd\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-cycle.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-semantics.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-version-b.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/navigation-encoded-slots.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/polar-station-native.itree.json\",\n    \"crates/polar-force-layout-core/src/bin/oracle.rs\",\n    \"crates/polar-force-layout-core/upstream/golden.json\",\n    \"crates/polar-force-layout-core/upstream/oracle.mjs\",\n    \"crates/polar-force-layout-core/upstream/package-lock.json\",\n    \"crates/polar-force-layout-core/upstream/package.json\"\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_view_model.gd",
+      "before": "a60da5d7bc84630c5b89b83d24165dc569cf7333a22eee872bfd1d6fb5f09076",
+      "after": "fe68433d13013b1605d4af4965c65cd5f472ca48f40376c997ed1a417c18ab3b",
+      "ranges": [
+        [
+          1866,
+          1911,
+          "\tvar path := \"\"\n"
+        ],
+        [
+          2009,
+          2009,
+          "\tif path.is_empty():\n\t\terror = \"Open an Idea Tree file to continue.\"\n\t\treturn false\n"
+        ]
+      ]
+    },
+    {
       "path": "apps/polar-station-macos/Package.swift",
       "before": "bc9a014f5566beacfdbf66f144530b8af6bd58ad1b2d7e3362ba45e7ca4b9b51",
       "after": "82ad4f266e4d6a973a0460d20125583be34c05617904905e2b86fcbbcc4b4e93",
@@ -91,19 +120,51 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/README.md",
+      "path": "apps/polar-station-linux/README.md",
+      "before": "caae8487fb43e931c2ae0f4971f78b57c1ca2bca5990b46ed730f2fce53f210a",
+      "after": "34053f7ea45f4b9edef371254bba7dd8a094bb64a65931d8d378abe47f0de997",
+      "ranges": [
+        [
+          642,
+          805,
+          "The retired Python/PyGObject frontend is excluded from this public repository.\nThe managed Zig frontend is a thin client of the per-user Rust Host:\n"
+        ],
+        [
+          2700,
+          2721,
+          "## Public source scope\n"
+        ],
+        [
+          2722,
+          3009,
+          "The obsolete Python frontend, its UI resources, pip package, development launcher,\nand tests are not exported. Python scripts under `automation/polar_station/`\nare build/export/license utilities, not the retired UI, and remain necessary.\nThe Linux source directory is `apps/polar-station-linux`. Rust Host/IPC identifiers\nremain unchanged. The public exporter excludes the retired paths and rejects\nsnapshots that reintroduce them.\n"
+        ],
+        [
+          6569,
+          6696,
+          "gjs -m apps/polar-station-linux/tools/wayland-capture.mjs\ngjs -m apps/polar-station-linux/tools/wayland-capture.mjs --source=monitor\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-linux/ghostty-module/README.md",
       "before": "236ebdeecb50046c38bad5aa3fd5d50a32680bcbd2a2d800a391dd80536228fb",
-      "after": "26b679d42628980ec9d835024957ab93e35c0cecebc2cc412b9df0ef09db98cf",
+      "after": "654053d088ab29f25ba0159d337f29eadde1dad51b265dc109706ab891649aa4",
       "ranges": [
         [
           4024,
           4080,
           "# Private monorepo test entrypoint omitted from the public source export.\n"
+        ],
+        [
+          4085,
+          4383,
+          "The retired Python/PyGObject Phase 5 bootstrap remains only in the private\nmonorepo as migration evidence. It is excluded from this public source export\nand does not participate in the product runtime.\n"
         ]
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/application_refresh.zig",
+      "path": "apps/polar-station-linux/ghostty-module/application_refresh.zig",
       "before": "ba8af4f7b6e5454edb3d1fde8d8026af4017e126a1be49c745881cf36b161bb3",
       "after": "6c99d90e5be42e8cead6cf3275bfe98e76a48e1edb4637b82a0a2ba8bafe30b2",
       "ranges": [
@@ -115,7 +176,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/codex.zig",
+      "path": "apps/polar-station-linux/ghostty-module/codex.zig",
       "before": "8094b6321cd5ef6264b25f5109b30d7a0ad63b224f0047918fab4f598309bca5",
       "after": "f7f76d832c42a5ee9d55b1856cd2391c7e5872141adcefe311b75d0a4cb44279",
       "ranges": [
@@ -127,7 +188,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/content_lifecycle.zig",
+      "path": "apps/polar-station-linux/ghostty-module/content_lifecycle.zig",
       "before": "bd60c40e8848a36389c6f1f8cd249939191b31eb5b387dfcb841fd99c3962698",
       "after": "fa3b94ff308d9f11ff1f298e37722883e4edc02702c699d4f5a4e10c7bbc8a26",
       "ranges": [
@@ -164,7 +225,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/control_center/intent.zig",
+      "path": "apps/polar-station-linux/ghostty-module/control_center/intent.zig",
       "before": "9feac413032001e9d53e1877c282eae236c4291e661d07edd733b3ceb2a81342",
       "after": "9411b064d976621e0c4f448d8461b1f3b792e5867771b49c24dfe81987264adf",
       "ranges": [
@@ -176,7 +237,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/control_center/width_preferences.zig",
+      "path": "apps/polar-station-linux/ghostty-module/control_center/width_preferences.zig",
       "before": "51baeab6630a0dee3e22b69333fb961bcd7503fde0b6720e1a6fc37250cf7661",
       "after": "8a550a5212e1393a8aeddcfc9f15bfbde406f91b2e2e9c06ada63423c487b5d1",
       "ranges": [
@@ -198,7 +259,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/host_frame_batch.zig",
+      "path": "apps/polar-station-linux/ghostty-module/host_frame_batch.zig",
       "before": "c7ce8f67018d55badef6040f47c91d35b9a75ca78a39217830930f2d0e48fc56",
       "after": "a23ebb1c45d83f7f650535fda5e1300a768c6bef798a11bf61fd843e446a102b",
       "ranges": [
@@ -225,7 +286,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/inbox.zig",
+      "path": "apps/polar-station-linux/ghostty-module/inbox.zig",
       "before": "d8c59c2d18043db6cd96bb986780613453ebd3f006e08d5f28fdf25decdd3af2",
       "after": "0ed9e01d2be3cff5c224a1ac6cc210d2d03382a5c5b17a4a792d7333b7cf6911",
       "ranges": [
@@ -237,7 +298,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/ipc_client.zig",
+      "path": "apps/polar-station-linux/ghostty-module/ipc_client.zig",
       "before": "a7b12d84368829204d7a319f21650600c5fad757aa555d629be7503f5a4b2733",
       "after": "2a863af4272409e2214dbdb36c7f992807238b2650c1b6db80367b56db8a7bba",
       "ranges": [
@@ -249,7 +310,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/native_surface_transition.zig",
+      "path": "apps/polar-station-linux/ghostty-module/native_surface_transition.zig",
       "before": "42a9249f75d115cd93158804f8d349a63ede1237544b14c1cca57fdd0211ecdc",
       "after": "8231b6032feca7f7f958c7390f797c9fd857f74beeb5d344a55f33222d8721af",
       "ranges": [
@@ -286,7 +347,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/native_workspace_layout.zig",
+      "path": "apps/polar-station-linux/ghostty-module/native_workspace_layout.zig",
       "before": "7d04b37808a52fc2322992c269a767f7c44fb97c53b46773df6f621eb7923fb8",
       "after": "2c672e8167e3a6e5c3210579281088a234e678bde59d27a086dc959c17d2e868",
       "ranges": [
@@ -343,7 +404,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/native_workspace_state.zig",
+      "path": "apps/polar-station-linux/ghostty-module/native_workspace_state.zig",
       "before": "895c4146b1170c1ad447f9a7f0eacc298940709e188ff42f474014adbfcbebe5",
       "after": "64365cfb4606f9621ed8759b8c0088ccb691caa70dd8b389986b1a461d474d70",
       "ranges": [
@@ -430,7 +491,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/native_workspace_store.zig",
+      "path": "apps/polar-station-linux/ghostty-module/native_workspace_store.zig",
       "before": "cbcf55cbda859cccd45b2875839c7178f0509fdefdeaa62604b43d592c64c6ac",
       "after": "7aa4eeb898202c32b7590bba93fa78e1d5b2c49e5a43882678f5aa545531ab55",
       "ranges": [
@@ -452,7 +513,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/pane_content.zig",
+      "path": "apps/polar-station-linux/ghostty-module/pane_content.zig",
       "before": "3cf82543a56b0e69b98598784be508ded185071a8d3b5461c7e34bdc344dbc68",
       "after": "532ea2e490b271096ae773e7467538b0ad2b9f1df2fb20b3b8630c1125892df8",
       "ranges": [
@@ -484,7 +545,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/protocol.zig",
+      "path": "apps/polar-station-linux/ghostty-module/protocol.zig",
       "before": "dcd51993d5937d15f9a1d0897f1e805567b98874e47133a919e9e7b70e60e23c",
       "after": "57747389416f1fec87cfe3b3c4f0583a43c70d8e51cb8c2b95b3834c71aead7c",
       "ranges": [
@@ -496,7 +557,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/resources.zig",
+      "path": "apps/polar-station-linux/ghostty-module/resources.zig",
       "before": "08197251f1b82e4f5c82f55fd46e5eb60697e536f47260d376d3693268bb7916",
       "after": "68c6cb9f1a9728f401ff208a7b71b9e985a19be3773464303b2c3d04a845df10",
       "ranges": [
@@ -508,7 +569,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/session_runtime.zig",
+      "path": "apps/polar-station-linux/ghostty-module/session_runtime.zig",
       "before": "9706877bd70936439c5737a1a05dc685af464adfdc84c3f88d3685eeb27359e4",
       "after": "de36839919e89f1fbc971eede7420e3ba3f8b867b27ffec7b1503d8c8c39cf45",
       "ranges": [
@@ -530,7 +591,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/settings.zig",
+      "path": "apps/polar-station-linux/ghostty-module/settings.zig",
       "before": "31d6afab5d31bf5a4e38adb3400594d6def1140b90611b61d2448d9599ab64f8",
       "after": "6190604c30af75c1b0b3594f60af3ae06a3521bec8acbbcdba70954474cdeec5",
       "ranges": [
@@ -562,7 +623,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/shortcuts.zig",
+      "path": "apps/polar-station-linux/ghostty-module/shortcuts.zig",
       "before": "4f384d2251236e1353640b77b6044e13cd1b982a052aaf1fec6da0a6c120314d",
       "after": "e6ffb275140993df7ca7ffc22f61bc95e04179cf6ba4e2181afddfd21d255837",
       "ranges": [
@@ -584,7 +645,7 @@
       ]
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/station_content.zig",
+      "path": "apps/polar-station-linux/ghostty-module/station_content.zig",
       "before": "e495d64773c206a42330ed268650d77788d34f3849f26c1ead901ab226683346",
       "after": "7724de24cdc425d8f1914b72cc55e9877979f78a5cdde306a3db5bb3af66ac4a",
       "ranges": [
@@ -597,6 +658,54 @@
           4380,
           5086,
           "\n\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-linux/ghostty-overlay/apply-overlay.sh",
+      "before": "71419b0acf15c21d4226cd575da0565bd794fb95168808e01a687f7c593834d6",
+      "after": "9a7a809b9d26adf081ce21378d2f36fc53c00d29ce7ff1446f5a76a8dc36f17c",
+      "ranges": [
+        [
+          1511,
+          1571,
+          "cp -R \"$repo_root/apps/polar-station-linux/ghostty-module/.\" \\\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-linux/ghostty-overlay/ghostty-v1.3.1.patch",
+      "before": "e33ff1c50c2f28233d71956638afa153c8ea3a5e8aa407ef2ffbfb57c4bb7f00",
+      "after": "6cbf297cb1ae1310a24d41400d2e3ec6ef59f755da34c837321d4b072ea54611",
+      "ranges": [
+        [
+          75955,
+          77148,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-linux/systemd/polar-tmux-host.service",
+      "before": "7a0fe631e263d7a5a27a86cb59c8e5fadc1f212e83d6ad8d4c6967af53cde5d2",
+      "after": "122820a30fdb1548988d1eb872fce43800a2f9b1e44e7ddc909e3638b1f623ad",
+      "ranges": [
+        [
+          7,
+          49,
+          "Description=Polar Station per-user Rust Host\n"
+        ]
+      ]
+    },
+    {
+      "path": "apps/polar-station-linux/tools/wayland-capture.mjs",
+      "before": "bd66ad7a813a1c72294e7dc4dbbd9ad39ccf9d99d7386fb7d27fef6c92c65c0c",
+      "after": "000f8074e9beef7c35f299dbef5dbcef0c6eb70dbee91bf434f7b47def8546d0",
+      "ranges": [
+        [
+          981,
+          1064,
+          "  gjs -m apps/polar-station-linux/tools/wayland-capture.mjs [--source=window|monitor]\n"
         ]
       ]
     },
@@ -689,6 +798,28 @@
       ]
     },
     {
+      "path": "crates/polar-inhouse-backend-adam/src/projection_store.rs",
+      "before": "dd0e274c55168fb7cc2baf99ade5e865f130124838b005277a98c1814957a304",
+      "after": "a165eec5f1f8b7cde87f5d1874cc7e7aa3a08fe020679ac49c7829a42a8985ea",
+      "ranges": [
+        [
+          14408,
+          14498,
+          ""
+        ],
+        [
+          15966,
+          16384,
+          ""
+        ],
+        [
+          27430,
+          27719,
+          ""
+        ]
+      ]
+    },
+    {
       "path": "crates/polar-tmux-protocol/README.md",
       "before": "fc3d04680c2699026d61896b8103ce3a54bde0ff39a37887c23eaec0d3293142",
       "after": "1c956c98fcd63d670aaadef32af96a2907aaa6922cefb2a122b78754fee2e1e1",
@@ -699,6 +830,18 @@
           "the private monorepo protocol fixtures (not included in this source export). Mobile DTOs deliberately omit client, PID, TTY,\n"
         ]
       ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host_identity.rs",
+      "before": "49fea6b55701e07e71df76cd0762351588d86fd0946058579d9afe900df78948",
+      "after": "d2727fa69931407434988a39c13694c8b6ed417adfaf6b0cb2ee770e9b461826",
+      "ranges": [
+        [
+          3711,
+          3945,
+          ""
+        ]
+      ]
     }
   ],
   "deletions": [
@@ -707,12 +850,28 @@
       "sha256": "8710608e741b9b3fbcb1bf5c5e41e7fab3588bbd57f58baf07d83b7d47c22c19"
     },
     {
+      "path": "apps/polar-ideacave-godot/itree-koala-sample.json",
+      "sha256": "79b928c3cff1abf5427f892cfc2ff29d988e0c156d2fd764ff943b1419eae2f9"
+    },
+    {
       "path": "apps/polar-ideacave-godot/itree_experiment.gd",
       "sha256": "13a57f9c9ddd45e268642e6a7294ed6f59c2f3ab019a1fe827af5199b79f209b"
     },
     {
       "path": "apps/polar-ideacave-godot/itree_experiment.tscn",
       "sha256": "bb4e1ec117573eea86a937f4a8ec7f33bd44fd8fcfc744f86ba8d63894e914db"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/view_packages/example/manifest.json",
+      "sha256": "9ea4d29d3f9bedfca47de6cddbac1f403e7af375e2d34b5f7f75f656f50214b0"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/view_packages/example/view_packages/aurora/1.0.0/browser.gd",
+      "sha256": "44c656f6d55bf9885408b93bc0c0b132e66f8ea4100d0f24c8a9c589712cc5a1"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/view_packages/example/view_packages/aurora/1.0.0/night.tres",
+      "sha256": "871b24ee51ecdae59b1bf90b1b9848dcf982981ceb59fbdacf28a2a20abed3fd"
     },
     {
       "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/ControlCenterFixtureSource.swift",
@@ -727,27 +886,27 @@
       "sha256": "0db08cab0d037eee6a6da2b9dc7c340d058a2383665de270aaf804d261a18c93"
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/desktop_semantics_test.zig",
+      "path": "apps/polar-station-linux/ghostty-module/desktop_semantics_test.zig",
       "sha256": "a7bc0253729fe38b652d356fcad310f1f8f695ee1b1fae1aa744a30df14b922d"
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/fixtures/controller-sessions-closed.json",
+      "path": "apps/polar-station-linux/ghostty-module/fixtures/controller-sessions-closed.json",
       "sha256": "5fa035bce1e9db13ff5c2cb1152040738ae393e03d7d26bce92e3b0641a101a3"
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/pane_drag_test.zig",
+      "path": "apps/polar-station-linux/ghostty-module/pane_drag_test.zig",
       "sha256": "81c0f91937cbe79ddd1e9ea66ac1200ef2ef9898551aa2e3946562fa03f283ed"
     },
     {
-      "path": "apps/polar-tmux-linux/ghostty-module/tests.zig",
+      "path": "apps/polar-station-linux/ghostty-module/tests.zig",
       "sha256": "c8b99add9cf3232f396a5d862d52c98679a25082f2adb013254adf2199a7e42b"
     },
     {
-      "path": "apps/polar-tmux-linux/session-editor-tests.zig",
+      "path": "apps/polar-station-linux/session-editor-tests.zig",
       "sha256": "821ccb9cf4406de1f59ac62f07171d1afbbef13a79dd096904aa886b687233dc"
     },
     {
-      "path": "apps/polar-tmux-linux/tools/test-controller-measurement.mjs",
+      "path": "apps/polar-station-linux/tools/test-controller-measurement.mjs",
       "sha256": "72c6c90a0c6c25f0d8d38ea8254808a2472b9149e092d69b20b8c491f8fe216e"
     },
     {

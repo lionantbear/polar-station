@@ -176,7 +176,7 @@ fi
 # Desktop assets come only from this controlled checkout, never the upstream
 # Ghostty install prefix (which carries a different application identity).
 repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd -P)
-desktop_assets="$repo_root/apps/polar-tmux-linux/data"
+desktop_assets="$repo_root/apps/polar-station-linux/data"
 app_id=com.polarealm.PolarStation
 data_home=${XDG_DATA_HOME:-"${HOME}/.local/share"}
 case "$data_home" in

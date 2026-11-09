@@ -9,7 +9,7 @@
   ],
   "native_source_roots": [
     "apps/polar-station-macos",
-    "apps/polar-tmux-linux",
+    "apps/polar-station-linux",
     "apps/polar-tmux-shared",
     "apps/polar-graphics-native",
     "apps/polar-ideacave-godot"
@@ -43,7 +43,9 @@
     "automation/polar_station/verify_cargo_archives.py",
     "automation/polar_station/first_party_licensing.json",
     "automation/polar_station/build_rust_runtime.py",
-    "automation/polar_station/public_native_cleanup.json"
+    "automation/polar_station/public_native_cleanup.json",
+    "automation/polar_station/source_hygiene.py",
+    "automation/polar_station/public_sync.py"
   ],
   "root_inputs": [
     "Cargo.lock",
@@ -59,7 +61,8 @@
     "licenses/mpl-source-inventory.json",
     "licenses/third-party-policy.json",
     "licenses/cargo-archive-integrity.json",
-    "SOURCE_DISTRIBUTION.md"
+    "SOURCE_DISTRIBUTION.md",
+    "SYNC_PUBLIC_REPO.md"
   ],
   "ignored_directory_names": [
     ".git",

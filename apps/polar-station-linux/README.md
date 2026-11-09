@@ -61,7 +61,7 @@ supported development path.
 The obsolete Python frontend, its UI resources, pip package, development launcher,
 and tests are not exported. Python scripts under `automation/polar_station/`
 are build/export/license utilities, not the retired UI, and remain necessary.
-The compatible `polar-tmux-linux` source directory and Rust Host/IPC identifiers
+The Linux source directory is `apps/polar-station-linux`. Rust Host/IPC identifiers
 remain unchanged. The public exporter excludes the retired paths and rejects
 snapshots that reintroduce them.
 
@@ -137,8 +137,8 @@ Current Linux implementation evidence uses one compositor-approved ScreenCast
 session rather than one Screenshot-Portal prompt per image:
 
 ```text
-gjs -m apps/polar-tmux-linux/tools/wayland-capture.mjs
-gjs -m apps/polar-tmux-linux/tools/wayland-capture.mjs --source=monitor
+gjs -m apps/polar-station-linux/tools/wayland-capture.mjs
+gjs -m apps/polar-station-linux/tools/wayland-capture.mjs --source=monitor
 ```
 
 GNOME asks the human to select the managed Polar Station window once. After the

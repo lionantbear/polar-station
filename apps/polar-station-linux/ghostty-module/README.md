@@ -75,7 +75,6 @@ Run the pure module Development Tests with the pinned Zig toolchain:
 # Private monorepo test entrypoint omitted from the public source export.
 ```
 
-The Python/PyGObject tree elsewhere under `apps/polar-tmux-linux/` is retired
-Phase 5 bootstrap evidence and does not participate in this product runtime.
-No new product behavior may be added to it; reusable fixtures move to
-Rust/Zig before that tree is deleted in its separately reviewed cleanup.
+The retired Python/PyGObject Phase 5 bootstrap remains only in the private
+monorepo as migration evidence. It is excluded from this public source export
+and does not participate in the product runtime.

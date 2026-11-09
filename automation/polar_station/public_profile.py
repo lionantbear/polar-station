@@ -35,7 +35,7 @@ def apply(root: Path) -> None:
     replace_once(root / "apps/polar-station-macos/ghostty-module/PolarStationRuntime.swift",
                  '"host", "--listen", "0.0.0.0:47820", "--advertise",',
                  '"host", "--listen", "127.0.0.1:47820",')
-    replace_once(root / "apps/polar-tmux-linux/systemd/polar-tmux-host.service",
+    replace_once(root / "apps/polar-station-linux/systemd/polar-tmux-host.service",
                  '--listen 0.0.0.0:47820 --advertise', '--listen 127.0.0.1:47820')
     view = root / "apps/polar-station-macos/Sources/PolarTmuxMacUI/IPhoneCompanionView.swift"
     if view.exists():
@@ -104,6 +104,14 @@ def apply_test_cleanup(root: Path, filename: str = "public_test_cleanup.json") -
     digest = lambda b: hashlib.sha256(b).hexdigest()
     pending = {}
     deleted = {entry["path"] for entry in data["deletions"]}
+    final_hashes = {}
+    if filename == "public_test_cleanup.json":
+        followup = root / "automation/polar_station/public_native_cleanup.json"
+        if followup.is_file():
+            later = json.loads(followup.read_text())
+            final_hashes = {entry["path"]: entry["after"] for entry in later["edits"]}
+            deleted.update(entry["path"] for entry in later["deletions"])
+
     def safe_path(relative):
         path = root / relative
         if not path.resolve().is_relative_to(root.resolve()) or path.is_symlink():
@@ -114,7 +122,7 @@ def apply_test_cleanup(root: Path, filename: str = "public_test_cleanup.json") -
         if not path.exists() and entry["path"] in deleted:
             continue
         before = path.read_bytes()
-        if digest(before) == entry["after"]:
+        if digest(before) in (entry["after"], final_hashes.get(entry["path"])):
             continue
         if digest(before) != entry["before"]:
             raise ValueError("test cleanup source drift: " + entry["path"])

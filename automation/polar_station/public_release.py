@@ -555,6 +555,7 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
         )
 
     public_profile.apply(destination)
+    assert_source_hygiene(destination)
     if normalize_lock:
         normalize_cargo_lock(destination)
     description["crate_paths"] = {name: path for name, path in description["crate_paths"].items()
@@ -593,6 +594,18 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
     }
 
 
+def assert_source_hygiene(destination: Path) -> None:
+    from source_hygiene import findings
+    extensions = {".rs", ".zig", ".swift", ".c", ".cpp", ".py", ".js", ".mjs", ".gd", ".patch"}
+    for path in sorted(destination.rglob("*")):
+        if path.is_symlink() or not path.is_file() or path.suffix not in extensions:
+            continue
+        rel = path.relative_to(destination).as_posix()
+        reasons = findings(rel, path.read_text(encoding="utf-8"))
+        if reasons:
+            raise ExportError(f"development test content in {rel}: {', '.join(reasons)}")
+
+
 def verify(destination: Path) -> dict[str, Any]:
     record = read_json(destination / PUBLIC_MANIFEST)
     expected: dict[str, str] = record["files"]
@@ -610,11 +623,7 @@ def verify(destination: Path) -> dict[str, Any]:
     if any(part.lower() in {".git", ".agents", "tests", "handoff", "history"}
            for rel in actual for part in Path(rel).parts):
         raise ExportError("internal history/test content leaked into source")
-    for rel in actual:
-        if rel.startswith("apps/") and rel.endswith(".zig"):
-            if re.search(r'^\s*test(?:\s+"[^"\n]*")?\s*\{',
-                         (destination / rel).read_text(), re.MULTILINE):
-                raise ExportError(f"first-party Zig test block leaked into export: {rel}")
+    assert_source_hygiene(destination)
     unexpected = actual - set(expected) - {PUBLIC_MANIFEST}
     missing = set(expected) - actual
     changed = [rel for rel, digest in expected.items()

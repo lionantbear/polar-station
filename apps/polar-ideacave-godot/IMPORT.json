@@ -248,5 +248,25 @@
     "Idea Tree spatial entrypoint now delegates to shared component.",
     "Root workspace owns both migrated crates. Native library renamed polar_graphics_godot.",
     "Standalone source startup changed to Idea Tree workspace."
+  ],
+  "public_export_note": "This is a historical import provenance ledger, not the current distribution inventory. Development examples, tests and oracle material may be excluded; PUBLIC_SOURCE_MANIFEST.json is authoritative for included files.",
+  "public_export_excluded_files": [
+    "apps/polar-ideacave-godot/itree-koala-sample.json",
+    "apps/polar-ideacave-godot/itree_card.gdshader",
+    "apps/polar-ideacave-godot/itree_dual_map_selftest.gd",
+    "apps/polar-ideacave-godot/itree_graph_projection_selftest.gd",
+    "apps/polar-ideacave-godot/itree_navigation_state_selftest.gd",
+    "apps/polar-ideacave-godot/itree_tree_projection_selftest.gd",
+    "apps/polar-ideacave-godot/itree_zoom_selftest.gd",
+    "apps/polar-ideacave-godot/test-fixtures/model-cycle.itree.json",
+    "apps/polar-ideacave-godot/test-fixtures/model-semantics.itree.json",
+    "apps/polar-ideacave-godot/test-fixtures/model-version-b.itree.json",
+    "apps/polar-ideacave-godot/test-fixtures/navigation-encoded-slots.itree.json",
+    "apps/polar-ideacave-godot/test-fixtures/polar-station-native.itree.json",
+    "crates/polar-force-layout-core/src/bin/oracle.rs",
+    "crates/polar-force-layout-core/upstream/golden.json",
+    "crates/polar-force-layout-core/upstream/oracle.mjs",
+    "crates/polar-force-layout-core/upstream/package-lock.json",
+    "crates/polar-force-layout-core/upstream/package.json"
   ]
 }

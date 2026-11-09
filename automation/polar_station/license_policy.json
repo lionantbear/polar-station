@@ -102,7 +102,7 @@
       "source": "https://github.com/ghostty-org/ghostty/blob/main/LICENSE",
       "local_provenance": [
         "apps/polar-station-macos/ghostty-overlay/upstream.lock.json",
-        "apps/polar-tmux-linux/ghostty-overlay/upstream.lock.json"
+        "apps/polar-station-linux/ghostty-overlay/upstream.lock.json"
       ],
       "bundled_license": "licenses/pinned/ghostty/LICENSE",
       "notes": "Exact pinned LICENSE fetched and hashed; recursively linked dependencies and binary notices remain to verify."

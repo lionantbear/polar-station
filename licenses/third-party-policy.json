@@ -76,7 +76,7 @@
       "source": "https://github.com/ghostty-org/ghostty/blob/main/LICENSE",
       "local_provenance": [
         "apps/polar-station-macos/ghostty-overlay/upstream.lock.json",
-        "apps/polar-tmux-linux/ghostty-overlay/upstream.lock.json"
+        "apps/polar-station-linux/ghostty-overlay/upstream.lock.json"
       ],
       "bundled_license": null,
       "notes": "Official upstream is MIT. Fetch exact pinned source and include its LICENSE and dependency notices in the packaged app; current exporter only carries the pin and overlay."

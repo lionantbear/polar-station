@@ -1,5 +1,5 @@
 [Unit]
-Description=Polar Tmux per-user Rust Host
+Description=Polar Station per-user Rust Host
 Documentation=https://github.com/polarealm/polarinfra
 After=graphical-session.target
 PartOf=graphical-session.target

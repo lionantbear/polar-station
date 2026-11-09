@@ -439,8 +439,6 @@ struct InMemoryProjectionState {
     tool_correlations: HashMap<String, AdamToolCallCorrelation>,
     tool_invocations: HashMap<String, AdamToolInvocationEvidence>,
     tool_invocation_writes: Vec<AdamToolInvocationEvidence>,
-    tool_invocation_write_count: usize,
-    fail_tool_invocation_write_on: Option<usize>,
     run_reports: HashMap<String, AdamRunReport>,
 }
 
@@ -493,13 +491,6 @@ impl InMemoryAdamRuntimeProjectionStore {
             .clone()
     }
 
-    /// Installs a deterministic one-shot failure for fault-injection tests.
-    /// Write numbering starts at one and is reset whenever this is called.
-    pub fn fail_tool_invocation_write_on(&self, write_number: usize) {
-        let mut inner = self.inner.lock().expect("projection store lock");
-        inner.tool_invocation_write_count = 0;
-        inner.fail_tool_invocation_write_on = Some(write_number);
-    }
 
     pub fn llama_evidence_snapshot(&self) -> Vec<AdamLlamaCacheEvidence> {
         self.inner
@@ -811,11 +802,6 @@ impl AdamRuntimeProjectionStore for InMemoryAdamRuntimeProjectionStore {
         evidence: AdamToolInvocationEvidence,
     ) -> anyhow::Result<()> {
         let mut inner = self.inner.lock().expect("projection store lock");
-        inner.tool_invocation_write_count += 1;
-        if inner.fail_tool_invocation_write_on == Some(inner.tool_invocation_write_count) {
-            inner.fail_tool_invocation_write_on = None;
-            anyhow::bail!("injected Adam tool invocation evidence write failure");
-        }
         inner.tool_invocation_writes.push(evidence.clone());
         inner
             .tool_invocations

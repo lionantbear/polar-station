@@ -32,7 +32,7 @@ let captureSource = null;
 
 function usage() {
   print(`Usage:
-  gjs -m apps/polar-tmux-linux/tools/wayland-capture.mjs [--source=window|monitor]
+  gjs -m apps/polar-station-linux/tools/wayland-capture.mjs [--source=window|monitor]
 
 The default source is one Polar Station window. Use --source=monitor when a
 GPU-rendered window stream is black. After READY, send:

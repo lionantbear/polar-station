@@ -1815,40 +1815,6 @@ diff --git a/src/config/Config.zig b/src/config/Config.zig
 
  /// Control the auto-update functionality of Ghostty. This is only supported
  /// on macOS currently, since Linux builds are distributed via package
-@@ -10302,6 +10308,33 @@
-     try testing.expectEqualStrings(cmd.direct[2], "bar baz");
- }
-
-+test "async backend defaults follow the managed Linux build" {
-+    const testing = std.testing;
-+    var cfg = try Config.default(testing.allocator);
-+    defer cfg.deinit();
-+
-+    if (builtin.os.tag == .linux and @import("build_options").polar_tmux) {
-+        try testing.expectEqual(AsyncBackend.epoll, cfg.@"async-backend");
-+    } else {
-+        try testing.expectEqual(AsyncBackend.auto, cfg.@"async-backend");
-+    }
-+}
-+
-+test "explicit async backend overrides the product default" {
-+    const testing = std.testing;
-+    inline for (.{
-+        .{ "auto", AsyncBackend.auto },
-+        .{ "epoll", AsyncBackend.epoll },
-+        .{ "io_uring", AsyncBackend.io_uring },
-+    }) |entry| {
-+        var cfg = try Config.default(testing.allocator);
-+        defer cfg.deinit();
-+        var it: TestIterator = .{ .data = &.{"--async-backend=" ++ entry[0]} };
-+        try cfg.loadIter(cfg._arena.?.allocator(), &it);
-+        try testing.expectEqual(entry[1], cfg.@"async-backend");
-+    }
-+}
-+
- test "clone default" {
-     const testing = std.testing;
-     const alloc = testing.allocator;
 diff --git a/src/build/GhosttyResources.zig b/src/build/GhosttyResources.zig
 --- a/src/build/GhosttyResources.zig
 +++ b/src/build/GhosttyResources.zig

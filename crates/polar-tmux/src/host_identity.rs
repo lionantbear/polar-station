@@ -105,13 +105,6 @@ impl HostIdentity {
         ))
     }
 
-    #[cfg(any(test, debug_assertions))]
-    pub fn fixture(host_id: &str, root_secret: [u8; 32]) -> Self {
-        Self {
-            host_id: host_id.to_string(),
-            root_secret: Zeroizing::new(root_secret),
-        }
-    }
 
     fn encode(&self) -> Result<Zeroizing<String>> {
         let root_secret = Zeroizing::new(STANDARD.encode(&self.root_secret[..]));
