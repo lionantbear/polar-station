@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Polar Station
+Comment=Your terminal workspaces, resources, and connections
+TryExec=polarstation
+Exec=polarstation --gtk-single-instance=true --initial-window=true --maximize=true
+Icon=com.polarealm.PolarStation
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=tmux;terminal;session;Ghostty;
+StartupNotify=true
+StartupWMClass=com.polarealm.PolarStation
+DBusActivatable=false
+X-GNOME-UsesNotifications=true

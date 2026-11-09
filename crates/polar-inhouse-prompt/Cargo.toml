@@ -1,0 +1,21 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-inhouse-prompt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+blake3 = { workspace = true }
+polar-inhouse-contract = { workspace = true }
+polar-identity = { workspace = true }
+polar-lgp-model = { workspace = true }
+polar-lgp-store = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

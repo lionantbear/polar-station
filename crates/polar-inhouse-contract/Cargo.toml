@@ -1,0 +1,19 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-inhouse-contract"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1"
+polar-lgp-model = { workspace = true }
+polar-inhouse-model = { workspace = true }
+polar-lgp-presentation = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+polar-identity = { workspace = true }

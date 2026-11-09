@@ -1,0 +1,31 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-inhouse-backend-adam"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+# Kept only to gate legacy adapter-owned tests while they are relocated.
+sqlite = []
+
+[dependencies]
+codex-utils-rustls-provider.workspace = true
+anyhow = { workspace = true }
+async-trait = "0.1"
+base64 = "0.22"
+futures-util = "0.3"
+polar-inhouse-contract = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }
+globset = "0.4"
+tower = { workspace = true }
+walkdir = "2"

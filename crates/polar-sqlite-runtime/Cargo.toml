@@ -1,0 +1,16 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-sqlite-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+tempfile = "3"
+polar-storage-migration = { workspace = true }
+polar-storage-core = { workspace = true }
+rusqlite = { workspace = true, features = ["backup"] }
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"

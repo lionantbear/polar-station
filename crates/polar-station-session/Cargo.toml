@@ -1,0 +1,20 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-station-session"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+schemars = "0.8.22"
+polar-station-inbox.workspace = true
+polar-inquiry-graph-model.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+polar-inquiry-graph-runtime.workspace = true

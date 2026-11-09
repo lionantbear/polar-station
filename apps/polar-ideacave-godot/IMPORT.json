@@ -1,0 +1,252 @@
+{
+  "repository": "https://github.com/lionantbear/iTree-View",
+  "commit": "58bc62ae5e0c728a6853905e84ed7e1a8c285ef3",
+  "files": {
+    "crates/polar-force-layout-core/src/lib.rs": {
+      "source": "crates/force-layout-core/src/lib.rs",
+      "sha256": "8c958bbd9311cd6161b81a2c5903fcf7b61a75c6b6bf631a16bd074a4665aa32"
+    },
+    "crates/polar-force-layout-core/src/octree.rs": {
+      "source": "crates/force-layout-core/src/octree.rs",
+      "sha256": "f37b09373ca091d8dee4e8cc6a944692b4e7878895ade4313cdf14531c9f8530"
+    },
+    "crates/polar-force-layout-core/src/bin/oracle.rs": {
+      "source": "crates/force-layout-core/src/bin/oracle.rs",
+      "sha256": "0550a305c10694f20550bd33821d495829262287caee71336f0ab86788d969cd"
+    },
+    "crates/polar-graphics-godot/src/lib.rs": {
+      "source": "crates/godot-graph-bridge/src/lib.rs",
+      "sha256": "eac6e4559bd30cd8108ae33bccf7e722b9249631b4dde59818f1bea7cfe8eff2"
+    },
+    "crates/polar-force-layout-core/upstream/package-lock.json": {
+      "source": "vendor/force-upstream/package-lock.json",
+      "sha256": "a91fb6238d90f23aa8b48b3d1e737367facd3fd150fef69034bc2302d9f5933a"
+    },
+    "crates/polar-force-layout-core/upstream/golden.json": {
+      "source": "vendor/force-upstream/golden.json",
+      "sha256": "666b33ed43c28340d7e88e53d87cb508f657a12357202acd0806783d5fed4886"
+    },
+    "crates/polar-force-layout-core/upstream/oracle.mjs": {
+      "source": "vendor/force-upstream/oracle.mjs",
+      "sha256": "53837b6ccfc83744cc08f063965c5c0c8226751f631c34e808cba7ff617a79eb"
+    },
+    "crates/polar-force-layout-core/upstream/package.json": {
+      "source": "vendor/force-upstream/package.json",
+      "sha256": "68490aee46405be9720f64630510ce3e7b71cbd478101539fd6706d2e4806ad1"
+    },
+    "crates/polar-force-layout-core/upstream/LICENSE-godot-rust-MPL-2.0.txt": {
+      "source": "vendor/force-upstream/LICENSE-godot-rust-MPL-2.0.txt",
+      "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+    },
+    "crates/polar-force-layout-core/upstream/PROVENANCE.json": {
+      "source": "vendor/force-upstream/PROVENANCE.json",
+      "sha256": "daec2d48ef14bfb85121da69f3e0cd4513448a0bf4cc4cb8fd3600d122e90a4d"
+    },
+    "crates/polar-force-layout-core/upstream/NOTICE.md": {
+      "source": "vendor/force-upstream/NOTICE.md",
+      "sha256": "190e4a9a8d56f0c41ceee7314ae34bd7b937f97d8808d504c2e8d0499c98c796"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/package.json": {
+      "source": "vendor/force-upstream/d3-octree/package.json",
+      "sha256": "650a0926c8f653910823bfadf806cb901b20aeb90831d3b6ded33cab08c7a411"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/LICENSE": {
+      "source": "vendor/force-upstream/d3-octree/LICENSE",
+      "sha256": "7262e566e874d1ce8cfadace01d4f635f8d704b6bdf7b4345cc028e5faeafded"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/LICENSE": {
+      "source": "vendor/force-upstream/d3-force-3d/LICENSE",
+      "sha256": "7262e566e874d1ce8cfadace01d4f635f8d704b6bdf7b4345cc028e5faeafded"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/center.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/center.js",
+      "sha256": "448bfa2dd0d2d53d8237d421fb82a546a76dc091999e373d7a64166141e91ddc"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/link.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/link.js",
+      "sha256": "549ea94ea72e4b4e3e0bab413065b659ff396969905a338bc6f83f83d12684a1"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/simulation.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/simulation.js",
+      "sha256": "1e67a28f0347a23636c052a69013031c443e09ced358a465d7bf3799c7ac70fa"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/constant.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/constant.js",
+      "sha256": "88f2653180d441d431ad68e0e2cf2c02aea72976c5ff24b6ed988a5bb2b78847"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/manyBody.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/manyBody.js",
+      "sha256": "bf0d79b196b4e690971b73c592dfb22034da4b96156d103a235da1fe3288e983"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/jiggle.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/jiggle.js",
+      "sha256": "26641b82cae7d49d6eb865c4d9b66a6af2eb3021705a0b80af737a4883cc494a"
+    },
+    "crates/polar-force-layout-core/upstream/d3-force-3d/src/lcg.js": {
+      "source": "vendor/force-upstream/d3-force-3d/src/lcg.js",
+      "sha256": "7e1aaa1836a35ab82c6153c88342b3e61933336d4f6b1e55e82fda13ac23e5df"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/data.js": {
+      "source": "vendor/force-upstream/d3-octree/src/data.js",
+      "sha256": "7f461ec1d885f744dda7bce9e713b954d96c7dd40b060f47fa469b9e1e6d46bb"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/remove.js": {
+      "source": "vendor/force-upstream/d3-octree/src/remove.js",
+      "sha256": "fdcba6a0a2c5cfd645577ecda4db95085b1a49b653110203ea63c2770920b9ae"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/octant.js": {
+      "source": "vendor/force-upstream/d3-octree/src/octant.js",
+      "sha256": "59757f18fe87ebe0e1792b2433ea67c7372a6afcc3cdeac0a41138f27355f59d"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/add.js": {
+      "source": "vendor/force-upstream/d3-octree/src/add.js",
+      "sha256": "f09fe8b5297b6017b9ae84887b4d95f6460309122ba5641dafdf2031311c133c"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/root.js": {
+      "source": "vendor/force-upstream/d3-octree/src/root.js",
+      "sha256": "0de405a6a916a8cb30fa4f0c2b9b7315e3a13f82235133871d0903fb076f8fc4"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/find.js": {
+      "source": "vendor/force-upstream/d3-octree/src/find.js",
+      "sha256": "acb5bd903c925154857349b104cb5a96a73c728ce1d780881be20333cdb0cc5c"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/extent.js": {
+      "source": "vendor/force-upstream/d3-octree/src/extent.js",
+      "sha256": "260261a1e9c0fa9863f7309205924766f13a86039879f0869c1794b78c8d81f9"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/size.js": {
+      "source": "vendor/force-upstream/d3-octree/src/size.js",
+      "sha256": "f5ae7a15c65da057c1805a08c0f88f751b995b3abf39416be9db26bbdb116c9b"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/index.js": {
+      "source": "vendor/force-upstream/d3-octree/src/index.js",
+      "sha256": "4a4855ca6f9b002dd159b49d4e602d42bb564d1640b5eec79c660d3d67a235d1"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/visit.js": {
+      "source": "vendor/force-upstream/d3-octree/src/visit.js",
+      "sha256": "9c5b300b787017c300379723c05854bd019bd7c22af897a39becab6f891d9eba"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/findAll.js": {
+      "source": "vendor/force-upstream/d3-octree/src/findAll.js",
+      "sha256": "cb5cf2ff10764629861ee67ce2f47b2645304ffdca994dd4c6259d6b47d1eabf"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/y.js": {
+      "source": "vendor/force-upstream/d3-octree/src/y.js",
+      "sha256": "d99a8ff2f8a4609caf10532b4550f37889323c2d24ff0f0a1a8ab6a3d52e65dd"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/octree.js": {
+      "source": "vendor/force-upstream/d3-octree/src/octree.js",
+      "sha256": "11c64a4b04a19792bd3828edb39631cde4bc2aeefccdf4cf3585567f77eeec40"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/visitAfter.js": {
+      "source": "vendor/force-upstream/d3-octree/src/visitAfter.js",
+      "sha256": "99dc0011ddbaba56ac0d1fd23e2d54a340b691156dc4d4280c063e254b468eec"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/cover.js": {
+      "source": "vendor/force-upstream/d3-octree/src/cover.js",
+      "sha256": "740ef533e687e9761ccf7e2f24d8c39a22ea04a894638187322851c76c281fb2"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/x.js": {
+      "source": "vendor/force-upstream/d3-octree/src/x.js",
+      "sha256": "eab8b4839875b25ca1bb63477f4297daa1505cf49bf02c94c3a93edd2523c90e"
+    },
+    "crates/polar-force-layout-core/upstream/d3-octree/src/z.js": {
+      "source": "vendor/force-upstream/d3-octree/src/z.js",
+      "sha256": "f33b254732430410e09ea823a4e2eadcbaab35661cc2446f36ad49f9f99f6a08"
+    },
+    "apps/polar-ideacave-godot/itree_tree_projection_selftest.gd": {
+      "source": "renderers/godot/itree_tree_projection_selftest.gd",
+      "sha256": "f4c648fe81d5bd52a14b022da20a27df77f369fdc2d62376c30816e154ec0f2b"
+    },
+    "apps/polar-ideacave-godot/test-fixtures/model-semantics.itree.json": {
+      "source": "renderers/godot/test-fixtures/model-semantics.itree.json",
+      "sha256": "10844d4f6bac41db7f78e5201e9acd484b60c2e4e8c09ccff98615f46b3799f6"
+    },
+    "apps/polar-ideacave-godot/itree_map_layout.gd": {
+      "source": "renderers/godot/itree_map_layout.gd",
+      "sha256": "9abc9ff57d3a7430fd2a435f66a32274854d648ac922503e4b802d3b97787f31"
+    },
+    "apps/polar-ideacave-godot/itree_view_model.gd": {
+      "source": "renderers/godot/itree_view_model.gd",
+      "sha256": "e22aab6434cd709d37c35194f716fcfea0f2661101978c084d592b9bbe6accfc"
+    },
+    "apps/polar-ideacave-godot/itree-koala-sample.json": {
+      "source": "renderers/godot/itree-koala-sample.json",
+      "sha256": "79b928c3cff1abf5427f892cfc2ff29d988e0c156d2fd764ff943b1419eae2f9"
+    },
+    "apps/polar-ideacave-godot/itree_tree_projection.gd": {
+      "source": "renderers/godot/itree_tree_projection.gd",
+      "sha256": "f7958ebdc82a7c9e2d74843679942c1e25b4130f9c94fea4b1047eeb50798f3c"
+    },
+    "apps/polar-ideacave-godot/itree_graph_projection_selftest.gd": {
+      "source": "renderers/godot/itree_graph_projection_selftest.gd",
+      "sha256": "13ed9acdd06d30ff06a09b733acbf24808bf2092c57b252e26dc3bf4feb51d72"
+    },
+    "apps/polar-ideacave-godot/test-fixtures/model-cycle.itree.json": {
+      "source": "renderers/godot/test-fixtures/model-cycle.itree.json",
+      "sha256": "99b58a9992cfaa9db7a223e2d7ae39a8a4620d76d37367477965a0314a015955"
+    },
+    "apps/polar-ideacave-godot/test-fixtures/model-version-b.itree.json": {
+      "source": "renderers/godot/test-fixtures/model-version-b.itree.json",
+      "sha256": "94be31dc4ec29d24f44572a587e6aa0c7de03f99c463f8896ac241e5fe15a8b8"
+    },
+    "apps/polar-ideacave-godot/itree_graph_projection.gd": {
+      "source": "renderers/godot/itree_graph_projection.gd",
+      "sha256": "48f38f056a7061b8a29f85e184ceea1750bffd6ece415d28ba702d099d36ecd6"
+    },
+    "apps/polar-ideacave-godot/itree_dual_map_selftest.gd": {
+      "source": "renderers/godot/itree_dual_map_selftest.gd",
+      "sha256": "177e16b264a1cda7bceaf44f8a5c73303db4a6c9490633d423e1f33fe91e5339"
+    },
+    "apps/polar-ideacave-godot/itree_workspace.tscn": {
+      "source": "renderers/godot/itree_workspace.tscn",
+      "sha256": "b6a2c08cfd22752ede5f60db2d12e649222de55d245b0fa50ac9565d5e943a82"
+    },
+    "apps/polar-ideacave-godot/itree_workspace.gd": {
+      "source": "renderers/godot/itree_workspace.gd",
+      "sha256": "87483e0a64a05a72ad62a32bdf981e1b377ba31b94e5e6df99a649a34bcd7558"
+    },
+    "apps/polar-ideacave-godot/native/polar_force_layout.gdextension": {
+      "source": "renderers/godot/native/polar_force_layout.gdextension",
+      "sha256": "646724d961a8e7a1d3bbc94ba197a92df1e46720d91825c8a4cfa93a92b67792"
+    },
+    "apps/polar-ideacave-godot/itree_spatial_view.gd": {
+      "source": "renderers/godot/itree_spatial_view.gd",
+      "sha256": "4df5ed3698c52179b8df2f705ef008271e67e9cc6c226d6d324b813ec9e1cfc6"
+    },
+    "apps/polar-ideacave-godot/itree_card.gdshader": {
+      "source": "renderers/godot/itree_card.gdshader",
+      "sha256": "1929dff86fefe4fc10d2f468aacf4b929930f22b588201dbf27c5beefd121297"
+    },
+    "apps/polar-ideacave-godot/itree_navigation_state.gd": {
+      "source": "renderers/godot/itree_navigation_state.gd",
+      "sha256": "560745cdbe87e05135d9e8b596f62e296159eb193f3e4077822616f4ad4f3791"
+    },
+    "apps/polar-ideacave-godot/itree_navigation_state_selftest.gd": {
+      "source": "renderers/godot/itree_navigation_state_selftest.gd",
+      "sha256": "c11489f8144cc85c61fdf06e11f1f56f7ea8441258149a382173d51f4f54b468"
+    },
+    "apps/polar-ideacave-godot/test-fixtures/navigation-encoded-slots.itree.json": {
+      "source": "renderers/godot/test-fixtures/navigation-encoded-slots.itree.json",
+      "sha256": "ef7ac8e28eb90b002434a056ce97bf278a47e6008b94ba3644b627a3394e9a6b"
+    },
+    "apps/polar-ideacave-godot/itree_zoom_selftest.gd": {
+      "source": "renderers/godot/itree_zoom_selftest.gd",
+      "sha256": "b43db0306a2a89bc1d7624ef5b129c28ffe069d6680b523be703d12eff44730f"
+    },
+    "apps/polar-ideacave-godot/project.godot": {
+      "source": "renderers/godot/project.godot",
+      "sha256": "0340497fba7d85881b2237b26015b74d76bdb6100d53cba6fa27970a9d67b908"
+    },
+    "apps/polar-ideacave-godot/test-fixtures/polar-station-native.itree.json": {
+      "source": "renderers/godot/../../fixtures/polar-station-native.itree.json",
+      "sha256": "41c9dca960c45fce4497cb28b4cfe588a06d4bfb20d93ea662cfed6d16915357"
+    }
+  },
+  "adaptations": [
+    "Shared spatial view and shader moved into polar-graphics-godot/godot/addons/polar_graphics.",
+    "Idea Tree spatial entrypoint now delegates to shared component.",
+    "Root workspace owns both migrated crates. Native library renamed polar_graphics_godot.",
+    "Standalone source startup changed to Idea Tree workspace."
+  ]
+}

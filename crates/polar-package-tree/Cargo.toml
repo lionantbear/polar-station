@@ -1,0 +1,18 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-package-tree"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+polar-cas = { workspace = true }
+polar-cas-local = { workspace = true }
+anyhow = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+tempfile = "3"
+zip = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,0 +1,22 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-cas"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+uuid = { workspace = true }
+async-trait = "0.1"
+blake3 = { workspace = true }
+hex = { workspace = true }
+http = "=1.4.0"
+oci-spec = { version = "=0.10.0", default-features = false, features = ["image"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+# Exercise the same trait-method feature union as the full Polar application.
+blake3 = { workspace = true, features = ["traits-preview"] }

@@ -1,0 +1,12 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-payload-codec"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+polar-protocol = { workspace = true }
+serde = { workspace = true }
+serde_cbor = { workspace = true }
+serde_json = { workspace = true }
+zstd = { workspace = true }

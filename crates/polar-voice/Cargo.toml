@@ -1,0 +1,19 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-voice"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+blake3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+zeroize = "1.8"
+ropus = "0.12.18"
+sha2 = "0.10"
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tempfile = "3"

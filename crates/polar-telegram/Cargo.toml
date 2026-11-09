@@ -1,0 +1,31 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-telegram"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["grammers", "bot-api", "mock"]
+grammers = ["dep:grammers-client", "dep:grammers-session", "dep:grammers-tl-types"]
+bot-api = []
+mock = []
+
+[dependencies]
+polar-runtime-paths = { workspace = true }
+tempfile = "3"
+anyhow = { workspace = true }
+async-trait = "0.1"
+futures-core = "0.3"
+grammers-client = { optional = true, git = "https://codeberg.org/Lonami/grammers.git", rev = "4ca2263e5678d2e85414aa8c2f469c1341d3a143" }
+grammers-session = { optional = true, git = "https://codeberg.org/Lonami/grammers.git", rev = "4ca2263e5678d2e85414aa8c2f469c1341d3a143", default-features = false, features = ["serde"] }
+grammers-tl-types = { optional = true, git = "https://codeberg.org/Lonami/grammers.git", rev = "4ca2263e5678d2e85414aa8c2f469c1341d3a143" }
+polar-vault = { workspace = true }
+reqwest = { workspace = true, features = ["multipart"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+axum.workspace = true
+tokio = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+name = "polar-cas-fs-sys"
+version = "0.1.0"
+edition = "2021"
+links = "polar_cas_fs_io_v1"
+build = "build.rs"
+description = "Offline C FFI for PolarCAS EROFS images"
+license = "MIT"
+readme = "README.md"
+include = ["Cargo.toml", "build.rs", "src/**", "native/*.c", "native/*.h", "native/CMakeLists.txt", "native/upstream.sha256", "native/upstream.lock.json", "native/patches/*.patch", "native/upstream/*.inc", "native/vendor/**", "tests/*.c", "tests/*.rs", "README.md", "LICENSE"]
+
+[features]
+default = []
+erofs = []
+

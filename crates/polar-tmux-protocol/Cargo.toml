@@ -1,0 +1,23 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-tmux-protocol"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+polar-local-access-contract.workspace = true
+
+polar-tmux-types.workspace = true
+base64 = "0.22"
+chacha20poly1305.workspace = true
+hkdf.workspace = true
+hmac = "0.12"
+polar-tmux-resources.workspace = true
+polar-station-settings.workspace = true
+polar-station-inbox.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+zeroize = { version = "1", features = ["derive"] }

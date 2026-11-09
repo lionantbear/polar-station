@@ -1,0 +1,41 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-cas-local"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+# Optional phase accounting for serial Development query benchmarks.
+query-metrics = []
+# Optional Linux observation + existing direct EROFS input pipeline.
+tree-ingest = ["dep:polar-cas-fs", "dep:polar-cas-fs-sys"]
+
+[dependencies]
+ptr_hash = { version = "=2.1.2", default-features = false, features = ["epserde"] }
+epserde = "=0.13.1"
+lru = { workspace = true }
+async-trait = "0.1"
+cap-std = "3.4"
+polar-cas = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+memmap2 = "=0.9.11"
+tempfile = "3"
+tokio = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "=1.1.4", features = ["fs", "process"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+polar-cas-fs = { path = "../polar-cas-fs", optional = true, features = ["polar"] }
+polar-cas-fs-sys = { path = "../polar-cas-fs-sys", optional = true }
+
+[dev-dependencies]
+hashbrown = "=0.16.1"
+rusqlite = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+rustix = { version = "=1.1.4", features = ["thread"] }

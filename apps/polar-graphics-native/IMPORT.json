@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/lionantbear/iTree-View",
+  "commit": "58bc62ae5e0c728a6853905e84ed7e1a8c285ef3",
+  "godot_commit": "ed1daf0bf001b61586d9930840f2f1394092c079",
+  "files": {
+    "linux-libgodot/modules/gtk_surface/config.py": "053497afee7937f58ce5257a0768871084d65124019aa2f46d4e4e6768714cae",
+    "linux-libgodot/modules/gtk_surface/SCsub": "729b9df25c9f749febb0be9e18c8589ed30b667bf26c61da701ebc2ec75c6328",
+    "linux-libgodot/modules/gtk_surface/register_types.h": "76e54b71e963be2a9aa7806d38bd8914279031eb996c22c72fffbe9e98412ae6",
+    "linux-libgodot/modules/gtk_surface/gtk_surface.cpp": "2227b10a30598075b5e447fc95e46702c72041a95654d2a189240b4b79f9e5a2"
+  }
+}

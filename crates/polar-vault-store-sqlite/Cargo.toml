@@ -1,0 +1,23 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-vault-store-sqlite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1"
+polar-identity = { workspace = true }
+polar-sqlite-runtime = { workspace = true }
+polar-storage-core = { workspace = true }
+polar-storage-migration = { workspace = true }
+polar-trust = { workspace = true }
+polar-vault = { workspace = true }
+rusqlite = { workspace = true }
+uuid = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+async-trait = "0.1"
+tempfile = "3"
+tokio = { workspace = true }

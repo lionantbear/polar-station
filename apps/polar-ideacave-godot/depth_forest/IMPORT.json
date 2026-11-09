@@ -1,0 +1,20 @@
+{
+  "source": "polar-station-native-3d-lab",
+  "adaptation": "Same-project view adapter; existing preview model, navigation and graphics base retained.",
+  "sha256": {
+    "spatial_plaque_mesh.gd": "e39901b2223fa1542c6422b1a1b0b004e59087fd7c3eef37b7922a050eeef2cb",
+    "spatial_icon_mesh.gd": "8beeee507fd10f6768736d74f77c0dea4e00779278755e52711fe406e60fb7ec",
+    "spatial_wheel_glyph.gd": "9cff97fdcb358ebdf1ecdd8570a8eeff9145e6cc1951a410e3a9735f7975387f",
+    "spatial_plaque_flow.gdshader": "155e188c4d8396fc8f92f91af4757239b432b0a2f631beb86dc66c074a91188e",
+    "spatial_wheel_plaque.gd": "0232696992a3a84038bc8005e0ae42e96814449302a5c8d3564bcbbe010c3996",
+    "spatial_wheel_plaque.gdshader": "9d3bd2d77f4ccba7150f8a51d5a2a17f9849574c527b5a4712a07fbab735c8ee",
+    "spatial_edge_clip.gdshader": "a63c5d2cddc8fc24b0f531d84f99a8cff243b5135da6ab539273897d45adb018",
+    "spatial_navigation_flow.gdshader": "79fc47da225b950acc42ff2dfa513ac2216d34b0650f0e704bd206d7be9b1519",
+    "spatial_star_atlas.gdshader": "be2b7fd8dc1b8d0ac306784ef34f2d1c3ebfe382d5e15aa93f36415bb12d34b4",
+    "spatial_wheel.gd": "6e95c53726ac42ec840b6eba0f7807eed1e5cf49cb74d57fcba4ceedc7cfc02a",
+    "spatial_wheel_3d.gd": "2610d419838f20f8e9b3db15f92454c402c90606dabce67aa784c23f48fae076",
+    "spatial_wheel_forest.gd": "999b6644db6c1c448243b4131b1d9d52390ef1a0cca4aeb0ee089d1045a5292c",
+    "spatial_star_atlas.gd": "ddb58d03c6092db486390d040d120a652db2fa1cdab9c990988f3e7c80b87866",
+    "spatial_node_detail.gd": "2ae5f0fb6d32cc107e063a219b2a15a59e3604430fa8395fa4b0ebcfae1ebc30"
+  }
+}

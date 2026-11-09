@@ -1,0 +1,84 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-tmux"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = ["codex-control", "telegram-channel"]
+codex-control = ["dep:codex-app-server-client", "dep:codex-app-server-protocol"]
+telegram-channel = ["codex-control", "dep:polar-telegram", "dep:polar-vault"]
+
+[dependencies]
+polar-station-session.workspace = true
+time.workspace = true
+polar-local-access-runtime.workspace = true
+polar-local-access-contract.workspace = true
+
+anyhow.workspace = true
+async-trait.workspace = true
+polar-vault = { workspace = true, optional = true }
+axum.workspace = true
+base64 = "0.22"
+clap.workspace = true
+codex-app-server-client = { workspace = true, optional = true }
+codex-app-server-protocol = { workspace = true, optional = true }
+futures-util = "0.3"
+mdns-sd = "0.20.2"
+rand_core.workspace = true
+polar-station-lgp.workspace = true
+polar-station-input.workspace = true
+polar-tmux-core.workspace = true
+polar-tmux-protocol.workspace = true
+polar-tmux-resources.workspace = true
+polar-station-settings.workspace = true
+polar-station-inbox.workspace = true
+polar-station-store-sqlite.workspace = true
+polar-telegram = { workspace = true, optional = true, default-features = false, features = ["bot-api"] }
+polar-runtime-paths.workspace = true
+rusqlite.workspace = true
+polar-tmux-workspace.workspace = true
+polar-dictate = { workspace = true, features = ["runtime"] }
+polar-dictate-store-sqlite.workspace = true
+polar-text-edit.workspace = true
+polar-inhouse-contract.workspace = true
+polar-inhouse-backend-adam.workspace = true
+codex-login.workspace = true
+codex-http-client.workspace = true
+polar-voice.workspace = true
+polar-voice-provider-codex.workspace = true
+portable-pty = "0.9"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile = "3"
+tokio.workspace = true
+tokio-tungstenite = "0.24"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+toml_edit = "0.24.1"
+zeroize = "1.8"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "linux-native-async-persistent", "tokio"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleScript", "NSAppleEventDescriptor", "NSBundle", "NSString", "NSDictionary", "NSObject", "NSThread"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[build-dependencies]
+cc = "1"

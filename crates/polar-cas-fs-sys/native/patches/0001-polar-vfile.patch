@@ -1,0 +1,171 @@
+diff -ruN upstream/include/erofs/internal.h modified/include/erofs/internal.h
+--- upstream/include/erofs/internal.h	2026-10-01 15:39:12.000000000 +0000
++++ modified/include/erofs/internal.h	2026-10-02 05:10:24.784539232 +0000
+@@ -254,6 +254,8 @@
+ 	} u;
+ 
+ 	char *i_srcpath;
++	/* Polar-owned, borrowed positional input. No format changes. */
++	struct erofs_vfile *pcfs_vf;
+ 	union {
+ 		char *i_link;
+ 		struct erofs_diskbuf *i_diskbuf;
+diff -ruN upstream/lib/cache.c modified/lib/cache.c
+--- upstream/lib/cache.c	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/cache.c	2026-10-02 05:10:24.784539232 +0000
+@@ -492,7 +492,7 @@
+ 			continue;
+ 
+ 		padding = blksiz - (p->buffers.off & (blksiz - 1));
+-		if (padding != blksiz) {
++		if (!abort && padding != blksiz) {
+ 			ret = erofs_io_fallocate(bmgr->vf,
+ 					   erofs_pos(sbi, blkaddr) - padding,
+ 					   padding, true);
+diff -ruN upstream/lib/compress.c modified/lib/compress.c
+--- upstream/lib/compress.c	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/compress.c	2026-10-02 05:10:24.788539346 +0000
+@@ -2074,6 +2074,14 @@
+ 	ictx->fpos = fpos;
+ }
+ 
++void erofs_bind_compressed_file_with_vfile(struct z_erofs_compress_ictx *ictx,
++					 struct erofs_vfile *vf, u64 fpos)
++{
++	/* Borrow the wrapper; copying it would lose its enclosing context. */
++	ictx->vf = vf;
++	ictx->fpos = fpos;
++}
++
+ int erofs_begin_compressed_file(struct z_erofs_compress_ictx *ictx)
+ {
+ 	const struct erofs_importer_params *params = ictx->im->params;
+diff -ruN upstream/lib/inode.c modified/lib/inode.c
+--- upstream/lib/inode.c	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/inode.c	2026-10-02 05:10:24.788539346 +0000
+@@ -38,6 +38,8 @@
+ 	return path == EROFS_PACKED_INODE || path == EROFS_METABOX_INODE;
+ }
+ 
++static int pcfs_write_file(struct erofs_importer *, struct erofs_inode *);
++
+ #define S_SHIFT                 12
+ static unsigned char erofs_ftype_by_mode[S_IFMT >> S_SHIFT] = {
+ 	[S_IFREG >> S_SHIFT]  = EROFS_FT_REG_FILE,
+@@ -810,7 +812,7 @@
+ 		struct erofs_inode_compact dic;
+ 		struct erofs_inode_extended die;
+ 	} u = {};
+-	union erofs_inode_i_u u1;
++	union erofs_inode_i_u u1 = {0};
+ 	union erofs_inode_i_nb nb;
+ 	unsigned int iovcnt = 0;
+ 	struct iovec iov[2];
+@@ -1607,16 +1609,17 @@
+ 		free(symlink);
+ 		inode->i_link = NULL;
+ 	} else if (inode->i_size) {
+-		if (inode->datasource == EROFS_INODE_DATA_SOURCE_RESVSP)
++		if (inode->pcfs_vf)
++			ret = pcfs_write_file(btctx->im, inode);
++		else if (inode->datasource == EROFS_INODE_DATA_SOURCE_RESVSP)
+ 			ret = erofs_inode_reserve_data_blocks(inode);
+ 		else if (ctx->fd >= 0)
+ 			ret = erofs_mkfs_job_write_file(btctx, ctx);
+ 	}
+ 	if (ret)
+ 		return ret;
+-	erofs_prepare_inode_buffer(btctx->im, inode);
+-	erofs_write_tail_end(btctx->im, inode);
+-	return 0;
++	ret = erofs_prepare_inode_buffer(btctx->im, inode);
++	return ret ? ret : erofs_write_tail_end(btctx->im, inode);
+ }
+ 
+ static int erofs_mkfs_create_directory(const struct erofs_mkfs_btctx *ctx,
+@@ -2062,7 +2065,7 @@
+ 		{ .inode = inode, .fd = -1 };
+ 	int ret;
+ 
+-	if (S_ISREG(inode->i_mode) && inode->i_size) {
++	if (S_ISREG(inode->i_mode) && inode->i_size && !inode->pcfs_vf) {
+ 		switch (inode->datasource) {
+ 		case EROFS_INODE_DATA_SOURCE_DISKBUF:
+ 			ctx.fd = erofs_diskbuf_getfd(inode->i_diskbuf, &ctx.fpos);
+@@ -2532,3 +2535,5 @@
+ 	root->i_nlink = 2;
+ 	return root;
+ }
++
++#include "pcfs_importer.inc"
+diff -ruN upstream/lib/liberofs_compress.h modified/lib/liberofs_compress.h
+--- upstream/lib/liberofs_compress.h	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/liberofs_compress.h	2026-10-02 05:10:24.788539346 +0000
+@@ -21,6 +21,8 @@
+ 					int fd, u64 fpos);
+ void z_erofs_free_metadata(struct erofs_inode *inode);
+ char *z_erofs_write_metadata(struct erofs_inode *inode);
++void erofs_bind_compressed_file_with_vfile(struct z_erofs_compress_ictx *,
++					 struct erofs_vfile *, u64);
+ int erofs_begin_compressed_file(struct z_erofs_compress_ictx *ictx);
+ int erofs_write_compressed_file(struct z_erofs_compress_ictx *ictx);
+ 
+diff -ruN upstream/lib/rebuild.c modified/lib/rebuild.c
+--- upstream/lib/rebuild.c	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/rebuild.c	2026-10-02 05:10:24.788539346 +0000
+@@ -198,7 +198,7 @@
+ 			.buf = __EROFS_BUF_INITIALIZER,
+ 		};
+ 
+-		map.m_la = i << chunkbits;
++		map.m_la = (erofs_off_t)i << chunkbits;
+ 		ret = erofs_map_blocks(inode, &map, 0);
+ 		if (ret)
+ 			goto err;
+@@ -658,3 +658,10 @@
+ 	};
+ 	return erofs_iterate_dir(&ctx.ctx, false);
+ }
++
++int pcfs_erofs_rebuild_file(struct erofs_sb_info *, struct erofs_inode *);
++int pcfs_erofs_rebuild_file(struct erofs_sb_info *dst, struct erofs_inode *inode)
++{
++	if (!S_ISREG(inode->i_mode)) return -EINVAL;
++	return erofs_rebuild_update_inode(dst, inode, EROFS_REBUILD_DATA_BLOB_INDEX);
++}
+diff -ruN upstream/lib/super.c modified/lib/super.c
+--- upstream/lib/super.c	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/super.c	2026-10-02 05:10:24.784539232 +0000
+@@ -420,7 +420,8 @@
+ 	struct erofs_device_info *di;
+ 	erofs_blk_t last_uniaddr = sbi->dif0.blocks;
+ 
+-	for (di = sbi->devs; di < sbi->devs + sbi->extra_devices; ++di) {
++	for (di = sbi->devs; sbi->extra_devices &&
++	     di < sbi->devs + sbi->extra_devices; ++di) {
+ 		if (di->bmgr)
+ 			di->blocks = erofs_mapbh(di->bmgr, NULL);
+ 		di->uniaddr = last_uniaddr;
+@@ -538,7 +539,8 @@
+ 				 (erofs_off_t)sbi->dif0.blocks << sbi->blkszbits);
+ 	if (err)
+ 		return err;
+-	for (di = sbi->devs; di < sbi->devs + sbi->extra_devices; ++di) {
++	for (di = sbi->devs; sbi->extra_devices &&
++	     di < sbi->devs + sbi->extra_devices; ++di) {
+ 		if (!di->bmgr)
+ 			continue;
+ 		err = erofs_io_ftruncate(di->bmgr->vf,
+diff -ruN upstream/lib/xattr.c modified/lib/xattr.c
+--- upstream/lib/xattr.c	2026-10-01 15:39:12.000000000 +0000
++++ modified/lib/xattr.c	2026-10-02 05:10:24.784539232 +0000
+@@ -1291,7 +1291,8 @@
+ 		return -ERANGE;
+ 
+ 	memcpy(it->buffer + it->buffer_ofs, prefix, prefix_len);
+-	memcpy(it->buffer + it->buffer_ofs + prefix_len, infix, infix_len);
++	if (infix_len)
++		memcpy(it->buffer + it->buffer_ofs + prefix_len, infix, infix_len);
+ 	it->buffer_ofs += prefix_len + infix_len;
+ 
+ 	/* 2. handle xattr name */

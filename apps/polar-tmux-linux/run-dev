@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+app_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${app_root}/../.." && pwd)"
+
+: "${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR is required to run Polar Tmux}"
+
+runtime_dir="$(mktemp -d "${XDG_RUNTIME_DIR}/polar-tmux-dev.XXXXXX")"
+ipc_socket="${runtime_dir}/host.sock"
+instance_lock="${ipc_socket}.instance.lock"
+target_dir="${POLAR_TMUX_TARGET_DIR:-${repo_root}/target}"
+python_bin="${POLAR_TMUX_PYTHON:-python3}"
+host_pid=""
+
+cleanup() {
+    exit_status=$?
+    trap - EXIT INT TERM
+
+    if [[ -n "${host_pid}" ]] && kill -0 "${host_pid}" 2>/dev/null; then
+        kill "${host_pid}" 2>/dev/null || true
+        wait "${host_pid}" 2>/dev/null || true
+    fi
+
+    rm -f "${ipc_socket}" "${instance_lock}"
+    rmdir "${runtime_dir}" 2>/dev/null || true
+    exit "${exit_status}"
+}
+trap cleanup EXIT INT TERM
+
+CARGO_TARGET_DIR="${target_dir}" cargo build --locked \
+    --manifest-path "${repo_root}/Cargo.toml" \
+    -p polar-tmux \
+    --bin polar-tmux
+
+POLAR_TMUX_IPC_SOCKET="${ipc_socket}" \
+    "${target_dir}/debug/polar-tmux" host \
+    --listen 127.0.0.1:0 \
+    --ipc-socket "${ipc_socket}" &
+host_pid=$!
+
+for _ in {1..200}; do
+    if [[ -S "${ipc_socket}" ]]; then
+        break
+    fi
+    if ! kill -0 "${host_pid}" 2>/dev/null; then
+        wait "${host_pid}"
+    fi
+    sleep 0.05
+done
+
+if [[ ! -S "${ipc_socket}" ]]; then
+    echo "Polar Tmux Host did not create ${ipc_socket}" >&2
+    exit 1
+fi
+
+PYTHONPATH="${app_root}/src${PYTHONPATH:+:${PYTHONPATH}}" \
+POLAR_TMUX_IPC_SOCKET="${ipc_socket}" \
+    "${python_bin}" -m polar_tmux_linux "$@"

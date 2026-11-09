@@ -1,0 +1,2158 @@
+Preparing worktree (detached HEAD 332b2aefc)
+Applied patch to 'src/apprt/gtk/App.zig' cleanly.
+Applied patch to 'src/apprt/gtk/class/application.zig' cleanly.
+Applied patch to 'src/apprt/gtk/class/surface.zig' cleanly.
+Applied patch to 'src/apprt/gtk/class/window.zig' cleanly.
+Applied patch to 'src/apprt/gtk/ui/1.5/window.blp' cleanly.
+Applied patch to 'src/build/Config.zig' cleanly.
+Applied patch to 'src/build/GhosttyExe.zig' cleanly.
+Applied patch to 'src/build_config.zig' cleanly.
+diff --git a/src/apprt/gtk/App.zig b/src/apprt/gtk/App.zig
+index 6c7310339..eb0310f34 100644
+--- a/src/apprt/gtk/App.zig
++++ b/src/apprt/gtk/App.zig
+@@ -4,6 +4,7 @@ const App = @This();
+
+ const std = @import("std");
+ const builtin = @import("builtin");
++const build_options = @import("build_options");
+ const Allocator = std.mem.Allocator;
+ const apprt = @import("../../apprt.zig");
+ const configpkg = @import("../../config.zig");
+@@ -13,6 +14,7 @@ const CoreApp = @import("../../App.zig");
+ const Application = @import("class/application.zig").Application;
+ const Surface = @import("Surface.zig");
+ const ipcNewWindow = @import("ipc/new_window.zig").newWindow;
++const polar_tmux = @import("polar_tmux/main.zig");
+
+ const log = std.log.scoped(.gtk);
+
+@@ -22,13 +24,18 @@ const log = std.log.scoped(.gtk);
+ pub const must_draw_from_app_thread = true;
+
+ /// GTK application ID
+-pub const application_id = switch (builtin.mode) {
+-    .Debug, .ReleaseSafe => "com.mitchellh.ghostty-debug",
+-    .ReleaseFast, .ReleaseSmall => "com.mitchellh.ghostty",
+-};
++pub const application_id = if (build_options.polar_tmux)
++    "com.polarealm.PolarStation"
++else
++    switch (builtin.mode) {
++        .Debug, .ReleaseSafe => "com.mitchellh.ghostty-debug",
++        .ReleaseFast, .ReleaseSmall => "com.mitchellh.ghostty",
++    };
+
+ /// GTK object path
+-pub const object_path = switch (builtin.mode) {
++pub const object_path = if (build_options.polar_tmux)
++    "/io/polarealm/PolarStation"
++else switch (builtin.mode) {
+     .Debug, .ReleaseSafe => "/com/mitchellh/ghostty_debug",
+     .ReleaseFast, .ReleaseSmall => "/com/mitchellh/ghostty",
+ };
+@@ -48,6 +55,7 @@ pub fn init(
+     const app: *Application = try .new(self, core_app);
+     errdefer app.unref();
+     self.* = .{ .app = app };
++    if (comptime build_options.polar_tmux) try polar_tmux.init(app);
+     return;
+ }
+
+@@ -59,6 +67,7 @@ pub fn terminate(self: *App) void {
+     // We force deinitialize the app. We don't unref because other things
+     // tend to have a reference at this point, so this just forces the
+     // disposal now.
++    if (comptime build_options.polar_tmux) polar_tmux.deinit(self.app);
+     self.app.deinit();
+ }
+
+diff --git a/src/apprt/gtk/class/application.zig b/src/apprt/gtk/class/application.zig
+index 039e853aa..4a669d308 100644
+--- a/src/apprt/gtk/class/application.zig
++++ b/src/apprt/gtk/class/application.zig
+@@ -1,4 +1,5 @@
+ const std = @import("std");
++const build_options = @import("build_options");
+ const assert = @import("../../../quirks.zig").inlineAssert;
+ const Allocator = std.mem.Allocator;
+ const adw = @import("adw");
+@@ -37,6 +38,7 @@ const Surface = @import("surface.zig").Surface;
+ const SplitTree = @import("split_tree.zig").SplitTree;
+ const Window = @import("window.zig").Window;
+ const Tab = @import("tab.zig").Tab;
++const polar_tmux = @import("../polar_tmux/main.zig");
+ const CloseConfirmationDialog = @import("close_confirmation_dialog.zig").CloseConfirmationDialog;
+ const ConfigErrorsDialog = @import("config_errors_dialog.zig").ConfigErrorsDialog;
+ const GlobalShortcuts = @import("global_shortcuts.zig").GlobalShortcuts;
+@@ -458,3 +460,7 @@
++    pub fn configureStationDictateShortcut(self: *Self) bool {
++        return self.private().global_shortcuts.configureStation();
++    }
++
+     pub fn allocator(self: *Self) std.mem.Allocator {
+         return self.private().core_app.alloc;
+     }
+@@ -541,6 +543,7 @@ pub const Application = extern struct {
+         priv.running = true;
+         while (priv.running) {
+             _ = glib.MainContext.iteration(ctx, 1);
++            if (comptime build_options.polar_tmux) polar_tmux.tick(self);
+
+             // Tick the core Ghostty terminal app
+             try priv.core_app.tick(priv.rt_app);
+@@ -554,5 +557,10 @@ pub const Application = extern struct {
+                 // If the quit timer has expired, quit.
+                 if (priv.quit_timer == .expired) {
++                    // Station windows can outlive their final core Surface.
++                    // Empty Tabs and pending realization are still open UI.
++                    if (comptime build_options.polar_tmux) {
++                        if (polar_tmux.hasOpenWorkspaceWindow(self)) break :q false;
++                    }
+                     log.debug("must_quit due to quit timer expired", .{});
+                     break :q true;
+                 }
+@@ -633,6 +641,7 @@ pub const Application = extern struct {
+     fn quitNow(self: *Self) void {
++        if (comptime build_options.polar_tmux) polar_tmux.willQuit(self);
+         // Get all our windows and destroy them, forcing them to free.
+         const list = gtk.Window.listToplevels();
+         defer list.free();
+         list.foreach(struct {
+             fn callback(data: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {
+@@ -1405,6 +1414,29 @@ pub const Application = extern struct {
+             .init("reload-config", actionReloadConfig, null),
+         };
+
++        if (comptime build_options.polar_tmux) {
++            const polar_actions = [_]ext.actions.Action(Self){
++                .init("polar-station", actionPolarStation, null),
++                .init("polar-settings", actionPolarSettings, null),
++                .init("polar-workspace-mode", actionPolarWorkspaceMode, null),
++                .init("polar-focus-previous", actionPolarFocusPrevious, null),
++                .init("polar-focus-next", actionPolarFocusNext, null),
++                .init("polar-focus-slot-1", actionPolarFocusSlot1, null),
++                .init("polar-focus-slot-2", actionPolarFocusSlot2, null),
++                .init("polar-focus-slot-3", actionPolarFocusSlot3, null),
++                .init("polar-focus-slot-4", actionPolarFocusSlot4, null),
++                .init("polar-focus-slot-5", actionPolarFocusSlot5, null),
++                .init("polar-focus-slot-6", actionPolarFocusSlot6, null),
++                .init("polar-focus-slot-7", actionPolarFocusSlot7, null),
++                .init("polar-focus-slot-8", actionPolarFocusSlot8, null),
++                .init("polar-focus-slot-9", actionPolarFocusSlot9, null),
++                .init("polar-workspace-new", actionPolarWorkspaceNew, null),
++                .init("polar-workspace-rename", actionPolarWorkspaceRename, null),
++                .init("polar-sessions-refresh", actionPolarSessionsRefresh, null),
++            };
++            ext.actions.add(Self, self, &polar_actions);
++            polar_tmux.installShortcuts(self);
++        }
+         ext.actions.add(Self, self, &actions);
+     }
+
+@@ -1439,6 +1471,16 @@ pub const Application = extern struct {
+     fn activate(self: *Self) callconv(.c) void {
+         log.debug("activate", .{});
+
++        if (comptime build_options.polar_tmux) {
++            if (self.presentPolarStationWindow()) {
++                gio.Application.virtual_methods.activate.call(
++                    Class.parent,
++                    self.as(Parent),
++                );
++                return;
++            }
++        }
++
+         // Queue a new window
+         const priv = self.private();
+         _ = priv.core_app.mailbox.push(.{
+@@ -1452,6 +1494,34 @@ pub const Application = extern struct {
+         );
+     }
+
++    fn presentPolarStationWindow(self: *Self) bool {
++        // Application windows exclude destroyed GtkWindow objects that may
++        // remain referenced by the retained Polar Station renderer. Listing
++        // every toplevel would resurrect one of those dead windows and skip
++        // the warm replacement path.
++        var current = @as(
++            ?*glib.List,
++            self.as(gtk.Application).getWindows(),
++        );
++        while (current) |node| : (current = node.f_next) {
++            const data = node.f_data orelse continue;
++            const gtk_window: *gtk.Window = @ptrCast(@alignCast(data));
++            const window = gobject.ext.cast(
++                Window,
++                gtk_window,
++            ) orelse continue;
++            if (gtk_window.as(gtk.Widget).getVisible() == 0) continue;
++            if (gtk_window.as(gtk.Widget).getMapped() == 0) continue;
++            if (gtk_window.as(gtk.Native).getSurface() == null) continue;
++
++            gtk.Window.present(gtk_window);
++            if (window.getActiveSurface()) |surface| surface.grabFocus();
++            return true;
++        }
++
++        return false;
++    }
++
+     fn dispose(self: *Self) callconv(.c) void {
+         const priv = self.private();
+         if (priv.config_errors_dialog.get()) |diag| {
+@@ -1785,6 +1855,84 @@ pub const Application = extern struct {
+         _ = self.core().mailbox.push(.open_config, .forever);
+     }
+
++    fn actionPolarStation(
++        _: *gio.SimpleAction,
++        _: ?*glib.Variant,
++        self: *Self,
++    ) callconv(.c) void {
++        polar_tmux.toggleControlCenter(self);
++    }
++
++    fn actionPolarSettings(
++        _: *gio.SimpleAction,
++        _: ?*glib.Variant,
++        self: *Self,
++    ) callconv(.c) void {
++        polar_tmux.showSettings(self);
++    }
++
++    fn actionPolarWorkspaceMode(
++        _: *gio.SimpleAction,
++        _: ?*glib.Variant,
++        self: *Self,
++    ) callconv(.c) void {
++        polar_tmux.dispatchShortcut(self, .workspace_mode_toggle);
++    }
++
++    fn actionPolarFocusPrevious(
++        _: *gio.SimpleAction,
++        _: ?*glib.Variant,
++        self: *Self,
++    ) callconv(.c) void {
++        polar_tmux.focusPrevious(self);
++    }
++
++    fn actionPolarFocusNext(
++        _: *gio.SimpleAction,
++        _: ?*glib.Variant,
++        self: *Self,
++    ) callconv(.c) void {
++        polar_tmux.focusNext(self);
++    }
++
++    fn actionPolarFocusSlot1(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 1);
++    }
++    fn actionPolarFocusSlot2(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 2);
++    }
++    fn actionPolarFocusSlot3(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 3);
++    }
++    fn actionPolarFocusSlot4(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 4);
++    }
++    fn actionPolarFocusSlot5(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 5);
++    }
++    fn actionPolarFocusSlot6(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 6);
++    }
++    fn actionPolarFocusSlot7(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 7);
++    }
++    fn actionPolarFocusSlot8(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 8);
++    }
++    fn actionPolarFocusSlot9(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.focusPaneNumber(self, 9);
++    }
++
++    fn actionPolarWorkspaceNew(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.dispatchShortcut(self, .new_workspace);
++    }
++    fn actionPolarWorkspaceRename(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.dispatchShortcut(self, .rename_workspace);
++    }
++    fn actionPolarSessionsRefresh(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Self) callconv(.c) void {
++        polar_tmux.dispatchShortcut(self, .refresh_sessions);
++    }
++
+     fn actionPresentSurface(
+         _: *gio.SimpleAction,
+         parameter_: ?*glib.Variant,
+@@ -2212,6 +2360,10 @@ pub const Application = extern struct {
+                     log.warn("surface is not in a window, ignoring new_tab", .{});
+                     return false;
+                 };
++                if (comptime build_options.polar_tmux) {
++                    polar_tmux.requestManagedNewTab(window);
++                    return true;
++                }
+                 window.newTab(core);
+                 return true;
+             },
+diff --git a/src/apprt/gtk/class/surface.zig b/src/apprt/gtk/class/surface.zig
+--- a/src/apprt/gtk/class/surface.zig
++++ b/src/apprt/gtk/class/surface.zig
+@@ -739,6 +739,43 @@
+         return priv.core_surface;
+     }
+
++    pub const ManagedFontSync = enum {
++        synchronized,
++        pending_realization,
++    };
++
++    /// Synchronizes one managed Polar Station Surface without depending on
++    /// GTK realization timing. Unrealized Surfaces retain the request that
++    /// initSurface consumes; realized Surfaces use Ghostty's normal action.
++    pub fn synchronizeManagedFontSize(
++        self: *Self,
++        points: f32,
++    ) !ManagedFontSync {
++        const priv = self.private();
++        if (priv.core_surface) |surface| {
++            if (surface.font_size.points != points or
++                !surface.font_size_adjusted)
++            {
++                _ = try surface.performBindingAction(
++                    .{ .set_font_size = points },
++                );
++            }
++            return .synchronized;
++        }
++
++        if (priv.font_size_request) |size| {
++            size.points = points;
++        } else {
++            const size = glib.ext.create(font.face.DesiredSize);
++            size.* = .{ .points = points };
++            priv.font_size_request = size;
++        }
++        self.as(gobject.Object).notifyByPspec(
++            properties.@"font-size-request".impl.param_spec,
++        );
++        return .pending_realization;
++    }
++
+     pub fn rt(self: *Self) *ApprtSurface {
+         const priv = self.private();
+         return &priv.rt_surface;
+@@ -792,6 +829,10 @@
+     /// then we should force a redraw.
+     pub fn redraw(self: *Self) void {
+         const priv = self.private();
++        const trace = @import("../../../polar_station_trace.zig");
++        const key = if (priv.core_surface) |surface| trace.rendererKey(&surface.renderer) else 0;
++        const request = trace.beginCall(41, key);
++        defer trace.endCall(42, key, request);
+         priv.gl_area.queueRender();
+     }
+
+@@ -1766,7 +1807,7 @@
+         priv.cursor_pos = .{ .x = 0, .y = 0 };
+         priv.mouse_shape = .text;
+         priv.mouse_hidden = false;
+-        priv.focused = true;
++        priv.focused = !@import("build_options").polar_tmux;
+         priv.size = .{ .width = 0, .height = 0 };
+         priv.vadj_signal_group = null;
+
+@@ -3282,10 +3323,21 @@
+         const priv = self.private();
+         const surface = priv.core_surface orelse return 1;
+
++        const trace = @import("../../../polar_station_trace.zig");
++        const request_key = trace.rendererKey(&surface.renderer);
++        const request = trace.beginCall(43, request_key);
++        defer trace.endCall(44, request_key, request);
+         surface.renderer.drawFrame(true) catch |err| {
+             log.warn("failed to draw frame err={}", .{err});
+             return 0;
+         };
++
++        if (comptime @import("build_options").polar_tmux) {
++            surface.renderer.draw_mutex.lock();
++            const key = if (surface.renderer.polar_trace_drawn) surface.renderer.polar_trace_key else 0;
++            surface.renderer.draw_mutex.unlock();
++            @import("../polar_tmux/main.zig").traceSurface(self, key);
++        }
+
+         return 1;
+     }
+@@ -3296,6 +3348,10 @@
+         height: c_int,
+         self: *Self,
+     ) callconv(.c) void {
++        const station_trace = @import("../../../polar_station_trace.zig");
++        const station_key = if (self.private().core_surface) |surface| station_trace.rendererKey(&surface.renderer) else 0;
++        const station_resize = station_trace.beginCall(63, station_key);
++        defer station_trace.endCall(64, station_key, station_resize);
+         // Some debug output to help understand what GTK is telling us.
+         {
+             const widget = gl_area.as(gtk.Widget);
+@@ -3334,6 +3390,9 @@
+                 log.warn("error in size callback err={}", .{err});
+             };
+
++            const station_grid = surface.size.grid();
++            station_trace.grid(1, station_key, station_grid.columns, station_grid.rows, priv.size.width, priv.size.height);
++
+             // Setup our resize overlay if configured
+             self.resizeOverlaySchedule();
+
+@@ -3352,6 +3411,8 @@
+     };
+
+     fn initSurface(self: *Self) InitError!void {
++        if (comptime @import("build_options").polar_tmux) @import("../polar_tmux/main.zig").traceSurfaceStage(self, 20);
++        defer if (comptime @import("build_options").polar_tmux) @import("../polar_tmux/main.zig").traceSurfaceStage(self, 21);
+         const priv: *Private = self.private();
+         assert(priv.core_surface == null);
+         const gl_area = priv.gl_area;
+@@ -3419,6 +3480,13 @@
+
+         // Store it!
+         priv.core_surface = surface;
++
++        // Core/renderer assume focus. Replay GTK's actual state even when
++        // enter/leave happened before core construction, using the normal
++        // deferred callback boundary (never reenter a libghostty lock).
++        if (comptime @import("build_options").polar_tmux) {
++            _ = glib.idleAddOnce(idleFocus, self.ref());
++        }
+
+         // Emit the signal that we initialized the surface.
+         Surface.signals.init.impl.emit(
+diff --git a/src/apprt/gtk/class/window.zig b/src/apprt/gtk/class/window.zig
+index c01cad618..5454a08ed 100644
+--- a/src/apprt/gtk/class/window.zig
++++ b/src/apprt/gtk/class/window.zig
+@@ -1,4 +1,5 @@
+ const std = @import("std");
++const build_options = @import("build_options");
+ const build_config = @import("../../../build_config.zig");
+ const assert = @import("../../../quirks.zig").inlineAssert;
+ const adw = @import("adw");
+@@ -29,6 +30,10 @@ const Tab = @import("tab.zig").Tab;
+ const DebugWarning = @import("debug_warning.zig").DebugWarning;
+ const CommandPalette = @import("command_palette.zig").CommandPalette;
+ const WeakRef = @import("../weak_ref.zig").WeakRef;
++const polar_station_geometry = @import("../polar_tmux/control_center/host_geometry.zig");
++const polar_station_startup = @import("../polar_tmux/shell_startup.zig");
++const polar_tmux = @import("../polar_tmux/main.zig");
++const polar_shortcuts = @import("../polar_tmux/shortcuts.zig");
+
+ const log = std.log.scoped(.gtk_ghostty_window);
+
+@@ -257,6 +262,19 @@ pub const Window = extern struct {
+         context_menu_page: ?*adw.TabPage = null,
+
+         // Template bindings
++        main_menu: *gio.Menu,
++        polar_station_shell: *gtk.Overlay,
++        polar_station_body: *gtk.Box,
++        polar_station_terminal: *gtk.ScrolledWindow,
++        polar_station_pane: ?*gtk.Widget = null,
++        polar_station_baseline_width: c_int = 0,
++        polar_station_last_visible_width: c_int = 0,
++        polar_station_pane_width: c_int = 0,
++        polar_station_visible: bool = false,
++        polar_station_pending_visible: bool = false,
++        shortcut_hud: ?*gtk.Widget = null,
++        shortcut_modifiers: polar_shortcuts.ModifierState = .{},
++        shortcut_pressed_keycode: c_uint = 0,
+         tab_overview: *adw.TabOverview,
+         tab_bar: *adw.TabBar,
+         tab_view: *adw.TabView,
+@@ -304,6 +322,14 @@ pub const Window = extern struct {
+             break :config config.get();
+         };
+
++        if (comptime build_options.polar_tmux) {
++            const station_menu = gio.Menu.new();
++            defer station_menu.unref();
++            station_menu.append("Polar Station…", "app.polar-station");
++            station_menu.append("Settings…", "app.polar-settings");
++            priv.main_menu.prependSection(null, station_menu.as(gio.MenuModel));
++        }
++
+         // We initialize our windowing protocol to none because we can't
+         // actually initialize this until we get realized.
+         priv.winproto = .none;
+@@ -326,7 +352,14 @@ pub const Window = extern struct {
+         self.initActionMap();
++        if (comptime build_options.polar_tmux) self.installShortcutHud();
+
+         // Start states based on config.
+-        if (config.maximize) self.as(gtk.Window).maximize();
++        if (polar_station_startup.shouldMaximize(
++            config.maximize,
++            build_options.polar_tmux,
++        )) self.as(gtk.Window).maximize();
+-        if (config.fullscreen != .false) self.as(gtk.Window).fullscreen();
++        if (polar_station_startup.shouldFullscreen(
++            config.fullscreen != .false,
++            build_options.polar_tmux,
++        )) self.as(gtk.Window).fullscreen();
+
+         // If we have an explicit title set, we set that immediately
+@@ -881,6 +914,405 @@ pub const Window = extern struct {
+         return self.private().tab_view;
+     }
+
++    fn appendShortcutRow(
++        column: *gtk.Box,
++        key_text: [:0]const u8,
++        action_text: [:0]const u8,
++    ) void {
++        const row = gtk.Box.new(.horizontal, 20);
++        row.as(gtk.Widget).setVexpand(1);
++        row.as(gtk.Widget).setValign(.fill);
++        const key = gtk.Label.new(key_text);
++        key.as(gtk.Widget).addCssClass("polar-shortcut-key");
++        key.as(gtk.Widget).setSizeRequest(-1, -1);
++        key.as(gtk.Widget).setValign(.center);
++        key.setXalign(0);
++        row.append(key.as(gtk.Widget));
++        const description = gtk.Label.new(action_text);
++        description.as(gtk.Widget).addCssClass("polar-shortcut-action");
++        description.as(gtk.Widget).setHexpand(1);
++        description.as(gtk.Widget).setValign(.center);
++        description.setXalign(0);
++        description.setWrap(0);
++        row.append(description.as(gtk.Widget));
++        column.append(row.as(gtk.Widget));
++    }
++
++    fn installShortcutHud(self: *Self) void {
++        const css_provider = gtk.CssProvider.new();
++        css_provider.loadFromString(
++            ".polar-shortcut-hud { background-color: rgba(8, 18, 32, 0.20); }" ++
++                ".polar-shortcut-title { font-size: 68px; font-weight: 700; color: rgba(244, 247, 251, 0.88); }" ++
++                ".polar-shortcut-heading { font-size: 52px; font-weight: 700; color: rgba(244, 247, 251, 0.88); }" ++
++                ".polar-shortcut-key { min-width: 220px; font-size: 50px; font-weight: 700; color: rgba(114, 220, 186, 0.88); }" ++
++                ".polar-shortcut-action { font-size: 44px; color: rgba(244, 247, 251, 0.88); }" ++
++                ".polar-shortcut-compact .polar-shortcut-title { font-size: 28px; } .polar-shortcut-compact .polar-shortcut-heading { font-size: 24px; } .polar-shortcut-compact .polar-shortcut-key { min-width: 150px; font-size: 22px; } .polar-shortcut-compact .polar-shortcut-action { font-size: 20px; }" ++
++                ".polar-pane-number { font-weight: 800; color: rgba(114, 220, 186, 0.66); text-shadow: 0 0 5px rgba(8, 18, 32, 0.66); } .polar-pane-number-size-32 { font-size: 32px; } .polar-pane-number-size-48 { font-size: 48px; } .polar-pane-number-size-64 { font-size: 64px; } .polar-pane-number-size-96 { font-size: 96px; } .polar-pane-number-size-128 { font-size: 128px; } .polar-pane-number-size-160 { font-size: 160px; } .polar-pane-number-size-192 { font-size: 192px; } .polar-pane-number-size-256 { font-size: 256px; } .polar-pane-number-size-320 { font-size: 320px; } .polar-pane-number-size-384 { font-size: 384px; } .polar-pane-number-size-448 { font-size: 448px; } .polar-pane-number-size-512 { font-size: 512px; } .polar-pane-number-size-640 { font-size: 640px; } .polar-pane-number-size-768 { font-size: 768px; } .polar-pane-number-size-896 { font-size: 896px; }",
++        );
++        gtk.StyleContext.addProviderForDisplay(
++            self.as(gtk.Widget).getDisplay(),
++            css_provider.as(gtk.StyleProvider),
++            gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 4,
++        );
++        css_provider.as(gobject.Object).unref();
++
++        const hud = gtk.Box.new(.vertical, 0);
++        const hud_widget = hud.as(gtk.Widget);
++        hud_widget.addCssClass("polar-shortcut-hud");
++        hud_widget.setHalign(.fill);
++        hud_widget.setValign(.fill);
++        hud_widget.setCanTarget(0);
++        hud_widget.setVisible(0);
++
++        const content = gtk.Box.new(.vertical, 22);
++        content.as(gtk.Widget).setHalign(.fill);
++        content.as(gtk.Widget).setValign(.fill);
++        content.as(gtk.Widget).setHexpand(1);
++        content.as(gtk.Widget).setVexpand(1);
++        content.as(gtk.Widget).setMarginTop(24);
++        content.as(gtk.Widget).setMarginBottom(24);
++        content.as(gtk.Widget).setMarginStart(32);
++        content.as(gtk.Widget).setMarginEnd(32);
++        hud.append(content.as(gtk.Widget));
++
++        const title = gtk.Label.new("Hold Ctrl + Shift · release either to hide");
++        title.as(gtk.Widget).addCssClass("polar-shortcut-title");
++        title.as(gtk.Widget).setHalign(.center);
++        content.append(title.as(gtk.Widget));
++
++        const columns = gtk.Box.new(.horizontal, 32);
++        columns.setHomogeneous(1);
++        columns.as(gtk.Widget).setHexpand(1);
++        columns.as(gtk.Widget).setVexpand(1);
++        const station = gtk.Box.new(.vertical, 0);
++        station.as(gtk.Widget).setHexpand(1);
++        station.as(gtk.Widget).setVexpand(1);
++        const station_heading = gtk.Label.new("POLAR STATION");
++        station_heading.setXalign(0);
++        station_heading.as(gtk.Widget).addCssClass("polar-shortcut-heading");
++        station.append(station_heading.as(gtk.Widget));
++        for (0..polar_shortcuts.catalogCount()) |index| {
++            const entry = polar_shortcuts.catalogEntry(index);
++            if (entry.action == 5 and entry.number != 1) continue;
++            appendShortcutRow(station, if (entry.action == 5) "1–9" else std.mem.span(entry.key), std.mem.span(entry.label));
++        }
++        columns.append(station.as(gtk.Widget));
++        const ghostty = gtk.Box.new(.vertical, 0);
++        ghostty.as(gtk.Widget).setHexpand(1);
++        ghostty.as(gtk.Widget).setVexpand(1);
++        const ghostty_heading = gtk.Label.new("GHOSTTY");
++        ghostty_heading.setXalign(0);
++        ghostty_heading.as(gtk.Widget).addCssClass("polar-shortcut-heading");
++        ghostty.append(ghostty_heading.as(gtk.Widget));
++        if (self.getConfig()) |config| {
++            const items = [_]struct { action: input.Binding.Action, label: [:0]const u8 }{
++                .{ .action = .previous_tab, .label = "Previous Tab" },
++                .{ .action = .next_tab, .label = "Next Tab" },
++                .{ .action = .new_tab, .label = "New Tab" },
++                .{ .action = .{ .close_tab = .this }, .label = "Close Tab" },
++                .{ .action = .start_search, .label = "Search" },
++                .{ .action = .toggle_command_palette, .label = "Command palette" },
++                .{ .action = .{ .copy_to_clipboard = .mixed }, .label = "Copy" },
++                .{ .action = .paste_from_clipboard, .label = "Paste" },
++                .{ .action = .{ .new_split = .right }, .label = "Split right" },
++                .{ .action = .{ .new_split = .down }, .label = "Split down" },
++                .{ .action = .toggle_split_zoom, .label = "Zoom split" },
++            };
++            for (items) |item| {
++                const trigger = config.get().keybind.set.getTrigger(item.action) orelse continue;
++                var buffer: [256]u8 = undefined;
++                const chord = std.fmt.bufPrintZ(&buffer, "{f}", .{trigger}) catch continue;
++                appendShortcutRow(ghostty, chord, item.label);
++            }
++        }
++        columns.append(ghostty.as(gtk.Widget));
++        content.append(columns.as(gtk.Widget));
++        self.private().polar_station_shell.addOverlay(hud_widget);
++        self.private().shortcut_hud = hud_widget;
++
++        const keys = gtk.EventControllerKey.new();
++        keys.as(gtk.EventController).setPropagationPhase(.capture);
++        _ = gtk.EventControllerKey.signals.key_pressed.connect(
++            keys, *Self, shortcutKeyPressed, self, .{},
++        );
++        _ = gtk.EventControllerKey.signals.key_released.connect(
++            keys, *Self, shortcutKeyReleased, self, .{},
++        );
++        self.as(gtk.Widget).addController(keys.as(gtk.EventController));
++    }
++
++    fn shortcutKeyPressed(
++        _: *gtk.EventControllerKey,
++        keyval: c_uint,
++        keycode: c_uint,
++        mods: gdk.ModifierType,
++        self: *Self,
++    ) callconv(.c) c_int {
++        const priv = self.private();
++        priv.shortcut_modifiers.press(keyval, mods);
++        const visible = priv.shortcut_modifiers.visible();
++        if (priv.shortcut_hud) |hud| {
++            if (self.as(gtk.Widget).getWidth() < 1800 or self.as(gtk.Widget).getHeight() < 1100)
++                hud.addCssClass("polar-shortcut-compact")
++            else
++                hud.removeCssClass("polar-shortcut-compact");
++            hud.setVisible(@intFromBool(visible));
++        }
++        polar_tmux.setNumberBadgesVisible(self, visible);
++        if (!visible) return 0;
++        const action = polar_shortcuts.resolve(keyval, keycode) orelse return 0;
++        if (priv.shortcut_pressed_keycode == keycode and !polar_shortcuts.repeatable(keyval, keycode)) return 1;
++        if (!polar_tmux.dispatchWindowShortcut(self, action)) return 0;
++        priv.shortcut_pressed_keycode = keycode;
++        return 1;
++    }
++
++    pub fn shortcutKeyReleased(
++        _: *gtk.EventControllerKey,
++        keyval: c_uint,
++        keycode: c_uint,
++        _: gdk.ModifierType,
++        self: *Self,
++    ) callconv(.c) void {
++        const priv = self.private();
++        if (priv.shortcut_pressed_keycode == keycode) priv.shortcut_pressed_keycode = 0;
++        priv.shortcut_modifiers.release(keyval);
++        if (priv.shortcut_hud) |hud|
++            hud.setVisible(@intFromBool(priv.shortcut_modifiers.visible()));
++        polar_tmux.setNumberBadgesVisible(self, priv.shortcut_modifiers.visible());
++    }
++
++    /// Attach the Polar Station controller as the optional start child of the
++    /// same horizontal pane that owns Ghostty's existing terminal subtree.
++    pub fn attachPolarStationPane(
++        self: *Self,
++        pane: *gtk.Widget,
++    ) void {
++        const priv = self.private();
++        if (priv.polar_station_pane != null) return;
++        pane.setHalign(.fill);
++        pane.setValign(.fill);
++        pane.setVexpand(1);
++        pane.setVisible(0);
++        pane.setHexpand(0);
++        priv.polar_station_body.prepend(pane);
++        priv.polar_station_pane = pane;
++    }
++
++    /// Show the real left pane and grow the same toplevel by its exact width.
++    pub fn showPolarStationPane(
++        self: *Self,
++        pane: *gtk.Widget,
++        pane_width: c_int,
++    ) void {
++        const priv = self.private();
++        if (priv.polar_station_pane == null) {
++            self.attachPolarStationPane(pane);
++        }
++        const maximized = self.as(gtk.Window).isMaximized() != 0;
++        const fullscreen = self.as(gtk.Window).isFullscreen() != 0;
++        if (polar_station_startup.shouldDeferController(
++            maximized,
++            fullscreen,
++            self.polarStationConfiguredWidth(),
++            self.polarStationConfiguredHeight(),
++            build_options.polar_tmux,
++        )) {
++            pane.setSizeRequest(pane_width, -1);
++            priv.polar_station_pane_width = pane_width;
++            priv.polar_station_pending_visible = true;
++            self.as(gtk.Window).maximize();
++            log.info(
++                "Polar Station pane queued until maximized pane_width={}",
++                .{pane_width},
++            );
++            return;
++        }
++        priv.polar_station_pending_visible = false;
++        if (pane.getVisible() == 0) {
++            const current_width = self.polarStationConfiguredWidth();
++            priv.polar_station_baseline_width =
++                polar_station_geometry.baselineForShow(
++                    priv.polar_station_baseline_width,
++                    priv.polar_station_last_visible_width,
++                    current_width,
++                );
++            log.info(
++                "Polar Station pane baseline current_width={} last_visible_width={} resolved_baseline_width={}",
++                .{
++                    current_width,
++                    priv.polar_station_last_visible_width,
++                    priv.polar_station_baseline_width,
++                },
++            );
++        }
++        const geometry = polar_station_geometry.geometryForPaneWidth(
++            priv.polar_station_baseline_width,
++            true,
++            pane_width,
++            if (maximized or fullscreen)
++                self.polarStationConfiguredWidth()
++            else
++                null,
++        );
++        pane.setVisible(1);
++        pane.setSizeRequest(geometry.pane_width, -1);
++        priv.polar_station_shell.as(gtk.Widget).queueResize();
++        priv.polar_station_pane_width = pane_width;
++        priv.polar_station_visible = true;
++        log.info(
++            "Polar Station pane show baseline_width={} pane_width={} requested_width={}",
++            .{
++                priv.polar_station_baseline_width,
++                geometry.pane_width,
++                geometry.requested_outer_width,
++            },
++        );
++        if (polar_station_geometry.shouldSetDefaultSize(
++            maximized,
++            fullscreen,
++        )) {
++            self.as(gtk.Window).setDefaultSize(
++                geometry.requested_outer_width,
++                @max(@as(c_int, 1), self.as(gtk.Widget).getHeight()),
++            );
++        }
++    }
++
++    /// Resize only the controller allocation; the terminal remains the end
++    /// child and receives all remaining width.
++    pub fn resizePolarStationPane(
++        self: *Self,
++        pane_width: c_int,
++    ) void {
++        const priv = self.private();
++        if (priv.polar_station_pending_visible) {
++            const pane = priv.polar_station_pane orelse return;
++            pane.setSizeRequest(pane_width, -1);
++            priv.polar_station_pane_width = pane_width;
++            return;
++        }
++        if (!priv.polar_station_visible) return;
++        const pane = priv.polar_station_pane orelse return;
++        const maximized = self.as(gtk.Window).isMaximized() != 0;
++        const fullscreen = self.as(gtk.Window).isFullscreen() != 0;
++        const geometry = polar_station_geometry.geometryForPaneWidth(
++            priv.polar_station_baseline_width,
++            true,
++            pane_width,
++            if (maximized or fullscreen)
++                self.polarStationConfiguredWidth()
++            else
++                null,
++        );
++        pane.setSizeRequest(geometry.pane_width, -1);
++        priv.polar_station_pane_width = pane_width;
++        log.info(
++            "Polar Station pane resize baseline_width={} pane_width={} requested_width={} shell_width={} child_width={} visible={} mapped={} rooted={}",
++            .{
++                priv.polar_station_baseline_width, geometry.pane_width, geometry.requested_outer_width,
++                priv.polar_station_shell.as(gtk.Widget).getWidth(), pane.getWidth(),
++                pane.getVisible(), pane.getMapped(), @intFromBool(pane.getRoot() != null),
++            },
++        );
++        if (polar_station_geometry.shouldSetDefaultSize(
++            maximized,
++            fullscreen,
++        )) {
++            self.as(gtk.Window).setDefaultSize(
++                @max(self.polarStationConfiguredWidth(), geometry.pane_width + 321),
++                @max(@as(c_int, 1), self.as(gtk.Widget).getHeight()),
++            );
++        }
++    }
++
++    /// Hide the start child, restore the pre-open width, and return keyboard
++    /// focus to Ghostty's active terminal surface.
++    pub fn hidePolarStationPane(
++        self: *Self,
++        pane: *gtk.Widget,
++    ) void {
++        const priv = self.private();
++        const current = priv.polar_station_pane orelse return;
++        if (@intFromPtr(current) != @intFromPtr(pane)) return;
++        const height = @max(@as(c_int, 1), self.as(gtk.Widget).getHeight());
++        priv.polar_station_last_visible_width = @max(
++            @as(c_int, 1),
++            self.as(gtk.Widget).getWidth(),
++        );
++        pane.setVisible(0);
++        priv.polar_station_body.remove(pane);
++        priv.polar_station_pane = null;
++        priv.polar_station_visible = false;
++        priv.polar_station_pending_visible = false;
++        priv.polar_station_pane_width = 0;
++        if (priv.polar_station_baseline_width > 0 and
++            polar_station_geometry.shouldSetDefaultSize(
++                self.as(gtk.Window).isMaximized() != 0,
++                self.as(gtk.Window).isFullscreen() != 0,
++            ))
++        {
++            log.info(
++                "Polar Station pane hide restore_width={}",
++                .{priv.polar_station_baseline_width},
++            );
++            self.as(gtk.Window).setDefaultSize(
++                priv.polar_station_baseline_width,
++                height,
++            );
++        }
++        if (self.getActiveSurface()) |surface| surface.grabFocus();
++    }
++
++    pub fn detachPolarStationPane(
++        self: *Self,
++        pane: *gtk.Widget,
++    ) void {
++        const priv = self.private();
++        const current = priv.polar_station_pane orelse return;
++        if (@intFromPtr(current) != @intFromPtr(pane)) return;
++        if (priv.polar_station_visible) self.hidePolarStationPane(pane) else priv.polar_station_body.remove(pane);
++        priv.polar_station_pane = null;
++        priv.polar_station_baseline_width = 0;
++        priv.polar_station_last_visible_width = 0;
++        priv.polar_station_pane_width = 0;
++        priv.polar_station_pending_visible = false;
++    }
++
++    fn polarStationConfiguredWidth(self: *Self) c_int {
++        const widget_width = self.as(gtk.Widget).getWidth();
++        const surface_width = if (self.as(gtk.Native).getSurface()) |gdk_surface|
++            gdk_surface.getWidth()
++        else
++            0;
++        return @max(widget_width, surface_width);
++    }
++
++    fn polarStationConfiguredHeight(self: *Self) c_int {
++        const widget_height = self.as(gtk.Widget).getHeight();
++        const surface_height = if (self.as(gtk.Native).getSurface()) |gdk_surface|
++            gdk_surface.getHeight()
++        else
++            0;
++        return @max(widget_height, surface_height);
++    }
++
++    fn flushPendingPolarStationPane(self: *Self) void {
++        const priv = self.private();
++        if (!priv.polar_station_pending_visible) return;
++        if (polar_station_startup.shouldDeferController(
++            self.as(gtk.Window).isMaximized() != 0,
++            self.as(gtk.Window).isFullscreen() != 0,
++            self.polarStationConfiguredWidth(),
++            self.polarStationConfiguredHeight(),
++            build_options.polar_tmux,
++        )) return;
++        const pane = priv.polar_station_pane orelse return;
++        const pane_width = priv.polar_station_pane_width;
++        priv.polar_station_pending_visible = false;
++        self.showPolarStationPane(pane, pane_width);
++    }
++
+     /// Get the current window decoration value for this window.
+     pub fn getWindowDecoration(self: *Self) configpkg.WindowDecoration {
+         const priv = self.private();
+@@ -1084,11 +1509,21 @@ pub const Window = extern struct {
+                 .{err},
+             );
+         };
++        self.flushPendingPolarStationPane();
+     }
+
+     fn propIsActive(
+         _: *gtk.Window,
+         _: *gobject.ParamSpec,
+         self: *Self,
+     ) callconv(.c) void {
++        if (comptime build_options.polar_tmux) {
++            if (self.as(gtk.Window).isActive() == 0) {
++                const priv = self.private();
++                priv.shortcut_modifiers = .{};
++                priv.shortcut_pressed_keycode = 0;
++                if (priv.shortcut_hud) |hud| hud.setVisible(0);
++                polar_tmux.setNumberBadgesVisible(self, false);
++            }
++        }
+         // Hide quick-terminal if set to autohide
+@@ -1140,6 +1575,7 @@ pub const Window = extern struct {
+         self: *Self,
+     ) callconv(.c) void {
+         self.syncAppearance();
++        self.flushPendingPolarStationPane();
+     }
+
+     fn propMenuActive(
+@@ -1303,3 +1739,7 @@ pub const Window = extern struct {
+     fn btnNewTab(_: *adw.SplitButton, self: *Self) callconv(.c) void {
++        if (comptime build_options.polar_tmux) {
++            polar_tmux.requestManagedNewTab(self);
++            return;
++        }
+         self.performBindingAction(.new_tab);
+     }
+@@ -1307,6 +1747,10 @@ pub const Window = extern struct {
+     fn tabOverviewCreateTab(
+         _: *adw.TabOverview,
+         self: *Self,
+     ) callconv(.c) *adw.TabPage {
++        if (comptime build_options.polar_tmux) {
++            polar_tmux.requestManagedNewTab(self);
++            return self.private().tab_view.getSelectedPage().?;
++        }
+         return self.newTabPage(if (self.getActiveSurface()) |v| v.core() else null, .tab, .none);
+     }
+@@ -2085,6 +2529,10 @@ pub const Window = extern struct {
+             });
+
+             // Bindings
++            class.bindTemplateChildPrivate("main_menu", .{});
++            class.bindTemplateChildPrivate("polar_station_shell", .{});
++            class.bindTemplateChildPrivate("polar_station_body", .{});
++            class.bindTemplateChildPrivate("polar_station_terminal", .{});
+             class.bindTemplateChildPrivate("tab_overview", .{});
+             class.bindTemplateChildPrivate("tab_bar", .{});
+             class.bindTemplateChildPrivate("tab_view", .{});
+diff --git a/src/apprt/gtk/ui/1.5/window.blp b/src/apprt/gtk/ui/1.5/window.blp
+index b66a93093..5fea575f2 100644
+--- a/src/apprt/gtk/ui/1.5/window.blp
++++ b/src/apprt/gtk/ui/1.5/window.blp
+@@ -20,18 +20,37 @@ template $GhosttyWindow: Adw.ApplicationWindow {
+   // to disable this so that terminal programs can capture F10 (such as htop)
+   handle-menubar-accel: false;
+
+-  content: Adw.TabOverview tab_overview {
+-    create-tab => $overview_create_tab();
+-    notify::open => $overview_notify_open();
+-    view: tab_view;
+-    enable-new-tab: true;
+-    // Disable the title buttons (close, maximize, minimize, ...)
+-    // *inside* the tab overview if CSDs are disabled.
+-    // We do spare the search button, though.
+-    show-start-title-buttons: bind template.decorated;
+-    show-end-title-buttons: bind template.decorated;
+-
+-    Adw.ToolbarView toolbar {
++  content: Gtk.Overlay polar_station_shell {
++    hexpand: true;
++    vexpand: true;
++
++    child: Gtk.Box polar_station_body {
++      orientation: horizontal;
++      hexpand: true;
++      vexpand: true;
++
++    Gtk.ScrolledWindow polar_station_terminal {
++      min-content-width: 320;
++      hexpand: true;
++      vexpand: true;
++      hscrollbar-policy: external;
++      vscrollbar-policy: external;
++      propagate-natural-width: false;
++      propagate-natural-height: false;
++
++      Adw.TabOverview tab_overview {
++      hexpand: true;
++      create-tab => $overview_create_tab();
++      notify::open => $overview_notify_open();
++      view: tab_view;
++      enable-new-tab: true;
++      // Disable the title buttons (close, maximize, minimize, ...)
++      // *inside* the tab overview if CSDs are disabled.
++      // We do spare the search button, though.
++      show-start-title-buttons: bind template.decorated;
++      show-end-title-buttons: bind template.decorated;
++
++      Adw.ToolbarView toolbar {
+       top-bar-style: bind template.toolbar-style;
+       bottom-bar-style: bind template.toolbar-style;
+
+@@ -51,14 +70,26 @@ template $GhosttyWindow: Adw.ApplicationWindow {
+         };
+
+         [start]
+-        Adw.SplitButton {
+-          clicked => $new_tab();
+-          icon-name: "tab-new-symbolic";
+-          tooltip-text: _("New Tab");
+-          dropdown-tooltip: _("New Split");
+-          menu-model: split_menu;
+-          can-focus: false;
+-          focus-on-click: false;
++        Gtk.Box {
++          orientation: horizontal;
++
++          Adw.SplitButton {
++            clicked => $new_tab();
++            icon-name: "tab-new-symbolic";
++            tooltip-text: _("New Tab");
++            dropdown-tooltip: _("New Split");
++            menu-model: split_menu;
++            can-focus: false;
++            focus-on-click: false;
++          }
++
++          Gtk.Button {
++            action-name: "app.polar-station";
++            icon-name: "com.polarealm.PolarStation";
++            tooltip-text: _("Polar Station (Ctrl+Shift+S)");
++            can-focus: false;
++            focus-on-click: false;
++          }
+         }
+
+         [end]
+@@ -110,6 +141,18 @@ template $GhosttyWindow: Adw.ApplicationWindow {
+             can-focus: false;
+             focus-on-click: false;
+           }
++
++          Gtk.Button {
++            styles [
++              "flat",
++            ]
++
++            action-name: "app.polar-station";
++            icon-name: "com.polarealm.PolarStation";
++            tooltip-text: _("Polar Station (Ctrl+Shift+S)");
++            can-focus: false;
++            focus-on-click: false;
++          }
+         }
+
+         [end]
+@@ -168,7 +211,10 @@ template $GhosttyWindow: Adw.ApplicationWindow {
+           }
+         }
+       }
+-    }
++      }
++      }
++    }
++    };
+   };
+ }
+
+diff --git a/src/build/Config.zig b/src/build/Config.zig
+index 3a8a4e0c7..2efe68c2f 100644
+--- a/src/build/Config.zig
++++ b/src/build/Config.zig
+@@ -34,6 +34,8 @@ sentry: bool = true,
+ simd: bool = true,
+ i18n: bool = true,
+ wasm_shared: bool = true,
++polar_tmux: bool = false,
++polar_station_client_lib_dir: ?[]const u8 = null,
+
+ /// Ghostty exe properties
+ exe_entrypoint: ExeEntrypoint = .ghostty,
+@@ -203,6 +205,20 @@ pub fn init(b: *std.Build, appVersion: []const u8) !Config {
+         else => false,
+     };
+
++    config.polar_tmux = b.option(
++        bool,
++        "polar-tmux",
++        "Compile the Polar Station Linux frontend into the GTK application.",
++    ) orelse false;
++    config.polar_station_client_lib_dir = if (config.polar_tmux)
++        b.option(
++            []const u8,
++            "polar-station-client-lib-dir",
++            "Directory containing libpolar_tmux.a.",
++        ) orelse return error.MissingPolarStationClientLibrary
++    else
++        null;
++
+     //---------------------------------------------------------------
+     // Ghostty Exe Properties
+
+@@ -485,6 +501,7 @@ pub fn addOptions(self: *const Config, step: *std.Build.Step.Options) !void {
+     step.addOption(RendererBackend, "renderer", self.renderer);
+     step.addOption(ExeEntrypoint, "exe_entrypoint", self.exe_entrypoint);
+     step.addOption(WasmTarget, "wasm_target", self.wasm_target);
++    step.addOption(bool, "polar_tmux", self.polar_tmux);
+     step.addOption(bool, "wasm_shared", self.wasm_shared);
+
+     // Our version. We also add the string version so we don't need
+diff --git a/src/build/GhosttyExe.zig b/src/build/GhosttyExe.zig
+index 3e63b6026..f46693a60 100644
+--- a/src/build/GhosttyExe.zig
++++ b/src/build/GhosttyExe.zig
+@@ -12,7 +12,7 @@ install_step: *std.Build.Step.InstallArtifact,
+
+ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty {
+     const exe: *std.Build.Step.Compile = b.addExecutable(.{
+-        .name = "ghostty",
++        .name = if (cfg.polar_tmux) "polarstation" else "ghostty",
+         .root_module = b.createModule(.{
+             .root_source_file = b.path("src/main.zig"),
+             .target = cfg.target,
+@@ -32,5 +32,19 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
+     // Add the shared dependencies
+     _ = try deps.add(exe);
+-
++    if (cfg.polar_tmux) {
++        exe.addIncludePath(b.path("src/apprt/gtk/polar_tmux"));
++        exe.addLibraryPath(.{ .cwd_relative = cfg.polar_station_client_lib_dir.? });
++        exe.linkSystemLibrary("polar_tmux");
++        exe.linkSystemLibrary("dl");
++        exe.linkSystemLibrary("pthread");
++        exe.linkSystemLibrary("m");
++        exe.linkSystemLibrary("ssl");
++        exe.linkSystemLibrary("crypto");
++        // Rust libwebm uses the native C++ ABI; Zig's libc++ is not a substitute.
++        const cxx = try b.findProgram(&.{"c++", "g++"}, &.{});
++        const cxx_runtime = std.mem.trim(u8, b.run(&.{cxx, "-print-file-name=libstdc++.so"}), " \r\n");
++        exe.addObjectFile(.{ .cwd_relative = cxx_runtime });
++    }
++
+     // Check for possible issues
+     try checkNixShell(exe, cfg);
+diff --git a/src/build_config.zig b/src/build_config.zig
+index c19f7372b..c33cdd548 100644
+--- a/src/build_config.zig
++++ b/src/build_config.zig
+@@ -55,7 +55,10 @@ pub const i18n: bool = config.i18n;
+ /// There are many places that don't use this variable so simply swapping
+ /// this variable is NOT ENOUGH to change the bundle ID. I just wanted to
+ /// avoid it in Zig coe as much as possible.
+-pub const bundle_id = "com.mitchellh.ghostty";
++pub const bundle_id = if (options.polar_tmux)
++    "com.polarealm.PolarStation"
++else
++    "com.mitchellh.ghostty";
+
+ /// True if we should have "slow" runtime safety checks. The initial motivation
+ /// for this was terminal page/pagelist integrity checks. These were VERY
+diff --git a/src/termio/Exec.zig b/src/termio/Exec.zig
+index 9b9bfb360..eeb6cde52 100644
+--- a/src/termio/Exec.zig
++++ b/src/termio/Exec.zig
+@@ -5,6 +5,7 @@ const Exec = @This();
+-
++
+ const std = @import("std");
+ const builtin = @import("builtin");
++const build_options = @import("build_options");
+ const assert = @import("../quirks.zig").inlineAssert;
+ const Allocator = std.mem.Allocator;
+ const ArenaAllocator = std.heap.ArenaAllocator;
+@@ -1148,7 +1149,60 @@ pub const Subprocess = struct {
+         }
+     }
+-
++
++    const PANE_HOST_REAP_BUDGET_MS: usize = 1800;
++    const PANE_HOST_REAP_POLL_MS: usize = 10;
++    const PANE_HOST_HANGUP_POLLS: usize = 40;
++    const PANE_HOST_TERMINATE_POLLS: usize = 40;
++    const PANE_HOST_KILL_POLLS: usize =
++        (PANE_HOST_REAP_BUDGET_MS / PANE_HOST_REAP_POLL_MS) -
++        PANE_HOST_HANGUP_POLLS -
++        PANE_HOST_TERMINATE_POLLS;
++
++    fn killManagedPaneHostPid(pid: c.pid_t) !void {
++        if (try signalPaneHostAndWait(pid, c.SIGHUP, PANE_HOST_HANGUP_POLLS)) return;
++        if (try signalPaneHostAndWait(pid, c.SIGTERM, PANE_HOST_TERMINATE_POLLS)) return;
++        if (try signalPaneHostAndWait(pid, c.SIGKILL, PANE_HOST_KILL_POLLS)) return;
++
++        log.err("managed Pane Host did not exit within {}ms pid={}", .{
++            PANE_HOST_REAP_BUDGET_MS,
++            pid,
++        });
++        return error.KillFailed;
++    }
++
++    fn signalPaneHostAndWait(
++        pid: c.pid_t,
++        signal: c_int,
++        attempts: usize,
++    ) !bool {
++        var attempt: usize = 0;
++        while (attempt < attempts) : (attempt += 1) {
++            switch (posix.errno(c.kill(pid, signal))) {
++                .SUCCESS => {},
++                .SRCH => {},
++                else => |err| {
++                    log.warn("error signaling managed Pane Host pid={} signal={} err={}", .{
++                        pid,
++                        signal,
++                        err,
++                    });
++                    return error.KillFailed;
++                },
++            }
++
++            const res = posix.waitpid(pid, std.c.W.NOHANG);
++            log.debug("managed Pane Host waitpid result={}", .{res.pid});
++            if (res.pid != 0) return true;
++            if (attempt + 1 < attempts) {
++                std.Thread.sleep(PANE_HOST_REAP_POLL_MS * std.time.ns_per_ms);
++            }
++        }
++        return false;
++    }
++
+     fn killPid(pid: c.pid_t) !void {
++        if (comptime build_options.polar_tmux) return killManagedPaneHostPid(pid);
++
+         const pgid = getpgid(pid) orelse return;
+-
++
+         // It is possible to send a killpg between the time that
+diff --git a/src/apprt/gtk/class/split_tree.zig b/src/apprt/gtk/class/split_tree.zig
+--- a/src/apprt/gtk/class/split_tree.zig
++++ b/src/apprt/gtk/class/split_tree.zig
+@@ -1,4 +1,6 @@
+ const std = @import("std");
++const build_options = @import("build_options");
++const gdk = @import("gdk");
+ const assert = @import("../../../quirks.zig").inlineAssert;
+ const Allocator = std.mem.Allocator;
+ const adw = @import("adw");
+@@ -154,6 +156,11 @@
+         /// tree change states.
+         last_focused: WeakRef(Surface) = .empty,
+
++        /// Latest explicit managed request, distinct from GTK-observed focus.
++        pending_focus: WeakRef(Surface) = .empty,
++        focus_clock: ?*gdk.FrameClock = null,
++        focus_handler: c_ulong = 0,
++
+         /// The source that we use to rebuild the tree. This is also
+         /// used to debounce updates.
+         rebuild_source: ?c_uint = null,
+@@ -167,6 +174,9 @@
+
+     fn init(self: *Self, _: *Class) callconv(.c) void {
+         gtk.Widget.initTemplate(self.as(gtk.Widget));
++        if (comptime build_options.polar_tmux) {
++            _ = gtk.Widget.signals.map.connect(self.as(gtk.Widget), *Self, focusMapped, self, .{});
++        }
+
+         // Initialize our actions
+         self.initActionMap();
+@@ -469,6 +479,67 @@
+         return null;
+     }
+
++    /// Hand the managed target through tree reconstruction and final layout.
++    pub fn focusSurface(self: *Self, surface: *Surface) bool {
++        const tree = self.getTree() orelse return false;
++        var it = tree.iterator();
++        while (it.next()) |entry| {
++            if (entry.view != surface) continue;
++            if (comptime build_options.polar_tmux) @import("../polar_tmux/main.zig").traceSurfaceStage(surface, 73);
++            self.private().pending_focus.set(surface);
++            self.private().last_focused.set(surface);
++            surface.grabFocus();
++            self.scheduleFocusAfterPaint();
++            return true;
++        }
++        return false;
++    }
++
++    fn scheduleFocusAfterPaint(self: *Self) void {
++        const priv = self.private();
++        if (priv.focus_clock != null or self.as(gtk.Widget).getMapped() == 0) return;
++        const surface = priv.pending_focus.get() orelse return;
++        surface.unref();
++        const clock = self.as(gtk.Widget).getFrameClock() orelse return;
++        _ = clock.as(gobject.Object).ref();
++        priv.focus_clock = clock;
++        priv.focus_handler = gdk.FrameClock.signals.after_paint.connect(
++            clock, *Self, focusAfterPaint, self, .{},
++        );
++        clock.requestPhase(gdk.FrameClockPhase.flags_after_paint);
++    }
++
++    fn cancelFocusAfterPaint(self: *Self) void {
++        const priv = self.private();
++        const clock = priv.focus_clock orelse return;
++        priv.focus_clock = null;
++        gobject.signalHandlerDisconnect(clock.as(gobject.Object), priv.focus_handler);
++        priv.focus_handler = 0;
++        clock.as(gobject.Object).unref();
++    }
++
++    fn focusAfterPaint(_: *gdk.FrameClock, self: *Self) callconv(.c) void {
++        self.cancelFocusAfterPaint();
++        const priv = self.private();
++        const surface = priv.pending_focus.get() orelse return;
++        defer surface.unref();
++        if (self.as(gtk.Widget).getMapped() == 0) return;
++        priv.pending_focus.set(null);
++        const tree = self.getTree() orelse return;
++        var it = tree.iterator();
++        while (it.next()) |entry| {
++            if (entry.view != surface) continue;
++            if (comptime build_options.polar_tmux) @import("../polar_tmux/main.zig").traceSurfaceStage(surface, 74);
++            priv.last_focused.set(surface);
++            surface.grabFocus();
++            return;
++        }
++    }
++
++    fn focusMapped(_: *gtk.Widget, self: *Self) callconv(.c) void {
++        self.scheduleFocusAfterPaint();
++    }
++
+     /// Returns the last focused surface in the tree.
+     pub fn getLastFocusedSurface(self: *Self) ?*Surface {
+         const surface = self.private().last_focused.get() orelse return null;
+@@ -564,6 +635,8 @@
+
+     fn dispose(self: *Self) callconv(.c) void {
+         const priv = self.private();
++        self.cancelFocusAfterPaint();
++        priv.pending_focus.set(null);
+         priv.last_focused.set(null);
+         if (priv.rebuild_source) |v| {
+             if (glib.Source.remove(v) == 0) {
+@@ -760,6 +833,7 @@
+         // the last focused surface. We let the weakref clear itself when
+         // the surface is destroyed.
+         if (!surface.getFocused()) return;
++        if (comptime build_options.polar_tmux) @import("../polar_tmux/main.zig").traceSurfaceStage(surface, 75);
+         self.private().last_focused.set(surface);
+
+         // Our active surface probably changed
+@@ -812,6 +886,13 @@
+         // Always mark our rebuild source as null since we're done.
+         const priv = self.private();
+         priv.rebuild_source = null;
++
++        // Retain the managed intent before GTK reparents the old widgets.
++        const requested_focus = if (comptime build_options.polar_tmux)
++            priv.pending_focus.get() orelse priv.last_focused.get()
++        else
++            null;
++        defer if (requested_focus) |surface| surface.unref();
+
+         // Rebuild our tree
+         const tree: *const Surface.Tree = self.private().tree orelse &.empty;
+@@ -828,7 +909,9 @@
+
+         // Replacing our tree widget hierarchy can reset focus state.
+         // If we have a last-focused surface, restore focus to it.
+-        if (priv.last_focused.get()) |v| {
++        if (comptime build_options.polar_tmux) {
++            if (requested_focus) |surface| _ = self.focusSurface(surface);
++        } else if (priv.last_focused.get()) |v| {
+             defer v.unref();
+             v.grabFocus();
+         }
+diff --git a/src/renderer/State.zig b/src/renderer/State.zig
+--- a/src/renderer/State.zig
++++ b/src/renderer/State.zig
+@@ -15,6 +15,14 @@
+
+ /// The terminal data.
+ terminal: *terminalpkg.Terminal,
++
++// Private opt-in Station first-content attribution; protected by mutex.
++polar_trace_checked: bool = false,
++polar_trace_key: u64 = 0,
++polar_trace_parsed: bool = false,
++
++// Resident Pane focus is forwarded explicitly; protected by the same mutex.
++polar_native_focus_control: bool = false,
+
+ /// The terminal inspector, if any. This will be null while the inspector
+ /// is not active and will be set when it is active.
+diff --git a/src/termio/Termio.zig b/src/termio/Termio.zig
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -484,7 +484,11 @@
+     const grid_size = size.grid();
+
+     // Update the size of our pty.
++    const station_trace = @import("../polar_station_trace.zig");
++    const station_key = station_trace.stateKey(self.renderer_state);
++    const station_resize = station_trace.beginCall(68, station_key);
+     try self.backend.resize(grid_size, size.terminal());
++    station_trace.endCall(69, station_key, station_resize);
+
+     // Enter the critical area that we want to keep small
+     {
+@@ -497,6 +501,8 @@
+             grid_size.columns,
+             grid_size.rows,
+         );
++
++        station_trace.grid(2, self.renderer_state.polar_trace_key, self.terminal.cols, self.terminal.rows, size.screen.width, size.screen.height);
+
+         // Update our pixel sizes
+         self.terminal.width_px = grid_size.columns * self.size.cell.width;
+@@ -665,12 +671,17 @@
+ pub fn focusGained(self: *Termio, td: *ThreadData, focused: bool) !void {
+     self.renderer_state.mutex.lock();
+     const focus_event = self.renderer_state.terminal.modes.get(.focus_event);
++    const native_control = self.renderer_state.polar_native_focus_control;
++    const station_key = if (comptime @import("build_options").polar_tmux) self.renderer_state.polar_trace_key else 0;
+     self.renderer_state.mutex.unlock();
+
+     // If we have focus events enabled, we send the focus event.
+-    if (focus_event) {
++    if (focus_event and !native_control) {
+         const seq = if (focused) "\x1b[I" else "\x1b[O";
+         try self.queueWrite(td, seq, false);
+     }
++    if (comptime @import("build_options").polar_tmux) {
++        if (focus_event and native_control) @import("../polar_station_trace.zig").emit(76, station_key);
++    }
+
+     // We always notify our backend of focus changes.
+@@ -676,11 +687,28 @@
+ /// call with pty data but it is also called by the read thread when using
+ /// an exec subprocess.
+ pub fn processOutput(self: *Termio, buf: []const u8) void {
++    const station_call = @import("../polar_station_trace.zig").beginCall(26, 0);
++    defer @import("../polar_station_trace.zig").endCall(27, 0, station_call);
+     // We are modifying terminal state from here on out and we need
+     // the lock to grab our read data.
+     self.renderer_state.mutex.lock();
+     defer self.renderer_state.mutex.unlock();
++    const station_trace = @import("../polar_station_trace.zig");
++    if (comptime station_trace.managed) {
++        if (!self.renderer_state.polar_trace_checked) {
++            self.renderer_state.polar_trace_checked = true;
++            if (station_trace.enabled()) self.renderer_state.polar_trace_key = station_trace.nextKey();
++        }
++        station_trace.endCall(33, self.renderer_state.polar_trace_key, station_call);
++        if (!self.renderer_state.polar_trace_parsed) station_trace.emit(6, self.renderer_state.polar_trace_key);
++    }
+     self.processOutputLocked(buf);
++    if (comptime station_trace.managed) {
++        if (!self.renderer_state.polar_trace_parsed) {
++            self.renderer_state.polar_trace_parsed = true;
++            station_trace.emit(7, self.renderer_state.polar_trace_key);
++        }
++    }
+ }
+
+ /// Process output from readdata but the lock is already held.
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -227,6 +227,8 @@
+         /// 15 minutes at 120Hz) to prevent wasted memory buildup from
+         /// a large screen.
+         terminal_state_frame_count: usize = 0,
++        polar_trace_key: u64 = 0,
++        polar_trace_drawn: bool = false,
+
+         /// Our overlay state, if any.
+         overlay: ?Overlay = null,
+@@ -1159,6 +1161,7 @@
+                 preedit: ?renderer.State.Preedit,
+                 scrollbar: terminal.Scrollbar,
+                 overlay_features: []const Overlay.Feature,
++                polar_trace_key: u64,
+             };
+
+             // Update all our data as tightly as possible within the mutex.
+@@ -1276,6 +1279,7 @@
+                     .preedit = preedit,
+                     .scrollbar = scrollbar,
+                     .overlay_features = overlay_features,
++                    .polar_trace_key = if (state.polar_trace_parsed) state.polar_trace_key else 0,
+                 };
+             };
+
+@@ -1360,6 +1364,7 @@
+                 self.draw_mutex.lock();
+                 defer self.draw_mutex.unlock();
+
++                var cells_rebuilt = true;
+                 // Build our GPU cells
+                 self.rebuildCells(
+                     critical.preedit,
+@@ -1374,8 +1379,16 @@
+                     // to update the cells. In this case, we continue with
+                     // our old buffer (frozen contents) and log it.
+                     comptime assert(@TypeOf(err) == error{OutOfMemory});
++                    cells_rebuilt = false;
+                     log.warn("error rebuilding GPU cells err={}", .{err});
+                 };
++
++                if (comptime @import("../polar_station_trace.zig").managed) {
++                    if (cells_rebuilt and self.polar_trace_key == 0 and critical.polar_trace_key != 0) {
++                        self.polar_trace_key = critical.polar_trace_key;
++                        @import("../polar_station_trace.zig").emit(8, self.polar_trace_key);
++                    }
++                }
+
+                 // The scrollbar is only emitted during draws so we also
+                 // check the scrollbar cache here and update if needed.
+@@ -1431,6 +1444,8 @@
+             self: *Self,
+             sync: bool,
+         ) !void {
++            const station_call = @import("../polar_station_trace.zig").beginCall(30, 0);
++            defer @import("../polar_station_trace.zig").endCall(31, 0, station_call);
+             // const start = std.time.Instant.now() catch unreachable;
+             // const start_micro = std.time.microTimestamp();
+             // defer {
+@@ -1446,6 +1461,15 @@
+             self.draw_mutex.lock();
+             defer self.draw_mutex.unlock();
+
++            @import("../polar_station_trace.zig").endCall(32, self.polar_trace_key, station_call);
++            var station_draw_completed = false;
++            defer if (comptime @import("../polar_station_trace.zig").managed) {
++                if (station_draw_completed and !self.polar_trace_drawn and self.polar_trace_key != 0) {
++                    self.polar_trace_drawn = true;
++                    @import("../polar_station_trace.zig").emit(9, self.polar_trace_key);
++                }
++            };
++
+             // After the graphics API is complete (so we defer) we want to
+             // update our scrollbar state.
+             defer if (self.scrollbar_dirty) {
+@@ -1467,6 +1491,8 @@
+             // If either of our surface dimensions is zero
+             // then drawing is absurd, so we just return.
+             if (surface_size.width == 0 or surface_size.height == 0) return;
++
++            @import("../polar_station_trace.zig").grid(3, self.polar_trace_key, self.cells.size.columns, self.cells.size.rows, surface_size.width, surface_size.height);
+
+             const size_changed =
+                 self.size.screen.width != surface_size.width or
+@@ -1718,6 +1744,7 @@
+                     });
+                 }
+             }
++            station_draw_completed = true;
+         }
+
+         // Callback from the graphics API when a frame is completed.
+@@ -2310,6 +2337,8 @@
+             cursor_style_: ?renderer.CursorStyle,
+             links: *const terminal.RenderState.CellSet,
+         ) Allocator.Error!void {
++            const station_call = @import("../polar_station_trace.zig").beginCall(28, self.polar_trace_key);
++            defer @import("../polar_station_trace.zig").endCall(29, self.polar_trace_key, station_call);
+             const state: *terminal.RenderState = &self.terminal_state;
+
+             // const start = try std.time.Instant.now();
+diff --git a/src/polar_station_trace.zig b/src/polar_station_trace.zig
+new file mode 100644
+--- /dev/null
++++ b/src/polar_station_trace.zig
+@@ -0,0 +0,53 @@
++//! Bounded opt-in milestones and actual invocation diagnostics.
++const std = @import("std");
++pub const managed = @import("build_options").polar_tmux;
++var sequence = std.atomic.Value(u64).init(1);
++var trace_enabled = std.atomic.Value(u8).init(0);
++extern fn polar_station_trace_native(u32, ?[*]const u8, usize, u64) callconv(.c) void;
++extern fn polar_station_trace_native_call(u32, u64, u64) callconv(.c) void;
++pub fn enabled() bool {
++    if (comptime !managed) return false;
++    const cached = trace_enabled.load(.monotonic);
++    if (cached != 0) return cached == 2;
++    const value: u8 = if (std.posix.getenv("POLAR_STATION_TRACE_DIR") != null) 2 else 1;
++    trace_enabled.store(value, .monotonic);
++    return value == 2;
++}
++pub fn beginCall(stage: u32, key: u64) u64 {
++    if (!enabled()) return 0;
++    const operation = nextKey();
++    endCall(stage, key, operation);
++    return operation;
++}
++pub fn endCall(stage: u32, key: u64, operation: u64) void {
++    if (comptime managed) {
++        if (operation != 0) polar_station_trace_native_call(stage, key, operation);
++    }
++}
++pub fn nextKey() u64 { return sequence.fetchAdd(1, .monotonic); }
++pub fn emit(stage: u32, key: u64) void {
++    if (comptime managed) {
++        if (key != 0) polar_station_trace_native(stage, null, 0, key);
++    }
++}
++pub fn rendererKey(renderer: anytype) u64 {
++    if (!enabled()) return 0;
++    renderer.draw_mutex.lock();
++    defer renderer.draw_mutex.unlock();
++    return renderer.polar_trace_key;
++}
++
++// Read the existing shared diagnostic identity under its existing owner lock.
++pub fn stateKey(state: anytype) u64 {
++    if (!enabled()) return 0;
++    state.mutex.lock();
++    defer state.mutex.unlock();
++    return state.polar_trace_key;
++}
++
++extern fn polar_station_trace_native_grid(u32, u64, u32, u32, u32, u32) callconv(.c) void;
++pub fn grid(stage: u32, key: u64, columns: u32, rows: u32, width: u32, height: u32) void {
++    if (comptime managed) {
++        if (enabled()) polar_station_trace_native_grid(stage, key, columns, rows, width, height);
++    }
++}
+diff --git a/src/main_ghostty.zig b/src/main_ghostty.zig
+--- a/src/main_ghostty.zig
++++ b/src/main_ghostty.zig
+@@ -24,6 +24,7 @@
+ };
+
+ pub fn main() !MainReturn {
++    @import("polar_station_trace.zig").emit(11, 1);
+     // We first start by initializing our global state. This will setup
+     // process-level state we need to run the terminal. The reason we use
+     // a global is because the C API needs to be able to access this state;
+@@ -53,6 +54,7 @@
+         try stderr.flush();
+     };
+     defer state.deinit();
++    @import("polar_station_trace.zig").emit(12, 1);
+     const alloc = state.alloc;
+
+     if (comptime builtin.mode == .Debug) {
+@@ -96,11 +98,13 @@
+     // Create our app state
+     const app: *App = try App.create(alloc);
+     defer app.destroy();
++    @import("polar_station_trace.zig").emit(13, 1);
+
+     // Create our runtime app
+     var app_runtime: apprt.App = undefined;
+     try app_runtime.init(app, .{});
+     defer app_runtime.terminate();
++    @import("polar_station_trace.zig").emit(14, 1);
+
+     // Since - by definition - there are no surfaces when first started, the
+     // quit timer may need to be started. The start timer will get cancelled if/
+diff --git a/src/renderer/Thread.zig b/src/renderer/Thread.zig
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -492,18 +492,28 @@
+ /// Trigger a draw. This will not update frame data or anything, it will
+ /// just trigger a draw/paint.
+ fn drawFrame(self: *Thread, now: bool) void {
++    const station_trace = @import("../polar_station_trace.zig");
++    const trace_key = station_trace.rendererKey(self.renderer);
++    const trace_request = station_trace.beginCall(35, trace_key);
+     // If we're invisible, we do not draw.
+-    if (!self.flags.visible) return;
++    if (!self.flags.visible) {
++        station_trace.endCall(36, trace_key, trace_request);
++        return;
++    }
+
+     // If the renderer is managing a vsync on its own, we only draw
+     // when we're forced to via `now`.
+-    if (!now and self.renderer.hasVsync()) return;
++    if (!now and self.renderer.hasVsync()) {
++        station_trace.endCall(37, trace_key, trace_request);
++        return;
++    }
+
+     if (must_draw_from_app_thread) {
+-        _ = self.app_mailbox.push(
+-            .{ .redraw_surface = self.surface },
++        const pushed = self.app_mailbox.push(
++            .{ .redraw_surface = .{ .surface = self.surface, .trace_key = trace_key, .trace_request = trace_request } },
+             .{ .instant = {} },
+         );
++        station_trace.endCall(if (pushed == 0) 45 else 38, trace_key, trace_request);
+     } else {
+         self.renderer.drawFrame(false) catch |err|
+             log.warn("error drawing err={}", .{err});
+@@ -641,6 +651,12 @@
+         return .disarm;
+     };
+
++    // Count successful cursor timer callbacks, not scheduling requests.
++    if (@import("../polar_station_trace.zig").enabled()) {
++        t.renderer.draw_mutex.lock();
++        _ = @import("../polar_station_trace.zig").beginCall(34, t.renderer.polar_trace_key);
++        t.renderer.draw_mutex.unlock();
++    }
+     t.flags.cursor_blink_visible = !t.flags.cursor_blink_visible;
+     t.wakeup.notify() catch {};
+
+diff --git a/src/App.zig b/src/App.zig
+--- a/src/App.zig
++++ b/src/App.zig
+@@ -249,7 +249,11 @@
+             .new_window => |msg| try self.newWindow(rt_app, msg),
+             .close => |surface| self.closeSurface(surface),
+             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
+-            .redraw_surface => |surface| try self.redrawSurface(rt_app, surface),
++            .redraw_surface => |msg| {
++                @import("polar_station_trace.zig").endCall(39, msg.trace_key, msg.trace_request);
++                defer @import("polar_station_trace.zig").endCall(40, msg.trace_key, msg.trace_request);
++                try self.redrawSurface(rt_app, msg.surface);
++            },
+
+             // If we're quitting, then we set the quit flag and stop
+             // draining the mailbox immediately. This lets us defer
+@@ -557,7 +561,11 @@
+     /// use single-threaded draws. To redraw a surface for all runtimes,
+     /// wake up the renderer thread. The renderer thread will send this
+     /// message if it needs to.
+-    redraw_surface: *apprt.Surface,
++    redraw_surface: struct {
++        surface: *apprt.Surface,
++        trace_key: u64 = 0,
++        trace_request: u64 = 0,
++    },
+
+     const NewWindow = struct {
+         /// The parent surface
+diff --git a/src/termio/Thread.zig b/src/termio/Thread.zig
+--- a/src/termio/Thread.zig
++++ b/src/termio/Thread.zig
+@@ -30,6 +30,8 @@
+     const min_ms = 25;
+
+     resize: ?renderer.Size = null,
++    station_resize_request: u64 = 0,
++    station_resize_key: u64 = 0,
+ };
+
+ /// The number of milliseconds before we reset the synchronized output flag
+@@ -376,6 +378,13 @@
+ fn handleResize(self: *Thread, cb: *CallbackData, resize: renderer.Size) void {
+     self.coalesce_data.resize = resize;
+
++    const station_trace = @import("../polar_station_trace.zig");
++    if (self.coalesce_c.state() != .active) {
++        self.coalesce_data.station_resize_key = station_trace.stateKey(cb.io.renderer_state);
++        self.coalesce_data.station_resize_request = station_trace.beginCall(65, self.coalesce_data.station_resize_key);
++    }
++    station_trace.endCall(66, self.coalesce_data.station_resize_key, self.coalesce_data.station_resize_request);
++
+     // If the timer is already active we just return. In the future we want
+     // to reset the timer up to a maximum wait time but for now this ensures
+     // relatively smooth resizing.
+@@ -429,6 +438,7 @@
+
+     if (cb.self.coalesce_data.resize) |v| {
+         cb.self.coalesce_data.resize = null;
++        @import("../polar_station_trace.zig").endCall(67, cb.self.coalesce_data.station_resize_key, cb.self.coalesce_data.station_resize_request);
+         cb.io.resize(&cb.data, v) catch |err| {
+             log.warn("error during resize err={}", .{err});
+         };
+diff --git a/src/config/Config.zig b/src/config/Config.zig
+--- a/src/config/Config.zig
++++ b/src/config/Config.zig
+@@ -3716,7 +3716,13 @@
+ /// where we have multiple options. On macOS, we always use `kqueue`.
+ ///
+ /// Available since: 1.2.0
+-@"async-backend": AsyncBackend = .auto,
++/// Polar Station defaults to epoll on Linux so idle terminal event waits do not
++/// inflate host iowait accounting. Explicit configuration still overrides this.
++@"async-backend": AsyncBackend = if (builtin.os.tag == .linux and
++    @import("build_options").polar_tmux)
++    .epoll
++else
++    .auto,
+
+ /// Control the auto-update functionality of Ghostty. This is only supported
+ /// on macOS currently, since Linux builds are distributed via package
+@@ -10302,6 +10308,33 @@
+     try testing.expectEqualStrings(cmd.direct[2], "bar baz");
+ }
+
++test "async backend defaults follow the managed Linux build" {
++    const testing = std.testing;
++    var cfg = try Config.default(testing.allocator);
++    defer cfg.deinit();
++
++    if (builtin.os.tag == .linux and @import("build_options").polar_tmux) {
++        try testing.expectEqual(AsyncBackend.epoll, cfg.@"async-backend");
++    } else {
++        try testing.expectEqual(AsyncBackend.auto, cfg.@"async-backend");
++    }
++}
++
++test "explicit async backend overrides the product default" {
++    const testing = std.testing;
++    inline for (.{
++        .{ "auto", AsyncBackend.auto },
++        .{ "epoll", AsyncBackend.epoll },
++        .{ "io_uring", AsyncBackend.io_uring },
++    }) |entry| {
++        var cfg = try Config.default(testing.allocator);
++        defer cfg.deinit();
++        var it: TestIterator = .{ .data = &.{"--async-backend=" ++ entry[0]} };
++        try cfg.loadIter(cfg._arena.?.allocator(), &it);
++        try testing.expectEqual(entry[1], cfg.@"async-backend");
++    }
++}
++
+ test "clone default" {
+     const testing = std.testing;
+     const alloc = testing.allocator;
+diff --git a/src/build/GhosttyResources.zig b/src/build/GhosttyResources.zig
+--- a/src/build/GhosttyResources.zig
++++ b/src/build/GhosttyResources.zig
+@@ -24,5 +24,6 @@
+         }),
+     });
+     build_data_exe.linkLibC();
++    build_data_exe.root_module.addOptions("build_options", deps.options);
+
+     deps.help_strings.addImport(build_data_exe);
+--- a/src/apprt/gtk/class/global_shortcuts.zig
++++ b/src/apprt/gtk/class/global_shortcuts.zig
+@@ -12,7 +12,64 @@
+ const Config = @import("config.zig").Config;
+
+ const log = std.log.scoped(.gtk_ghostty_global_shortcuts);
++const station = @import("build_options").polar_tmux;
++const station_main = @import("../polar_tmux/main.zig");
++const station_dictate = @import("../polar_tmux/dictate.zig");
++const station_modifiers = @import("../polar_tmux/dictate_modifiers.zig");
++const dictate_id = "polar-station-dictate";
+
+ pub const GlobalShortcuts = extern struct {
+     const Self = @This();
++
++    // Older GNOME portals advertise ConfigureShortcuts but reject the call.
++    // Reuse the desktop's per-app shortcut editor; it owns persistence/conflicts.
++    fn openStationShortcutSettings(err: ?*glib.Error) bool {
++        if (err) |value| {
++            const remote = gio.DBusError.getRemoteError(value) orelse return false;
++            defer glib.free(remote);
++            const name = std.mem.span(remote);
++            if (!std.mem.eql(u8, name, "org.freedesktop.DBus.Error.UnknownMethod") and
++                !std.mem.eql(u8, name, "org.freedesktop.DBus.Error.NotSupported")) return false;
++        }
++        const desktop = glib.getenv("XDG_CURRENT_DESKTOP") orelse return false;
++        var names = std.mem.tokenizeScalar(u8, std.mem.span(desktop), ':');
++        var gnome = false;
++        while (names.next()) |part| {
++            if (std.mem.eql(u8, part, "GNOME")) gnome = true;
++        }
++        if (!gnome) return false;
++        var launch_error: ?*glib.Error = null;
++        defer if (launch_error) |value| value.free();
++        // Constant argv parsed by GLib; no shell or user-supplied interpolation.
++        if (glib.spawnCommandLineAsync("gnome-control-center applications com.polarealm.PolarStation", &launch_error) == 0) return false;
++        station_main.dictateVoiceSettingError("System settings opened: select Global Shortcuts, then Hold to Dictate.");
++        return true;
++    }
++
++    pub fn configureStation(self: *Self) bool {
++        const priv = self.private();
++        const dbus = priv.dbus_connection orelse return Self.openStationShortcutSettings(null);
++        const handle = priv.handle orelse return Self.openStationShortcutSettings(null);
++        const payload = glib.Variant.newParsed("(%o, '', @a{sv} {})", handle.ptr);
++        const callbacks = struct {
++            fn completed(source: ?*gobject.Object, result: *gio.AsyncResult, _: ?*anyopaque) callconv(.c) void {
++                const connection = gobject.ext.cast(gio.DBusConnection, source.?).?;
++                var err: ?*glib.Error = null;
++                defer if (err) |value| value.free();
++                const reply = connection.callFinish(result, &err) orelse {
++                    if (err) |value| {
++                        if (Self.openStationShortcutSettings(value)) return;
++                        log.warn("Dictate shortcut configuration failed: {s}", .{value.f_message orelse "unknown error"});
++                    }
++                    station_main.dictateVoiceSettingError("Could not open system shortcut settings. Open your desktop settings and select Polar Station global shortcuts.");
++                    return;
++                };
++                reply.unref();
++            }
++        };
++        dbus.call("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
++            "org.freedesktop.portal.GlobalShortcuts", "ConfigureShortcuts", payload, null, .{},
++            10000, null, callbacks.completed, null);
++        return true;
++    }
+     parent_instance: Parent,
+@@ -78,6 +82,11 @@
+         /// The D-Bus signal subscription for the keybind activate signal.
+         /// The ID is guaranteed to be non-zero, so we can use 0 to indicate null.
+         activate_subscription: c_uint = 0,
++        deactivate_subscription: c_uint = 0,
++        closed_subscription: c_uint = 0,
++        changed_subscription: c_uint = 0,
++        station_enabled: bool = false,
++        station_binding_hash: ?u64 = null,
+
+         pub var offset: c_int = 0;
+     };
+@@ -118,6 +125,21 @@
+         if (priv.activate_subscription != 0) {
+             dbus.signalUnsubscribe(priv.activate_subscription);
+             priv.activate_subscription = 0;
++        }
++
++        if (comptime station) {
++            for ([_]c_uint{ priv.deactivate_subscription, priv.closed_subscription, priv.changed_subscription }) |id| {
++                if (id != 0) dbus.signalUnsubscribe(id);
++            }
++            priv.deactivate_subscription = 0;
++            priv.closed_subscription = 0;
++            priv.changed_subscription = 0;
++            station_main.dictateShortcutBinding("");
++            priv.station_enabled = false;
++            priv.station_binding_hash = null;
++            station_modifiers.stop();
++            station_main.dictateShortcutLost();
++            station_main.dictateShortcutStatus("unavailable");
+         }
+
+         if (priv.handle) |handle| {
+@@ -148,11 +148,32 @@
+     fn refresh(self: *Self) Allocator.Error!void {
+-        // Always close our previous state first.
+-        self.close();
+-
+         const priv = self.private();
+
+         // We need configuration to proceed.
+         const config = if (priv.config) |v| v.get() else return;
++
++        // Theme and font updates do not change global shortcuts. Keep their
++        // active/in-flight portal session; closing during Bind races GNOME.
++        const fingerprint = if (comptime station) value: {
++            var hasher = std.hash.Wyhash.init(0);
++            var bindings = config.keybind.set.bindings.iterator();
++            while (bindings.next()) |entry| {
++                const leaf: Binding.Set.GenericLeaf = switch (entry.value_ptr.*) {
++                    .leader => continue,
++                    inline .leaf, .leaf_chained => |leaf| leaf.generic(),
++                };
++                if (!leaf.flags.global) continue;
++                const actions = leaf.actionsSlice();
++                if (actions.len != 1) continue;
++                std.hash.autoHash(&hasher, entry.key_ptr.*.hash());
++                std.hash.autoHash(&hasher, actions[0].hash());
++            }
++            break :value hasher.final();
++        } else 0;
++        if (comptime station) if (priv.station_binding_hash) |previous| {
++            if (previous == fingerprint and (priv.handle != null or priv.response_subscription != 0)) return;
++        };
++        self.close();
++        if (comptime station) priv.station_binding_hash = fingerprint;
+
+         // Setup our new arena that we'll use for memory allocations.
+         assert(priv.arena == null);
+@@ -201,15 +223,21 @@
+             try priv.map.put(
+                 alloc,
+                 try alloc.dupeZ(u8, trigger),
+-                actions[0],
++                if (comptime station) try actions[0].clone(alloc) else actions[0],
+             );
+         }
+
++        if (comptime station) {
++            const trigger = std.mem.span(station_dictate.shortcut().xdg_trigger);
++            priv.station_enabled = !priv.map.contains(trigger);
++            if (!priv.station_enabled) station_main.dictateShortcutStatus("conflict");
++        }
++
+         // Store our arena
+         priv.arena = arena;
+
+         // Create our session if we have global shortcuts.
+-        if (priv.map.count() > 0) try self.request(.create_session);
++        if (priv.map.count() > 0 or priv.station_enabled) try self.request(.create_session);
+     }
+
+     const Method = enum {
+@@ -251,6 +275,12 @@
+                     var binds: glib.VariantBuilder = undefined;
+                     glib.VariantBuilder.init(&binds, bind_type);
+
++                    if (comptime station) if (priv.station_enabled) {
++                        const shortcut = station_dictate.shortcut();
++                        binds.addParsed("(%s, {'description': <%s>, 'preferred_trigger': <%s>})",
++                            @as([*:0]const u8, dictate_id), shortcut.label, shortcut.xdg_trigger);
++                    };
++
+                     var action_buf: [256]u8 = undefined;
+
+                     var it = priv.map.iterator();
+@@ -304,7 +334,7 @@
+                     // Subscribe to keybind activations
+                     assert(priv.activate_subscription == 0);
+                     priv.activate_subscription = dbus.signalSubscribe(
+-                        null,
++                        "org.freedesktop.portal.Desktop",
+                         "org.freedesktop.portal.GlobalShortcuts",
+                         "Activated",
+                         "/org/freedesktop/portal/desktop",
+@@ -315,12 +345,39 @@
+                         null,
+                     );
+
++                    if (comptime station) {
++                        priv.deactivate_subscription = dbus.signalSubscribe(
++                            "org.freedesktop.portal.Desktop", "org.freedesktop.portal.GlobalShortcuts",
++                            "Deactivated", "/org/freedesktop/portal/desktop", handle,
++                            .{ .match_arg0_path = true }, shortcutDeactivated, shortcuts, null);
++                        priv.changed_subscription = dbus.signalSubscribe(
++                            "org.freedesktop.portal.Desktop", "org.freedesktop.portal.GlobalShortcuts",
++                            "ShortcutsChanged", "/org/freedesktop/portal/desktop", handle,
++                            .{ .match_arg0_path = true }, shortcutsChanged, shortcuts, null);
++                        priv.closed_subscription = dbus.signalSubscribe(
++                            "org.freedesktop.portal.Desktop", "org.freedesktop.portal.Session",
++                            "Closed", priv.handle.?, null, .{}, sessionClosed, shortcuts, null);
++                    }
++
+                     shortcuts.request(.bind_shortcuts) catch |err| {
+                         log.warn("failed to bind shortcuts={}", .{err});
+                         return;
+                     };
+                 },
+-                .bind_shortcuts => {},
++                .bind_shortcuts => {
++                    if (comptime station) {
++                        if (!shortcuts.private().station_enabled) return;
++                        var bound: ?*glib.Variant = null;
++                        if (vardict.lookup("shortcuts", "@a(sa{sv})", &bound) != 0) {
++                            defer bound.?.unref();
++                            shortcuts.stationBindings(bound.?);
++                        } else {
++                            shortcuts.private().station_enabled = false;
++                            station_main.dictateShortcutBinding("");
++                            station_main.dictateShortcutStatus("unavailable");
++                        }
++                    }
++                },
+             }
+         }
+     };
+@@ -413,6 +413,11 @@
+                 params_.get("(u@a{sv})", &response, &vardict);
+
++                if (comptime station) if (response != 0) {
++                    self_cb.close();
++                    station_main.dictateVoiceSettingError("Global shortcut registration failed. Open system shortcut settings; the Dictate button remains available.");
++                };
++
+                 switch (response) {
+                     0 => {
+                         log.debug("request successful", .{});
+                         method.onResponse(self_cb, vardict.?);
+@@ -555,6 +612,9 @@
+         params.getChild(1, "&s", &shortcut_id);
+         log.debug("activated={s}", .{shortcut_id});
+
++        if (comptime station) if (self.private().station_enabled and std.mem.eql(u8, std.mem.span(shortcut_id), dictate_id)) {
++            if (!station_modifiers.selected and !station_modifiers.needs_extension) station_main.dictateShortcut(true); return;
++        };
+         const action = self.private().map.get(std.mem.span(shortcut_id)) orelse return;
+         signals.trigger.impl.emit(
+             self,
+@@ -562,6 +622,50 @@
+             .{&action},
+             null,
+         );
++    }
++
++    fn stationBindings(self: *Self, bound: *glib.Variant) void {
++        if (comptime !station) return;
++        var found = false;
++        var index: usize = 0;
++        while (index < bound.nChildren()) : (index += 1) {
++            const row = bound.getChildValue(index); defer row.unref();
++            var id: [*:0]const u8 = undefined; row.getChild(0, "&s", &id);
++            if (!std.mem.eql(u8, std.mem.span(id), dictate_id)) continue;
++            const binding_properties = row.getChildValue(1); defer binding_properties.unref();
++            var description: [*:0]const u8 = undefined;
++            if (binding_properties.lookup("trigger_description", "&s", &description) != 0 and std.mem.span(description).len > 0) {
++                found = true;
++                station_main.dictateShortcutBinding(std.mem.span(description));
++            }
++        }
++        if (found) found = station_modifiers.configure(self.private().dbus_connection.?);
++        self.private().station_enabled = found;
++        if (!found) { station_main.dictateShortcutLost(); station_main.dictateShortcutBinding(""); }
++        station_main.dictateShortcutStatus(if (found and station_modifiers.needs_extension) "capture_unavailable" else if (found) "ready" else if (station_modifiers.access_denied) "access_denied" else "unavailable");
++    }
++    fn shortcutsChanged(_: *gio.DBusConnection, _: ?[*:0]const u8,
++        _: [*:0]const u8, _: [*:0]const u8, _: [*:0]const u8,
++        params: *glib.Variant, ud: ?*anyopaque) callconv(.c) void {
++        const self: *Self = @ptrCast(@alignCast(ud));
++        const bindings = params.getChildValue(1); defer bindings.unref();
++        self.stationBindings(bindings);
++    }
++
++    fn shortcutDeactivated(_: *gio.DBusConnection, _: ?[*:0]const u8,
++        _: [*:0]const u8, _: [*:0]const u8, _: [*:0]const u8,
++        params: *glib.Variant, ud: ?*anyopaque) callconv(.c) void {
++        const self: *Self = @ptrCast(@alignCast(ud));
++        if (comptime station) {
++            var id: [*:0]const u8 = undefined; params.getChild(1, "&s", &id);
++            if (self.private().station_enabled and !station_modifiers.selected and !station_modifiers.needs_extension and std.mem.eql(u8, std.mem.span(id), dictate_id)) station_main.dictateShortcut(false);
++        }
++    }
++    fn sessionClosed(_: *gio.DBusConnection, _: ?[*:0]const u8,
++        _: [*:0]const u8, _: [*:0]const u8, _: [*:0]const u8,
++        _: *glib.Variant, ud: ?*anyopaque) callconv(.c) void {
++        const self: *Self = @ptrCast(@alignCast(ud));
++        self.close();
+     }
+
+     //---------------------------------------------------------------

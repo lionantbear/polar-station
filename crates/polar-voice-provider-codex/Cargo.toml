@@ -1,0 +1,30 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-voice-provider-codex"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1"
+codex-api = { workspace = true }
+codex-http-client = { workspace = true }
+codex-login = { workspace = true }
+codex-protocol = { workspace = true }
+http = "1"
+polar-voice = { workspace = true }
+polar-vault = { workspace = true }
+ropus = "0.12.18"
+reqwest = { workspace = true, features = ["multipart"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+webrtc = "0.17.2"
+zeroize = "1.8"
+webm = "=2.2.0"
+
+[dev-dependencies]
+polar-vault-store-sqlite = { workspace = true }
+polar-identity = { workspace = true }
+hound = "3.5"
+tempfile = "3"

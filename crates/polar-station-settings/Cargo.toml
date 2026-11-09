@@ -1,0 +1,20 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-station-settings"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+polar-dictate.workspace = true
+polar-lgp-reader.workspace = true
+polar-connector-contract.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror = "2"
+rusqlite.workspace = true
+polar-station-store-sqlite.workspace = true
+polar-sqlite-runtime.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

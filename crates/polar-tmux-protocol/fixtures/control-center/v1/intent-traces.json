@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "frontend_session_id": "trace-session",
+  "expected_control_revision": 7,
+  "cases": [
+    {
+      "name": "refresh_sessions",
+      "intent": {
+        "intent": "refresh_sessions"
+      }
+    },
+    {
+      "name": "create_session",
+      "intent": {
+        "intent": "create_session",
+        "execution_target_id": "local",
+        "name": "ops",
+        "working_directory": "/tmp",
+        "command": "htop",
+        "auto_restart": false
+      }
+    },
+    {
+      "name": "restart_session",
+      "intent": {
+        "intent": "restart_session",
+        "execution_target_id": "local",
+        "tmux_session_id": "$7"
+      }
+    },
+    {
+      "name": "rename_session",
+      "intent": {
+        "intent": "rename_session",
+        "execution_target_id": "local",
+        "tmux_session_id": "$7",
+        "name": "renamed"
+      }
+    },
+    {
+      "name": "kill_session",
+      "intent": {
+        "intent": "kill_session",
+        "execution_target_id": "local",
+        "tmux_session_id": "$7",
+        "confirmation_id": "kill-session-local-7"
+      }
+    },
+    {
+      "name": "acknowledge_session_summary",
+      "intent": {
+        "intent": "acknowledge_session_summary",
+        "execution_target_id": "local",
+        "tmux_session_id": "$7",
+        "summary_revision": 3
+      }
+    },
+    {
+      "name": "mark_attention_notification_handled",
+      "intent": {
+        "intent": "mark_attention_notification_handled",
+        "execution_target_id": "local",
+        "tmux_session_id": "$7",
+        "summary_revision": 3
+      }
+    },
+    {
+      "name": "set_ssh_target",
+      "intent": {
+        "intent": "set_ssh_target",
+        "target_id": "ssh-main",
+        "target_revision": 1,
+        "destination": "operator@remote.example",
+        "route_profile": null
+      }
+    }
+  ]
+}

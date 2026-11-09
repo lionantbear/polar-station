@@ -1,0 +1,18 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-station-store-sqlite"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rusqlite.workspace = true
+polar-sqlite-runtime.workspace = true
+polar-storage-migration.workspace = true
+polar-station-inbox.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

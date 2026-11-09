@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polar-tmux-linux"
+version = "0.1.0"
+description = "GTK4/libadwaita frontend for the Polar Tmux Rust Host"
+requires-python = ">=3.11"
+dependencies = ["PyGObject>=3.46"]
+
+[project.scripts]
+polar-tmux-linux = "polar_tmux_linux.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+polar_tmux_linux = ["resources/*.ui"]
+
+[tool.setuptools.data-files]
+"share/applications" = ["data/com.polarealm.PolarStation.desktop"]
+"share/metainfo" = ["data/com.polarealm.PolarStation.metainfo.xml"]
+"share/icons/hicolor/48x48/apps" = ["data/icons/hicolor/48x48/apps/com.polarealm.PolarStation.png"]
+"share/icons/hicolor/64x64/apps" = ["data/icons/hicolor/64x64/apps/com.polarealm.PolarStation.png"]
+"share/icons/hicolor/128x128/apps" = ["data/icons/hicolor/128x128/apps/com.polarealm.PolarStation.png"]
+"share/icons/hicolor/256x256/apps" = ["data/icons/hicolor/256x256/apps/com.polarealm.PolarStation.png"]
+"share/icons/hicolor/512x512/apps" = ["data/icons/hicolor/512x512/apps/com.polarealm.PolarStation.png"]
+"lib/systemd/user" = ["systemd/polar-tmux-host.service"]

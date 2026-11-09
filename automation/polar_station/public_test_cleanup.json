@@ -1,0 +1,3855 @@
+{
+  "schema_version": 1,
+  "description": "Reviewed archive48 test-only removals. Any source drift requires re-review. No private test contents included.",
+  "edits": [
+    {
+      "path": "crates/polar-cas/src/backup_v2/shared.rs",
+      "before": "1df799c1843a61990f3cfe5cfe956a3b4757945993b119955db3bb363293fb57",
+      "after": "9e83a121fd0a58eb4c189ebae61fc4feb156a06f4ee65f2b1c4558fca7a29c86",
+      "ranges": [
+        [
+          3512,
+          5268,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas/src/catalog/files.rs",
+      "before": "84a286df6885dee7fc12ff1738a9996f4714693a542ad05c890ea3a8cf9f256f",
+      "after": "610b4ddc19539c063ee805fd70290baf535b1a8ea65e051468ff86144abb8118",
+      "ranges": [
+        [
+          5823,
+          6571,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas/src/catalog/writers.rs",
+      "before": "832b11c14c4fe41a183b0bd9f6c898c05180f63d58f1b2c8354f7a3ff4e76cd9",
+      "after": "5194068c4054d6d1c4f630743d024b7a3ffd66f44c1f6d4d6dfe98858b432b4d",
+      "ranges": [
+        [
+          3587,
+          4538,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas/src/lib.rs",
+      "before": "2c8fc4e44a6d69833332a1ef1cf6f1e86a5c232aadc6d5d970ede1fb2a0ba6c7",
+      "after": "50ffbdf3da177ef00caab47397ae58e680a62706968042afdfed663241bef777",
+      "ranges": [
+        [
+          7081,
+          8551,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-fs/src/async_reader.rs",
+      "before": "8fdc4665549adc9cc8c7a671e7b1453f68712de107d52311bbbd6c157634b881",
+      "after": "c5ac15262fbbf60866c6d0a868f0477cd5f43f440802ddebf4bfc4e4687afed9",
+      "ranges": [
+        [
+          7309,
+          12554,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-fs/src/compile_image.rs",
+      "before": "f530158b5c43e1c97dc362b840a5c4e90258e20e0225f8ff10a40f82b8b2608b",
+      "after": "616aa8fe01940992cbd74f280fe43ce145b345a4ade9db346b68b3d1c2c53a73",
+      "ranges": [
+        [
+          10503,
+          13950,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-fs/src/receive.rs",
+      "before": "91587ed6d888d7223a84fda23d0e37499848d5bcc3f26df71de1b9ba3345ce17",
+      "after": "150ba25257755f6b4678a92cae06571c61c312a73a3e2db14e5d155fcfa41a89",
+      "ranges": [
+        [
+          6760,
+          9419,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-fs/src/source_reader.rs",
+      "before": "a96707d1aacfd0d0dd42ea7cea4ed6f6c054faad4190cbfe4adf494392e9ce61",
+      "after": "46de985a5b0c79b62b782599a47392734c10c6feadb4a758ce24639293e19862",
+      "ranges": [
+        [
+          12194,
+          13979,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/admission/files.rs",
+      "before": "d3b761865501ce32337c501c36daee91b469eea1b1f94110e1e0c544d0c10ab5",
+      "after": "ec7ee50b167fd0cbcd9ab1261e84151e74edc067bab051a64a0508812a67b562",
+      "ranges": [
+        [
+          5786,
+          5993,
+          ""
+        ],
+        [
+          9166,
+          10655,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/backup.rs",
+      "before": "20b0fbb966754c18726fd19f6dd48adfd3aeb0eccbeb644fee8e061109fe14cf",
+      "after": "ce7be8aad7b08235b273c937c1f79ed47003251b96e213976765884b536a19a3",
+      "ranges": [
+        [
+          18140,
+          18163,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/extensions.rs",
+      "before": "809057c80541da47a601e254353c499d78bf036d1535bcf30128fce8f4c64145",
+      "after": "35f702c6135db9f8d1c6a86278e38bd5731c2b15246f47ff37b367725c92e846",
+      "ranges": [
+        [
+          3055,
+          3078,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/head.rs",
+      "before": "34645f8f7893835146cb3636183380917d40665355db6b6751ad716dfb3a7089",
+      "after": "7b7f9968e9c71fde949c6d353050235d2e31a9246255a3bfd8ea9c769997876b",
+      "ranges": [
+        [
+          529,
+          592,
+          ""
+        ],
+        [
+          1025,
+          1084,
+          ""
+        ],
+        [
+          1727,
+          1786,
+          ""
+        ],
+        [
+          2236,
+          2297,
+          ""
+        ],
+        [
+          2578,
+          2751,
+          ""
+        ],
+        [
+          4100,
+          4446,
+          ""
+        ],
+        [
+          4609,
+          4775,
+          ""
+        ],
+        [
+          5842,
+          5903,
+          ""
+        ],
+        [
+          5977,
+          6173,
+          ""
+        ],
+        [
+          7093,
+          8388,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/local.rs",
+      "before": "c0ddc7639a6752162c56665cafeae8d0a07a8a0a770b0d20b5da193fe7e82d78",
+      "after": "53ff3545e42d91cd15a101ed28598b0c03ad7d6ae15c729d59aca02c078daa62",
+      "ranges": [
+        [
+          6781,
+          6857,
+          ""
+        ],
+        [
+          6899,
+          6974,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/persistent/binary.rs",
+      "before": "b1f757978a02751b9c3c0eca004c2b54feddd5f0da619fa101566d80a70c53ec",
+      "after": "9158dffe9609e26479de96afd1a3cdceeb61eae0080e61a70fc6b6d60901a26f",
+      "ranges": [
+        [
+          2209,
+          2357,
+          ""
+        ],
+        [
+          3827,
+          3906,
+          ""
+        ],
+        [
+          13733,
+          16339,
+          ""
+        ],
+        [
+          17958,
+          18997,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/persistent.rs",
+      "before": "18a7ebae980fae0e92c5b5abc35d337f738b6c1cbbd8c768586ff8855b104b49",
+      "after": "c340c5dd32cce71b95efcc2a0aa158518ac7867417ab72efcc780802e2a2c473",
+      "ranges": [
+        [
+          244,
+          297,
+          ""
+        ],
+        [
+          14350,
+          21659,
+          ""
+        ],
+        [
+          30941,
+          48237,
+          ""
+        ],
+        [
+          48239,
+          48274,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/projection.rs",
+      "before": "f8aa95d67dd760b55e4338e4244b2fb4a96515de9e551bc4ef5ca9f1b3c578b7",
+      "after": "128aa484ce998f06a2fac43ae0054282e85c7e660e04c4c8fda26e047ea2986f",
+      "ranges": [
+        [
+          58,
+          221,
+          ""
+        ],
+        [
+          8667,
+          8900,
+          ""
+        ],
+        [
+          8970,
+          30588,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/writers.rs",
+      "before": "b426724897f93812d776d60e8185dda73c4e50b08bc8214c9c674436e9c0b4e9",
+      "after": "39ea39f1fd3d7433ed08fc9253eb2b58a12ef02537f228559794f43e80a7c623",
+      "ranges": [
+        [
+          3799,
+          3953,
+          ""
+        ],
+        [
+          6835,
+          7001,
+          ""
+        ],
+        [
+          18409,
+          18432,
+          ""
+        ],
+        [
+          18434,
+          18498,
+          ""
+        ],
+        [
+          18499,
+          18559,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index.rs",
+      "before": "cc5004a21168807e580eb9e6e0c8d716700c0bee82c86e7aaf2e98a55ed94d98",
+      "after": "078baea7c1db975044f31a5caa4f8180dc9899d4bf0d02f4d4cb38c80a36a83e",
+      "ranges": [
+        [
+          12027,
+          12195,
+          ""
+        ],
+        [
+          14153,
+          14321,
+          ""
+        ],
+        [
+          15178,
+          15250,
+          ""
+        ],
+        [
+          15261,
+          15386,
+          ""
+        ],
+        [
+          19494,
+          19540,
+          ""
+        ],
+        [
+          19542,
+          19698,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/index_publication.rs",
+      "before": "40bc09e763f72ad24539123aaa03dd03581456c35da229658e1e978ec10df85b",
+      "after": "72e760cf8196d47a0823ce24fda035ab2c183924fe6fb2efc9014777e09d41bf",
+      "ranges": [
+        [
+          1114,
+          1175,
+          ""
+        ],
+        [
+          1221,
+          1531,
+          ""
+        ],
+        [
+          1540,
+          1601,
+          ""
+        ],
+        [
+          1651,
+          1824,
+          ""
+        ],
+        [
+          4826,
+          4891,
+          ""
+        ],
+        [
+          4950,
+          5152,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/lib.rs",
+      "before": "57df35b057460c6fed6091d896a786ea65064589cc1ea6cd3744dd7002b08c26",
+      "after": "f37195de92dcf3ab5919c528b933c53b3a90ed4687db7119194fca2ce83d7e22",
+      "ranges": [
+        [
+          444,
+          494,
+          ""
+        ],
+        [
+          11906,
+          12004,
+          ""
+        ],
+        [
+          12013,
+          12473,
+          ""
+        ],
+        [
+          16307,
+          16577,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/binary.rs",
+      "before": "cf0fae242cf24d1e97c83cfd9f1ae4247d0f3b1f3452569d25be7f2ae04a9d86",
+      "after": "35b3d22a5e9b154e6415d3196f17145061a4f80967f8be12ce85d3d7652b1eda",
+      "ranges": [
+        [
+          6767,
+          7975,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/lifecycle/collect.rs",
+      "before": "440c93e1ca8335ec6c603ac6c11d2558718559dd19e5c395937697bc529effa9",
+      "after": "621dacf6143502603e5b9d87ee0c22788aaa252d564e035c1efd5252c21c8d83",
+      "ranges": [
+        [
+          337,
+          467,
+          ""
+        ],
+        [
+          7641,
+          7728,
+          ""
+        ],
+        [
+          10050,
+          10127,
+          ""
+        ],
+        [
+          10323,
+          10473,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/lifecycle/registry.rs",
+      "before": "1072a670ee28f627321cd326a54cea17b4bee64da4cde9e80150b58ecf5b14f9",
+      "after": "f12f13dde9ded6b06fdf9d51a3a4f7962e2fa6da4b9f9bc5d4cab476bcc117f8",
+      "ranges": [
+        [
+          4995,
+          5056,
+          ""
+        ],
+        [
+          5124,
+          5324,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/lifecycle.rs",
+      "before": "2a019888f76d637c99bd649affeb9feafac6c6d91180e812bdbd560484abce86",
+      "after": "9ca95d2435e9c8ea3b10a3991313296eb31f3c80ad657f1031cf25ddeafbbf29",
+      "ranges": [
+        [
+          2391,
+          2521,
+          ""
+        ],
+        [
+          2779,
+          2858,
+          ""
+        ],
+        [
+          4909,
+          4932,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/navigation.rs",
+      "before": "fc699da68b4c5236bac121f3174fcc7ccaf300c7a2bb91764c4ecdad7eda2a64",
+      "after": "73d49010a64d583959bb230a13ebe783f3bf576642c656d948229e7226b1b2fc",
+      "ranges": [
+        [
+          2353,
+          3728,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/partitions/directory.rs",
+      "before": "7fee6e99e02623a1088d381492928f0d23f79e2f304ce60f103295b0a9aabce6",
+      "after": "e7593ffbe660be381e94610baf482f5dbe3bd7103f65201127d355938f4d6dac",
+      "ranges": [
+        [
+          2794,
+          3435,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/partitions/segments.rs",
+      "before": "4bfeb824683a38ca3d5ccfcae20b63605593db19f68ec1f8b72e8a73260ba57c",
+      "after": "7f93795ee4ffa9288ab7636658ee3621876fc1604699524c855a4301b65326df",
+      "ranges": [
+        [
+          2271,
+          2328,
+          ""
+        ],
+        [
+          2590,
+          2788,
+          ""
+        ],
+        [
+          3566,
+          3726,
+          ""
+        ],
+        [
+          6318,
+          6383,
+          ""
+        ],
+        [
+          8234,
+          8540,
+          ""
+        ],
+        [
+          8732,
+          8830,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/partitions.rs",
+      "before": "6d6d1c7fb3a33344da1c732655316fa29cfcc4377ff9d0692794694361016096",
+      "after": "e69bcf712ee591fa6f00548bb269ffc40776c02b9c117a1a7730e5c25f01e4db",
+      "ranges": [
+        [
+          515,
+          546,
+          ""
+        ],
+        [
+          6170,
+          6379,
+          ""
+        ],
+        [
+          6462,
+          6543,
+          ""
+        ],
+        [
+          7539,
+          7632,
+          ""
+        ],
+        [
+          10307,
+          12135,
+          ""
+        ],
+        [
+          24914,
+          24987,
+          ""
+        ],
+        [
+          26594,
+          26793,
+          ""
+        ],
+        [
+          30000,
+          30046,
+          ""
+        ],
+        [
+          36029,
+          36999,
+          ""
+        ],
+        [
+          37001,
+          41729,
+          ""
+        ],
+        [
+          41731,
+          41765,
+          ""
+        ],
+        [
+          41767,
+          41799,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/receipt.rs",
+      "before": "5351a0370c2d6514bcd69ad1cfe3deaaf3a42ab920fbbe26b470b0cc105ef5a4",
+      "after": "9b4d9b7b894d9dd7e2c52968620229538d5d83b14138054fa3b1ad481a151aac",
+      "ranges": [
+        [
+          2528,
+          2591,
+          ""
+        ],
+        [
+          3054,
+          3116,
+          ""
+        ],
+        [
+          4062,
+          4122,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/search/grouped.rs",
+      "before": "0c489a85f33960d2d4b04f6460f5d957d409a11917235c2057a8af3a787e5b13",
+      "after": "4fd2305e15041c97e537351d9f057d9900eb717ac01e1be695caf41ef4e55c9f",
+      "ranges": [
+        [
+          24258,
+          29718,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/search/perfect.rs",
+      "before": "9df31c050301fb261f961d69294a84d723edfc354dbe7e0ca358d0d77119a7d3",
+      "after": "73ab829941ea9366793131e21305437107bdd244f066d627ebce419fd11145ba",
+      "ranges": [
+        [
+          15043,
+          18627,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/values.rs",
+      "before": "ac90bc3638e381eac2abc3cdba2f6e533187dc40b18c1bc9b6522ed3758b7eb8",
+      "after": "9ffbd4ebac870f8b9966218733dc1db68cfa8f1e50c02e8c8cc4b5f1b73af72e",
+      "ranges": [
+        [
+          738,
+          804,
+          ""
+        ],
+        [
+          21499,
+          21746,
+          ""
+        ],
+        [
+          22510,
+          22813,
+          ""
+        ],
+        [
+          28532,
+          28561,
+          ""
+        ],
+        [
+          28563,
+          30738,
+          ""
+        ],
+        [
+          30740,
+          30773,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index.rs",
+      "before": "8619d9a9d2de74e5a7795978e49298d581573823e8abe9b043bdcc801f0a6691",
+      "after": "f473cddb3d388284b90ce8ad3d764d05a559213dbdd0a9c3d94664a35227396a",
+      "ranges": [
+        [
+          7318,
+          7439,
+          ""
+        ],
+        [
+          10350,
+          10431,
+          ""
+        ],
+        [
+          37475,
+          37509,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-cas-local/src/writer.rs",
+      "before": "f39ed1fad42635216c95938e8d0b9a65b1d85da49731f7a3d0a5e08d5566c716",
+      "after": "6b7634caf5357ba5918041bba38c3ab96141b74b014ab0e6d19803fadb2f4281",
+      "ranges": [
+        [
+          2734,
+          2757,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-connector-contract/src/attachments.rs",
+      "before": "1d4fdbe86732a59a1bd5c59b3d5d198c85bd1c2552420056c230baaf1f6b94fa",
+      "after": "5fe4c6b1edffdbfdcd6513a07cf80dd3ec007b0b7bad50ad51664ee9fbaf8f5f",
+      "ranges": [
+        [
+          10257,
+          14361,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-dictate/src/model.rs",
+      "before": "1799e7f23a10265cbf187692f5addb017c5f61aada211f734db5ba64a6323fc7",
+      "after": "97d4fcd229a4761cdd3723aaf748cd3c74719e23da8f7ebc571fd3e32b023c50",
+      "ranges": [
+        [
+          28093,
+          29543,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-dictate/src/segmentation.rs",
+      "before": "d4babceab3d82516632f1bc81506e6daae3fc8e9735594826c3bf2a6c1538ada",
+      "after": "db6ba242ed9c2cef21e1ef0f836c69b03a28684612392d9fdcd027b0bf40f110",
+      "ranges": [
+        [
+          1889,
+          2401,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-dictate/src/settings.rs",
+      "before": "2075fd7881e5dc25f91b984060663de873e557fc176040a51628b051d687f6f3",
+      "after": "f3c00c1740da89471b4baae6f90c3c11d9ffb133192aaba4a31651cfc16c9e3b",
+      "ranges": [
+        [
+          4282,
+          5641,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-edge-presentation/src/screen.rs",
+      "before": "fe7cfc6ec167556affe5181f7994284bbce920016e007b7c9d776f680897ed32",
+      "after": "fe01523c9fe14c8b7e596f59bf6e35c75e3b951bc61b8600f979fd5ee4ee786d",
+      "ranges": [
+        [
+          7077,
+          7798,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-force-layout-core/src/lib.rs",
+      "before": "3d9ae1bc9bda49f8ff4db68d86824ebc5b80d9ae8f2f026cbe8bbbc5b170cb55",
+      "after": "863e23a3efa182c6526a2884b4896a5f518569818b9c0a1ffec019b50ae454f6",
+      "ranges": [
+        [
+          17434,
+          23358,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-force-layout-core/src/octree.rs",
+      "before": "f37b09373ca091d8dee4e8cc6a944692b4e7878895ade4313cdf14531c9f8530",
+      "after": "1f9d7df3a91423fd2df245875b6b6e9863c7a952aeffa945eb17e80df12ade67",
+      "ranges": [
+        [
+          6344,
+          6876,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-graphics-godot/src/file_events.rs",
+      "before": "26e8dd47958de10b628c041e04679b3d0d74e90e786dfddb9bed0b2618946795",
+      "after": "56f8726c8fd1af272cd986a52c9bcf78ed7d38626ddbe41a54362c993fcd82c8",
+      "ranges": [
+        [
+          4524,
+          6166,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-graphics-godot/src/lib.rs",
+      "before": "ec772f17ad5cafc14df45b402fba2d73cef59c0959b80315c5cd9f19bba6b1e9",
+      "after": "f1d7e139260972933799a00426585a1643831e4cda7c5d9f4e76cd554fa9ab05",
+      "ranges": [
+        [
+          10421,
+          13001,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-graphics-godot/src/plaque_raster.rs",
+      "before": "5d80a31abe97df7e3d77c0d8153a0f1afca9412bfe48d1dc98f6e9ff7268077c",
+      "after": "35a6b294444a93af8a6c5b1d0344df65b312b3db9804a8ff68ba6880ff95a3cd",
+      "ranges": [
+        [
+          3332,
+          3929,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-graphics-package/src/lib.rs",
+      "before": "049ff9470e152130a0fb50df89bbdcedfa796e19ca0348ae52021abae473a819",
+      "after": "ad9108e4a5856acc35b4de133df6cafda505557d2df92e263b29f4eaf245be3c",
+      "ranges": [
+        [
+          7448,
+          8960,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-ideacave-presentation/src/controls.rs",
+      "before": "8366083ea49107a0196db48d53bc546e9a1ca9e26e3c5310e08d02c8529aad97",
+      "after": "8ff6ea5add9b068aab9c651e5a266e29f1ac5a4ea21e8808a42c1b3f98fccb4e",
+      "ranges": [
+        [
+          13021,
+          14081,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/keypair.rs",
+      "before": "fcecdecc857b0e7983a962856d69282b703c84686ff0eb2510b5a05b1d7d22b3",
+      "after": "53cbe1f72a288c545d5c90eef940dd66c2d7776e348f2252d2fa25db37b309b4",
+      "ranges": [
+        [
+          3550,
+          5370,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/node_id.rs",
+      "before": "3b53f8b32807aff910fe2ec99dc8cdaf7778eff5096044d92a2bc77def83876d",
+      "after": "c57e9e7989a8db7fdd825cab47cd0ebf4c5b258399d3bcbb6696ba9e7681c525",
+      "ranges": [
+        [
+          639,
+          1270,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/node_name.rs",
+      "before": "1bd72fef422d4c18fca2a00728c00ad238c9eabe00de5efa5ecdcd26e83c53c4",
+      "after": "53e0e6c353c96bfd7e7d44020cb87a97cc7d057678cfe06f3ee12039b1599657",
+      "ranges": [
+        [
+          531,
+          1225,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/rebind.rs",
+      "before": "12d18023c9fdb3bd797ce9feb39d2eca1353622c9fb8d8901b1f642a6c8c53da",
+      "after": "2d687bcbb1a94612429bb18005a0aeed09a55b5bd326b11802e142209a68fc87",
+      "ranges": [
+        [
+          1415,
+          2002,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/rename.rs",
+      "before": "a912522598282d6f07cf663670097b5778846de8b42e8d29a14468f157c5a0a7",
+      "after": "9ef8659ca5a345f6732bed6861ab126574a265baff0cced5fc08adf956bd9982",
+      "ranges": [
+        [
+          1137,
+          1632,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/signed_identity.rs",
+      "before": "b4656bf62e36fe2bc30ab46c4089fe2102bedc798712c8c051eac5ec4132bf32",
+      "after": "2f5531ef70b85de5dd82bf3f96a14c109ca372d7cadd4f74861d16e1eaf49ee7",
+      "ranges": [
+        [
+          2519,
+          5403,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-identity/src/signing.rs",
+      "before": "2458b57a819533fc47c16a8fb843ce7ea75baf928f91d6aa0059d4948123641d",
+      "after": "fb104a488e451007754ce647a968f42861909d521f3e138e3a39a4940d562a7e",
+      "ranges": [
+        [
+          398,
+          1981,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/causal_identity.rs",
+      "before": "c557783fa43872f8eb5ab11d8200c1761ef1bcd5b1fe344ecf07d16922896b5c",
+      "after": "4efaa68acc9666422482a2b0c06a26647635001140221fe903fac799423d7210",
+      "ranges": [
+        [
+          11960,
+          17301,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/compaction_physical_port.rs",
+      "before": "25d3c4ff60e1aea47bcecfcc0ccf898ee61f7a6166076574a3b0b08ca9eef7e5",
+      "after": "2e0b91dff6739727dc5b0890e6d1db8f63715c04fa576425294c8a7c0226c280",
+      "ranges": [
+        [
+          13574,
+          25508,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/config.rs",
+      "before": "566208b8a354170e2d41d2541022ea32217d6528c3d7741ea016626a0e178042",
+      "after": "d7b9f18216a767b0da7c342112d653b65a1adc69fb87267b0c7538a5583ab1d6",
+      "ranges": [
+        [
+          19638,
+          25594,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/llama.rs",
+      "before": "0a1a7b5487cb23132ceb0c34be3c89895becb6d26138600b7a276de1812c8b0e",
+      "after": "f1749926e37ca344d6171bf48527b20c09d51c49d66e57e4f9e551e754c5c622",
+      "ranges": [
+        [
+          62300,
+          108071,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/openai.rs",
+      "before": "85cd092f5b26f040d5971b8ebb374ec3ca26322da8807d3dc18ec5004c3f2e70",
+      "after": "d59bddd5459cf4bbb505b7a2174f42aa279a7778a314326eaf342498aabcb161",
+      "ranges": [
+        [
+          20389,
+          32042,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/projection_store.rs",
+      "before": "8640abb34d1058276001a481ef0eb008131641e52f41757d461855850011cce7",
+      "after": "dd0e274c55168fb7cc2baf99ade5e865f130124838b005277a98c1814957a304",
+      "ranges": [
+        [
+          28621,
+          41679,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-backend-adam/src/runner.rs",
+      "before": "9831d8bd18199a783821c2575fe029261673b053fc4a8a3d6ce4fe6c9544f588",
+      "after": "190ff18f55e11a8c84d8faa6aaf0dd3573560c9b064a2f86e68d060c6298db34",
+      "ranges": [
+        [
+          130791,
+          187181,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-contract/src/backend_auth.rs",
+      "before": "a873a6a8b6d99c1b32deb7decabd7d66e38c52fb7f3c4dc5e3f5bb1e784abbba",
+      "after": "c6315b963cdd4b9a33e73ee9cc011265a7597501a29709896435f3ec93b0f951",
+      "ranges": [
+        [
+          2065,
+          3179,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-contract/src/lib.rs",
+      "before": "52069581727bfb18cbe10818a8c18c752eeb7195ca3ca87751e0115bde9840df",
+      "after": "4a845fffddf9337b62b2b06e4d408b2ebe343e55fe971e941b4ee7d4f540851c",
+      "ranges": [
+        [
+          47675,
+          49339,
+          ""
+        ],
+        [
+          74970,
+          83080,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-model/src/lib.rs",
+      "before": "a77373bfd996cbb6d904206667c95b0a406a849eafcf49c23414648f5a171950",
+      "after": "f6e0a0b29fefa31b1d53abde13e81c23d4ab1e0d8e49b4b71787b4af4f34ee4e",
+      "ranges": [
+        [
+          4524,
+          6586,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-model/src/reply_generation.rs",
+      "before": "2fb280af57230c9a95abbffd01a3c1f41e4ff1e598da32a98c50b2e17128fc5d",
+      "after": "a59641c53f728f6bde7df97655993f1922030b099d86140003dfba11d348b3d6",
+      "ranges": [
+        [
+          2014,
+          2496,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-prompt/src/compiler.rs",
+      "before": "32e727c37a9489c6f60a8c3c6b8506c808af785cdbffa73526678ae081d08528",
+      "after": "b96c2ef77f4acbe9163c81fa5b52f7ee7a0e65fd12eee4248a2487ceff8b5ca3",
+      "ranges": [
+        [
+          22784,
+          44494,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-prompt/src/lib.rs",
+      "before": "17c00a1c3f38c3646c55fce2fc8f7f9e589e2c780e943d214125c3b8c74e6fac",
+      "after": "805a39965d88874d54f0f1e194195c05edcf4631e6f551067aa4eaca22a42223",
+      "ranges": [
+        [
+          2100,
+          5435,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-prompt/src/turn_request.rs",
+      "before": "412cf011e6ecaad427bac2def27dcac542ef54c82e5465f5012463566e40771e",
+      "after": "b26a434f9466e9738f376532b43813845bf901c130cc22f4e68b88955d803e66",
+      "ranges": [
+        [
+          2849,
+          6030,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inhouse-prompt/src/validation.rs",
+      "before": "ed089a68cfa9444139c0e733db2951dd9f19a117e4af6c219a4f9980a7c008f0",
+      "after": "7cfd80ac21cb63c65dd2a9dd578ffe7955d091351d22b879e8ea8d215def3c23",
+      "ranges": [
+        [
+          16449,
+          27146,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-inquiry-graph-model/src/lib.rs",
+      "before": "f67ed2a03bec0594b09bb11d1251afc1c668c74e6a21f2c5476cabba51bdb187",
+      "after": "c4d1a2df8530f6b56daa4d5b7ddc89cc5e5fe7c8cbf3683924afb67c0461529b",
+      "ranges": [
+        [
+          34093,
+          36896,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/cas_files.rs",
+      "before": "dbfd4d93234daf7cd8f92836d94dbae753ec7739ebeded086db79148fb477c41",
+      "after": "4986e589da86530335e1838f08bd739e59a7a711653b10e43147c563b8dc0239",
+      "ranges": [
+        [
+          2000,
+          2881,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/channel.rs",
+      "before": "005d61095da4e211296205364a23efdb99cab6371a9f1b813bd2acfcfa4633ee",
+      "after": "c14fe5d0355d2d582e8a267378e5e7ca7501875e302626f87114b52ceb462afb",
+      "ranges": [
+        [
+          2869,
+          5122,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/chat_bridge.rs",
+      "before": "c6e1168a03e241823b141695d900e3417192179326aa8f33195a95a20f6cb981",
+      "after": "e1144950d29aeba6eaedc8c1a50145034cb99a81c2072785c5dc7fcaf23f6bc2",
+      "ranges": [
+        [
+          1153,
+          2909,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/maintenance.rs",
+      "before": "91b81b5dcf208df151cbf7f0ae606411d651540694984e91467c295d264d0d78",
+      "after": "f8453ef9fed36c72324e661c3f0e643222c621c5f6688a42cb6d09529e65028b",
+      "ranges": [
+        [
+          1629,
+          4075,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/message.rs",
+      "before": "172220bf5168ac0a1203ad787bb483cd766414d0a0021e878deacf7d63b0b892",
+      "after": "e5370e1aa6509ee97a1c2f13b5a1531f9c118fb531c051b5d962d2336516f4fd",
+      "ranges": [
+        [
+          27438,
+          43694,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/prompt.rs",
+      "before": "5bbd57445cbc925cefa2326a74fa0a775d04f752c4bb52b51ee3a51584ad72db",
+      "after": "379310d61990f857903d4769d7725e9b98478d0a14c75ec56fb9eefa8952a1d9",
+      "ranges": [
+        [
+          3940,
+          5485,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/speech.rs",
+      "before": "a77da680bcfd6d16bbe47eaaa40d4f573391c91da4bdcd16432ebef8bda12fa1",
+      "after": "7a7274e50182a4f8028d635bf60239a1356c09492354a775fb819014bbbdb86a",
+      "ranges": [
+        [
+          1681,
+          3755,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/telegram.rs",
+      "before": "c4189e8777cfa81cd5cf565d26ad8c8305cd375718243abbdede63020049c723",
+      "after": "3c44d8b97d6f960d11e2963f120a5964bfc4f2ab054413c6d2e825eb9cb5f385",
+      "ranges": [
+        [
+          2215,
+          5165,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-model/src/tool_authz.rs",
+      "before": "ed0cb5f82600aca8f0a471d8a91d797c3accde0bd50a1858fea3a2e628513257",
+      "after": "40aa41ec3f8f26ee169d20bb7cb530c9378fb9c6363d68c2f3c2f337b8e64b9a",
+      "ranges": [
+        [
+          1981,
+          3872,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-presentation/src/activity.rs",
+      "before": "969f7b1560b2094935866f147d710562ddc0868098d5f77cc430a7904d3a7d47",
+      "after": "808d94b99cfb5aafac3084d2418454fa5e5280356eb6e30f4bfdfee8b6a61af0",
+      "ranges": [
+        [
+          2222,
+          3121,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-presentation/src/author.rs",
+      "before": "89bd5bc35a4731475d6ff1de53376f07c028ccd832b76d9fe88d8bde52362644",
+      "after": "bb8f4cc4dc5aad4defc1106a19ed18c2e7d728269a47a5207bb10da8d3063b5d",
+      "ranges": [
+        [
+          3411,
+          4641,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-presentation/src/message.rs",
+      "before": "c0f23075274a17fad3fe3f6afa7b32474eceb4a836505b9ab911443cf9f8b526",
+      "after": "6b2af69ba1a99f60d0f49f5f50230fcfbec0f72454c2453924ac3015b6968558",
+      "ranges": [
+        [
+          5554,
+          7367,
+          ""
+        ],
+        [
+          7915,
+          8356,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-reader/src/bridge.rs",
+      "before": "7b39d47501a2ece7680635cd176a94e7a309cbda9c15aa1181b2769a34318f17",
+      "after": "de22c0acbe3badb777a9751a270372f6beed50cc6c13b2ce9b943cedb97f785f",
+      "ranges": [
+        [
+          11856,
+          14282,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-reader/src/lib.rs",
+      "before": "b0166a3db5efb595f8a80b4151cd04bc986401f8bdda3e3ea95bc3d23ceb8feb",
+      "after": "4b13238ddd2b251c7917245dd63c862d666f217a8fa77b60a2d0952824296217",
+      "ranges": [
+        [
+          24609,
+          29977,
+          ""
+        ],
+        [
+          29979,
+          32220,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-reader/src/policy.rs",
+      "before": "8475ebf37a64a56001fad2089c8a60e7b21a602af4c274ef71b28ad7028ce759",
+      "after": "c7f4d8a86756afb3cf86e4e7504c740c267357f0817f1e43e10f9907101959e5",
+      "ranges": [
+        [
+          1007,
+          1509,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-reader/src/reading.rs",
+      "before": "97d6e8cb10ec982d8c604db879f3e05cfd44ac271de3cca56e65d91ac660ba09",
+      "after": "3c90655ae2f85db95b8879991455f308159c0fd885c11cb0efbdbc8094ffe8b9",
+      "ranges": [
+        [
+          2784,
+          3260,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-lgp-store/src/cas_files.rs",
+      "before": "b7f7429b223716fe7ed72a7b9064231a1ccf51a712bdbd12789e199c8eb938d6",
+      "after": "5c84a75fd48dd30dbd8fd81233d41913b9ca1916758f030c3c3d0f08ed5d88f3",
+      "ranges": [
+        [
+          3460,
+          5299,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-local-access-runtime/src/listener.rs",
+      "before": "82288834bf7dfd8b16a93359c822fdc7e70e8d952301a1eb630de2cee9f215fa",
+      "after": "92b7046107936b06d619cd00b15fa9fc8a64fb1ceaf3736845c68a7009d61010",
+      "ranges": [
+        [
+          4821,
+          6089,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-local-access-runtime/src/local_extensions.rs",
+      "before": "7aefd080eea182ab3231ca3a7c2aab35b2c1e8da8970170f458941cf4bafb9a8",
+      "after": "9a7de5aa7936c3b300b706649f686f05fea200f2ae187f35b578938fbfa7a3ce",
+      "ranges": [
+        [
+          16556,
+          22457,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-local-access-runtime/src/server.rs",
+      "before": "cffe6fb5e2cd384d5a13c6f5b4648fd883424a13e7d468925aed74c115c4c1be",
+      "after": "f0accd7d8dd761b9269b2f52578419f69f06247bc73427443f7b6d37d0aece3d",
+      "ranges": [
+        [
+          7620,
+          12322,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-package-tree/src/lib.rs",
+      "before": "7dff4862b4edee8981c033ef5f5f4448f98e4b635d94c7ba2a71303fd1f24c4d",
+      "after": "8dad60b430cd8bbdd815dfb41b5c19a0323961b5c14cd28bb188bf5037cef06d",
+      "ranges": [
+        [
+          23471,
+          29866,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-payload-codec/src/lib.rs",
+      "before": "d06d3f0aed88da1b9fcb0f05a175a1be3447abceb62ba41d534ef5c83031585a",
+      "after": "470f650cac827a53143ad253de65d80e45727543bb59d5f09b88bc9cd7c068d6",
+      "ranges": [
+        [
+          8047,
+          10630,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-pki/src/lib.rs",
+      "before": "8c1440d00b3717bbea7f3dfff9777bce0be5cdbe689daeca5d33a55eaf891d3c",
+      "after": "b8473a281cbe76a8a2fdd46a3d85fb57871ab6f570d7980381a4f37f73175e57",
+      "ranges": [
+        [
+          20965,
+          33279,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-postgres-runtime/src/config.rs",
+      "before": "12323751333fe1803718e720942bb8e933fccd6bf57976ed1f225eca2ef5354c",
+      "after": "9bbb5e18c0eb18e1db3e56ead56d7da98159a4e945eaf93e9db752e330429c60",
+      "ranges": [
+        [
+          2377,
+          2704,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/capability.rs",
+      "before": "ca0737e35216d60bc62fd13ce56c14fc3bbb48c1bbc098fe434e602dee40210b",
+      "after": "f43efd497e550b8ed08632e249c097e843c5a95f95c1d28c5cc5bfcd6d8435ad",
+      "ranges": [
+        [
+          9211,
+          11790,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/discovery.rs",
+      "before": "85f98c8ab78340ecc0a79bc1fd0e60e9d62a49b1270fa90dc69089a780049d1c",
+      "after": "c9b05b03d3636a62994114a6473e72d9777b100d7de23aede8898ec27372635b",
+      "ranges": [
+        [
+          3021,
+          4381,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/dm_replay.rs",
+      "before": "a0cde3b82932d75a194ae3cad08ee3bdc64f4167b3cae31e0e3e4002cb7e1242",
+      "after": "1b29efd1b9aa0cc60e1bac5dfea817dd35aa23a165a3d7909d82eb5f75a0f332",
+      "ranges": [
+        [
+          4247,
+          5322,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/heartbeat.rs",
+      "before": "756db7dccd8fd65eb24fb05e457f52d40baf021b76539d695cbb9371256d2a57",
+      "after": "8df6292ed9c9fe5a44a72c9278bb2a86dbc580fc51764ed4cf3ac05cdd302f9b",
+      "ranges": [
+        [
+          3573,
+          4746,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/lgp.rs",
+      "before": "cc958599b04077f3d96b6afc546aba0aeddf7a7d6accc1791c6e4bf429a5fdc9",
+      "after": "6682bfcfc5bbdfc54541361560c7d52e9a3f1f45b8d8d059fe16e22ebc073bd5",
+      "ranges": [
+        [
+          3242,
+          6167,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/session.rs",
+      "before": "be83d48e60719a62c3ba9242cc24088ef901629383687d6fb9fb637abacb1da2",
+      "after": "9f24381e8b8424241f87e086e79beeec855ab181cadd598a5bce7c171b322ead",
+      "ranges": [
+        [
+          4170,
+          5288,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-protocol/src/wire.rs",
+      "before": "e205752dd556794a67d898572af80f83a57c8447a76fc3214e7adb9a8b6b722b",
+      "after": "71d829663f8bc18e409c34c769ae33d925ec70e6389be00beb29cf6d7c549091",
+      "ranges": [
+        [
+          22379,
+          37953,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-runtime-paths/src/lib.rs",
+      "before": "9ac8ed1f89e69395a2ef53931102ed94c105e9be8c0f102b05d885401409b0e9",
+      "after": "c08b226ab129edd1f164362d0b67a7dd51cbb49e2635e1a23c0b71b7b3e40caf",
+      "ranges": [
+        [
+          29746,
+          29769,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-sqlite-runtime/src/snapshot.rs",
+      "before": "6e647dd3eb686065e8a6ce4dc95df0f9f003c882c6e4dfe01d7ddc11e582ebd8",
+      "after": "2db48c8a1eaaa228e209d857f7fb9ba596d8103acb216e669c530e1e0381bd70",
+      "ranges": [
+        [
+          4254,
+          7450,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-inbox/src/lib.rs",
+      "before": "188274574e84626590867293a12174ca5c9b897cb003693c00a1be7ef74c8df6",
+      "after": "e18c911623056aef69a7f176d4ff08bdd3ff3d2d8b637589211a2fcba7749e4d",
+      "ranges": [
+        [
+          17113,
+          19145,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/cards.rs",
+      "before": "91597e92d834a1880d39c47ca158093b7edafd7818459fc6e6049cc1e6183a9a",
+      "after": "9ae706c17653a13b2150a4b6524ad6d93832a6927332088effc33c606bae8e36",
+      "ranges": [
+        [
+          373,
+          426,
+          ""
+        ],
+        [
+          3253,
+          3386,
+          ""
+        ],
+        [
+          3387,
+          3510,
+          ""
+        ],
+        [
+          3512,
+          5218,
+          ""
+        ],
+        [
+          5219,
+          5634,
+          ""
+        ],
+        [
+          21690,
+          23289,
+          ""
+        ],
+        [
+          23291,
+          30465,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/presentation.rs",
+      "before": "758967db234c6b98b99a1ba1c0b46310f48fd943be5c5e6f77f3706037fda5ed",
+      "after": "44720182826e746eacc9d869d0c2af475a0f77e8edf0348d9b4eaf47f5b3428e",
+      "ranges": [
+        [
+          8284,
+          10335,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/record.rs",
+      "before": "599c4a4d734e85763b436afcfee5ee714977822b6cef411cc1357dd24c4f6e60",
+      "after": "cc8a5480282cb2838f4c995f0a254db368857a3707e0214e172c907632e1b294",
+      "ranges": [
+        [
+          1563,
+          2582,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/state/activity.rs",
+      "before": "2e1fb791117c8436853c5f780d03d8f3199480e9960417d2e91ac32e1c6ccbb0",
+      "after": "0f5fe51f93999f85cf6c2481c96b2f79e36b98d16a16c2a5a814b274f1e0ac8a",
+      "ranges": [
+        [
+          2627,
+          6365,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/state/composer.rs",
+      "before": "c6bf6b8d209fb11076f267e2de1c0f402b2a5aa87e7b3d2746327211d593a034",
+      "after": "b731bd3818f65b97c83a8e518be9fea1bfd9d7a766963fa12f2315ac0b67481b",
+      "ranges": [
+        [
+          1497,
+          2390,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/state/inquiry.rs",
+      "before": "003fc20d69d92fbddf59cd7a5e4ba1de2598613d2e744974ac88a910b393d4c4",
+      "after": "f453148aa67bdcf035545bcb6c0be9fd765ce22dc355dd5e2bc195cf80d7b0c1",
+      "ranges": [
+        [
+          29230,
+          29421,
+          ""
+        ],
+        [
+          48247,
+          71086,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/state/navigation.rs",
+      "before": "523a7141d7949cebf60844fa770458edf819794312691387b48afc5ac5dc7d75",
+      "after": "ffe0e5f78f1495368f175c13d456ae3340f4b21c6940b5d884b1dccc10bb73e2",
+      "ranges": [
+        [
+          10816,
+          19323,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/state.rs",
+      "before": "7dd0264f2bbb150608739f8d870bf31de3a77a9deeb5c4fb911cb385b8ac56ba",
+      "after": "04cfe2250d2fd37e0cbd8b78b76e07d58032aff2224f752d8073653a8a75db46",
+      "ranges": [
+        [
+          91883,
+          120318,
+          ""
+        ],
+        [
+          120320,
+          122864,
+          ""
+        ],
+        [
+          122866,
+          122900,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/text.rs",
+      "before": "83547c21cefbd97f505648e01ce4e02628d81e836abea41e593c0996b2de35ff",
+      "after": "82f28d19d52f4ad8cd83bf342e587b73b43b978296cfb6cbd93c964c5859925b",
+      "ranges": [
+        [
+          477,
+          534,
+          ""
+        ],
+        [
+          1824,
+          3636,
+          ""
+        ],
+        [
+          4451,
+          4626,
+          ""
+        ],
+        [
+          4627,
+          4951,
+          ""
+        ],
+        [
+          6864,
+          7029,
+          ""
+        ],
+        [
+          7053,
+          7201,
+          ""
+        ],
+        [
+          7206,
+          7385,
+          ""
+        ],
+        [
+          7982,
+          11330,
+          ""
+        ],
+        [
+          11331,
+          13048,
+          ""
+        ],
+        [
+          13050,
+          13996,
+          ""
+        ],
+        [
+          13998,
+          16081,
+          ""
+        ],
+        [
+          16083,
+          16704,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-lgp/src/window.rs",
+      "before": "bc7bfce0f6d34ae8dc2142999d5fc58794a69c08adba23bddfa28c28a55ad2c5",
+      "after": "f086af8e5eac52efcdde5389ce128025827191e226e4a5b33171be4e8af3e6e3",
+      "ranges": [
+        [
+          4703,
+          4899,
+          ""
+        ],
+        [
+          10283,
+          12041,
+          ""
+        ],
+        [
+          12043,
+          13848,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-station-session/src/routing.rs",
+      "before": "da9b5df73253d3fc5ac8ab48bb8a51e35dd57170415596f716ff484f5b96ef32",
+      "after": "d7a02b48496d4e409845d7c14140497800b143179f32359fc486bea9faf11bab",
+      "ranges": [
+        [
+          16536,
+          30121,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-storage-bootstrap/src/paths.rs",
+      "before": "33520c703aa681a667bd5749fad7f61fbc08c3edcda7b899f6a7b5dc5777703a",
+      "after": "34c0b2551cecca34cc0b5167a2ffd0de5446bd002e90494a617b2808e7184afb",
+      "ranges": [
+        [
+          1207,
+          2208,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-storage-core/src/lib.rs",
+      "before": "c1ac3e1fff0be0384beed7c2529c7e13dcc62d1818b644741e604dfdd820a470",
+      "after": "96b5e69f4c5afd8cf05e632a9055f14e74c40c73954024cbe3d73501e36b457f",
+      "ranges": [
+        [
+          12647,
+          14028,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-storage-migration/src/lib.rs",
+      "before": "2f6730783b8da9e23ab8ad56033a4e8cbfd47f8d18edfeb5144973f9ab9818d0",
+      "after": "f3d375885d36c18d45653cae63ba1392da648a0880b080ba68bfa03cada74297",
+      "ranges": [
+        [
+          3628,
+          4521,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-telegram/src/bot_api.rs",
+      "before": "fbe05cd3a73694e401a6ee762c73a26262a3d9c8df2443a625cd30475c28d44e",
+      "after": "85cff1ff315b011c06c5be7a4a2dfcae2f18c53cd2fe7579d229ca3a2c460732",
+      "ranges": [
+        [
+          28639,
+          30143,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-telegram/src/grammers.rs",
+      "before": "7f83f1439107e1b21c3bce473da164b0af1b5ecfc5e78f2b3cdaa848209eb283",
+      "after": "6ae237b5a1f029aa8c618d5dad779c5163fea910dd4898bc8cf9894b5ba3dd43",
+      "ranges": [
+        [
+          22860,
+          27009,
+          ""
+        ],
+        [
+          34845,
+          35554,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/desktop_client/requests.rs",
+      "before": "afc809e8ac1b3dd92e2ffb5c1e5a48db344949ff6869b8729714fac5905b4e5c",
+      "after": "2da974b8373aaf774b4e22ea9b39e85b12511b390cc27ff7ee1f59163c6a240b",
+      "ranges": [
+        [
+          8503,
+          10401,
+          ""
+        ],
+        [
+          10403,
+          16960,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/desktop_client.rs",
+      "before": "7db17598c21fb72735ed55c3c3d7b286325d7872a0c67da8c757691297e65f1e",
+      "after": "17f42ffc6f08bf75f31f013aea7feca1de8e484d61b7af45afe4ea7d6f796d85",
+      "ranges": [
+        [
+          56485,
+          57941,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/desktop_recovery.rs",
+      "before": "3193cb0cea3dd6a1adf46a12560223a9dc1aced25730b0a44e3015093aae30c0",
+      "after": "8f7be4e662b168f4f74fbd670f4800a1e7312a3f263ca28d5b26481a0eede136",
+      "ranges": [
+        [
+          1766,
+          2278,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/dictate_ffi.rs",
+      "before": "5052408acead09fa88253c9fc4f940dc6361981e4f9544b3780bcf7951d81271",
+      "after": "3a71c7d6b3577b4e1945099bd1d6b40e0e0740820e7ffbe81b184082a3f9b31b",
+      "ranges": [
+        [
+          11118,
+          22846,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/dictate_host.rs",
+      "before": "eb8119bb8a2d623c5c7a6c6a3cf84c28e06020fba7cad5792d8b7770da980748",
+      "after": "b62360e641027384fcd24c6ee0ac143c3acb674fe41e051787106df35c2fce60",
+      "ranges": [
+        [
+          10837,
+          26740,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/dictate_speech.rs",
+      "before": "926cd09d988bbb9213b8956fb2d80e3d089bcc1251f18bb5fb04ed211db840f2",
+      "after": "c962b4e134be2144912324b21da10cb1a58d9d7af022944aadcb6672354423a9",
+      "ranges": [
+        [
+          2836,
+          3048,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/discovery.rs",
+      "before": "3b95680207ed56229cf674ba871cff159e74ae4ce4a6610c4a99ba47d81b4782",
+      "after": "e4744b262a43b59ffbd3827a81e4b07b48b2d39bca3bdb7d4ee94d25ab09d985",
+      "ranges": [
+        [
+          1648,
+          2944,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/application_state.rs",
+      "before": "e97fdc953fa3ad3479ee157e1ec41b6d4198e7a417c21de36b2fc7861837a76b",
+      "after": "ddc7468fe7efee90905726abdbc6c54e16aca89380299d947d59df4a49121759",
+      "ranges": [
+        [
+          1582,
+          1843,
+          ""
+        ],
+        [
+          4072,
+          4422,
+          ""
+        ],
+        [
+          5005,
+          6538,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/attach_plan_provider.rs",
+      "before": "ec2317e3067fcdb48d8530d413877eaacd62c30a16c9f8ae2d3a040790245606",
+      "after": "7dee9b10c3d690616807722c245ac188e47536eb5db16ac989eeaa844fde1549",
+      "ranges": [
+        [
+          3653,
+          3740,
+          ""
+        ],
+        [
+          3742,
+          4161,
+          ""
+        ],
+        [
+          4163,
+          6110,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_config.rs",
+      "before": "4b4b703309d177ef4e8ef088b0fa4374e52ac8163a2cc8aed8b45ecafddc5e2c",
+      "after": "4c825687ffa5fb3f8047f9e6379daa809dd7b776e751c1d7f61e852141ff7a97",
+      "ranges": [
+        [
+          6039,
+          8208,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_control.rs",
+      "before": "edc28e739f45ed7735048d8a0ec43f506550ce051b2d07d9fe26e9c8a7d76cee",
+      "after": "993d01a9dc189a7a993bef6619785d12c6c52d2a4ed6f19caf5fdb308f7f6d03",
+      "ranges": [
+        [
+          67171,
+          67229,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_discovery.rs",
+      "before": "82ef5df127cc69f4e39d00c26a0e458be577416be42d543b310cbf41b6afbddb",
+      "after": "43f4513d451ee1e773dceac3db8c26d99b1f52ffe2769159a8b26c1312676f93",
+      "ranges": [
+        [
+          3885,
+          4099,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_monitor.rs",
+      "before": "08793ede2dc6fbd5b807af514531cd754e6895c87cefb811fb36be88b4d32e02",
+      "after": "092ecc3e7852bcffc639f998c6c22f309f6aeace1c2c8175799edfec0d9f3886",
+      "ranges": [
+        [
+          5912,
+          8690,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_remote.rs",
+      "before": "8aff0853e0eb366d975287e3916a7e7672bb95c507692203fb92ec4ce5bbcb18",
+      "after": "35bf41da3a0c2d2353b54b254c7ecd7156fe6f3090f716745d5b46b10f6580e3",
+      "ranges": [
+        [
+          6882,
+          7241,
+          ""
+        ],
+        [
+          11445,
+          12067,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_session.rs",
+      "before": "5b243b5d1b75890c514cc847ac39003e76fafd7909e098ee28c4f330f0eabda6",
+      "after": "0083013786c1b161d5a8320b5067b35008c80202c2f54979b323ddc8099f87ff",
+      "ranges": [
+        [
+          40172,
+          40431,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/control_center_service.rs",
+      "before": "12c2dcb4207d72ad38fa3de5d7b0793e5b4ed22ca707b1af9e5e55fb150bdc9c",
+      "after": "9619bea2c0baff8174d100eb100ddf3d86a5703b194615a45a047ef5c12c45ff",
+      "ranges": [
+        [
+          8839,
+          9163,
+          ""
+        ],
+        [
+          9168,
+          9769,
+          ""
+        ],
+        [
+          9774,
+          9972,
+          ""
+        ],
+        [
+          9977,
+          10229,
+          ""
+        ],
+        [
+          10234,
+          10468,
+          ""
+        ],
+        [
+          61405,
+          63152,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/imessage_sender.rs",
+      "before": "08565a234281e08e8c99d543dc8081cf3f3d24b24bba5deb940b1601a768f1ba",
+      "after": "2ea1550b542d9c2b7b94825e81a38ddffaf00afb10eb91c7bd9e2c56802dfa2f",
+      "ranges": [
+        [
+          17665,
+          17688,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/inbox_overview.rs",
+      "before": "4d4f7a3788db475518a89a5277f123d813c5225202cd0440866f7978ff837d1a",
+      "after": "ddd1c84896748c409996619d3d3caa9c0091ab7de75369bba518de96879604da",
+      "ranges": [
+        [
+          12768,
+          14208,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/inbox_service.rs",
+      "before": "d414eacaad67b25085bc18efca3b4d78fa08dd114e537bc3dc49e24d67abe161",
+      "after": "efba2c6c26f561c2aa0c489ecc2b7e9a72111b164a6125b6b23a50b0d6424154",
+      "ranges": [
+        [
+          19918,
+          22484,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/mod.rs",
+      "before": "241f1aa0846fa3a661a769b896ad5d525389cc3aa1951ad614200f967e1d68e6",
+      "after": "542373efdf058ecb149d0a5111f98b34c79cf0a6568b96b9aa067f1eacca152b",
+      "ranges": [
+        [
+          990,
+          1036,
+          ""
+        ],
+        [
+          1274,
+          1315,
+          ""
+        ],
+        [
+          1372,
+          1412,
+          ""
+        ],
+        [
+          1572,
+          1612,
+          ""
+        ],
+        [
+          1810,
+          1868,
+          ""
+        ],
+        [
+          1915,
+          1966,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/resource_provider.rs",
+      "before": "79da19c450b37d795bd52b869fca22e6c0a8416bf0c175f81fe47c0c646b5c7d",
+      "after": "8102e29bdff5cfb8f66acb4060f1d5e1c9083160467f642ed6167a396cacb69f",
+      "ranges": [
+        [
+          1706,
+          1889,
+          ""
+        ],
+        [
+          36346,
+          36667,
+          ""
+        ],
+        [
+          58759,
+          64438,
+          ""
+        ],
+        [
+          64440,
+          66334,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/resource_recovery.rs",
+      "before": "22f3514058bf85412ef4f2c3884e8b709f0bf10370fa9f4ebac540d412f2895a",
+      "after": "973f64d0afa0d446c91c25a6af46c3f10adef0c1aa241cf85384922749e2266e",
+      "ranges": [
+        [
+          16492,
+          25500,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/resource_service.rs",
+      "before": "6fd5b8cae13df109a8d74e431503bef8e8901bb701ddf5bf13b6a65d7b353b36",
+      "after": "ce1e10f7cf48e25dfdcd499330c658d59c47e579d75bf63be967cb469e954111",
+      "ranges": [
+        [
+          3776,
+          3908,
+          ""
+        ],
+        [
+          3910,
+          4415,
+          ""
+        ],
+        [
+          6786,
+          6898,
+          ""
+        ],
+        [
+          6904,
+          7230,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_fact_provider.rs",
+      "before": "5802deef3adeafd53ffbee972e13218e952ea743462cf5f101480a96425c7d98",
+      "after": "8cfba3c2eae14b6e8b1f12b79d9fd4a4e3999b835801f84bc2a72f57374a3fdf",
+      "ranges": [
+        [
+          132,
+          176,
+          ""
+        ],
+        [
+          1946,
+          2488,
+          ""
+        ],
+        [
+          3215,
+          3297,
+          ""
+        ],
+        [
+          3299,
+          4482,
+          ""
+        ],
+        [
+          19562,
+          22958,
+          ""
+        ],
+        [
+          23983,
+          26425,
+          ""
+        ],
+        [
+          26427,
+          26539,
+          ""
+        ],
+        [
+          26541,
+          26673,
+          ""
+        ],
+        [
+          26675,
+          28585,
+          ""
+        ],
+        [
+          29168,
+          29725,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_lifecycle.rs",
+      "before": "117fc069f2cc8af5d6ef5d57313ee9df5e0d9a9a419ffdee98cf99c17525cd30",
+      "after": "6210a97da0e55006937e2763360a606183e5b461c35d0a02efd29d0a401bb84d",
+      "ranges": [
+        [
+          2021,
+          2232,
+          ""
+        ],
+        [
+          3923,
+          3983,
+          ""
+        ],
+        [
+          61102,
+          61149,
+          ""
+        ],
+        [
+          61172,
+          61475,
+          ""
+        ],
+        [
+          70206,
+          70535,
+          ""
+        ],
+        [
+          78177,
+          114218,
+          ""
+        ],
+        [
+          114220,
+          117524,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_monitor.rs",
+      "before": "f52269d3a40f37d1e37f5dcb4033ff6952693a50bc8849a4217232992bf246ad",
+      "after": "dedb34f4ff4b82847830a1851b6db2918ad59509071862fd235475098564b8d8",
+      "ranges": [
+        [
+          34182,
+          45542,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_registry.rs",
+      "before": "6bd9ff17839732c7245c33ed589fcf1de9362eaeedc038e11932ce5a297b25fc",
+      "after": "1aa4a0538b96c49cdde77589e25aa6acfd4eea47936e46ec95e5a6285066b473",
+      "ranges": [
+        [
+          3200,
+          3388,
+          ""
+        ],
+        [
+          5008,
+          5315,
+          ""
+        ],
+        [
+          9118,
+          9446,
+          ""
+        ],
+        [
+          9452,
+          10744,
+          ""
+        ],
+        [
+          28990,
+          29327,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_store.rs",
+      "before": "ac90bb05bb11ba6d9a5342c9006d57392b5274d0c0352ebcd364fdfe51d3db68",
+      "after": "df748235c473ab5057e60604dc58aac41cc1af37aade6989c248e8c052a9f860",
+      "ranges": [
+        [
+          465,
+          610,
+          ""
+        ],
+        [
+          2300,
+          5048,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_summary_provider.rs",
+      "before": "29ebb224b1847793e861364f74d1df6a5afdf45f729b89cc9637a224f8932269",
+      "after": "8ed3fbed53ed195e5d247340950e25390c598e84375e575f3a6c373e440246bb",
+      "ranges": [
+        [
+          19153,
+          22794,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/ssh_socket_forward.rs",
+      "before": "832397b75fe644343919db154a58cdff8bc64cca152181613fb37794066c4872",
+      "after": "0a87de61470d956e5491197c4e627b2302ac1c56916dffd5b1a55b3881da7de6",
+      "ranges": [
+        [
+          5380,
+          6345,
+          ""
+        ],
+        [
+          6347,
+          12589,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/storage.rs",
+      "before": "2214c8e26a6628b2b14bf90a0098d076279a7499b370c58c20d2cdf2ed42e101",
+      "after": "c918d69bbadef76c85df1011daa27a5b7f3dcc4eee3caef2db5061dbcf056f5c",
+      "ranges": [
+        [
+          2433,
+          3399,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/target_directory.rs",
+      "before": "f35a19573cb7543f0132ca695274ed99fad9adbaa72ca3c7d0bbf54daf9fee43",
+      "after": "02a467bf1bf1924e11f6deae3443295e318b6693c72b27396a5dc00a338f0e5c",
+      "ranges": [
+        [
+          6920,
+          8531,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_runtime/bridge.rs",
+      "before": "2a21ea6ae769e15ee8990d2d9f2d84c0a95a8fba066365bcbb1172b635616cff",
+      "after": "01fc810adde49b43fbe089cac4a34f9837ee81e1f374f0fe25208eac63664d7e",
+      "ranges": [
+        [
+          34356,
+          39557,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_runtime/control.rs",
+      "before": "08099d6a0cf00700fef6b98214f1bb6109a9fcbed85636770077ea08255e6635",
+      "after": "3a2e2517e7bf38b943e07446af253a32cdfb24ee4269607d2e875f0e244cdc98",
+      "ranges": [
+        [
+          15548,
+          20170,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_runtime/lifetime.rs",
+      "before": "9eec566e6e1f8c7196606ce25b602a9f04b8cef4cf078fd8b1dcff3adebb7f57",
+      "after": "2fe3e11ca279499a274c0a142a8ab1386cc64ae40dbb76332de1e4019cc0431e",
+      "ranges": [
+        [
+          12457,
+          20216,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_runtime/registry.rs",
+      "before": "652d1f52d42e052f3501026b9e2b6d51619360691ad38e0fdc65aff09f65a7ff",
+      "after": "cf7b4854d3c53967b12000b57ffdb667d334f419e5a6d11db8da690fef471d24",
+      "ranges": [
+        [
+          47,
+          101,
+          ""
+        ],
+        [
+          6229,
+          6846,
+          ""
+        ],
+        [
+          7598,
+          7858,
+          ""
+        ],
+        [
+          7862,
+          13044,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_runtime.rs",
+      "before": "1fcafeb9ba552425750d12c2beab7fdc8fa121a82dfeae5b9b6a85c926d58582",
+      "after": "f3c5b982c490b3b1bb52f08d06ebc141cc8c924a3bcb00bdf25321d0e5057dad",
+      "ranges": [
+        [
+          126,
+          198,
+          ""
+        ],
+        [
+          27946,
+          28204,
+          ""
+        ],
+        [
+          28210,
+          28743,
+          ""
+        ],
+        [
+          49197,
+          84750,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_text.rs",
+      "before": "edbe45da4bfd1039760eefb379ad87ed8bdff2e671b7d028bbb9ae9ec4a76ede",
+      "after": "87b3724e708b474360d69f126b6bd6a709f99013d7c209a04aa94ffeef41bf88",
+      "ranges": [
+        [
+          2624,
+          2903,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host_identity.rs",
+      "before": "775691fb44b69e9d79c0b3184a47749fc140eb6e0e09d70fe0c73f3db3661360",
+      "after": "49fea6b55701e07e71df76cd0762351588d86fd0946058579d9afe900df78948",
+      "ranges": [
+        [
+          8879,
+          14461,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host_runtime/session_management.rs",
+      "before": "1727e5ef9e796bd422312e7c4070d14bf1320690b9a13db9e9887a82018b822f",
+      "after": "eda73ea9647a9a49033304307daf682cdf0a37d07d9ec60d4af040b86b2dc59e",
+      "ranges": [
+        [
+          16960,
+          33791,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/host_runtime.rs",
+      "before": "68443a614a0119e5880cdfe572e36ca4cebe779d440781b030d08a9ae6ee8990",
+      "after": "df6556c92a40ec59f37e1f00e12b927b279dfcf13318d62b8208cd0156caedeb",
+      "ranges": [
+        [
+          0,
+          82,
+          ""
+        ],
+        [
+          83,
+          217,
+          ""
+        ],
+        [
+          218,
+          300,
+          ""
+        ],
+        [
+          122339,
+          122682,
+          ""
+        ],
+        [
+          125518,
+          195730,
+          ""
+        ],
+        [
+          195732,
+          195781,
+          ""
+        ],
+        [
+          195783,
+          195871,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/lgp_client_ffi.rs",
+      "before": "a1054f8d435ba01673a7e8b14dcb487e920027daf0d220f25f6db2215f86514f",
+      "after": "1517fefc4477ac99a67e8d956cd49b100b230d13f29c9cc0ab391fcaf115ca63",
+      "ranges": [
+        [
+          3170,
+          3966,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/local_ipc/socket_readiness.rs",
+      "before": "1b0502c4fda0d5b873c7026b763eba100bed07d4fb9a4c30a092d58299d30577",
+      "after": "686b02e0cba9fff2da0f41e0edf729eb5c4c2c154f40c24e2cdac73753fed841",
+      "ranges": [
+        [
+          516,
+          2973,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/local_ipc.rs",
+      "before": "1e13381fe91469c0af667fbc99c6f407bb78178017378e096a26601126cc5ef7",
+      "after": "ac01bc5a438056685713d995837a84ed22fa1ae9da78c85b009adca9f6639024",
+      "ranges": [
+        [
+          10506,
+          17390,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/main.rs",
+      "before": "f673b1bcdfda975352cb277706188e2fa572fc3ebe9e6d74108d2256489fa4c3",
+      "after": "91e5965a8118276a7428af27a3ad3cc163b71880d8ecba26bd0f4ddeec016093",
+      "ranges": [
+        [
+          14010,
+          17417,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/native_ui_ffi.rs",
+      "before": "e39567cfa561a9fac333b99fab05b0c35ecb71fd3a2c89f74faf4ebbdc365b74",
+      "after": "4418677ad951b12a249b9f85c4d8f73d813a1faa0876870b3c3a60df594a99b5",
+      "ranges": [
+        [
+          11376,
+          12472,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/operation_trace.rs",
+      "before": "cf5974a41e327a7e4464f99d06cd645a4b9a225666c4113e3f4e158de5fd7ddb",
+      "after": "2eac080c6b5b67890365b4464586dad37b31105596c5b8e83a46b2bf236e09ba",
+      "ranges": [
+        [
+          18316,
+          23232,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/pane_host.rs",
+      "before": "806250340c90c76f2f8f9d6def530c553feaa147eac5b8b36006db5e513117f6",
+      "after": "e42d32f74cb68fd3a2be2f09ddaae71877810119d8470c09049bdb854d6a42df",
+      "ranges": [
+        [
+          44834,
+          62093,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/polar_gateway/mod.rs",
+      "before": "016153ab84de9a026e2798ae08e102290f2a412dc0d13d0acc1cfae4cc72959b",
+      "after": "a557a96d4621d133204e223af0c67ea4abd943634828f1dafd7a198c57676fe0",
+      "ranges": [
+        [
+          11639,
+          14844,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/polar_gateway/session_view.rs",
+      "before": "46dc2d021c1dad5d5b0847d88c203c1ac8199a9159959d67f1a81a22cc1b647d",
+      "after": "5f5ca2080b65602828246190feba593385815e882ecc432875a6a5ab096b4175",
+      "ranges": [
+        [
+          4545,
+          5606,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/ssh_connection_manager/process.rs",
+      "before": "0a7e1aab893a58a7f87005a48675140d2d7234626f298927424c04a603b995f3",
+      "after": "8ca01aa865bd2c60e795d0532c1f17fdefd45cf2a763668b598cba66bda76825",
+      "ranges": [
+        [
+          9377,
+          12552,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/ssh_connection_manager/route.rs",
+      "before": "a048e6f0cbe3beaf9d48ab714257dc26590d69c1588387a722f59e3b8d35a706",
+      "after": "31d6edea054f1c7e674b75ea657c270d8e00c3ea85e424cd31725a8ad5dc54c3",
+      "ranges": [
+        [
+          2562,
+          2902,
+          ""
+        ],
+        [
+          4569,
+          4937,
+          ""
+        ],
+        [
+          5680,
+          5871,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/ssh_connection_manager.rs",
+      "before": "bfe5c442aa8aaea3ae2836bf59dc27bdea8e3a186aece01c1acb199513dd7370",
+      "after": "d7902b23bbb45a9cd1500c62109e782a28aa22d4f9262acc00aa87547f52d144",
+      "ranges": [
+        [
+          1832,
+          1912,
+          ""
+        ],
+        [
+          4972,
+          5751,
+          ""
+        ],
+        [
+          8194,
+          8702,
+          ""
+        ],
+        [
+          9335,
+          9426,
+          ""
+        ],
+        [
+          18123,
+          18318,
+          ""
+        ],
+        [
+          43478,
+          43905,
+          ""
+        ],
+        [
+          68799,
+          69086,
+          ""
+        ],
+        [
+          69092,
+          69200,
+          ""
+        ],
+        [
+          76981,
+          77172,
+          ""
+        ],
+        [
+          90733,
+          154583,
+          ""
+        ],
+        [
+          155845,
+          156832,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/station_input_client.rs",
+      "before": "a81637975e9ea647218ec88b56b8764508194269113930e9a50ec50783a239ce",
+      "after": "55324558e073c8862d061331aad5534e7193656c7019174149ee681e227615d5",
+      "ranges": [
+        [
+          1534,
+          3858,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux/src/target_registry.rs",
+      "before": "f92069ce53c4e1ba06e267ac41fba27166ce3b6824815ea39aa2b0b8904d0722",
+      "after": "ab5c8c90d70198e4290bcd86ef42d20b7b183fc3367122482360f10c8adce263",
+      "ranges": [
+        [
+          9344,
+          9436,
+          ""
+        ],
+        [
+          17867,
+          18075,
+          ""
+        ],
+        [
+          18081,
+          18386,
+          ""
+        ],
+        [
+          34367,
+          53314,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/control_connection.rs",
+      "before": "48f1fb7803389f0272bd98718317bdd4edbe9bea27afe40ba7b766b705cec87e",
+      "after": "abc8dd2c179bd615bb074f1075b691525e94c35b16095349e5bbff52b021cd51",
+      "ranges": [
+        [
+          15503,
+          27110,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/control_mode.rs",
+      "before": "ad03bb85d382d6921ed9d680b5f4c097fb54c659e641b7cddb30feb88dca21d3",
+      "after": "335fec279575e05fd8c10979f3e43088493fbfa43445f92e4b239a134f55ec85",
+      "ranges": [
+        [
+          16997,
+          25945,
+          ""
+        ],
+        [
+          25947,
+          27552,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/lib.rs",
+      "before": "01fa7e7da097795ee06cd4d44fecf6d9268825092351bb114260a41d1757db04",
+      "after": "2853c907bf499667892ddf6dd3ab1e057fbf52819ae05a3c308ac0e1cf8242ab",
+      "ranges": [
+        [
+          51478,
+          61809,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/parser.rs",
+      "before": "edc4b5a4214be3ca1df8ce02985a4fca11863e2951e770d26e3e55f56461c006",
+      "after": "313e7fc214214d6f305ce4f73c6779ddb200f0998e15578c7069d5dbdfdd7d58",
+      "ranges": [
+        [
+          6300,
+          10592,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/session_observation.rs",
+      "before": "119210807aaa345836972b72a160944d61cb0467c241474ea1354411832d1ea0",
+      "after": "7e3bd358d43006f4d23f26a83736bda25b2d0f12efe6089e5b8d1c6321d66fcc",
+      "ranges": [
+        [
+          4201,
+          4595,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/target.rs",
+      "before": "da8fc03b98f6c10b3eb65cffbaf7b59b6499a780463a201a805eaf3d78e7c036",
+      "after": "3c98e1923c9042d96580a19c74b9a3f539a69be97616d6c527faaced54512525",
+      "ranges": [
+        [
+          10813,
+          17178,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-core/src/terminal_attach.rs",
+      "before": "182ea7e748d979f27c3c53192c334c974461e94f45a5653286ec010929884f6c",
+      "after": "4390255268a681525bd77032bb34477f07a531711917dd28723803b257844375",
+      "ranges": [
+        [
+          16679,
+          20459,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-protocol/src/codex_control.rs",
+      "before": "321eca05281e62815ffccd91164c0dbec32037fbbf43c62db4bbdea53fc8caee",
+      "after": "3e8defa0c5da2e1aa3ccb15ae3f6f0ac3feb2922d8c246f2cf1bcd9a9d32cff2",
+      "ranges": [
+        [
+          18504,
+          19323,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-protocol/src/control_center.rs",
+      "before": "45ea2c5a788f944e4ac755ab49294626724a0629b978fd6e16c3a45d28d82003",
+      "after": "315340aa69b51d601f2e2d104d1d95d7a49a5a35d4e418155b6df77be12dfb6b",
+      "ranges": [
+        [
+          56321,
+          60780,
+          ""
+        ],
+        [
+          60782,
+          61296,
+          ""
+        ],
+        [
+          61298,
+          61796,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-protocol/src/lib.rs",
+      "before": "f117d981f64f5eebedb11bf8c9445e85bf3eb41e58b549c7cbbe103ee1ac6c33",
+      "after": "6de53ec7fab36a39cef368149e43be6af6eb5083e66145d059ceebec7794dbee",
+      "ranges": [
+        [
+          22013,
+          25100,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-protocol/src/terminal_control.rs",
+      "before": "07fda0519fa350a7e024a6f06aa350ffdeb0c5e2a10a3b6ae2d41c38627b78c5",
+      "after": "9d5aaf515a1ddc211c9e22473fc3f1c20830c657001e01b7a125b7925aa6ffc8",
+      "ranges": [
+        [
+          1682,
+          3835,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-resources/src/projection.rs",
+      "before": "525f69ebddaf901501b282db20ac03deb09438797d748ea55ad0e20b48675ccf",
+      "after": "4bd4d7816d813c6f8540578b40cf7f0ccff1944955b07b142ef4ad50ad9fed28",
+      "ranges": [
+        [
+          6945,
+          8928,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/control_center/action.rs",
+      "before": "7a15eb5d8eb70acfd1484cfe255653e1064f0decab28e1f68867c4425c8022d1",
+      "after": "e94a6b039b920d3d6be3c7b65359f7267c54e2c811ae6033e6ed3421e5662e3c",
+      "ranges": [
+        [
+          53,
+          281,
+          ""
+        ],
+        [
+          9757,
+          11892,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/control_center/attention.rs",
+      "before": "3f861ac977e0e63dc42a98ee1d83b95ad22d1e3eab6c4c034ba0b12a0eb7b55e",
+      "after": "a04696a19247ea9a1396eb4a1a6509f1b18264bf6c6bb7b6f35efcb09025170d",
+      "ranges": [
+        [
+          7818,
+          10995,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/control_center/session_editor.rs",
+      "before": "6bf33e1bf110a30809dcedfa61d89f7ac8d4a98f5a95c88cc2b47a61ea1414fb",
+      "after": "228ec487fde50ecc2182a6e39cc2706d5911ad52e1cbaf4de3e2fede96979da9",
+      "ranges": [
+        [
+          30303,
+          49177,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/control_center/session_library/catalog.rs",
+      "before": "6862dfcc15f23474bba6970cff2337e54e98961e446f7786a842078cddcd2cee",
+      "after": "95b9f2a448a2b4a5eaa356ca48fca68c88797de080628061d39ff53382f7113a",
+      "ranges": [
+        [
+          4993,
+          7388,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/control_center/session_library.rs",
+      "before": "90116dec41afb784adfb15a5bec2ad2b5bb63ae4df14317154ecbb58b177ae80",
+      "after": "dff3a332f11e093427ed839a10c7b134cd840c79693dcb1ee0af2e925a60493d",
+      "ranges": [
+        [
+          6152,
+          6763,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/dictate/application.rs",
+      "before": "780235515579e70b76a9f86f345f5ada94761546629db566d6775aafeb86d712",
+      "after": "7935b4bd16a81fa419d29bdbebc89da58be0c29de1b80479f88f2bdebcae9949",
+      "ranges": [
+        [
+          18198,
+          25123,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/dictate.rs",
+      "before": "6d74a57d36510573c3969bda7fd787e13b51ae44723084f9ab09b8c5461fc376",
+      "after": "41ba7ad638aa10b9b028d9e6144a90acc0d491f72d2717799fb6e87fad1f1fd1",
+      "ranges": [
+        [
+          37848,
+          63777,
+          ""
+        ],
+        [
+          63779,
+          65363,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/runtime.rs",
+      "before": "dfca93e83a24f46476681e816c2492bd84c781f6866b3ad5ce5edb6803222274",
+      "after": "d3d61b7ebc433066b4636a44b3cf237b373ed22ab2b96730210e98b6f3295d98",
+      "ranges": [
+        [
+          9592,
+          12146,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-tmux-workspace/src/shortcuts.rs",
+      "before": "7fc974c77e5f7f81b687234adf3c76b13d5a63e87b42ae41c7a16b873af8e765",
+      "after": "cd7aca814aa58710e756532e165674d5df6f4effa4d61b67ac0e122a1f00aaef",
+      "ranges": [
+        [
+          4250,
+          6235,
+          ""
+        ],
+        [
+          7931,
+          10297,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-transport/src/endpoint_hint_policy.rs",
+      "before": "a1f10fc01503e7d3606a4e92d0258040080c106797110e8584c7d92172862988",
+      "after": "f692efa64b769294edf0c835d584fbbe52fe0048916b0666c1cc44d66e030691",
+      "ranges": [
+        [
+          1413,
+          2040,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-transport/src/lib.rs",
+      "before": "62518f7d1ca89a8a03f2500abd66f798f43d9d61c0afb055ff247443a188133b",
+      "after": "fe90d33ff5d2d6d53efc911e028b4d370a7f64b6546bcae516574fb2af441ff4",
+      "ranges": [
+        [
+          24200,
+          25882,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-transport/src/listener.rs",
+      "before": "b1e976b43aa9512a5e9b3ad8f075d5d6efc1a51b84ae2aa1f49a9ba468109410",
+      "after": "709f52dd786448ad50ff23f2c80ec132226f3d68e34550d4686918ff96019269",
+      "ranges": [
+        [
+          1217,
+          3071,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-trust/src/control_authority.rs",
+      "before": "2e6dc3dafe644edcfbbf2ee2cf9b0cd4303f5d7705b1a4611a74f2d7245551f3",
+      "after": "4272c5bb91e8b320c71ac59a4b909fe664987863f13d14e4ad53160e0cdcf1ea",
+      "ranges": [
+        [
+          3381,
+          5569,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-trust/src/transition.rs",
+      "before": "dbad8a62c54c38d0e13d264c16a34c40eab95e648828bb9f53285c4332f66cb3",
+      "after": "012e4a0e0a8f20d844ae1d58b5f8cff77045556efd30acb9bd4f62f77cfc8eea",
+      "ranges": [
+        [
+          4898,
+          9830,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-trust/src/verified.rs",
+      "before": "6d61e6ab892d0a5e6b407e92b094815403189debf666c4c7fa33b7c7623f51ad",
+      "after": "be8f499eefd59c00dd0419c8396e3c3c33ae8dfbbbc75f75af925ab704418f56",
+      "ranges": [
+        [
+          4579,
+          11929,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-vault-store-sqlite/src/implementation.rs",
+      "before": "ebb40b18444f78949d432d86cc1d1e7f5b315d961fbe1f49eaeba547a4ec1310",
+      "after": "7c189af620e6bc588046f04aa1d25072d4fc99e110d28b6d80bd3eab05d223cc",
+      "ranges": [
+        [
+          22174,
+          22251,
+          ""
+        ],
+        [
+          22253,
+          23263,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice/src/activity.rs",
+      "before": "c1b94584ad0795eb24f2eddfce97f1b5aa1895773681e964fa101bae95afafab",
+      "after": "520921f1166a7d6817e513ea77bc08bf09c597976eb9b526b5edd05492bf277d",
+      "ranges": [
+        [
+          807,
+          1036,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice/src/buffered.rs",
+      "before": "fa7bdf01bcbc9624529aab0d98a7d06517f5b7314e043de70ebc037c528af045",
+      "after": "aa8fddb173d0abce4701fd148f3a4d03e8d5453b180a9cf34b2349bc57e13695",
+      "ranges": [
+        [
+          3962,
+          6907,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice/src/lib.rs",
+      "before": "6ac4f22af5b31b9d5413685dd6b19aad0c394a6c8eaae077625221d02c4dce43",
+      "after": "3df4b6cd3538488bf85c80bd4e29e8c1ccf27127d177cfacf280335182dc0c50",
+      "ranges": [
+        [
+          43164,
+          44652,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice/src/realtime.rs",
+      "before": "ed8cf492bc276722a2eb29f9c6e9dc192f5bd1a6cf0b70fe5a1e3646d6702ec5",
+      "after": "ac77bf16591a5809e417dddf62e75911790027df1140a9907bc616822def78d5",
+      "ranges": [
+        [
+          2360,
+          3006,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice/src/transcription.rs",
+      "before": "466c8b6b27eea035014ae1784fb537abe576ebbebb1b39ef44e8c664fbb2eb1e",
+      "after": "98c40e8e9c3c6670386a3e6ec02cfad6a477de4f3ca7adefcd92cae1163aa112",
+      "ranges": [
+        [
+          2654,
+          3166,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice-provider-codex/src/dictate.rs",
+      "before": "089be071db11af9d092b5d9b21826754e8bbb8b962f95d8ab9a3c67bc60e919d",
+      "after": "72ced1e4869fd50a8763db5105ee62716fd7736b9fa5d6053929278d5e5a2615",
+      "ranges": [
+        [
+          8980,
+          13157,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice-provider-codex/src/lib.rs",
+      "before": "67ee3b12d12f1b0dbc2f9be56fcbe0da415567847f04382d6b81c6cb34cefb82",
+      "after": "974ce4e949b421a5483a8110c6136f7dc4d4cb266400c5ad68cb563b8232a002",
+      "ranges": [
+        [
+          36744,
+          38777,
+          ""
+        ],
+        [
+          38779,
+          42788,
+          ""
+        ],
+        [
+          56040,
+          60539,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice-provider-codex/src/realtime.rs",
+      "before": "3d50e4985100c50c6556e27ed0841485b6d018ad24e7f9ee50a73443d0c71b67",
+      "after": "72af4388ae7fc2c9098b8e9e3a06ce158320216f21a85037ece9d3cd104a643e",
+      "ranges": [
+        [
+          13234,
+          15926,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-vault-store-sqlite/Cargo.toml",
+      "before": "31f7bb3f68cf05879fc62dbe3e7a9f7cdbc159765fe1eb22df49fe1cebb302f7",
+      "after": "e291bcd6ee687711b3475e280b7cbf6bfbb790e0f8d1386b5e1d6bfb352d1a2f",
+      "ranges": [
+        [
+          561,
+          606,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "crates/polar-voice-provider-codex/Cargo.toml",
+      "before": "c0e686548c64b53f8ff59e2692d1933dfcf3f6cb4a24f94c52703f70c7340dea",
+      "after": "d8d789e3437dd9a9aec02ea1b3349cc19b699c091d72d8fc0b950b51c92f31f5",
+      "ranges": [
+        [
+          670,
+          715,
+          ""
+        ]
+      ]
+    },
+    {
+      "path": "Cargo.toml",
+      "before": "555994b91b1e9e8a50ab8b665f0e712dbc2ac9a8414f6c560c31d41310cb3476",
+      "after": "6cda834415b7609a4d3c11bfc1eed625b805a0abd3eeea6b6adc17836cbe809b",
+      "ranges": [
+        [
+          1172,
+          1209,
+          ""
+        ],
+        [
+          1528,
+          1566,
+          ""
+        ],
+        [
+          1608,
+          1644,
+          ""
+        ],
+        [
+          3306,
+          3333,
+          ""
+        ],
+        [
+          5091,
+          5159,
+          ""
+        ],
+        [
+          5736,
+          5806,
+          ""
+        ],
+        [
+          5918,
+          5984,
+          ""
+        ],
+        [
+          7391,
+          7496,
+          ""
+        ]
+      ]
+    }
+  ],
+  "deletions": [
+    {
+      "path": "crates/polar-station-lgp/src/state/idea_codex_tests.rs",
+      "sha256": "193cbbe73f5965e1079c5a408b36e9dd6ee887bcab20b5456db15502f796e9d7"
+    },
+    {
+      "path": "crates/polar-cas-local/src/writer/tests.rs",
+      "sha256": "6febc26ceedc7e4df25b14a23677bee7c8344217acba5ab7b3776093026feb5d"
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/publication_tests.rs",
+      "sha256": "e177e90c97cd9b5649cb0f859309e53f6f61dc495137e0dc2371f1d05829e0d6"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/tests.rs",
+      "sha256": "3c39400dfeeee46e5df196852dacfda69a71b2f9c707decda2a75b2bfc07c46d"
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/persistent/maintenance_tests.rs",
+      "sha256": "99ec890643fc1fee554596c6c706eb65b3a3caa58e56fa2d494dce19caa54a91"
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/backup/tests.rs",
+      "sha256": "07d43ba5a9e49e9aa46ca760d082d5998b76e74f2999963731eb9fd4dd494c04"
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/extensions/tests.rs",
+      "sha256": "93f41e612ea0afaaf14f4e074fcf99b9b93f4167de0445ab7f786d0da06a8185"
+    },
+    {
+      "path": "crates/polar-cas-local/src/catalog_index/writers/tests.rs",
+      "sha256": "da5bf25ad561edb87a245f15ccb324e0b274571575fd627c05144b39f3c22306"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/values/extension_tests.rs",
+      "sha256": "33b2caf59010c5a6dd8b4e53a943a258a0170e0b14af90ed90b402e27283f814"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/values/local_tests.rs",
+      "sha256": "be5691b2168106f5799b40f51871fd73308346bf0f409379243b27920f263c94"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/partitions/deferred_tests.rs",
+      "sha256": "d7a334e418ca958f8da0a4cf67f74baf85270a08bfbd5eae6e7cdbe31bc05d0e"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/partitions/regression_tests.rs",
+      "sha256": "c4eee7a71fcab4c7548aea6515c852d928c45680ba93bf54a87fb09c96461ae2"
+    },
+    {
+      "path": "crates/polar-cas-local/src/shared_index/lifecycle/tests.rs",
+      "sha256": "8e81d2677ff00a68b4d696b2b2a0cae43c6f9eb896b895b36be2ec4d2bb8bcf6"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/terminal_runtime_tests.rs",
+      "sha256": "04f83adef0e62556bdc452721dd33c3e2bbe883dce5ea1bd88c4f52c968a57e1"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/control_center_service_tests.rs",
+      "sha256": "6b6740707994a5ed8d0eda69b42a1dd51c70f351726b2f19a06983816b9ce1d6"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/resource_provider_tests.rs",
+      "sha256": "597350fd134b7d328b41eda564c7c93e1448ff210033838113d56c24d81e107e"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/session_registry_tests.rs",
+      "sha256": "a78c57dfe223c067fe6e7b4b60252484bdbb3f7e92bdf85f7e6a0312895db1fa"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/resource_service_tests.rs",
+      "sha256": "679326153671e028bea5709e52e55148be185d0ae95f46c8bd8710b5832d644c"
+    },
+    {
+      "path": "crates/polar-tmux/src/host_runtime/codex_channels_tests.rs",
+      "sha256": "0687fa8b989a13ada690bd480ee340c36b736db8fa55a24e6b2877c5c053a92f"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/imessage_sender/tests.rs",
+      "sha256": "84bc43250b725a3a7ce330b938f42a139f1cbacde148131796969018d461384d"
+    },
+    {
+      "path": "crates/polar-runtime-paths/src/tests.rs",
+      "sha256": "709d5aa6fe42e066514009d6932b0f132c45fa042bcfddb6b4b60e65eb9d3c1f"
+    },
+    {
+      "path": "crates/polar-storage-testkit/Cargo.toml",
+      "sha256": "730d2cfe7f54a4a7753ed3aaded5a903ed35dc72718a65674ce78efa5eeaeb4f"
+    },
+    {
+      "path": "crates/polar-storage-testkit/examples/generate_persistence_trace.rs",
+      "sha256": "88159dc2254e856a6a9d3cba0ca4305c99d8ecfeeb80061eb1fed0fafbc974ef"
+    },
+    {
+      "path": "crates/polar-storage-testkit/examples/measure_performance.rs",
+      "sha256": "a62c76ef87e9f83658e11e69935d29326668160b81db958eadb4ec9966952935"
+    },
+    {
+      "path": "crates/polar-storage-testkit/src/fixtures.rs",
+      "sha256": "c978939d956ccc2d4e1981d2e96155ee03ab7f960dfa1ee7a0f0bcdcddd4ff54"
+    },
+    {
+      "path": "crates/polar-storage-testkit/src/lib.rs",
+      "sha256": "d244b823eee8248cbf442db8323aaefced4a648d029ff4a2baa10f6e38aa6aa2"
+    },
+    {
+      "path": "crates/polar-storage-testkit/src/contracts.rs",
+      "sha256": "57f0a2807f24ff61d219057d1a5e8dbb641cbf320acb65e54d5aa877a82858a9"
+    },
+    {
+      "path": "crates/polar-tmux/src/host_runtime_extension_tests.rs",
+      "sha256": "6f1815892c2787dc9676fad4cd224c61027b30d0a5f6c6308cd004777722fc72"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_imessage_runtime_tests.rs",
+      "sha256": "8e933a3d0e52013524175f98a0b2da3914efbe4b05b87f82e68a9ac7d832f74e"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_telegram_runtime_tests.rs",
+      "sha256": "f945634c2113e1671cd036c737039a3050aabcea586ce142b5ab3811448daad6"
+    },
+    {
+      "path": "crates/polar-tmux/src/host/codex_control_tests.rs",
+      "sha256": "fec8c4b23762e3244d4bab585c82214580b0a864d1a018c1fe576d7c8e885c26"
+    },
+    {
+      "path": "crates/polar-storage-bootstrap/Cargo.toml",
+      "sha256": "95d2298e322904a5e200bc7c33d5b9e0139133f8f732bb28e6afb48533c8fb30"
+    },
+    {
+      "path": "crates/polar-storage-bootstrap/src/lib.rs",
+      "sha256": "013ec49c1bf6120e8cb42be08080dcb6f953782cc23cf02600af2eca45c1f814"
+    },
+    {
+      "path": "crates/polar-storage-bootstrap/src/paths.rs",
+      "sha256": "34c0b2551cecca34cc0b5167a2ffd0de5446bd002e90494a617b2808e7184afb"
+    },
+    {
+      "path": "crates/polar-postgres-runtime/Cargo.toml",
+      "sha256": "05224b25beac12a006da6ec20796d1809637bf35264ad4e918a03b6ad2f4ad9d"
+    },
+    {
+      "path": "crates/polar-postgres-runtime/src/migration.rs",
+      "sha256": "0d9543bd780934c27886fbbeca74d059a955fa58c2c1fd3f7c2e83b244d82662"
+    },
+    {
+      "path": "crates/polar-postgres-runtime/src/config.rs",
+      "sha256": "9bbb5e18c0eb18e1db3e56ead56d7da98159a4e945eaf93e9db752e330429c60"
+    },
+    {
+      "path": "crates/polar-postgres-runtime/src/lib.rs",
+      "sha256": "1389efd0f4bfec59e839e6c3001b00079207d6ff871b806dae41087f5cf38103"
+    },
+    {
+      "path": "crates/polar-postgres-runtime/src/copy.rs",
+      "sha256": "fbddaaac054922923e4263417d5104608a413099a15ea0d330d47a4963e8f593"
+    },
+    {
+      "path": "crates/polar-postgres-runtime/src/pool.rs",
+      "sha256": "b8764f8b54f31cb544c67064134f11e8a8b0442f89ecfdedcc318730ec5b607c"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/browser_host_parity_selftest.gd",
+      "sha256": "8b611a041ac0ecb83dcf5e3d03ae83d1eb25a8a036d2807cea151eb447a1eeb3"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/browsing_input_selftest.gd",
+      "sha256": "714c2c87c0fa4d69cbf6f4de6274476c362aa7fcd8845492ee598b929237ba1e"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/browsing_selftest.gd",
+      "sha256": "ca218cb78798f1d74ec4d3571ebed5a2af99c75daebab2d6807ad386daa83d34"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/canvas_resize_reading_selftest.gd",
+      "sha256": "e6cdda687f5f5dfe457e1e533dfe0ddcf30f2260bc233f7a1952ae366f25ee8b"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/depth_wheel_height_selftest.gd",
+      "sha256": "bdd9a0d62715bc4f49a6d53b46f2254678e9af8b4d196594c092334f41aad9d4"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/detail_cross_tree_selftest.gd",
+      "sha256": "98d9ce6fef630974b9ae07ffaf25106c7d7afec9e5d90f552da015c3cc471fdd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/graphics_backing_scale_selftest.gd",
+      "sha256": "e7c1bd7a726b4ba9d00948240b280eb947f7c2a01b2f51b9bfa4b542efa42f69"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/graphics_edge_options_selftest.gd",
+      "sha256": "3bbdf9f05caf5dce9c2e6d93d6d8a0346303dfd28437be3383670d550c7b870f"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/host_controls_selftest.gd",
+      "sha256": "9333f4e51014ea7b921e3b4c61b37d63f176034dd5bac46239d96ee8f90195a7"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/idea_instruction_selftest.gd",
+      "sha256": "8b2673c4041a5d4a6967579e5d019d709d90f9b8a62b4a9670f03d49e8896c06"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_browser_variants_selftest.gd",
+      "sha256": "a0217e52c646f2179a34b5a6db29e34e58c2d4f99c74f3e606baa70d934ac122"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_dual_map_selftest.gd",
+      "sha256": "4901bc7927c6a8387dbad21e42edbdfbcafce2295db48dedc7a387d366f97a2e"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_focus_layout_selftest.gd",
+      "sha256": "ba4864b1f3a2f597627bfcff01cfc2b3cd92384272bfdb3d69984fe5eb7aebd0"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_graph_projection_selftest.gd",
+      "sha256": "1eb41dbb130f204a783a79ffb786ea920e31b8316a537cfe67a6e3195bde53e7"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_navigation_state_selftest.gd",
+      "sha256": "c11489f8144cc85c61fdf06e11f1f56f7ea8441258149a382173d51f4f54b468"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_tree_projection_selftest.gd",
+      "sha256": "5f4ec77a36270862af14a633c0290d34b9907cc192caad304b7935622b30b292"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_zoom_selftest.gd",
+      "sha256": "b43db0306a2a89bc1d7624ef5b129c28ffe069d6680b523be703d12eff44730f"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/local_file_refresh_selftest.gd",
+      "sha256": "fa6655441a80887e04c989cead44b5dc716484c485e49293091e2c7fa124aa81"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/local_sources_selftest.gd",
+      "sha256": "617fd855b93eb91a3bbbd7a0ad32096289946c51f776fb73e140207e1d0599c2"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/multi_view_selftest.gd",
+      "sha256": "7b704ce8af34be0ff9df31ba30507bb7e3de990ebe39ee3f40c131ec496b0553"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/native_file_context_selftest.gd",
+      "sha256": "f93fb3a3aa9a82bad74708dd9c7330f173dfeeb3973b579dc0cab1b17475289a"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/navigation_focus_selftest.gd",
+      "sha256": "a5651dc20eefcbc4ddf815084abf67f382a6a6f37fb99b9ff033a523b98f86a9"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/navigation_performance_selftest.gd",
+      "sha256": "358866a277709e5c30a9d79debdf16fd58bb0eafeff9ed7df682edc46c3be6ea"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/overview_dispatch_selftest.gd",
+      "sha256": "88addb810d0392001e5b74492e0bcc775f7fe975f4c61c283cbcb656267e4429"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/overview_gesture_selftest.gd",
+      "sha256": "833e2ef2b8d501d1c6af9c059257d5e6c6e71d1813fac98d07070bfdaaec413b"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/plaque_raster_selftest.gd",
+      "sha256": "eec81addfaed7d18c8671e8566cff81ce48b500c311bd26c1ed66c5962680f1a"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/reader_browsing_selftest.gd",
+      "sha256": "eecb5d6825c7ff1d253c3c0f08894e335e7c3dce5f1be297cbcebe9fbd8854ba"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/related_source_selftest.gd",
+      "sha256": "f6fa6b5cd4937192c93387f680cd5ab07240f7ab79cc4f9e7d8fe44f58100871"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/shared_preview_resources_selftest.gd",
+      "sha256": "192d4470767889a21030d32f0cadfb7319c7c4ff13f22d3af7f48f9ad2da2b38"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/browsing-reader.itree.json",
+      "sha256": "bbdde05b70424fa22758b0b88a5f52231e679af9af93fc2062128f0ecaf9f672"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/detail-peers.itree.json",
+      "sha256": "49db0ec81b79f1c7e2201e085bc90cf4fcd0b7242799be617d5de4c36f061f28"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/model-cycle.itree.json",
+      "sha256": "99b58a9992cfaa9db7a223e2d7ae39a8a4620d76d37367477965a0314a015955"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/model-semantics.itree.json",
+      "sha256": "10844d4f6bac41db7f78e5201e9acd484b60c2e4e8c09ccff98615f46b3799f6"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/model-version-b.itree.json",
+      "sha256": "94be31dc4ec29d24f44572a587e6aa0c7de03f99c463f8896ac241e5fe15a8b8"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/navigation-encoded-slots.itree.json",
+      "sha256": "ef7ac8e28eb90b002434a056ce97bf278a47e6008b94ba3644b627a3394e9a6b"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/navigation-focus.itree.json",
+      "sha256": "26646fbd5d65c320c7115293c32c1587cf903e8484ea2336a4abc91005fa9249"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/polar-station-native.itree.json",
+      "sha256": "41c9dca960c45fce4497cb28b4cfe588a06d4bfb20d93ea662cfed6d16915357"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/ui-v1-decisions.itree.json",
+      "sha256": "e8d9ab44aa5acf4e4a02fc2b6ef5a783e4d88c4c04b92e93013caf82afe17244"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/ui-v1-requests.itree.json",
+      "sha256": "d320e295a04af5d2400edb8afa30e3e464aa83560a981384726416c3f77aa61a"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/test-fixtures/ui-v1-rules.itree.json",
+      "sha256": "26a3a1669662ac302a8d6083359d751b950c688d26c65923229b6e885ac83580"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/tree_navigation_selftest.gd",
+      "sha256": "a7939880dd7477eebb43243fef5c22bef5300fa5eeda827c9cfadb5e80edd092"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/tree_wheel_review_selftest.gd",
+      "sha256": "8670e42bd174cedd0888ed00b625f834095dc179a614c26ae705d83fe306d79e"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_actual_data_selftest.gd",
+      "sha256": "03ba31672d6fcd1edc4c35c318e372deaa46d817593fcb882f6ea82054fa2e27"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_interaction_selftest.gd",
+      "sha256": "ec757b510cd45436179288a8abc5ecb70586c6c73b4a3c1275eeefbe13fadc06"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_modes_selftest.gd",
+      "sha256": "e15fccb0de8136fedf757216a0cbe79f65c3af4bf9f3fe74971bf3085802f103"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_motion_selftest.gd",
+      "sha256": "fd43e40d485c458238d32704b27381fcc6860730cb2ac2624f291be626832944"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_preferences_selftest.gd",
+      "sha256": "70c4bfef6d59ecd47f9a639da68b79c98d47b85adcc0f6927316efc126b09546"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_reader_selftest.gd",
+      "sha256": "23cb2834703daa7becdebf34ee8eeb4b95918b9a77694039348fa351df8817a0"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_rendering_selftest.gd",
+      "sha256": "07684b2e185ac58504d1799444c3255a87a5018cfc3b812feb3251d4d6e7e68b"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_selftest.gd",
+      "sha256": "8d109ab0412c7159902bf07d7e8759b948bc2bb8d1d8b9b3297cf675cae496b3"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/view_package_selftest.gd",
+      "sha256": "6e63a193e64dc19df133ad4831ddc60dedb56f65c5b1c78b9daf5e52e8c026c9"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/visual_sky_lifecycle_selftest.gd",
+      "sha256": "404beb7b766d1ac6204b0673a3c8dbf82458cec5dab3bb7f4b52da247e6399b8"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/visual_theme_capture.py",
+      "sha256": "32266d6edbbed895868773e4041e241d6f6f83f12b417cee17735e5465d90f33"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/visual_theme_review.gd",
+      "sha256": "0ed0b21780122f9792ff34cb424d2beba021e7467cbc5aa1e9e8bb40859074eb"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/visual_theme_selftest.gd",
+      "sha256": "ef41c10c6afc8dd24eb03db1f90d314019890f5131825f80bee1293315ab8300"
+    },
+    {
+      "path": "crates/polar-force-layout-core/upstream/golden.json",
+      "sha256": "666b33ed43c28340d7e88e53d87cb508f657a12357202acd0806783d5fed4886"
+    },
+    {
+      "path": "crates/polar-force-layout-core/upstream/oracle.mjs",
+      "sha256": "53837b6ccfc83744cc08f063965c5c0c8226751f631c34e808cba7ff617a79eb"
+    },
+    {
+      "path": "crates/polar-force-layout-core/upstream/package-lock.json",
+      "sha256": "a91fb6238d90f23aa8b48b3d1e737367facd3fd150fef69034bc2302d9f5933a"
+    },
+    {
+      "path": "crates/polar-force-layout-core/upstream/package.json",
+      "sha256": "68490aee46405be9720f64630510ce3e7b71cbd478101539fd6706d2e4806ad1"
+    }
+  ]
+}

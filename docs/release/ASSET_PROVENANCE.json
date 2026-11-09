@@ -1,0 +1,11 @@
+{
+  "source": "existing PolarInfra checkout",
+  "checkout_head": "6caf2ca798bfecac273e71b0d8b437f7b9534f4a",
+  "not_archive48_original": true,
+  "files": {
+    "apps/polar-station-macos/Resources/PolarStation.icns": "5d2b7e668a65ca33be93e621a221770000d5e04e2e9a3445fdcf27ba24764f19",
+    "apps/polar-station-macos/Resources/PolarStationStatusTemplate.png": "e3698eb54b8c7f7cc8a7321ec485b9cf4286aaad93a477bedd50ece310fa2592",
+    "apps/polar-station-macos/Resources/PolarStationStatusTemplate@2x.png": "bac2658964878e53d72b03b8c2cdc44b5ef33c26afee110196313490e37732ec",
+    "apps/polar-station-macos/Resources/PolarStationStatusTemplate.svg": "4003a6b6f71f5af731e715196a3da0452f41384f98fe74bd88d2d5176736c0f1"
+  }
+}

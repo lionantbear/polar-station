@@ -1,0 +1,13 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-station-inbox"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde.workspace = true
+thiserror = "2"
+
+[dev-dependencies]
+serde_json.workspace = true

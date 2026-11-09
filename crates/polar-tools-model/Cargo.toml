@@ -1,0 +1,10 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-tools-model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+polar-identity = { workspace = true }
+serde = { workspace = true }
+schemars = "0.8"

@@ -1,0 +1,22 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-vault"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+schemars = "0.8.22"
+anyhow = { workspace = true }
+async-trait = "0.1"
+chacha20poly1305 = { workspace = true }
+hkdf = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+polar-identity = { workspace = true }
+polar-trust = { workspace = true }
+rand_core = { workspace = true }
+zeroize = "1"
+uuid = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

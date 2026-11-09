@@ -1,0 +1,30 @@
+[Unit]
+Description=Polar Tmux per-user Rust Host
+Documentation=https://github.com/polarealm/polarinfra
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/polar-tmux host --listen 127.0.0.1:47820
+Environment=POLAR_TMUX_IPC_SOCKET=%t/polar-tmux/host.sock
+RuntimeDirectory=polar-tmux
+RuntimeDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=2s
+
+# A tmux server first created through this Host may remain in the service
+# cgroup. Stop only the Host process so a Host restart never kills tmux.
+KillMode=process
+
+# Polar Station hosts interactive operator panes; those panes must be able to
+# use the operator's normal sudo policy when explicitly requested.
+NoNewPrivileges=false
+# LockPersonality and RestrictSUIDSGID both imply NoNewPrivileges in systemd;
+# operator panes must retain the operator's normal sudo policy.
+LockPersonality=false
+RestrictSUIDSGID=false
+
+[Install]
+WantedBy=graphical-session.target

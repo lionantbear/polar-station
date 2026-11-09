@@ -1,0 +1,11 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-inquiry-graph-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+polar-inquiry-graph-model = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

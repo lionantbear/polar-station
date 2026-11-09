@@ -1,0 +1,22 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-dictate-store-sqlite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+rusqlite.workspace = true
+polar-dictate.workspace = true
+polar-sqlite-runtime.workspace = true
+polar-storage-migration.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile = "3"
+polar-dictate = { workspace = true, features = ["runtime"] }
+polar-voice.workspace = true
+polar-text-edit.workspace = true

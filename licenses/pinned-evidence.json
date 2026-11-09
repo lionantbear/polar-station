@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "scope": "Exact revision license texts; not package or binary clearance",
+  "files": [
+    {
+      "name": "grammers",
+      "repository": "https://codeberg.org/Lonami/grammers.git",
+      "commit": "4ca2263e5678d2e85414aa8c2f469c1341d3a143",
+      "upstream_path": "LICENSE",
+      "url": "https://codeberg.org/Lonami/grammers/raw/commit/4ca2263e5678d2e85414aa8c2f469c1341d3a143/LICENSE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "grammers",
+      "repository": "https://codeberg.org/Lonami/grammers.git",
+      "commit": "4ca2263e5678d2e85414aa8c2f469c1341d3a143",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://codeberg.org/Lonami/grammers/raw/commit/4ca2263e5678d2e85414aa8c2f469c1341d3a143/LICENSE-MIT",
+      "status": "fetched",
+      "path": "licenses/pinned/grammers/LICENSE-MIT",
+      "sha256": "3dfe4aab7aa5676496afeee00d802d84c2bc44dfb7f3ba2338a7a8b65dfc9d9a",
+      "bytes": 1079
+    },
+    {
+      "name": "grammers",
+      "repository": "https://codeberg.org/Lonami/grammers.git",
+      "commit": "4ca2263e5678d2e85414aa8c2f469c1341d3a143",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://codeberg.org/Lonami/grammers/raw/commit/4ca2263e5678d2e85414aa8c2f469c1341d3a143/LICENSE-APACHE",
+      "status": "fetched",
+      "path": "licenses/pinned/grammers/LICENSE-APACHE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
+    },
+    {
+      "name": "grammers",
+      "repository": "https://codeberg.org/Lonami/grammers.git",
+      "commit": "4ca2263e5678d2e85414aa8c2f469c1341d3a143",
+      "upstream_path": "NOTICE",
+      "url": "https://codeberg.org/Lonami/grammers/raw/commit/4ca2263e5678d2e85414aa8c2f469c1341d3a143/NOTICE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "grammers",
+      "repository": "https://codeberg.org/Lonami/grammers.git",
+      "commit": "4ca2263e5678d2e85414aa8c2f469c1341d3a143",
+      "upstream_path": "Cargo.toml",
+      "url": "https://codeberg.org/Lonami/grammers/raw/commit/4ca2263e5678d2e85414aa8c2f469c1341d3a143/Cargo.toml",
+      "status": "fetched",
+      "path": "licenses/pinned/grammers/Cargo.toml",
+      "sha256": "8964b52f1a718c3c82578f87892f7d81df7b8ed6e94a6674d278dea1d4366581",
+      "bytes": 813
+    },
+    {
+      "name": "nucleo",
+      "repository": "https://github.com/helix-editor/nucleo.git",
+      "commit": "4253de9faabb4e5c6d81d946a5e35a90f87347ee",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/helix-editor/nucleo/4253de9faabb4e5c6d81d946a5e35a90f87347ee/LICENSE",
+      "status": "fetched",
+      "path": "licenses/pinned/nucleo/LICENSE",
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+      "bytes": 16725
+    },
+    {
+      "name": "nucleo",
+      "repository": "https://github.com/helix-editor/nucleo.git",
+      "commit": "4253de9faabb4e5c6d81d946a5e35a90f87347ee",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/helix-editor/nucleo/4253de9faabb4e5c6d81d946a5e35a90f87347ee/LICENSE-MIT",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "nucleo",
+      "repository": "https://github.com/helix-editor/nucleo.git",
+      "commit": "4253de9faabb4e5c6d81d946a5e35a90f87347ee",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/helix-editor/nucleo/4253de9faabb4e5c6d81d946a5e35a90f87347ee/LICENSE-APACHE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "nucleo",
+      "repository": "https://github.com/helix-editor/nucleo.git",
+      "commit": "4253de9faabb4e5c6d81d946a5e35a90f87347ee",
+      "upstream_path": "NOTICE",
+      "url": "https://raw.githubusercontent.com/helix-editor/nucleo/4253de9faabb4e5c6d81d946a5e35a90f87347ee/NOTICE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "nucleo",
+      "repository": "https://github.com/helix-editor/nucleo.git",
+      "commit": "4253de9faabb4e5c6d81d946a5e35a90f87347ee",
+      "upstream_path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/helix-editor/nucleo/4253de9faabb4e5c6d81d946a5e35a90f87347ee/Cargo.toml",
+      "status": "fetched",
+      "path": "licenses/pinned/nucleo/Cargo.toml",
+      "sha256": "8d9ecdf6f400d02ce84e8d4557fdef711e99d080e6a256cd6a3cc178fad3133f",
+      "bytes": 525
+    },
+    {
+      "name": "codex",
+      "repository": "https://github.com/leoricshcn/codex.git",
+      "commit": "7eea594e1264e37e08f029633f2f476f03fbda6c",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/leoricshcn/codex/7eea594e1264e37e08f029633f2f476f03fbda6c/LICENSE",
+      "status": "fetched",
+      "path": "licenses/pinned/codex/LICENSE",
+      "sha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+      "bytes": 10926
+    },
+    {
+      "name": "codex",
+      "repository": "https://github.com/leoricshcn/codex.git",
+      "commit": "7eea594e1264e37e08f029633f2f476f03fbda6c",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/leoricshcn/codex/7eea594e1264e37e08f029633f2f476f03fbda6c/LICENSE-MIT",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "codex",
+      "repository": "https://github.com/leoricshcn/codex.git",
+      "commit": "7eea594e1264e37e08f029633f2f476f03fbda6c",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/leoricshcn/codex/7eea594e1264e37e08f029633f2f476f03fbda6c/LICENSE-APACHE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "codex",
+      "repository": "https://github.com/leoricshcn/codex.git",
+      "commit": "7eea594e1264e37e08f029633f2f476f03fbda6c",
+      "upstream_path": "NOTICE",
+      "url": "https://raw.githubusercontent.com/leoricshcn/codex/7eea594e1264e37e08f029633f2f476f03fbda6c/NOTICE",
+      "status": "fetched",
+      "path": "licenses/pinned/codex/NOTICE",
+      "sha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915",
+      "bytes": 242
+    },
+    {
+      "name": "codex",
+      "repository": "https://github.com/leoricshcn/codex.git",
+      "commit": "7eea594e1264e37e08f029633f2f476f03fbda6c",
+      "upstream_path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/leoricshcn/codex/7eea594e1264e37e08f029633f2f476f03fbda6c/Cargo.toml",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "mxc",
+      "repository": "https://github.com/microsoft/mxc",
+      "commit": "6cd3d58f05d3447e67109cfb75e042803b843ca4",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/microsoft/mxc/6cd3d58f05d3447e67109cfb75e042803b843ca4/LICENSE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "mxc",
+      "repository": "https://github.com/microsoft/mxc",
+      "commit": "6cd3d58f05d3447e67109cfb75e042803b843ca4",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/mxc/6cd3d58f05d3447e67109cfb75e042803b843ca4/LICENSE-MIT",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "mxc",
+      "repository": "https://github.com/microsoft/mxc",
+      "commit": "6cd3d58f05d3447e67109cfb75e042803b843ca4",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/microsoft/mxc/6cd3d58f05d3447e67109cfb75e042803b843ca4/LICENSE-APACHE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "mxc",
+      "repository": "https://github.com/microsoft/mxc",
+      "commit": "6cd3d58f05d3447e67109cfb75e042803b843ca4",
+      "upstream_path": "NOTICE",
+      "url": "https://raw.githubusercontent.com/microsoft/mxc/6cd3d58f05d3447e67109cfb75e042803b843ca4/NOTICE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "mxc",
+      "repository": "https://github.com/microsoft/mxc",
+      "commit": "6cd3d58f05d3447e67109cfb75e042803b843ca4",
+      "upstream_path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/microsoft/mxc/6cd3d58f05d3447e67109cfb75e042803b843ca4/Cargo.toml",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "rust-sdk",
+      "repository": "https://github.com/modelcontextprotocol/rust-sdk",
+      "commit": "4048ac40e958fb1a7d614617a2ae8d26666ee2fa",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/rust-sdk/4048ac40e958fb1a7d614617a2ae8d26666ee2fa/LICENSE",
+      "status": "fetched",
+      "path": "licenses/pinned/rust-sdk/LICENSE",
+      "sha256": "0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a",
+      "bytes": 12227
+    },
+    {
+      "name": "rust-sdk",
+      "repository": "https://github.com/modelcontextprotocol/rust-sdk",
+      "commit": "4048ac40e958fb1a7d614617a2ae8d26666ee2fa",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/rust-sdk/4048ac40e958fb1a7d614617a2ae8d26666ee2fa/LICENSE-MIT",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "rust-sdk",
+      "repository": "https://github.com/modelcontextprotocol/rust-sdk",
+      "commit": "4048ac40e958fb1a7d614617a2ae8d26666ee2fa",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/rust-sdk/4048ac40e958fb1a7d614617a2ae8d26666ee2fa/LICENSE-APACHE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "rust-sdk",
+      "repository": "https://github.com/modelcontextprotocol/rust-sdk",
+      "commit": "4048ac40e958fb1a7d614617a2ae8d26666ee2fa",
+      "upstream_path": "NOTICE",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/rust-sdk/4048ac40e958fb1a7d614617a2ae8d26666ee2fa/NOTICE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "rust-sdk",
+      "repository": "https://github.com/modelcontextprotocol/rust-sdk",
+      "commit": "4048ac40e958fb1a7d614617a2ae8d26666ee2fa",
+      "upstream_path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/rust-sdk/4048ac40e958fb1a7d614617a2ae8d26666ee2fa/Cargo.toml",
+      "status": "fetched",
+      "path": "licenses/pinned/rust-sdk/Cargo.toml",
+      "sha256": "412924b369aee11eea632b8dfa2b427f9b0150d5555dce08cf8c8273f384e450",
+      "bytes": 842
+    },
+    {
+      "name": "tokio-tungstenite",
+      "repository": "https://github.com/openai-oss-forks/tokio-tungstenite",
+      "commit": "132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tokio-tungstenite/132f5b39c862e3a970f731d709608b3e6276d5f6/LICENSE",
+      "status": "fetched",
+      "path": "licenses/pinned/tokio-tungstenite/LICENSE",
+      "sha256": "fdd55e2b2da854b0fbdc1e607df7c2ba1e1ebf91ecb77c515511ebeef972bc8f",
+      "bytes": 1093
+    },
+    {
+      "name": "tokio-tungstenite",
+      "repository": "https://github.com/openai-oss-forks/tokio-tungstenite",
+      "commit": "132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tokio-tungstenite/132f5b39c862e3a970f731d709608b3e6276d5f6/LICENSE-MIT",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "tokio-tungstenite",
+      "repository": "https://github.com/openai-oss-forks/tokio-tungstenite",
+      "commit": "132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tokio-tungstenite/132f5b39c862e3a970f731d709608b3e6276d5f6/LICENSE-APACHE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "tokio-tungstenite",
+      "repository": "https://github.com/openai-oss-forks/tokio-tungstenite",
+      "commit": "132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "upstream_path": "NOTICE",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tokio-tungstenite/132f5b39c862e3a970f731d709608b3e6276d5f6/NOTICE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "tokio-tungstenite",
+      "repository": "https://github.com/openai-oss-forks/tokio-tungstenite",
+      "commit": "132f5b39c862e3a970f731d709608b3e6276d5f6",
+      "upstream_path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tokio-tungstenite/132f5b39c862e3a970f731d709608b3e6276d5f6/Cargo.toml",
+      "status": "fetched",
+      "path": "licenses/pinned/tokio-tungstenite/Cargo.toml",
+      "sha256": "ca757792c5e7f550673da78235a5d2ec47365316108e51c0f7fa8e0effee736b",
+      "bytes": 3298
+    },
+    {
+      "name": "tungstenite-rs",
+      "repository": "https://github.com/openai-oss-forks/tungstenite-rs",
+      "commit": "9200079d3b54a1ff51072e24d81fd354f085156f",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tungstenite-rs/9200079d3b54a1ff51072e24d81fd354f085156f/LICENSE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "tungstenite-rs",
+      "repository": "https://github.com/openai-oss-forks/tungstenite-rs",
+      "commit": "9200079d3b54a1ff51072e24d81fd354f085156f",
+      "upstream_path": "LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tungstenite-rs/9200079d3b54a1ff51072e24d81fd354f085156f/LICENSE-MIT",
+      "status": "fetched",
+      "path": "licenses/pinned/tungstenite-rs/LICENSE-MIT",
+      "sha256": "7fea0ee51a4ca5d5cea7464135fd55e8b09caf3a61da3d451ac8a22af95c033f",
+      "bytes": 1092
+    },
+    {
+      "name": "tungstenite-rs",
+      "repository": "https://github.com/openai-oss-forks/tungstenite-rs",
+      "commit": "9200079d3b54a1ff51072e24d81fd354f085156f",
+      "upstream_path": "LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tungstenite-rs/9200079d3b54a1ff51072e24d81fd354f085156f/LICENSE-APACHE",
+      "status": "fetched",
+      "path": "licenses/pinned/tungstenite-rs/LICENSE-APACHE",
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "bytes": 10847
+    },
+    {
+      "name": "tungstenite-rs",
+      "repository": "https://github.com/openai-oss-forks/tungstenite-rs",
+      "commit": "9200079d3b54a1ff51072e24d81fd354f085156f",
+      "upstream_path": "NOTICE",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tungstenite-rs/9200079d3b54a1ff51072e24d81fd354f085156f/NOTICE",
+      "status": "unavailable",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "tungstenite-rs",
+      "repository": "https://github.com/openai-oss-forks/tungstenite-rs",
+      "commit": "9200079d3b54a1ff51072e24d81fd354f085156f",
+      "upstream_path": "Cargo.toml",
+      "url": "https://raw.githubusercontent.com/openai-oss-forks/tungstenite-rs/9200079d3b54a1ff51072e24d81fd354f085156f/Cargo.toml",
+      "status": "fetched",
+      "path": "licenses/pinned/tungstenite-rs/Cargo.toml",
+      "sha256": "92a8c8a6000f8bb74079e39cd19827aa53756ea2f15c1dd04016c97dde4bd283",
+      "bytes": 3195
+    },
+    {
+      "name": "ghostty",
+      "repository": "https://github.com/ghostty-org/ghostty",
+      "commit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+      "upstream_path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/ghostty-org/ghostty/332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28/LICENSE",
+      "status": "fetched",
+      "path": "licenses/pinned/ghostty/LICENSE",
+      "sha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1",
+      "bytes": 1097
+    },
+    {
+      "name": "godot",
+      "repository": "https://github.com/godotengine/godot",
+      "commit": "ed1daf0bf001b61586d9930840f2f1394092c079",
+      "upstream_path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf001b61586d9930840f2f1394092c079/LICENSE.txt",
+      "status": "fetched",
+      "path": "licenses/pinned/godot/LICENSE.txt",
+      "sha256": "b0435e3b3e4e55238f05f4b306f30524a1b2e20147810d436eaa554fa6855c80",
+      "bytes": 1149
+    },
+    {
+      "name": "godot",
+      "repository": "https://github.com/godotengine/godot",
+      "commit": "ed1daf0bf001b61586d9930840f2f1394092c079",
+      "upstream_path": "COPYRIGHT.txt",
+      "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf001b61586d9930840f2f1394092c079/COPYRIGHT.txt",
+      "status": "fetched",
+      "path": "licenses/pinned/godot/COPYRIGHT.txt",
+      "sha256": "cb1980c88089573bcacd7221d777c689bb8bbd778799f24c27fca0fe5f774d6d",
+      "bytes": 100108
+    },
+    {
+      "name": "mxc",
+      "repository": "https://github.com/microsoft/mxc",
+      "commit": "6cd3d58f05d3447e67109cfb75e042803b843ca4",
+      "upstream_path": "LICENSE.md",
+      "url": "https://raw.githubusercontent.com/microsoft/mxc/6cd3d58f05d3447e67109cfb75e042803b843ca4/LICENSE.md",
+      "status": "fetched",
+      "path": "licenses/pinned/mxc/LICENSE.md",
+      "sha256": "d9a1b1e30d633d5732ea18e3cba9538d293ebc53e1a9e4e96ab739e0c5c4f1cb",
+      "bytes": 1140
+    }
+  ]
+}

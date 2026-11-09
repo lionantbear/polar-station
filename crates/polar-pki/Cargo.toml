@@ -1,0 +1,17 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-pki"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+pem = { workspace = true }
+serde = { workspace = true }
+rcgen = { workspace = true }
+rustls-pki-types = { workspace = true }
+time = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+x509-parser = { workspace = true }

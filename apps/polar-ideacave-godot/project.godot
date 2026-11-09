@@ -1,0 +1,20 @@
+; IDEA-CAVE presentation, hosted by the shared native graphics adapter.
+config_version=5
+
+[application]
+config/name="Polar IDEA-CAVE"
+run/main_scene="res://itree_workspace.tscn"
+config/features=PackedStringArray("4.6")
+
+[display]
+window/size/viewport_width=1100
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/subwindows/embed_subwindows=true
+
+[rendering]
+environment/defaults/default_clear_color=Color(0.037, 0.052, 0.083, 1)
+
+[physics]
+3d/physics_engine="Dummy"
+2d/physics_engine="Dummy"

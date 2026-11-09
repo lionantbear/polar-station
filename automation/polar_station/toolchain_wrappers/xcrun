@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+if [ "${POLAR_STATION_MACOS_SDK:-}" ] \
+    && [ "$#" -eq 3 ] \
+    && [ "$1" = --sdk ] \
+    && [ "$2" = macosx ] \
+    && [ "$3" = --show-sdk-path ]; then
+    printf '%s\n' "$POLAR_STATION_MACOS_SDK"
+    exit 0
+fi
+
+exec /usr/bin/xcrun "$@"

@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "control_revision": 0,
+  "header": {
+    "connection": {
+      "label": "SSH",
+      "status": "connected",
+      "accessibility_label": "Host connected to this computer"
+    },
+    "ssh_target_editor": {
+      "title": "SSH Target",
+      "target_id": "ssh-main",
+      "target_revision": 1,
+      "destination": "chris@leoric3010.asuscomm.com",
+      "destination_label": "Destination",
+      "destination_placeholder": "user@host",
+      "cancel_label": "Cancel",
+      "save_label": "Save"
+    },
+    "rename_action": {
+      "id": "workspace.rename",
+      "label": "Rename Workspace",
+      "role": "secondary",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": null,
+      "accessibility_label": "Rename Workspace"
+    },
+    "add_tab": {
+      "id": "workspace.tab.add",
+      "label": "Add Tab",
+      "role": "primary",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": null,
+      "accessibility_label": "Add Tab"
+    },
+    "refresh": {
+      "id": "workspace.restore",
+      "label": "Restore Saved Layout…",
+      "role": "recovery",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": {
+        "id": "restore-saved-layout-9be8b352-0c84-4b94-a713-22cf98e0a94c",
+        "title": "Restore Saved Layout?",
+        "message": "Restore replaces tabs and panes that differ from the saved Layout. Save non-tmux work first. tmux Sessions keep running.",
+        "confirm_label": "Restore Layout",
+        "destructive": false
+      },
+      "accessibility_label": "Restore Saved Layout…"
+    },
+    "lifecycle_action": null
+  },
+  "sessions": {
+    "visible": false,
+    "title": "Sessions",
+    "interaction_hint": "Click to add or remove",
+    "refresh_action": {
+      "id": "sessions.refresh",
+      "label": "Refresh sessions",
+      "role": "secondary",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": null,
+      "accessibility_label": "Refresh sessions"
+    },
+    "close_action": {
+      "id": "sessions.toggle",
+      "label": "Close sessions",
+      "role": "toggle",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": null,
+      "accessibility_label": "Close sessions"
+    },
+    "sections": [
+      {
+        "section": "local",
+        "title": "Local",
+        "state": "empty",
+        "message": "No sessions on the default local tmux server",
+        "row_count": 0
+      },
+      {
+        "section": "remote",
+        "title": "Remote",
+        "state": "target_missing",
+        "message": "Set an SSH target to discover remote sessions",
+        "row_count": 0
+      }
+    ],
+    "remote_targets": [],
+    "rows": [],
+    "selected": null,
+    "local_execution_target_id": "local",
+    "remote_execution_target_id": null,
+    "local_new_shell": {
+      "id": "session.create.local.shell",
+      "label": "New Shell",
+      "role": "primary",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": null,
+      "accessibility_label": "New Shell"
+    },
+    "local_new_command": {
+      "id": "session.create.local.command",
+      "label": "New Command",
+      "role": "secondary",
+      "enabled": true,
+      "selected": false,
+      "disabled_reason": null,
+      "confirmation": null,
+      "accessibility_label": "New Command"
+    },
+    "remote_new_session": {
+      "id": "session.create.remote",
+      "label": "New Session",
+      "role": "primary",
+      "enabled": false,
+      "selected": false,
+      "disabled_reason": "No managed remote execution target is currently projected.",
+      "confirmation": null,
+      "accessibility_label": "New Session"
+    }
+  },
+  "bottom_bar": {
+    "actions": [
+      {
+        "id": "sessions.toggle",
+        "label": "Sessions",
+        "role": "toggle",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "Sessions"
+      },
+      {
+        "id": "presentation.layout.toggle",
+        "label": "Layout",
+        "role": "toggle",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "Layout"
+      },
+      {
+        "id": "presentation.inbox.toggle",
+        "label": "Inbox",
+        "role": "toggle",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "Inbox"
+      },
+      {
+        "id": "resources.open",
+        "label": "Resources",
+        "role": "secondary",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "Resources"
+      },
+      {
+        "id": "more.open",
+        "label": "More",
+        "role": "secondary",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "More"
+      }
+    ],
+    "more_actions": [
+      {
+        "id": "managed.terminal.font.size",
+        "label": "Ghostty Font Size… (14pt)",
+        "role": "secondary",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "Ghostty Font Size… (14pt)"
+      },
+      {
+        "id": "workspace.create",
+        "label": "New Workspace",
+        "role": "primary",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "New Workspace"
+      },
+      {
+        "id": "iphone.open",
+        "label": "iPhone Companion…",
+        "role": "secondary",
+        "enabled": true,
+        "selected": false,
+        "disabled_reason": null,
+        "confirmation": null,
+        "accessibility_label": "iPhone Companion…"
+      }
+    ]
+  },
+  "projected_actions": [],
+  "auxiliary_surfaces": {
+    "resources": {
+      "id": "resources",
+      "title": "Resources",
+      "state": "available",
+      "message": "Edit and apply the Host-owned global Resource catalog."
+    },
+    "iphone": {
+      "id": "iphone",
+      "title": "iPhone",
+      "state": "available",
+      "message": "Show the Host pairing QR code and connected iPhone state."
+    }
+  },
+  "banner": null
+}

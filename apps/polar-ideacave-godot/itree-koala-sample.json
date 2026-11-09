@@ -1,0 +1,65 @@
+{
+  "schema": "polar.ideacave.itree.v1",
+  "root": "root",
+  "nodes": {
+    "root": {
+      "uuid": "7eada3cf-3d0d-57dc-a937-ec0bda174c11",
+      "type": "polar.idea.tree.v1",
+      "properties": {
+        "name": "Polar Idea Cave",
+        "summary": "An I-tree is a typed collection of nodes and relations. Walk its real structure in the eucalyptus canopy."
+      },
+      "relations": {
+        "itree": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "itree"}, "properties": {"name": "Idea Trees"}},
+        "etree": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "etree"}, "properties": {"name": "Entity Trees"}},
+        "station": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "station"}, "properties": {"name": "Polar Station"}},
+        "lgp": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "lgp"}, "properties": {"name": "LGP"}}
+      }
+    },
+    "itree": {
+      "type": "polar.idea.collection.v1",
+      "properties": {"name": "Idea Trees", "summary": "Descriptions, references and immutable versions of ideas."},
+      "relations": {
+        "projection": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "projection"}, "properties": {}},
+        "references": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "references"}, "properties": {}},
+        "versions": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "versions"}, "properties": {}},
+        "catalog": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "catalog"}, "properties": {}},
+        "linked-entities": {"relation": "polar.references.v1", "target": {"kind": "local", "node": "etree"}, "properties": {"purpose": "cross-tree-navigation"}}
+      }
+    },
+    "etree": {
+      "type": "polar.idea.collection.v1",
+      "properties": {"name": "Entity Trees", "summary": "Typed entities, observations and their relationships."},
+      "relations": {
+        "entities": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "entities"}, "properties": {}},
+        "relations": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "relations"}, "properties": {}}
+      }
+    },
+    "station": {
+      "type": "polar.idea.collection.v1",
+      "properties": {"name": "Polar Station", "summary": "Native panes and local or remote sessions in one workspace."},
+      "relations": {
+        "panes": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "panes"}, "properties": {}},
+        "sessions": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "sessions"}, "properties": {}}
+      }
+    },
+    "lgp": {
+      "type": "polar.idea.collection.v1",
+      "properties": {"name": "LGP", "summary": "Typed messages and threads shared across the Polar ecosystem."},
+      "relations": {
+        "messages": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "messages"}, "properties": {}},
+        "threads": {"relation": "polar.contains.v1", "target": {"kind": "local", "node": "threads"}, "properties": {}}
+      }
+    },
+    "projection": {"type": "polar.idea.node.v1", "properties": {"name": "Projection", "summary": "An I-tree defines how content becomes a view such as a file, directory or EROFS pack."}, "relations": {}},
+    "references": {"type": "polar.idea.node.v1", "properties": {"name": "References", "summary": "Local, object, tree and content references all have explicit identities."}, "relations": {}},
+    "versions": {"type": "polar.idea.node.v1", "properties": {"name": "Immutable Versions", "summary": "A new content version does not silently overwrite its predecessor."}, "relations": {}},
+    "catalog": {"type": "polar.idea.node.v1", "properties": {"name": "Shared Catalog", "summary": "Index and query ideas admitted through the content-addressed boundary."}, "relations": {}},
+    "entities": {"type": "polar.idea.node.v1", "properties": {"name": "Entities", "summary": "An entity is a stable identity that can be described by multiple facts."}, "relations": {}},
+    "relations": {"type": "polar.idea.node.v1", "properties": {"name": "Typed Relations", "summary": "Edges are first-class typed assertions, not merely visual branches."}, "relations": {}},
+    "panes": {"type": "polar.idea.node.v1", "properties": {"name": "Native Panes", "summary": "GTK4, Ghostty and structured display surfaces remain native views."}, "relations": {}},
+    "sessions": {"type": "polar.idea.node.v1", "properties": {"name": "Agent Sessions", "summary": "One task may span ChatGPT and Claude sessions; one session may contain several tasks."}, "relations": {}},
+    "messages": {"type": "polar.idea.node.v1", "properties": {"name": "Messages", "summary": "Structured, signed LGP messages carry persistent typed content."}, "relations": {}},
+    "threads": {"type": "polar.idea.node.v1", "properties": {"name": "Threads", "summary": "A thread links related conversations and tasks."}, "relations": {}}
+  }
+}

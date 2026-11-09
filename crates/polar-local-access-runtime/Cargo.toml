@@ -1,0 +1,17 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-local-access-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+libc = "0.2"
+polar-local-access-contract.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3"

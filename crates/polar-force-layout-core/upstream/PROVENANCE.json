@@ -1,0 +1,164 @@
+[
+  {
+    "path": "d3-force-3d/src/simulation.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "92e600b54b03621f6358c46b64eb942eb9c14cb2"
+  },
+  {
+    "path": "d3-force-3d/src/link.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "c99d07b5aba2889b14e9efca739744917b053413"
+  },
+  {
+    "path": "d3-force-3d/src/manyBody.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "2d0c2497edbce3a729f06292567d9803f2af303b"
+  },
+  {
+    "path": "d3-force-3d/src/center.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "777ad3c23df2c0019feec5a634badf621f4deff2"
+  },
+  {
+    "path": "d3-force-3d/src/lcg.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "a13cf79e689aa44551ad9cff1e31e6a2e73c42c5"
+  },
+  {
+    "path": "d3-force-3d/src/jiggle.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "00752b9f5bd3187b644af71ccdf2e4b217651841"
+  },
+  {
+    "path": "d3-force-3d/src/constant.js",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "b7d42e711c01cced1274e5dd70a461a3c0073b77"
+  },
+  {
+    "path": "d3-force-3d/LICENSE",
+    "repository": "vasturiano/d3-force-3d",
+    "commit": "263b3bfc37578e541a7d7e59dbb32d026d66fa38",
+    "git_blob_sha1": "0fce575d57ec8cc88e8c79915a04056a7f920470"
+  },
+  {
+    "path": "d3-octree/src/add.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "e94ec22e7ec17d490a52cde1ddb6bc56488c34cd"
+  },
+  {
+    "path": "d3-octree/src/cover.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "25013e81506b7afabe8412cba3984ceb10c18f52"
+  },
+  {
+    "path": "d3-octree/src/data.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "e934fa9d84f3ba2b8059e52a8c6667265afa9278"
+  },
+  {
+    "path": "d3-octree/src/extent.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "453855781338d145760783b2306c45cc6d1a4d88"
+  },
+  {
+    "path": "d3-octree/src/find.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "74ce8602e6e9a8f5afd18658b34592893d2cd61d"
+  },
+  {
+    "path": "d3-octree/src/findAll.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "b0e75f6d825d9a9c26b48e42501b1ea7bd5fd78a"
+  },
+  {
+    "path": "d3-octree/src/index.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "427f6766a12620053e2624c3aee34427726724f4"
+  },
+  {
+    "path": "d3-octree/src/octant.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "1aba74b8593a5d20003fc34f5bd02fad2dc60f67"
+  },
+  {
+    "path": "d3-octree/src/octree.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "3eaf0f6cbd3ed41d8678172893b04f33fe1e550e"
+  },
+  {
+    "path": "d3-octree/src/remove.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "16936a0ecf4ebd6595667d2abb1b4ced7904461e"
+  },
+  {
+    "path": "d3-octree/src/root.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "c32889f7fca3c5345152547b39860ca96701792a"
+  },
+  {
+    "path": "d3-octree/src/size.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "d2d5ab6147acf7e622d221bbb588ebce19e6dcca"
+  },
+  {
+    "path": "d3-octree/src/visit.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "6babcacb4d7967d37104ae356b0bd15e35ca9f9a"
+  },
+  {
+    "path": "d3-octree/src/visitAfter.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "30af39b4bc09c96b5b5682473657612fda9a8ff4"
+  },
+  {
+    "path": "d3-octree/src/x.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "ffea5075fbcdf12f11df8bdf0ea61ee4883be2fb"
+  },
+  {
+    "path": "d3-octree/src/y.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "d2d29cb79786b3c94e60a43024e35269bd1dad0f"
+  },
+  {
+    "path": "d3-octree/src/z.js",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "6041f717f1e7c76bd64245194509d7481b74a666"
+  },
+  {
+    "path": "d3-octree/LICENSE",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "0fce575d57ec8cc88e8c79915a04056a7f920470"
+  },
+  {
+    "path": "d3-octree/package.json",
+    "repository": "vasturiano/d3-octree",
+    "commit": "28beff983b94757c90b003c51c2c8a053ddd63be",
+    "git_blob_sha1": "4d20b2fb02a2e20ccfbe917cb064cdd71c658c54"
+  }
+]

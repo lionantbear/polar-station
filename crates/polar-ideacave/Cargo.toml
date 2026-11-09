@@ -1,0 +1,13 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-ideacave"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+polar-cas = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = "0.8.22"
+thiserror = { workspace = true }
+uuid = { workspace = true }
