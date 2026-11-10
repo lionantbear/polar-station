@@ -20,9 +20,6 @@ jobs:
       CARGO_BUILD_JOBS: '3'
       POLAR_GRAPHICS_JOBS: '3'
       POLAR_STATION_CODESIGN_IDENTITY: '-'
-      POLAR_STATION_NATIVE_SOURCE_EVIDENCE: ${{ runner.temp }}/station-private-stage
-      ZIG_GLOBAL_CACHE_DIR: ${{ runner.temp }}/station-zig-global
-      ZIG_LOCAL_CACHE_DIR: ${{ runner.temp }}/station-zig-local
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,6 +28,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
+            echo "POLAR_STATION_NATIVE_SOURCE_EVIDENCE=$RUNNER_TEMP/station-private-stage"
+            echo "ZIG_GLOBAL_CACHE_DIR=$RUNNER_TEMP/station-zig-global"
+            echo "ZIG_LOCAL_CACHE_DIR=$RUNNER_TEMP/station-zig-local"
+          } >> "$GITHUB_ENV"
           test -d "$DEVELOPER_DIR"
           /usr/bin/xcrun --sdk macosx --show-sdk-path
           root="$RUNNER_TEMP/station-native"
