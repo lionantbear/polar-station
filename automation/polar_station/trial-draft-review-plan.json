@@ -1,0 +1,20 @@
+{
+  "asset_ids": {
+    "Polar-Station-macOS-arm64-UNNOTARIZED.dmg": 731308215,
+    "SHA256SUMS": 731309100,
+    "application-source-001.tar.gz": 731309617,
+    "build-evidence.zip": 731309196,
+    "cargo-compiled-sources-001.tar.gz": 731309756,
+    "draft-build-index.json": 731308927,
+    "ghostty-built-source.tar.gz": 731308453,
+    "godot-built-source.tar.gz": 731308634,
+    "homebrew-installed-metadata-001.tar.gz": 731310558,
+    "trial-inputs-manifest.json": 731309376,
+    "zig-package-sources-001.tar.gz": 731310252
+  },
+  "release_id": 440315219,
+  "repository": "lionantbear/polar-station",
+  "run_id": 42806506227,
+  "source_commit": "b04362836a5f70fba9fa8f60dc7ac817f46f2e5b",
+  "tag": "macos-arm64-trial-build-42806506227-1"
+}
