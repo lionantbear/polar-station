@@ -43,6 +43,17 @@ if [ -z "$scons" ]; then scons=$(command -v scons || true); fi
     vulkan=no metal=no angle=no opengl3=yes debug_symbols=no optimize=speed disable_path_overrides=no \
     module_jolt_physics_enabled=no module_godot_physics_2d_enabled=no module_godot_physics_3d_enabled=no \
     custom_modules="$root/apps/polar-graphics-native/godot-modules"
+# Retain actual modified build source before the disposable clone is removed.
+# Local files only: caller separately controls any later distribution.
+if [ -n "${POLAR_STATION_NATIVE_SOURCE_EVIDENCE:-}" ]; then
+    mkdir -p "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE"
+    python3 "$root/automation/polar_station/capture_native_source.py" \
+        --tree "$build_source" --component godot \
+        --source-commit "$(git -C "$root" rev-parse HEAD)" \
+        --build-script "$root/automation/polar_station/build_macos_graphics.sh" \
+        --output "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE/godot-built-source.tar.gz"
+fi
+
 mkdir -p "$root/target/build-evidence"
 cargo build --message-format=json-render-diagnostics --locked --release --manifest-path "$root/Cargo.toml" \
     --target aarch64-apple-darwin -p polar-graphics-godot | tee "$root/target/build-evidence/cargo-graphics.jsonl"

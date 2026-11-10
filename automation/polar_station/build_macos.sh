@@ -137,6 +137,17 @@ export POLAR_STATION_CLIENT_LIB_DIR
         CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build
 )
 
+# Retain actual modified build source before the disposable clone is removed.
+# Local files only: caller separately controls any later distribution.
+if [ -n "${POLAR_STATION_NATIVE_SOURCE_EVIDENCE:-}" ]; then
+    mkdir -p "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE"
+    python3 "$repo_root/automation/polar_station/capture_native_source.py" \
+        --tree "$build_source" --component ghostty \
+        --source-commit "$(git -C "$repo_root" rev-parse HEAD)" \
+        --build-script "$repo_root/automation/polar_station/build_macos.sh" \
+        --output "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE/ghostty-built-source.tar.gz"
+fi
+
 app="$build_source/macos/build/$configuration/Polar Station.app"
 [ -d "$app" ] || {
     echo "Managed Ghostty did not produce Polar Station.app." >&2

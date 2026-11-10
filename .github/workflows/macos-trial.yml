@@ -1,0 +1,279 @@
+name: macOS arm64 trial build and draft retention
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/macos-trial.yml'
+permissions:
+  contents: write
+concurrency:
+  group: macos-trial-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      # Zig 0.15.2 cannot parse the libSystem stubs in Xcode 26.4+.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      CARGO_BUILD_JOBS: '3'
+      POLAR_GRAPHICS_JOBS: '3'
+      POLAR_STATION_CODESIGN_IDENTITY: '-'
+      POLAR_STATION_NATIVE_SOURCE_EVIDENCE: ${{ runner.temp }}/station-private-stage
+      ZIG_GLOBAL_CACHE_DIR: ${{ runner.temp }}/station-zig-global
+      ZIG_LOCAL_CACHE_DIR: ${{ runner.temp }}/station-zig-local
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare pinned upstream sources and tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$DEVELOPER_DIR"
+          /usr/bin/xcrun --sdk macosx --show-sdk-path
+          root="$RUNNER_TEMP/station-native"
+          mkdir -p "$root"
+          brew install gettext graphviz
+          python3 -m venv "$root/venv"
+          "$root/venv/bin/pip" install 'scons==4.9.1'
+          for spec in 'ghostty-org/ghostty ghostty 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28' 'godotengine/godot godot ed1daf0bf001b61586d9930840f2f1394092c079'; do
+            read -r repo dir sha <<< "$spec"
+            git init "$root/$dir"
+            git -C "$root/$dir" remote add origin "https://github.com/$repo.git"
+            git -C "$root/$dir" fetch --depth 1 origin "$sha"
+            git -C "$root/$dir" checkout --detach FETCH_HEAD
+            test "$(git -C "$root/$dir" rev-parse HEAD)" = "$sha"
+          done
+          curl --fail --location --retry 3 https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz -o "$root/zig.tar.xz"
+          echo "3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b  $root/zig.tar.xz" | shasum -a 256 -c -
+          tar -xJf "$root/zig.tar.xz" -C "$root"
+          curl --fail --location --retry 3 https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_macos.universal.zip -o "$root/godot.zip"
+          echo "c58a24e31d720be9d62f60cb5627c4e695fb72f21b0cfe1bc9ccaa9a3b3ba63e  $root/godot.zip" | shasum -a 256 -c -
+          ditto -xk "$root/godot.zip" "$root/editor"
+          rustup target add aarch64-apple-darwin
+          {
+            echo "POLAR_STATION_GHOSTTY_CHECKOUT=$root/ghostty"
+            echo "POLAR_STATION_ZIG=$root/zig-aarch64-macos-0.15.2/zig"
+            echo "POLAR_STATION_MSGFMT=$(brew --prefix gettext)/bin/msgfmt"
+            echo "POLAR_GRAPHICS_GODOT_CHECKOUT=$root/godot"
+            echo "POLAR_GRAPHICS_SCONS=$root/venv/bin/scons"
+            echo "POLAR_GRAPHICS_EDITOR=$root/editor/Godot.app/Contents/MacOS/Godot"
+            echo "POLAR_GRAPHICS_GRAPHVIZ=$(brew --prefix graphviz)"
+          } >> "$GITHUB_ENV"
+          sw_vers
+          xcodebuild -version
+          brew list --versions graphviz gettext
+      - name: Preflight pinned Zig build runner against selected SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/station-zig-probe"
+          mkdir -p "$probe"
+          printf 'const std = @import("std"); pub fn build(b: *std.Build) void { _ = b; }\n' > "$probe/build.zig"
+          cd "$probe"
+          "$POLAR_STATION_ZIG" build --help > /dev/null
+      - name: Preflight standalone Xcode package resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/station-xcode-probe"
+          git clone --local "$POLAR_STATION_GHOSTTY_CHECKOUT" "$probe"
+          bash apps/polar-station-macos/ghostty-overlay/apply-overlay.sh "$probe"
+          /usr/bin/xcodebuild -resolvePackageDependencies \
+            -project "$probe/macos/Ghostty.xcodeproj" -scheme Ghostty
+      - name: Preflight free Host signing contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe="$RUNNER_TEMP/station-signing-probe"
+          printf 'int main(void) { return 0; }\n' | /usr/bin/cc -x c - -o "$probe"
+          /usr/bin/codesign --force --identifier com.polarealm.polar-station.host \
+            --options runtime --entitlements automation/polar_station/host-macos.entitlements \
+            --sign - "$probe"
+          /usr/bin/codesign --verify --strict "$probe"
+          signature=$(/usr/bin/codesign --display --verbose=2 "$probe" 2>&1)
+          printf '%s\n' "$signature" | grep -Fx 'Identifier=com.polarealm.polar-station.host'
+          /usr/bin/codesign -d --entitlements :- "$probe" 2>/dev/null | \
+            python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
+      - name: Build embedded Godot and graphics resources
+        run: bash automation/polar_station/build_macos_graphics.sh
+      - name: Build complete native application with ad-hoc signing
+        run: bash automation/polar_station/build_macos.sh --configuration Release
+      - name: Verify signature and build unnotarized DMG locally
+        run: |
+          bash automation/polar_station/package_macos_free.sh \
+            --app "$GITHUB_WORKSPACE/target/polar-station-macos/Release/Polar Station.app" \
+            --output "$RUNNER_TEMP/Polar-Station-unnotarized.dmg"
+      - name: Inspect artifact dependency and license gaps
+        shell: bash
+        run: |
+          set +e
+          set -uo pipefail
+          evidence="$RUNNER_TEMP/station-evidence"
+          mkdir -p "$evidence"
+          python3 automation/polar_station/macos_binary_inventory.py \
+            --app "$GITHUB_WORKSPACE/target/polar-station-macos/Release/Polar Station.app" \
+            --output "$evidence/macos-bom.json"
+          result=$?
+          printf '%s\n' "$result" > "$evidence/license-scan-exit-code.txt"
+          echo "Artifact inventory exit code: $result (2 = release blocked by audit gaps, not cleared)." >> "$GITHUB_STEP_SUMMARY"
+          test -s "$evidence/macos-bom.json" || exit 1
+          case "$result" in 0|2) ;; *) exit "$result" ;; esac
+      - name: Collect build provenance and hash-bound evidence candidates
+        shell: bash
+        run: |
+          python3 automation/polar_station/collect_macos_build_evidence.py \
+            --source "$GITHUB_WORKSPACE" --native "$RUNNER_TEMP/station-native" \
+            --bom "$RUNNER_TEMP/station-evidence/macos-bom.json" \
+            --output "$RUNNER_TEMP/station-evidence/build-provenance"
+      - name: Validate temporary DMG installation and limited launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/station-evidence"
+          mountpoint="$RUNNER_TEMP/station-dmg-mount"
+          installroot="$RUNNER_TEMP/station-install-probe"
+          mkdir -p "$mountpoint" "$installroot" "$evidence"
+          trap '/usr/bin/hdiutil detach "$mountpoint" >/dev/null 2>&1 || true' EXIT
+          /usr/bin/hdiutil attach "$RUNNER_TEMP/Polar-Station-unnotarized.dmg" \
+            -readonly -nobrowse -mountpoint "$mountpoint" > "$evidence/dmg-attach.txt"
+          /usr/bin/ditto --rsrc --extattr "$mountpoint/Polar Station.app" "$installroot/Polar Station.app"
+          /usr/bin/codesign --verify --deep --strict "$installroot/Polar Station.app"
+          python3 - "$installroot/Polar Station.app" "$evidence" <<'PY_LAUNCH'
+          import json, os, plistlib, signal, subprocess, sys, time
+          from pathlib import Path
+          app, evidence = map(Path, sys.argv[1:])
+          plist = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+          executable = app / 'Contents/MacOS' / plist['CFBundleExecutable']
+          report = {'scope': 'Temporary DMG mount/copy/strict signature verification and 15-second direct executable launch only; not interactive GUI/TCC/upgrade validation', 'bundle_id': plist.get('CFBundleIdentifier'), 'executable': executable.name, 'temporary_copy_signature': 'passed', 'release_ready': False}
+          with (evidence / 'launch-stdout.txt').open('wb') as out, (evidence / 'launch-stderr.txt').open('wb') as err:
+              proc = subprocess.Popen([str(executable)], stdout=out, stderr=err, start_new_session=True)
+              time.sleep(15)
+              report['exit_code_before_cleanup'] = proc.poll()
+              report['alive_after_15_seconds'] = proc.poll() is None
+              if proc.poll() is None:
+                  os.killpg(proc.pid, signal.SIGTERM)
+                  try: proc.wait(timeout=10)
+                  except subprocess.TimeoutExpired:
+                      os.killpg(proc.pid, signal.SIGKILL)
+                      proc.wait(timeout=5)
+              report['cleanup_exit_code'] = proc.returncode
+          (evidence / 'installation-launch.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          if not report['alive_after_15_seconds']:
+              raise SystemExit('Application exited before limited launch check completed')
+          PY_LAUNCH
+      - name: Record explicit blocked release gate
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/station-evidence"
+          python3 - "$RUNNER_TEMP/station-evidence" <<'PY_GATE'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          bom = json.loads((root/'macos-bom.json').read_text()) if (root/'macos-bom.json').exists() else {}
+          evidence = root/'build-provenance/provenance.json'
+          gaps = json.loads(evidence.read_text()).get('gaps', []) if evidence.exists() else ['Build provenance missing']
+          gate = {'release_ready': False, 'binary_upload_authorized_by_this_workflow': False, 'inventory_status': bom.get('status', 'missing'), 'inventory_blockers': bom.get('blockers', ['Inventory missing']), 'provenance_gaps': gaps, 'remaining': ['Reviewed artifact-specific licenses, source/relink obligations and static link coverage', 'Interactive clean-Mac GUI/TCC/upgrade/uninstall validation']}
+          (root/'release-gate.json').write_text(json.dumps(gate, indent=2)+'\n')
+          print('Release gate: BLOCKED; successful validation CI is not publication approval.')
+          PY_GATE
+      - name: Retain narrowly selected actual build inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 automation/polar_station/capture_trial_inputs.py \
+            --source "$GITHUB_WORKSPACE" \
+            --graphics-provenance "$GITHUB_WORKSPACE/target/polar-station-macos/Release/Polar Station.app/Contents/Resources/graphics/provenance.json" \
+            --zig-global "$ZIG_GLOBAL_CACHE_DIR" --zig-local "$ZIG_LOCAL_CACHE_DIR" \
+            --output "$RUNNER_TEMP/station-private-stage/inputs"
+      - name: Stage trial only in an access-controlled draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/station-private-stage"
+          test -f "$stage/ghostty-built-source.tar.gz"
+          test -f "$stage/godot-built-source.tar.gz"
+          # Successful collector outputs are enumerated explicitly. Never upload .partial files.
+          test -f "$stage/inputs/trial-inputs-manifest.json"
+          cp "$RUNNER_TEMP/Polar-Station-unnotarized.dmg" "$stage/Polar-Station-macOS-arm64-UNNOTARIZED.dmg"
+          /usr/bin/ditto -c -k --keepParent "$RUNNER_TEMP/station-evidence" "$stage/build-evidence.zip"
+          python3 - "$stage" "$GITHUB_SHA" <<'PY_INDEX'
+          import hashlib,json,re,sys
+          from pathlib import Path
+          root=Path(sys.argv[1]); names=['Polar-Station-macOS-arm64-UNNOTARIZED.dmg','ghostty-built-source.tar.gz','godot-built-source.tar.gz','build-evidence.zip','inputs/trial-inputs-manifest.json']
+          captured=json.loads((root/'inputs/trial-inputs-manifest.json').read_text())
+          if captured['source_commit']!=sys.argv[2]:raise SystemExit('Capture source identity mismatch')
+          for group in ['application-source','cargo-compiled-sources','zig-package-sources','homebrew-installed-metadata']:
+              rows=captured['groups'][group]['archives']
+              if not rows:raise SystemExit('Required capture group is empty: '+group)
+              for row in rows:
+                  if not re.fullmatch(re.escape(group)+r'-[0-9]{3}\.tar\.gz',row['path']):raise SystemExit('Unexpected captured filename')
+                  p=root/'inputs'/row['path']
+                  if p.is_symlink() or not p.is_file():raise SystemExit('Invalid archive entry')
+                  h=hashlib.sha256()
+                  with p.open('rb') as f:
+                      for block in iter(lambda:f.read(1024*1024),b''):h.update(block)
+                  if h.hexdigest()!=row['sha256'] or p.stat().st_size!=row['bytes']:raise SystemExit('Capture archive changed')
+                  names.append('inputs/'+row['path'])
+          entries=[]
+          for name in names:
+              p=root/name
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for block in iter(lambda:f.read(1024*1024),b''):h.update(block)
+              if p.stat().st_size>=2_000_000_000:raise SystemExit('Draft asset exceeds bounded size: '+name)
+              entries.append({'name':p.name,'bytes':p.stat().st_size,'sha256':h.hexdigest()})
+          (root/'upload-files.txt').write_text(''.join(str(root/name)+'\n' for name in names))
+          (root/'SHA256SUMS').write_text(''.join(e['sha256']+'  '+e['name']+'\n' for e in entries))
+          (root/'draft-build-index.json').write_text(json.dumps({'source_commit':sys.argv[2],'draft_retention_only':True,'public_release_ready':False,'scope':'Ad-hoc signed Apple Silicon build; temporary copy/signature and 15-second launch only. Corresponding-source and notice review remain pending. No GTS upstream source is uploaded by this workflow.','assets':entries},indent=2)+'\n')
+          PY_INDEX
+          tag="macos-arm64-trial-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cat > "$RUNNER_TEMP/draft-notes.md" <<'NOTES'
+          Private draft retention only. Do not publish or treat this as a cleared distribution.
+          Apple Silicon macOS trial, ad-hoc signed and unnotarized. Limited copy/signature/15-second launch check only.
+          Required notices/corresponding-source review remains pending. Captured source inputs are evidence, not automatic clearance. GTS upstream source is not included.
+          NOTES
+          gh release create "$tag" --draft --prerelease --target "$GITHUB_SHA" \
+            --title "Polar Station macOS arm64 trial build $GITHUB_RUN_ID (DRAFT)" \
+            --notes-file "$RUNNER_TEMP/draft-notes.md"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/draft-releases.json"
+          id=$(python3 - "$RUNNER_TEMP/draft-releases.json" "$tag" <<'PY_ID'
+          import json,sys
+          rows=[r for r in json.load(open(sys.argv[1])) if r['tag_name']==sys.argv[2]]
+          assert len(rows)==1 and rows[0]['draft'] is True
+          print(rows[0]['id'])
+          PY_ID
+          )
+          # No authorization header: check the draft is not an anonymously public resource before upload.
+          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$id")
+          test "$code" = 404 || { echo "Draft visibility not established; upload stopped (HTTP $code)." >&2; exit 1; }
+          assets=()
+          while IFS= read -r file; do assets+=("$file"); done < "$stage/upload-files.txt"
+          assets+=("$stage/SHA256SUMS" "$stage/draft-build-index.json")
+          gh release upload "$tag" "${assets[@]}"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" > "$RUNNER_TEMP/draft-release.json"
+          python3 - "$RUNNER_TEMP/draft-release.json" <<'PY_PRIVATE'
+          import json,sys,urllib.request,urllib.error
+          r=json.load(open(sys.argv[1]));assert r['draft'] is True
+          for a in r['assets']:
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(a['url'],headers={'User-Agent':'PolarStation-draft-visibility-check','Accept':'application/vnd.github+json'}),timeout=30) as response:
+                      raise SystemExit('Anonymous draft-asset access unexpectedly available')
+              except urllib.error.HTTPError as e:
+                  if e.code!=404:raise
+          print('Draft and all asset metadata denied anonymous access; no public release was created.')
+          PY_PRIVATE
+          echo "Draft trial retained at source commit $GITHUB_SHA. Public publication remains pending license/source review." >> "$GITHUB_STEP_SUMMARY"
+      - name: Record trial boundary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          This workflow never publishes a release. It may retain a successful native build and permitted source evidence in a GitHub draft release, restricted to users with push access. No public Actions artifact is uploaded. A separate reviewed action is required to publish a trial with its necessary notices and corresponding-source materials. No Apple enrollment, notarization or Gatekeeper bypass occurs.
+          SUMMARY
