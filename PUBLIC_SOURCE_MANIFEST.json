@@ -333,7 +333,7 @@
     "automation/polar_station/public_release_policy.json": "2a33956ebd4e461c9f420fa4929c71de84f95fd9f69fb0d575570d9325cbb042",
     "automation/polar_station/public_sync.py": "1637196ac9cb73540aa269cd7e6b1d138216d6d372df1eb45b4ee06e9897006e",
     "automation/polar_station/public_test_cleanup.json": "a8cbfd7dc28cb85578be43659eaa99d986d5e0665789b4061e9f2d7bb833467e",
-    "automation/polar_station/retain_private_draft.py": "50fe3316f90acd1ce12883c195358ab928312b6bab8c92f77391f6f62ed4f7ba",
+    "automation/polar_station/retain_private_draft.py": "abac018327081fe98a39ca2a6105e053d528b9bca49f8463a196ef520210413d",
     "automation/polar_station/source_hygiene.py": "77290a9113a65ea95b017948c0fda4589811f48192b4e7874b70e31fe40ecc24",
     "automation/polar_station/theme_resources.py": "963b9cd25cd86d98a72aeeb6119b926a7a80be832545142cacd08cb7b5b6a017",
     "automation/polar_station/toolchain_wrappers/xcrun": "46a0559658d1e911f989a3ba0ea8a8c661f789366ac0a799388662933a18cf4b",

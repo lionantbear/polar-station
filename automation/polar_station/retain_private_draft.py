@@ -43,7 +43,7 @@ class Transport:
                 parsed.port not in (None, 443) or parsed.fragment):
             raise RetentionError('Unsafe request URL')
         headers = {'User-Agent': 'PolarStation-private-draft-retention', 'Cache-Control': 'no-cache',
-                   'Accept': 'application/octet-stream' if binary else 'application/vnd.github+json'}
+                   'Accept': 'application/octet-stream' if binary and method == 'GET' else 'application/vnd.github+json'}
         if authenticated:
             if parsed.netloc not in ('api.github.com', 'uploads.github.com'):
                 raise RetentionError('Refusing credentials outside GitHub API/upload origin')
@@ -363,19 +363,38 @@ class Retainer:
                 self.state['uploads_pending'].append(name)
                 self.save()
                 upload = self.upload_url(self.state['create_response']) + '?' + urllib.parse.urlencode({'name': name})
+                created_id = None
+                outcome = {'kind': 'local_input_error'}
                 try:
                     with path.open('rb') as data:
+                        outcome = {'kind': 'transport_uncertain'}
                         with self.request('POST', upload, authenticated=True, data=data,
                                           length=entry['bytes'], binary=True) as response:
-                            if response.status != 201:
-                                raise RetentionError(f'Upload HTTP {response.status}; reconciliation required')
-                            created_asset = json.load(response)
-                    # An ID in a successful upload response must agree with the listing.
-                    created_id = positive_id(created_asset.get('id'))
-                    self.state.setdefault('observed_uploads', {})[name] = {'id': created_id}
-                    self.save()
-                except (RetentionError, OSError, ValueError, http.client.HTTPException):
-                    created_id = None
+                            # Status only, never the response body or URL, is safe to retain.
+                            outcome = {'kind': 'http', 'status': response.status}
+                            if response.status == 201:
+                                try:
+                                    created_asset = json.load(response)
+                                except (ValueError, UnicodeError):
+                                    outcome['response'] = 'invalid_json'
+                                else:
+                                    try:
+                                        created_id = positive_id(created_asset.get('id')
+                                            if isinstance(created_asset, dict) else None)
+                                    except RetentionError:
+                                        outcome['response'] = 'invalid_asset_id'
+                                    else:
+                                        outcome['response'] = 'asset_id_received'
+                                        outcome['asset_id'] = created_id
+                                        self.state.setdefault('observed_uploads', {})[name] = {'id': created_id}
+                except (RetentionError, OSError, http.client.HTTPException):
+                    if outcome['kind'] == 'http':
+                        outcome['response'] = 'read_uncertain'
+                # Preserve the original upload result before any visibility retry can fail.
+                self.state.setdefault('upload_outcomes', {})[name] = outcome
+                self.save()
+                print(json.dumps({'release_id': rid, 'upload_asset': name,
+                                  'upload_outcome': outcome}, sort_keys=True), flush=True)
                 # No write retry, including on 422/502/timeout: inspect this exact ID only.
                 current = self.settled_assets(set(self.state['uploads_pending']))
                 if created_id is not None and current[name].get('id') != created_id:
@@ -447,6 +466,7 @@ def main():
         if retainer is not None:
             print(json.dumps({'retention_incomplete': True, 'release_id': retainer.state.get('release_id'),
                               'verified_retained_assets': retainer.state.get('verified_assets', {}),
+                              'upload_outcomes': retainer.state.get('upload_outcomes', {}),
                               'observed_unverified_uploads': {k: v for k, v in retainer.state.get('observed_uploads', {}).items()
                                   if k not in retainer.state.get('verified_assets', {})}}, sort_keys=True), flush=True)
         reason = str(error) if isinstance(error, RetentionError) else 'Local input or response decoding failure'
