@@ -64,7 +64,7 @@
   "distribution_scope": "source-only preview; binary release gates remain separate; see SOURCE_DISTRIBUTION.md",
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
-    ".github/workflows/macos-trial.yml": "b1888b31699218545e873990d4a11238941bd304efef9e7c1a84ea1eafdfd493",
+    ".github/workflows/macos-trial.yml": "ae879e0594fe9ef4ebc94b7f941a530877ce9dc9a136ca098123e62801bec017",
     ".github/workflows/native-macos.yml": "bf9789fbbf2f79d832fa234ae2474de90abdfd250c32db043fc96699b907f558",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "9e66be58363104ef8179293afe246e2345697472ea8cb35b72f7d5c6bee9b7e6",

@@ -42,16 +42,19 @@ jobs:
             --kind probe --emit-job-output --receipt "$RUNNER_TEMP/station-private-probe/receipt.json"
           echo "Private draft retention probe passed for this source and run. No binary or source was used." >> "$GITHUB_STEP_SUMMARY"
   private-retention-read-probe:
+    name: Trusted private draft GET-only verification
     needs: private-retention-probe
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: read
+      # Private drafts need push-capable authorization. The helper remains GET-only.
+      # This trusted job verifies bytes only; it never executes downloaded content.
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Prove contents-read access to the exact private probe bytes
+      - name: Verify exact private probe bytes with draft-capable authorization
         env:
           GH_TOKEN: ${{ github.token }}
           PROBE_METADATA: ${{ needs.private-retention-probe.outputs.probe }}
@@ -61,7 +64,7 @@ jobs:
           python3 automation/polar_station/retain_private_draft.py \
             --kind verify-probe --probe-metadata "$PROBE_METADATA" \
             --receipt "$RUNNER_TEMP/station-private-read-probe/receipt.json"
-          echo "The contents:read token retrieved and verified the exact private probe; anonymous access was denied." >> "$GITHUB_STEP_SUMMARY"
+          echo "The trusted GET-only verifier used contents:write authorization to verify the exact private probe; anonymous access was denied. No application was executed." >> "$GITHUB_STEP_SUMMARY"
   native:
     needs: [private-retention-probe, private-retention-read-probe]
     runs-on: macos-26
@@ -191,17 +194,25 @@ jobs:
           installroot="$RUNNER_TEMP/station-install-probe"
           mkdir -p "$mountpoint" "$installroot" "$evidence"
           trap '/usr/bin/hdiutil detach "$mountpoint" >/dev/null 2>&1 || true' EXIT
-          /usr/bin/hdiutil attach "$RUNNER_TEMP/Polar-Station-unnotarized.dmg" \
+          dmg="$RUNNER_TEMP/Polar-Station-unnotarized.dmg"
+          dmg_sha256=$(/usr/bin/shasum -a 256 "$dmg" | /usr/bin/awk '{print $1}')
+          /usr/bin/hdiutil attach "$dmg" \
             -readonly -nobrowse -mountpoint "$mountpoint" > "$evidence/dmg-attach.txt"
           /usr/bin/ditto --rsrc --extattr "$mountpoint/Polar Station.app" "$installroot/Polar Station.app"
           /usr/bin/codesign --verify --deep --strict "$installroot/Polar Station.app"
-          python3 - "$installroot/Polar Station.app" "$evidence" <<'PY_LAUNCH'
-          import json, os, plistlib, signal, subprocess, sys, time
+          python3 - "$installroot/Polar Station.app" "$evidence" "$dmg" "$dmg_sha256" \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" <<'PY_LAUNCH'
+          import hashlib, json, os, plistlib, re, signal, subprocess, sys, time
           from pathlib import Path
-          app, evidence = map(Path, sys.argv[1:])
+          app, evidence, dmg = map(Path, sys.argv[1:4])
+          dmg_sha256, source_commit, run_id, run_attempt = sys.argv[4:]
+          for value, pattern in ((dmg_sha256, r'[0-9a-f]{64}'), (source_commit, r'[0-9a-f]{40}'), (run_id, r'[1-9][0-9]*'), (run_attempt, r'[1-9][0-9]*')):
+              if not re.fullmatch(pattern, value):
+                  raise SystemExit('Invalid launch evidence source/run/DMG identity')
+          run_id, run_attempt = int(run_id), int(run_attempt)
           plist = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
           executable = app / 'Contents/MacOS' / plist['CFBundleExecutable']
-          report = {'scope': 'Temporary DMG mount/copy/strict signature verification and 15-second direct executable launch only; not interactive GUI/TCC/upgrade validation', 'bundle_id': plist.get('CFBundleIdentifier'), 'executable': executable.name, 'temporary_copy_signature': 'passed', 'release_ready': False}
+          report = {'source_commit': source_commit, 'run_id': run_id, 'run_attempt': run_attempt, 'dmg_sha256': dmg_sha256, 'scope': 'Temporary DMG mount/copy/strict signature verification and 15-second direct executable launch only; not interactive GUI/TCC/upgrade validation', 'bundle_id': plist.get('CFBundleIdentifier'), 'executable': executable.name, 'temporary_copy_signature': 'passed', 'release_ready': False}
           with (evidence / 'launch-stdout.txt').open('wb') as out, (evidence / 'launch-stderr.txt').open('wb') as err:
               proc = subprocess.Popen([str(executable)], stdout=out, stderr=err, start_new_session=True)
               time.sleep(15)
@@ -214,6 +225,13 @@ jobs:
                       os.killpg(proc.pid, signal.SIGKILL)
                       proc.wait(timeout=5)
               report['cleanup_exit_code'] = proc.returncode
+          # Bind the report to the image hashed before the exact mount above.
+          digest = hashlib.sha256()
+          with dmg.open('rb') as stream:
+              for block in iter(lambda: stream.read(1024 * 1024), b''):
+                  digest.update(block)
+          if digest.hexdigest() != dmg_sha256:
+              raise SystemExit('DMG changed during installation/launch check')
           (evidence / 'installation-launch.json').write_text(json.dumps(report, indent=2) + '\n')
           print(json.dumps(report, indent=2))
           if not report['alive_after_15_seconds']:
