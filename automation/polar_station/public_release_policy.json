@@ -48,7 +48,8 @@
     "automation/polar_station/public_sync.py",
     "automation/polar_station/collect_macos_build_evidence.py",
     "automation/polar_station/capture_native_source.py",
-    "automation/polar_station/capture_trial_inputs.py"
+    "automation/polar_station/capture_trial_inputs.py",
+    "automation/polar_station/retain_private_draft.py"
   ],
   "root_inputs": [
     "Cargo.lock",

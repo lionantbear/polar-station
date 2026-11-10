@@ -5,13 +5,65 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/macos-trial.yml'
+      - 'automation/polar_station/retain_private_draft.py'
 permissions:
   contents: write
 concurrency:
   group: macos-trial-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  private-retention-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      probe: ${{ steps.retain.outputs.probe }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify public source integrity before retention probe
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          clean="$RUNNER_TEMP/station-source-integrity"
+          mkdir -p "$clean"
+          git archive HEAD | tar -x -C "$clean"
+          python3 "$clean/automation/polar_station/public_release.py" verify --destination "$clean"
+      - name: Prove private create, upload, read-back and anonymous denial
+        id: retain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 automation/polar_station/retain_private_draft.py \
+            --kind probe --emit-job-output --receipt "$RUNNER_TEMP/station-private-probe/receipt.json"
+          echo "Private draft retention probe passed for this source and run. No binary or source was used." >> "$GITHUB_STEP_SUMMARY"
+  private-retention-read-probe:
+    needs: private-retention-probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prove contents-read access to the exact private probe bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE_METADATA: ${{ needs.private-retention-probe.outputs.probe }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 automation/polar_station/retain_private_draft.py \
+            --kind verify-probe --probe-metadata "$PROBE_METADATA" \
+            --receipt "$RUNNER_TEMP/station-private-read-probe/receipt.json"
+          echo "The contents:read token retrieved and verified the exact private probe; anonymous access was denied." >> "$GITHUB_STEP_SUMMARY"
   native:
+    needs: [private-retention-probe, private-retention-read-probe]
     runs-on: macos-26
     timeout-minutes: 180
     env:
@@ -206,7 +258,7 @@ jobs:
           test -f "$stage/inputs/trial-inputs-manifest.json"
           cp "$RUNNER_TEMP/Polar-Station-unnotarized.dmg" "$stage/Polar-Station-macOS-arm64-UNNOTARIZED.dmg"
           /usr/bin/ditto -c -k --keepParent "$RUNNER_TEMP/station-evidence" "$stage/build-evidence.zip"
-          python3 - "$stage" "$GITHUB_SHA" <<'PY_INDEX'
+          python3 - "$stage" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" <<'PY_INDEX'
           import hashlib,json,re,sys
           from pathlib import Path
           root=Path(sys.argv[1]); names=['Polar-Station-macOS-arm64-UNNOTARIZED.dmg','ghostty-built-source.tar.gz','godot-built-source.tar.gz','build-evidence.zip','inputs/trial-inputs-manifest.json']
@@ -234,45 +286,22 @@ jobs:
               entries.append({'name':p.name,'bytes':p.stat().st_size,'sha256':h.hexdigest()})
           (root/'upload-files.txt').write_text(''.join(str(root/name)+'\n' for name in names))
           (root/'SHA256SUMS').write_text(''.join(e['sha256']+'  '+e['name']+'\n' for e in entries))
-          (root/'draft-build-index.json').write_text(json.dumps({'source_commit':sys.argv[2],'draft_retention_only':True,'public_release_ready':False,'scope':'Ad-hoc signed Apple Silicon build; temporary copy/signature and 15-second launch only. Corresponding-source and notice review remain pending. No GTS upstream source is uploaded by this workflow.','assets':entries},indent=2)+'\n')
+          (root/'draft-build-index.json').write_text(json.dumps({'source_commit':sys.argv[2],'run_id':sys.argv[3],'run_attempt':sys.argv[4],'draft_retention_only':True,'public_release_ready':False,'scope':'Ad-hoc signed Apple Silicon build; temporary copy/signature and 15-second launch only. Corresponding-source and notice review remain pending. No GTS upstream source is uploaded by this workflow.','assets':entries},indent=2)+'\n')
           PY_INDEX
-          tag="macos-arm64-trial-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          cat > "$RUNNER_TEMP/draft-notes.md" <<'NOTES'
-          Private draft retention only. Do not publish or treat this as a cleared distribution.
-          Apple Silicon macOS trial, ad-hoc signed and unnotarized. Limited copy/signature/15-second launch check only.
-          Required notices/corresponding-source review remains pending. Captured source inputs are evidence, not automatic clearance. GTS upstream source is not included.
-          NOTES
-          gh release create "$tag" --draft --prerelease --target "$GITHUB_SHA" \
-            --title "Polar Station macOS arm64 trial build $GITHUB_RUN_ID (DRAFT)" \
-            --notes-file "$RUNNER_TEMP/draft-notes.md"
-          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/draft-releases.json"
-          id=$(python3 - "$RUNNER_TEMP/draft-releases.json" "$tag" <<'PY_ID'
-          import json,sys
-          rows=[r for r in json.load(open(sys.argv[1])) if r['tag_name']==sys.argv[2]]
-          assert len(rows)==1 and rows[0]['draft'] is True
-          print(rows[0]['id'])
-          PY_ID
-          )
-          # No authorization header: check the draft is not an anonymously public resource before upload.
-          code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$id")
-          test "$code" = 404 || { echo "Draft visibility not established; upload stopped (HTTP $code)." >&2; exit 1; }
-          assets=()
-          while IFS= read -r file; do assets+=("$file"); done < "$stage/upload-files.txt"
-          assets+=("$stage/SHA256SUMS" "$stage/draft-build-index.json")
-          gh release upload "$tag" "${assets[@]}"
-          gh api "repos/$GITHUB_REPOSITORY/releases/$id" > "$RUNNER_TEMP/draft-release.json"
-          python3 - "$RUNNER_TEMP/draft-release.json" <<'PY_PRIVATE'
-          import json,sys,urllib.request,urllib.error
-          r=json.load(open(sys.argv[1]));assert r['draft'] is True
-          for a in r['assets']:
-              try:
-                  with urllib.request.urlopen(urllib.request.Request(a['url'],headers={'User-Agent':'PolarStation-draft-visibility-check','Accept':'application/vnd.github+json'}),timeout=30) as response:
-                      raise SystemExit('Anonymous draft-asset access unexpectedly available')
-              except urllib.error.HTTPError as e:
-                  if e.code!=404:raise
-          print('Draft and all asset metadata denied anonymous access; no public release was created.')
-          PY_PRIVATE
-          echo "Draft trial retained at source commit $GITHUB_SHA. Public publication remains pending license/source review." >> "$GITHUB_STEP_SUMMARY"
+          # Preserve the expensive DMG first, then native captures and control records.
+          # Only the explicit selection above is eligible; receipts are never uploaded.
+          python3 - "$stage" <<'PY_ORDER'
+          from pathlib import Path
+          import sys
+          root = Path(sys.argv[1])
+          listed = (root/'upload-files.txt').read_text().splitlines()
+          priority = listed[:3] + [str(root/'draft-build-index.json'), str(root/'SHA256SUMS')]
+          (root/'upload-files.txt').write_text('\n'.join(priority + listed[3:]) + '\n')
+          PY_ORDER
+          python3 automation/polar_station/retain_private_draft.py \
+            --kind build --files "$stage/upload-files.txt" \
+            --receipt "$RUNNER_TEMP/station-private-retention-receipt.json"
+          echo "Draft trial retained and downloaded bytes verified at source commit $GITHUB_SHA. Public publication remains pending license/source review." >> "$GITHUB_STEP_SUMMARY"
       - name: Record trial boundary
         if: always()
         run: |
