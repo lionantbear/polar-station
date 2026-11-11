@@ -30,7 +30,7 @@ jobs:
       - name: Print retained launch evidence
         if: always()
         run: |
-          for name in result.json app.stderr app.stdout; do
+          for name in result.json app.stderr app.stdout terminal-sentinel.trace processes.txt; do
             if [ -f "$RUNNER_TEMP/launch-fix/launch-evidence/$name" ]; then
               echo "=== $name ==="
               cat "$RUNNER_TEMP/launch-fix/launch-evidence/$name"

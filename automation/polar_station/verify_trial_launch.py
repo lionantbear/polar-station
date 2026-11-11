@@ -45,7 +45,7 @@ def command(executable, sentinel, token):
     # Ghostty/macOS deliberately retains exits faster than 250ms as abnormal,
     # even with code 0; give the real terminal command one second of runtime.
     return [str(executable), "--shell-integration=none", "-e", "/bin/sh", "-c",
-            'umask 077; /bin/sleep 1; printf "%s" "$2" > "$1"; exit 0',
+            'umask 077; printf "started pid=%s\n" "$$" > "$1.trace"; /bin/sleep 1; printf "sleep=%s\n" "$?" >> "$1.trace"; printf "%s" "$2" > "$1"; exit 0',
             "polar-trial-smoke", str(sentinel), token]
 
 
@@ -116,6 +116,8 @@ def run(args):
             result["observed_seconds"] = round(time.monotonic() - start, 3)
             result["passed"] = True
     except Exception as exc:
+        snapshot = subprocess.run(["/bin/ps", "-axo", "pid,ppid,pgid,state,comm"], capture_output=True, timeout=10)
+        (out / "processes.txt").write_bytes(snapshot.stdout)
         result["error"] = str(exc)
         raise
     finally:
