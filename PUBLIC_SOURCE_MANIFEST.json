@@ -2371,7 +2371,7 @@
     "automation/polar_station/apply_display_overlay.py": "d47871638e896a876ca1f158964af4a0eb172c706c78e85707b48650cd8b4a35",
     "automation/polar_station/build_linux_ghostty.sh": "5e4eff382529aca6a24102c54da8491df3a0d8fa15378c88986b8256a37b33ec",
     "automation/polar_station/build_linux_graphics.sh": "9c3d6ef2ba3fa8666e16be173ad9cbd4cd08d76e1250bdf68fe0a1f9dace46a3",
-    "automation/polar_station/build_macos.sh": "279589ce205779ed7eddf27b1621ebd507ef551f6f3e2f69f0724fd949abbfd2",
+    "automation/polar_station/build_macos.sh": "e1f4789b012907ad5f1cf38ffb07548c4f27e37da7ea2fe092e7fe84d81efb64",
     "automation/polar_station/build_macos_graphics.sh": "94be6e0bf0b91a050bb596e2cd5dcd901513a84bc71f2f0f91f1b155c3584166",
     "automation/polar_station/build_rust_runtime.py": "fd1035d40e9f09d92d6c55ae2cc73ea84b1f0f0b1aa1363223b0dc51bd599e3c",
     "automation/polar_station/capture_native_source.py": "df11a060daab179ffac020c08e4338e0bc43582f464c3a87bf388881a8f038d1",
@@ -4127,9 +4127,9 @@
   "schema_version": 1,
   "source_provenance": {
     "git_dirty": false,
-    "git_head": "d277a4143b09a9d6e9f329c5a7ff413a222baf36",
+    "git_head": "dd5eafc22863ec2c61d2c126ff7c035e23885be0",
     "input_count": 1997,
-    "inputs_sha256": "f94a87842363c91885aeb497e1391859d50516e7d04d5bd0508dece5ff2fff63",
+    "inputs_sha256": "43f1d52aeb18c172ac23f86909fd68f22603a1fb3982bcecd8347c21a356520a",
     "kind": "working_tree"
   },
   "status": "source_export_preview_not_release",

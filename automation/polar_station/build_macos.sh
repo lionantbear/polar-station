@@ -236,7 +236,7 @@ fi
 # Deep bundle signing must preserve the independently signed Host entitlement.
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)
 printf '%s' "$host_entitlements" | python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
-/usr/bin/codesign --display --verbose=2 "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -Fxq 'Identifier=com.polarealm.polar-station.host'
+/usr/bin/codesign --display --verbose=2 "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -Fx 'Identifier=com.polarealm.polar-station.host' >/dev/null
 python3 "$repo_root/automation/polar_station/record_macos_signing.py" after \
     --app "$app" --source "$repo_root" --before "$repo_root/target/build-evidence/macos-pre-sign.json" \
     --output "$repo_root/target/build-evidence/macos-signing.json"
