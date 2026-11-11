@@ -68,6 +68,8 @@ jobs:
             --receipt "$RUNNER_TEMP/station-private-read-probe/receipt.json"
           echo "The trusted GET-only verifier used contents:write authorization to verify the exact private probe; anonymous access was denied. No application was executed." >> "$GITHUB_STEP_SUMMARY"
   native:
+    # Do not rebuild until the existing capture/observation wiring is restored.
+    if: false
     needs: [private-retention-probe, private-retention-read-probe]
     runs-on: macos-26
     timeout-minutes: 180
