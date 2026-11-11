@@ -4,7 +4,7 @@ set -eu
 [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 cache=${POLAR_GRAPHICS_CACHE:-"$HOME/.cache/polar-graphics"}
-godot="$cache/godot"
+godot=${POLAR_GRAPHICS_GODOT_CHECKOUT:-"$cache/godot"}
 pin=ed1daf0bf001b61586d9930840f2f1394092c079
 [ "$(git -C "$godot" rev-parse HEAD)" = "$pin" ] || { echo "Godot checkout must be pinned to $pin" >&2; exit 65; }
 # This library is called by an existing NSApplication. Reuse the upstream OS

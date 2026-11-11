@@ -1,0 +1,3532 @@
+{
+  "schema": "polar.ideacave.itree.v1",
+  "root": "view-example",
+  "nodes": {
+    "view-example": {
+      "uuid": "b2743946-a8ad-4b2d-bc10-7a824b00e751",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Polar Browsing Configuration",
+        "body": "本 I-tree 保存 Polar 真实内容图的业务浏览设计与配置，源数据只读；不新造测试内容、不改源节点、关系、UUID 或版本。\n\nIdea Perspective（想法视角）回答“人为什么要从这里看”：用户需求看用户要什么，开发推进看接下来做什么，任务追踪看完成状态和需求／设计／验证证据，系统构成看各部分怎样配合，决策依据看为什么这样决定，灵感探索看还有哪些可能。Root 是已有数据入口；单有 root、文件或不同切层参数，不等于有业务意义的新视角。\n\nPerspective Wheel 选择业务视角；Group Wheel 纵向选择当前粒度的组，横向双指／鼠标拖动改变整体分组粒度；越细每个 layer 的节点越少，原节点完整保留。主视图提供统一的 2D／2.5D 与详情，独立三维关系地图保留完整 Graph。原 Tree Wheel／Path Wheel 称谓由此替代。Filter 按明确属性减少干扰，保持布局和骨架；Search 独立查找、定位，结果不被当前 Filter 静默排除。\n\n完整交互设计见 design，六个业务实例见 perspectives。业务视角复用 polar.explorer.view.v1 对象，保存名称、业务问题、root、组织规则、分组规则和默认 filter，不新增平行存储模型。原先三套技术配置保留为 technical-regression，不进入 Perspective Wheel；18／9／34 组是它们的技术基线，不是新业务视角的结果。\n\nLinux standalone 实验已接通共享 Rust 业务配置与 Godot 双 Wheel／分组场景，已有数据和局部交互开发检查；正式 Station 接入、Mac、完整手势与人工验收仍未完成。当前来源为 50 份既有文件；hash 与计数是观察基线，不是加载配额或冻结要求。系统组件事实或状态映射不足时明确说明，不修改真实数据来补齐演示。",
+        "status": "experimental-linux-development-partial",
+        "review_status": "pending-human-review",
+        "runtime_adoption": "experimental-standalone-only",
+        "runtime_admission": "not-performed",
+        "contract_version": 2,
+        "document_role": "configuration-and-test-contract",
+        "example_inputs": [
+          "itrees/adam-development.itree.json",
+          "itrees/cgm.itree.json",
+          "itrees/delivery-bricks.itree.json",
+          "itrees/delivery-development.itree.json",
+          "itrees/delta-prompt.itree.json",
+          "itrees/dev-tree-definition.itree.json",
+          "itrees/fyf-build.itree.json",
+          "itrees/fyf-dev06-development-session.itree.json",
+          "itrees/fyf-dev06-fyf-delivery-plan.itree.json",
+          "itrees/fyf-dev06-fyf-prr.itree.json",
+          "itrees/fyf-dev06-raw-records.itree.json",
+          "itrees/fyf-dev06-simulation-02.itree.json",
+          "itrees/fyf-dev06-simulation-03.itree.json",
+          "itrees/fyf-dev06-simulation-04.itree.json",
+          "itrees/fyf-dev06-simulation-05.itree.json",
+          "itrees/fyf-dev06-simulation-06.itree.json",
+          "itrees/fyf-dev06-simulation-07.itree.json",
+          "itrees/fyf-dev06-simulation-08.itree.json",
+          "itrees/fyf-dev06-simulation-09.itree.json",
+          "itrees/fyf-dev06-simulation-10.itree.json",
+          "itrees/fyf-dev06-simulation-11.itree.json",
+          "itrees/fyf-dev06-simulation-12.itree.json",
+          "itrees/fyf-dev06-simulation-13.itree.json",
+          "itrees/fyf-dev06-simulation-14.itree.json",
+          "itrees/fyf-dev06-simulation-15.itree.json",
+          "itrees/fyf-dev06-simulation-16.itree.json",
+          "itrees/fyf-dev06-simulation-17.itree.json",
+          "itrees/fyf-dev06-simulation-18.itree.json",
+          "itrees/fyf-dev06-simulation-19.itree.json",
+          "itrees/fyf-dev06-simulation.itree.json",
+          "itrees/fyf-dev06-simulations.itree.json",
+          "itrees/fyf-product.itree.json",
+          "itrees/idea-tree-authoring-development.itree.json",
+          "itrees/idea-tree-authoring-improvement-guide.itree.json",
+          "itrees/idea-tree-authoring-standard.itree.json",
+          "itrees/idea-tree-presentation-development.itree.json",
+          "itrees/ideacave-development.itree.json",
+          "itrees/pcomp.itree.json",
+          "itrees/polar-build.itree.json",
+          "itrees/polar-ideas.itree.json",
+          "itrees/polar.itree.json",
+          "itrees/polarinfra-decisions.itree.json",
+          "itrees/polarinfra-dev.itree.json",
+          "itrees/polarinfra-discussion-followup-2026-11-07.itree.json",
+          "itrees/polarinfra-requests.itree.json",
+          "itrees/prr-definition.itree.json",
+          "itrees/shared-catalog-ideacave-e2e.itree.json",
+          "itrees/software-development-process-development.itree.json",
+          "itrees/software-development-process.itree.json",
+          "itrees/station-evolution.itree.json"
+        ],
+        "architecture_owner": "crates/polar-ideacave-presentation",
+        "source": "用户确认业务视角、Perspective Wheel、Group Wheel、多级分组及 Filter/Search 边界，要求写文档出设计。",
+        "document_validation": {
+          "status": "passed-document-consistency-checks",
+          "source_preservation": "all 51 pre-existing content I-tree files byte-identical during this edit; source hashes recaptured from actual current bytes",
+          "checks": [
+            "JSON, unique configuration UUIDs and target references",
+            "50 current source fingerprints",
+            "six business perspective bindings; Task Follow-up defaults to Tasks, the other five default to Clear",
+            "legacy technical configurations excluded from Perspective Wheel",
+            "new runtime cases all not run"
+          ],
+          "legacy_reference_counts": "technical regression only, not outputs of new perspectives",
+          "new_runtime": "not-implemented; no native, UI or performance acceptance claimed",
+          "latest_design_addition": "horizontal granularity over cached group hierarchy; vertical cyclic selection; complete coverage and selected identity preserved",
+          "wireframe": "static SVG plus PNG export; vertically stacked wheels in existing footprint; not runtime evidence"
+        },
+        "design_scope": "business browsing design, real-data configuration and standalone Linux experiment; formal integration pending",
+        "implementation_evidence": {
+          "scope": "standalone Linux experiment; development only",
+          "shared_owner": "crates/polar-ideacave-presentation/src/perspectives.rs",
+          "godot_bridge": "crates/polar-graphics-godot/src/idea_perspective.rs",
+          "host": "apps/polar-ideacave-godot/perspective_experiment.tscn",
+          "switch_regression": "apps/polar-ideacave-godot/perspective_switch_selftest.gd",
+          "evidence_directory": "/data/polar/state/perspective-wheel-20261110",
+          "passed": [
+            "shared Rust Clippy and 568 Nextest tests at earlier source snapshot",
+            "real-data grouping/filter/search experiment checks",
+            "shared material, plaque and lifecycle regressions"
+          ],
+          "pending": [
+            "native upload/commit frame cost and memory attribution; no final performance acceptance",
+            "physical trackpad and mouse review",
+            "standalone source-event refresh and formal Station package integration",
+            "Mac execution/install",
+            "human visual acceptance"
+          ],
+          "switch_performance": {
+            "status": "development-measurement-not-human-acceptance",
+            "report": "/data/polar/state/perspective-wheel-20261110/switch-vulkan-final.json",
+            "corpus_nodes": 1062,
+            "corpus_relations": 2427,
+            "warm_switch_scene_and_diagnostic_draw_ms": [
+              114.556,
+              161.827,
+              122.838,
+              35.694,
+              123.774
+            ],
+            "cold_new_perspective_max_ms": 775.313,
+            "native_label_reentries": 0,
+            "native_definitions_retained": 393,
+            "source_revision_lifetime": "one native consumer per visited definition, attached hidden when inactive; released on source replacement/scene close",
+            "limitations": "first unvisited layout still synchronous; diagnostic frame/draw timings are not physical-input or human acceptance"
+          },
+          "render_regressions": "53 material checks, 17 lifecycle checks, 17 real-data composite checks, native edges, plaque updates and Vulkan perspective-switch/cleanup passed",
+          "async_preparation": {
+            "status": "implemented-and-development-tested",
+            "shared_geometry": "apps/polar-ideacave-godot/depth_forest/forest_geometry.gd",
+            "completion": "Godot Thread + call_deferred; no active scene access or polling",
+            "real_geometry_parity": "all five real perspectives preserve points, bounds, layers and routes against pre-refactor forest",
+            "input_regression": "Group Wheel keyboard focus, refinement, continuous cyclic reversal, separate map input, native text input priority",
+            "failure_and_close": "obsolete completion discarded, latest request wins, failed geometry retains complete previous scene, worker and cached resources released on close",
+            "report": "/data/polar/state/perspective-wheel-20261110/switch-async-measured-vulkan.json",
+            "cold_request_callback_ms": [
+              23.383,
+              28.378,
+              11.466,
+              7.044
+            ],
+            "warm_scene_and_diagnostic_draw_ms": [
+              93.968,
+              125.225,
+              106.044,
+              22.388,
+              100.387
+            ],
+            "first_visit_total_ms_max": 750.889,
+            "first_visit_main_loop_gap_ms_max": 170.31,
+            "limitations": "Background preparation remains up to about 0.75s elapsed; native commit/upload still causes a measured main-loop gap. This does not claim instant content or physical smoothness."
+          },
+          "resource_observation": {
+            "report": "/data/polar/state/perspective-wheel-20261110/async-resource-measurement.json",
+            "scope": "whole standalone process, not incremental pane ownership or accepted budget",
+            "startup_rss_mib": 601.871,
+            "after_five_views_rss_mib": 700.98,
+            "settled_cpu_percent_one_core": 5.636,
+            "settled_drm_gfx_percent": 5.947,
+            "accepted_memory_cost": false
+          }
+        },
+        "latest_configuration_change": {
+          "date": "2026-11-11",
+          "purpose": "Task Follow-up over unchanged real Polar content",
+          "task_types": [
+            "polar.development.task.v1",
+            "polar.station.task.v1"
+          ],
+          "execution_status": "passed-shared-domain-and-scene-development-checks",
+          "human_acceptance": "pending",
+          "evidence": {
+            "scope": "development checks; human/native visual acceptance remains pending",
+            "contracts": {
+              "passed": 588,
+              "skipped": 0,
+              "exit_code": 0
+            },
+            "clippy": "passed",
+            "godot_scene": {
+              "passed_checks": 24,
+              "failed": 0,
+              "relationship_map_nodes": 1068,
+              "exit_code": 0,
+              "completion_state_detail": "original status verified in detail text control"
+            },
+            "real_content_sources_byte_identical": 50,
+            "configuration_uuids_preserved": true,
+            "evidence_directory": "/data/polar/state/task-follow-up-20261111",
+            "recorded_at": "2026-11-11T09:44:08.493621+00:00"
+          }
+        }
+      },
+      "relations": {
+        "definitions": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definitions"
+          },
+          "properties": {}
+        },
+        "root-selections": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "root-selections"
+          },
+          "properties": {}
+        },
+        "organization-rules": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-rules"
+          },
+          "properties": {}
+        },
+        "grouping-rules": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-rules"
+          },
+          "properties": {}
+        },
+        "views": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "views"
+          },
+          "properties": {}
+        },
+        "cases": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "cases"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "design": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design"
+          },
+          "properties": {}
+        },
+        "perspectives": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspectives"
+          },
+          "properties": {}
+        },
+        "filters": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "filters"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "definitions": {
+      "uuid": "85871a9e-98db-4ffd-a464-262c0db6e3f7",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Configuration Object Definitions",
+        "body": "描述本例配置对象的字段、关系和执行语义。定义与实例均为可阅读的 I-tree 节点；规则参数是节点属性，root 和规则绑定通过真实的 I-tree 关系表达。"
+      },
+      "relations": {
+        "definition-input": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-input"
+          },
+          "properties": {}
+        },
+        "definition-root": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "definition-organization": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        },
+        "definition-grouping": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-grouping"
+          },
+          "properties": {}
+        },
+        "definition-view": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "definition-case": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "definition-filter": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-filter"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "root-selections": {
+      "uuid": "bfe5a2d0-1618-4134-83f8-8a415ef946c6",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Existing Polar Entry Nodes",
+        "body": "业务视角使用现有需求、development、polar、决策、Ideas 入口。roots-explorer 仅为旧技术回归保留。"
+      },
+      "relations": {
+        "roots-polar": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-polar"
+          },
+          "properties": {}
+        },
+        "roots-explorer": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-explorer"
+          },
+          "properties": {}
+        },
+        "roots-requirements": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-requirements"
+          },
+          "properties": {}
+        },
+        "roots-development": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-development"
+          },
+          "properties": {}
+        },
+        "roots-decisions": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-decisions"
+          },
+          "properties": {}
+        },
+        "roots-ideas": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-ideas"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-rules": {
+      "uuid": "6aceb023-1661-4d80-ae92-eff473dcb1bd",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Organization Rules",
+        "body": "业务组织使用明确关系和方向的 BFS 配置，非正文语义推断。incoming 只反查真实边，不改变源方向；原有两条技术规则保留回归。"
+      },
+      "relations": {
+        "organization-authored": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-authored"
+          },
+          "properties": {}
+        },
+        "organization-outgoing": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-outgoing"
+          },
+          "properties": {}
+        },
+        "organization-requirements": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-requirements"
+          },
+          "properties": {}
+        },
+        "organization-development": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-development"
+          },
+          "properties": {}
+        },
+        "organization-system": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-system"
+          },
+          "properties": {}
+        },
+        "organization-decisions": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-decisions"
+          },
+          "properties": {}
+        },
+        "organization-ideas": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-ideas"
+          },
+          "properties": {}
+        },
+        "organization-task-follow-up": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-task-follow-up"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "grouping-rules": {
+      "uuid": "d8d51700-285e-4d5a-892e-be940b0104d8",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Grouping Rules",
+        "body": "业务默认使用多级 Hierarchical Topics。旧显式入口与两级深度带作为技术对照，不能冒充不同业务视角。分组在组织后执行，不按文件切层。"
+      },
+      "relations": {
+        "grouping-semantic": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-semantic"
+          },
+          "properties": {}
+        },
+        "grouping-depth": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-depth"
+          },
+          "properties": {}
+        },
+        "grouping-business": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-business"
+          },
+          "properties": {}
+        },
+        "grouping-task-follow-up": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-task-follow-up"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "views": {
+      "uuid": "e43071a5-68bc-4a67-bafc-609ea935deaf",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Technical Regression Configurations",
+        "body": "保留原先的包含展开、正向 BFS 与不同切组技术对照；不作为业务视角、不进入 Perspective Wheel。改变分组参数不等于改变业务观察问题。",
+        "role": "technical-regression",
+        "expose_in_perspective_wheel": false
+      },
+      "relations": {
+        "view-polar-hierarchy": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "view-polar-hierarchy"
+          },
+          "properties": {}
+        },
+        "view-explorer-relations": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "view-explorer-relations"
+          },
+          "properties": {}
+        },
+        "view-explorer-bands": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "view-explorer-bands"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "cases": {
+      "uuid": "02d71628-7668-4416-8af5-93298115d910",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Real Polar Data Development Cases",
+        "body": "原有技术案例保留基线语义，计数不代表业务视角输出。业务、分组、Filter、Search 和 Task Follow-up 使用真实 Polar 内容；各案例的执行状态与证据分别记录，开发检查不替代原生交互、人工视觉或正式验收。",
+        "additional_checks": [
+          "Original content file bytes must remain unchanged by loading, configuration changes and testing.",
+          "Preserve every original node, relation kind/direction, source identity and fixed-version reference in the full graph and independent 3D map.",
+          "Nodes without UUID retain exact source-version/local-key identity; never add persistent UUIDs to original files.",
+          "Configuration edits write only to this configuration document.",
+          "Selection, wheel gestures, pan, zoom, animation, theme and Tab foreground changes must not rebuild organization or grouping.",
+          "Changing only grouping must reuse the unchanged organization result.",
+          "Continuous cyclic wheel, reversal, synchronized main scene and cross-group keyboard navigation remain required.",
+          "Keep visual, native installation and performance evidence separate."
+        ]
+      },
+      "relations": {
+        "case-polar-hierarchy": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-polar-hierarchy"
+          },
+          "properties": {}
+        },
+        "case-explorer-relations": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-explorer-relations"
+          },
+          "properties": {}
+        },
+        "case-explorer-bands": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-explorer-bands"
+          },
+          "properties": {}
+        },
+        "case-business-perspectives": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-business-perspectives"
+          },
+          "properties": {}
+        },
+        "case-hierarchical-groups": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-hierarchical-groups"
+          },
+          "properties": {}
+        },
+        "case-filter-stability": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-filter-stability"
+          },
+          "properties": {}
+        },
+        "case-search-independence": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-search-independence"
+          },
+          "properties": {}
+        },
+        "case-task-follow-up": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "case-task-follow-up"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "definition-input": {
+      "uuid": "5764a7ea-7eed-4577-a6c2-3571661ad575",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "Graph Input Definition",
+        "body": "声明现有内容文件作为只读来源。sources 的 path 用于加载，observed_bytes_sha256 与 observed_size_bytes 记录本次基线，不锁死工作文件。文档更新后复用现有刷新链并重验。所有选中文档的定义及关系进入一个 Graph，文件不决定空间分组。配置只在显式选择为内容时进入内容 Graph。",
+        "describes_type": "polar.explorer.graph-input.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_properties": [
+            "mode",
+            "sources"
+          ],
+          "mode": "live_readonly",
+          "source_fields": [
+            "path",
+            "observed_bytes_sha256",
+            "observed_size_bytes"
+          ],
+          "all_loaded_definitions": true,
+          "no_source_mutation": true,
+          "source_identity": "existing source path, captured version digest and local key; preserve optional persistent UUID",
+          "merge_policy": "do not merge ambiguous UUID versions or silently retarget fixed references",
+          "configuration_is_input_only_if_explicitly_selected": true,
+          "source_path_base": "repository root; never a group boundary"
+        }
+      },
+      "relations": {}
+    },
+    "definition-root": {
+      "uuid": "8d0319d7-fa27-4c4f-a6a4-85c4bbb1738e",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "Root Selection Definition",
+        "body": "root 选择是独立配置，root-NN 通过 context 引用已有内容节点，order 决定多根顺序。目标在当前只读输入版本内唯一解析；缺失或歧义时明确报告并保留上一份有效画面，不补节点、不猜版本。",
+        "describes_type": "polar.explorer.root-selection.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_properties": [
+            "mode"
+          ],
+          "mode": "explicit",
+          "root_relation": "polar.context.v1",
+          "root_slot_prefix": "root-",
+          "root_order": "ascending integer properties.order",
+          "minimum_roots": 1,
+          "unresolved_or_ambiguous_root": "error; keep previous valid view"
+        }
+      },
+      "relations": {}
+    },
+    "definition-organization": {
+      "uuid": "c92400a9-44f8-48f3-91de-d04849698217",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "Organization Rule Definition",
+        "body": "组织规则只产生浏览骨架和出现位置，保留原始有向关系。relation_policy 指定真实关系及方向；规则顺序、slot 和精确目标身份依次作为稳定顺序。authored_paths 沿选中关系保留不同路径上的出现位置；breadth_first 通过 visited 集合为每个可达节点选择首次发现的父边。环作为带真实身份的回链保留，未解析目标作为引用保留。多路径的生产实现应按需共享展开，不预先穷举所有可能路径。\n\nincoming 用于反查真实边，例如需求找实现者；保留源关系类型和原方向，不把反向浏览伪装成源 contains。精确遍历步包含原边 owner、slot、遍历方向、目标精确身份。旧 outgoing-only 案例使用简化 slot path，不用于消除 incoming 歧义。",
+        "describes_type": "polar.explorer.organization-rule.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_properties": [
+            "algorithm",
+            "relation_policy",
+            "edge_order",
+            "shared_nodes",
+            "cycles",
+            "unresolved"
+          ],
+          "algorithms": [
+            "authored_paths",
+            "breadth_first"
+          ],
+          "directions": [
+            "outgoing",
+            "incoming",
+            "both"
+          ],
+          "edge_order": [
+            "relation_policy_order",
+            "slot",
+            "target_identity"
+          ],
+          "shared_node_modes": [
+            "repeat_by_path",
+            "single_occurrence"
+          ],
+          "cycles": "retain_as_reference",
+          "unresolved": "retain_as_reference",
+          "tree_level": "root=0; each selected parent edge increments level by one",
+          "non_tree_edges": "retain original relation identities and directions",
+          "full_graph": "unchanged; unreachable definitions stay available to the 3D map",
+          "occurrence_order": {
+            "authored_paths": "root-order then depth-first preorder",
+            "breadth_first": "root-order then breadth-first discovery order"
+          },
+          "directed_step_identity": [
+            "original edge owner identity",
+            "slot",
+            "traversal direction",
+            "destination identity"
+          ],
+          "source_relation_direction_preserved": true
+        }
+      },
+      "relations": {}
+    },
+    "definition-grouping": {
+      "uuid": "65bdbc45-1839-4e2d-8435-02b21a9ccd82",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "Grouping Rule Definition",
+        "body": "分组作用于浏览树而不是文件。每个出现位置恰好有一个核心组，组内保持连通。semantic_anchors 使用 anchor-NN context 指向的现有主题节点或明确声明的节点类型，再加浏览根；其余位置归最近锚点祖先。depth_bands 按 levels_per_band 划分深度，各分支带起点独立成组。边界节点仍引用真实身份，不增加真实节点或核心成员数。\n\n基础分组 parent 为最近另一个祖先组入口，形成无环层级。显示粒度是在整个 Perspective 上对该层级的逐级细分：粗组包含其合并的后代引用，更细时拆出下级，父级剩余核心内容保留为概览组，不丢失、不重复。不同分支没有相同深度也完整覆盖。Group Wheel 纵向选当前粒度的显示组，横向变粗／变细。树内层级、基础分组层级、当前显示粒度和空间位置需明确区分。",
+        "describes_type": "polar.explorer.grouping-rule.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_properties": [
+            "algorithm",
+            "root_is_anchor",
+            "membership",
+            "boundary",
+            "group_order"
+          ],
+          "algorithms": [
+            "semantic_anchors",
+            "depth_bands"
+          ],
+          "membership": "nearest_ancestor_anchor",
+          "boundary": "retain_child_group_root_reference",
+          "group_order": "root_order_then_tree_preorder",
+          "group_identity": "view identity plus anchor occurrence identity; never source filename",
+          "stable_during": [
+            "selection",
+            "wheel gesture",
+            "pan",
+            "zoom",
+            "camera animation",
+            "theme change"
+          ],
+          "recompute_on": [
+            "explicit grouping configuration change",
+            "relevant input tree change"
+          ],
+          "core_member_order": "organization occurrence order",
+          "semantic_anchor_sources": [
+            "root occurrence",
+            "explicit anchor-NN context targets",
+            "optional anchor_node_types"
+          ],
+          "source_file_is_group_boundary": false,
+          "hierarchy": {
+            "parent": "nearest distinct ancestor group anchor",
+            "roots": "one root group per browsing root",
+            "core_membership": "exactly one group per occurrence",
+            "parent_view": "coarse display aggregates existing node references; refinement retains child groups and a residual overview group if needed",
+            "cycle_policy": "acyclic group hierarchy; original semantic backlinks remain separate"
+          },
+          "granularity": {
+            "scope": "whole current perspective",
+            "coarser": "merge lower groups through existing hierarchy",
+            "finer": "partition coarse group into finer groups plus residual overview when needed",
+            "coverage": "every organized occurrence belongs to exactly one display group at every granularity",
+            "refinement": "finer groups are subsets of their containing coarse group; union preserves it",
+            "uneven_branches": "retain leaves and parent residual; do not filter by exact group depth",
+            "group_count": "nondecreasing when refining",
+            "per_layer_node_count": "nonincreasing for the containing group when refining",
+            "selection": "retain exact selected identity; choose its containing display group",
+            "horizontal_bounds": "clamped; no coarsest-to-finest wrap",
+            "vertical_groups": "continuous cyclic selection within current granularity"
+          }
+        }
+      },
+      "relations": {}
+    },
+    "definition-view": {
+      "uuid": "f3548204-c0b2-4800-90ae-2b1a29eaded2",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "Idea Perspective Definition",
+        "body": "业务 Idea Perspective 复用 polar.explorer.view.v1。role=business-perspective 时保存名称、business_name、business_question、decision_value、available_scope、order，并以 uses 槽引用 input、root、organization、grouping、filter。人因观察问题不同而切换视角，不能把切层参数不同冒充业务不同。\n\nrole=technical-regression 保留原四槽契约，不进入 Perspective Wheel。搜索词、结果、临时显露和相机属于交互状态，不写入原始内容，也不当作 filter。",
+        "describes_type": "polar.explorer.view.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_relation_slots": {
+            "input": "polar.explorer.graph-input.v1",
+            "root": "polar.explorer.root-selection.v1",
+            "organization": "polar.explorer.organization-rule.v1",
+            "grouping": "polar.explorer.grouping-rule.v1"
+          },
+          "binding_relation": "polar.uses.v1",
+          "organization_key": [
+            "input structure identity",
+            "root selection identity",
+            "organization rule identity and properties"
+          ],
+          "grouping_key": [
+            "organization result identity",
+            "grouping rule identity and properties"
+          ],
+          "renderer_independent": true,
+          "business_perspective_required_properties": [
+            "role",
+            "title",
+            "business_name",
+            "business_question",
+            "decision_value",
+            "available_scope",
+            "order"
+          ],
+          "business_perspective_required_relation_slots": {
+            "input": "polar.explorer.graph-input.v1",
+            "root": "polar.explorer.root-selection.v1",
+            "organization": "polar.explorer.organization-rule.v1",
+            "grouping": "polar.explorer.grouping-rule.v1",
+            "filter": "polar.explorer.filter.v1"
+          },
+          "role_values": [
+            "business-perspective",
+            "technical-regression"
+          ],
+          "search_is_filter": false
+        }
+      },
+      "relations": {}
+    },
+    "definition-case": {
+      "uuid": "edceff45-ee53-4b07-b901-22cf15d318fb",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "View Test Case Definition",
+        "body": "测试节点通过 view 引用配置，expected 保存真实路径、原始关系、分组及数据保全预期。observed_reference_counts 仅是当前字节基线的文档参考计算，不能充当新执行器或 UI 验收。不移动内容、不增加人造节点制造测试场景。",
+        "describes_type": "polar.explorer.view-test-case.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_properties": [
+            "expected",
+            "execution_status"
+          ],
+          "required_relation_slots": [
+            "view"
+          ],
+          "execution_status": "not-run-new-interpreter-not-implemented",
+          "assertions": [
+            "original source byte preservation",
+            "root and real relation paths",
+            "group core membership and boundary references",
+            "graph/non-tree relation preservation",
+            "explicit identities outside the current browsing tree",
+            "same organization when only grouping changes"
+          ]
+        }
+      },
+      "relations": {}
+    },
+    "input-graph": {
+      "uuid": "3351d8fb-3916-49f6-ac42-64954905c5cf",
+      "type": "polar.explorer.graph-input.v1",
+      "properties": {
+        "title": "Current Polar Graph — Read Only",
+        "body": "sources 直接引用现有内容文档。所有定义与真实关系进入同一 Graph，不把文件 root 当空间层。清单来自 polar 入口通过本地唯一对象引用可解析到的现有文档，不把其他关系自动改成 contains。\n\n只读加载与刷新复用既有能力。现有 137 个局部节点没有 UUID，沿用既有文档版本与 local key 的精确身份，不补 UUID；2 条固定 tree 引用保留原始 hash，不偷换为同 UUID 的最新文档；3 条指向本配置的引用保留为外部控制引用。不完整引用必须显示或报告，不通过修真实数据获得好看的测试结果。",
+        "mode": "live_readonly",
+        "sources": [
+          {
+            "path": "itrees/adam-development.itree.json",
+            "observed_bytes_sha256": "901db65883df9322e8225328b59ad21ce1206c6bb6ec257d470626e6c6515e85",
+            "observed_size_bytes": 113383
+          },
+          {
+            "path": "itrees/cgm.itree.json",
+            "observed_bytes_sha256": "8fead1e9e40ddf1e12e5c25a5e54360a33836a32259b84dcf57e7e1d151af27e",
+            "observed_size_bytes": 3680
+          },
+          {
+            "path": "itrees/delivery-bricks.itree.json",
+            "observed_bytes_sha256": "debb2b7cf5a05609a48fd052e882b5124bce16cda3d9c95a88ef07187d58ac76",
+            "observed_size_bytes": 32816
+          },
+          {
+            "path": "itrees/delivery-development.itree.json",
+            "observed_bytes_sha256": "4728adf4df436c53bec6d292e442677853d80dee16decdc707faa163f156e012",
+            "observed_size_bytes": 25840
+          },
+          {
+            "path": "itrees/delta-prompt.itree.json",
+            "observed_bytes_sha256": "53e37918ce3324048ea484b78a00b250396b8fe536fccee59dd95b199869bb44",
+            "observed_size_bytes": 87996
+          },
+          {
+            "path": "itrees/dev-tree-definition.itree.json",
+            "observed_bytes_sha256": "0b0925bbdd8062ab042c74d719abe2dabd764b8a2e4911604d5ad8cc419a923f",
+            "observed_size_bytes": 14201
+          },
+          {
+            "path": "itrees/fyf-build.itree.json",
+            "observed_bytes_sha256": "95e7ed61185152594a402f61fdcb2030d8335ee8377b5af0bf44ef9b90afcb2f",
+            "observed_size_bytes": 1563
+          },
+          {
+            "path": "itrees/fyf-dev06-development-session.itree.json",
+            "observed_bytes_sha256": "8c2389c8bbebd7590fa68ef5b9f5fe125553e06665a972488d65950749b7c478",
+            "observed_size_bytes": 26466
+          },
+          {
+            "path": "itrees/fyf-dev06-fyf-delivery-plan.itree.json",
+            "observed_bytes_sha256": "f45b0c0b363eee2cd0b28d23998e1654192c96cc9f0c6e58f62e91af90d8535c",
+            "observed_size_bytes": 7175
+          },
+          {
+            "path": "itrees/fyf-dev06-fyf-prr.itree.json",
+            "observed_bytes_sha256": "333fd087e6f5e34e292352f62ef958f4e24c060ab2ca41e20a1770401b5d5cbc",
+            "observed_size_bytes": 3550
+          },
+          {
+            "path": "itrees/fyf-dev06-raw-records.itree.json",
+            "observed_bytes_sha256": "a4df7c36b50abc9bf7bd3525614ad9965335f73caa90c82e4343486430073d66",
+            "observed_size_bytes": 32040
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-02.itree.json",
+            "observed_bytes_sha256": "3cee639484a997c7ae617deedc9148c35ee6da08a3b05eaeaa769d406a2acf6b",
+            "observed_size_bytes": 4896
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-03.itree.json",
+            "observed_bytes_sha256": "c26859dd2a8237f96016107f978796983764cd4f8b940b19e1cb5d95ff0d3585",
+            "observed_size_bytes": 4814
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-04.itree.json",
+            "observed_bytes_sha256": "ab2e89fe5499be8702389defad4ff8fe8b7199e3cc77f82069d654e7ac642ebf",
+            "observed_size_bytes": 4976
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-05.itree.json",
+            "observed_bytes_sha256": "d4a23eafbe5571866a8d85a554a0206a99f7ba46ab62c251e234d0bdeb85ee49",
+            "observed_size_bytes": 4868
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-06.itree.json",
+            "observed_bytes_sha256": "dc77624e1517262c635fa90af71acb6bf8b24055579afd6894e4a2a27c9d546e",
+            "observed_size_bytes": 4915
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-07.itree.json",
+            "observed_bytes_sha256": "daaaefaddd1d09128e329f76ef97917c1834283451d8bb01c835050bb56eb3c3",
+            "observed_size_bytes": 4870
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-08.itree.json",
+            "observed_bytes_sha256": "b4f81233eb2cc17eca1998bb6abd344d98d4dc4da7e24ee74e9547a5cbc6e247",
+            "observed_size_bytes": 4865
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-09.itree.json",
+            "observed_bytes_sha256": "d779edc5eee479f7e821a7ff1ed5ff8d2ea61825650d86a274ebb30a0a809227",
+            "observed_size_bytes": 4971
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-10.itree.json",
+            "observed_bytes_sha256": "5f8a474177c54b4e43b5ec51663d7baaad91006fb54d305dd456e26b73938519",
+            "observed_size_bytes": 5170
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-11.itree.json",
+            "observed_bytes_sha256": "1e339b64a8a9253458ec2c94e5e42b05644d8f5784b72ab9888844bdaf07a1f7",
+            "observed_size_bytes": 4918
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-12.itree.json",
+            "observed_bytes_sha256": "5dcaf0365b11dcbe3397c3c27c3b23a051dffe74891c3737371dea0b4404dcee",
+            "observed_size_bytes": 4925
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-13.itree.json",
+            "observed_bytes_sha256": "25a69cf6e5ace8751993b3532de66845d8c5db35d6a67bc09e0714571b7011c4",
+            "observed_size_bytes": 5093
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-14.itree.json",
+            "observed_bytes_sha256": "b69b35e7c6e34ebbe010deac2599bdde6561f83800a841463fed37c54b9f8495",
+            "observed_size_bytes": 5326
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-15.itree.json",
+            "observed_bytes_sha256": "a52f68f725921b18aefe7c200ca989591f234f3b7e8a51f519417f025de770fb",
+            "observed_size_bytes": 4950
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-16.itree.json",
+            "observed_bytes_sha256": "36e018ac5c4a8f1dc97b6c3d05915fd8d288a875f4fda2fcc5ecbb51a8e2c10e",
+            "observed_size_bytes": 5049
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-17.itree.json",
+            "observed_bytes_sha256": "a843869bac16c1a44ec7a31ac060fa65f6d7a90bc9e99e8bd151a6786aa02374",
+            "observed_size_bytes": 5065
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-18.itree.json",
+            "observed_bytes_sha256": "166e698feb0e404941405a53dce7cfd88dd67c29af9d2e3bbd796b12a9786aaa",
+            "observed_size_bytes": 5058
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation-19.itree.json",
+            "observed_bytes_sha256": "908e799e6ed74e6cba1ac28ecbbe7726ec8bfa0f02e7aa87f5cbcf433767b2af",
+            "observed_size_bytes": 5245
+          },
+          {
+            "path": "itrees/fyf-dev06-simulation.itree.json",
+            "observed_bytes_sha256": "cecbd0e191bd77714c312d8e5581fcce36536775c9bdbf67faaa6737b6a5c5af",
+            "observed_size_bytes": 5110
+          },
+          {
+            "path": "itrees/fyf-dev06-simulations.itree.json",
+            "observed_bytes_sha256": "790ea579782c405d840d30e3b8ec515658a6937cdc48e45d4efd36148967e8e8",
+            "observed_size_bytes": 8824
+          },
+          {
+            "path": "itrees/fyf-product.itree.json",
+            "observed_bytes_sha256": "b683402e0a8561d42c6011343011765a77889928a4505716b5892023837bfd9e",
+            "observed_size_bytes": 7272
+          },
+          {
+            "path": "itrees/idea-tree-authoring-development.itree.json",
+            "observed_bytes_sha256": "c638c6c8e7b56a5830c47872c33c422886e435f41c04332fa7cfacc97e09e92d",
+            "observed_size_bytes": 7525
+          },
+          {
+            "path": "itrees/idea-tree-authoring-improvement-guide.itree.json",
+            "observed_bytes_sha256": "37903532111ff4cc6f1c9ebf37d06b8a43ef047460f1d83a28aab512935deaa5",
+            "observed_size_bytes": 4065
+          },
+          {
+            "path": "itrees/idea-tree-authoring-standard.itree.json",
+            "observed_bytes_sha256": "584525873be12290d494e8b8380c804703879cea584a82ac2228260392388724",
+            "observed_size_bytes": 31961
+          },
+          {
+            "path": "itrees/idea-tree-presentation-development.itree.json",
+            "observed_bytes_sha256": "937ef2fbd306cac4383091b5225f5b11b454e5adf6060c7abe811a559f921d8f",
+            "observed_size_bytes": 70328
+          },
+          {
+            "path": "itrees/ideacave-development.itree.json",
+            "observed_bytes_sha256": "7cf67ce0f98d4b215265bd731722da1a0803d21b56b6956d21c92534066d566c",
+            "observed_size_bytes": 74184
+          },
+          {
+            "path": "itrees/pcomp.itree.json",
+            "observed_bytes_sha256": "c9de461c8030eb38c8e005d925e2a4eca58f732217acd9f886d0b698889e2202",
+            "observed_size_bytes": 553
+          },
+          {
+            "path": "itrees/polar-build.itree.json",
+            "observed_bytes_sha256": "216e6b88f2a7cd42e8b92254f41576d79f01f63c65927c90aa2991734c584c27",
+            "observed_size_bytes": 4505
+          },
+          {
+            "path": "itrees/polar-ideas.itree.json",
+            "observed_bytes_sha256": "fc53c7b572ecfca807c31934da9c4886d0fb9663a1110d4094caa19b06083414",
+            "observed_size_bytes": 13987
+          },
+          {
+            "path": "itrees/polar.itree.json",
+            "observed_bytes_sha256": "05918227ca1ee3ceaa0313910f63b20a9708021649d94a95d9ec154bf7d491f9",
+            "observed_size_bytes": 2433
+          },
+          {
+            "path": "itrees/polarinfra-decisions.itree.json",
+            "observed_bytes_sha256": "f95481a41dfdf6a191dd1ecb3ea5b8db8aaf7571d5242a4849e1acaa5c9d5c71",
+            "observed_size_bytes": 31081
+          },
+          {
+            "path": "itrees/polarinfra-dev.itree.json",
+            "observed_bytes_sha256": "4a3adeda9a6223dd5f370a3dd242cfd3dcb96497c806d47af10e40c93d91bcf1",
+            "observed_size_bytes": 25093
+          },
+          {
+            "path": "itrees/polarinfra-discussion-followup-2026-11-07.itree.json",
+            "observed_bytes_sha256": "6012b167052eaf35a0b7dd4561f437b36f017360c5ed7b2ef6102d53c3eee941",
+            "observed_size_bytes": 42896
+          },
+          {
+            "path": "itrees/polarinfra-requests.itree.json",
+            "observed_bytes_sha256": "a70fd1039981bb4a6bc44d4719d33d9fdd939ba7c7800896fbecd08c0ece7abd",
+            "observed_size_bytes": 227170
+          },
+          {
+            "path": "itrees/prr-definition.itree.json",
+            "observed_bytes_sha256": "a86303d879331d2e2ec7a0dcdd07a4e67ca33cd7bf4dcbbc2b0c41c31a78679c",
+            "observed_size_bytes": 55962
+          },
+          {
+            "path": "itrees/shared-catalog-ideacave-e2e.itree.json",
+            "observed_bytes_sha256": "bccf6e8b02846b0ccdd5089a92aa9ef717a656f7403367a656aa88f058e10361",
+            "observed_size_bytes": 98129
+          },
+          {
+            "path": "itrees/software-development-process-development.itree.json",
+            "observed_bytes_sha256": "f70dd5c79f9964019a6248fca1f40e6d0f090701fb7fdac02069577fc6dc45c9",
+            "observed_size_bytes": 5033
+          },
+          {
+            "path": "itrees/software-development-process.itree.json",
+            "observed_bytes_sha256": "b07cb33db6afb3002a437f72084210b0dae0344de24645558171243f03b78aa8",
+            "observed_size_bytes": 4349
+          },
+          {
+            "path": "itrees/station-evolution.itree.json",
+            "observed_bytes_sha256": "2a3ff758d892695d13b5037680d59f79424e4336e78f34b840b8f24936d080e3",
+            "observed_size_bytes": 441020
+          }
+        ],
+        "source_path_base": "repository root",
+        "source_selection": "explicit current Polar content manifest resolved from polar.itree.json; configuration remains a separate control input",
+        "observed_baseline": {
+          "documents": 50,
+          "node_definitions": 1061,
+          "uuid_nodes": 924,
+          "source_local_nodes": 137,
+          "relations": 2425,
+          "resolved_weak_components": 2,
+          "external_references": [
+            {
+              "source": "itrees/fyf-build.itree.json",
+              "node": "polar-plugin",
+              "slot": "policy",
+              "target": {
+                "kind": "tree",
+                "format": "itree",
+                "content": {
+                  "id": "sha256:c9de461c8030eb38c8e005d925e2a4eca58f732217acd9f886d0b698889e2202",
+                  "size_bytes": 553
+                },
+                "node": "pcomp"
+              }
+            },
+            {
+              "source": "itrees/idea-tree-presentation-development.itree.json",
+              "node": "task-browsing",
+              "slot": "view-configuration-example",
+              "target": {
+                "kind": "object",
+                "uuid": "b2743946-a8ad-4b2d-bc10-7a824b00e751"
+              }
+            },
+            {
+              "source": "itrees/idea-tree-presentation-development.itree.json",
+              "node": "task-verification",
+              "slot": "view-configuration-example",
+              "target": {
+                "kind": "object",
+                "uuid": "b2743946-a8ad-4b2d-bc10-7a824b00e751"
+              }
+            },
+            {
+              "source": "itrees/idea-tree-presentation-development.itree.json",
+              "node": "design-view-organization-and-grouping",
+              "slot": "example",
+              "target": {
+                "kind": "object",
+                "uuid": "b2743946-a8ad-4b2d-bc10-7a824b00e751"
+              }
+            },
+            {
+              "source": "itrees/polar-build.itree.json",
+              "node": "polar-core",
+              "slot": "policy",
+              "target": {
+                "kind": "tree",
+                "format": "itree",
+                "content": {
+                  "id": "sha256:c9de461c8030eb38c8e005d925e2a4eca58f732217acd9f886d0b698889e2202",
+                  "size_bytes": 553
+                },
+                "node": "pcomp"
+              }
+            }
+          ]
+        },
+        "baseline_policy": "observations only; not a pin, loading quota or requirement to edit source data; revalidate affected expectations on actual source change"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-input"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "roots-polar": {
+      "uuid": "35d23a3b-1a33-480d-9038-3878f6949f1f",
+      "type": "polar.explorer.root-selection.v1",
+      "properties": {
+        "title": "Polar Root",
+        "body": "root-00 引用现有内容节点，order=0。目标需在已捕获的只读输入内唯一解析；不是新建数据节点。",
+        "mode": "explicit"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "root-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "afa778a6-e6d0-5659-974b-b44d6ef896e9"
+          },
+          "properties": {
+            "document": "itrees/polar.itree.json",
+            "node": "polar",
+            "order": 0
+          }
+        }
+      }
+    },
+    "roots-explorer": {
+      "uuid": "cb5f3238-9648-469a-808c-67ba2e61d548",
+      "type": "polar.explorer.root-selection.v1",
+      "properties": {
+        "title": "Idea Explorer Root",
+        "body": "root-00 引用现有内容节点，order=0。目标需在已捕获的只读输入内唯一解析；不是新建数据节点。",
+        "mode": "explicit"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "root-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "d4479d2c-e11c-4f11-a28d-3f8f7f245cb9"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "idea-tree-presentation-development",
+            "order": 0
+          }
+        }
+      }
+    },
+    "organization-authored": {
+      "uuid": "32840222-7197-4df6-85d8-735c34367d84",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Original Hierarchy",
+        "body": "根据明确的关系策略生成浏览结构；其他真实关系原样保留，不参与本规则的父级选择。相同输入使用固定的规则顺序和 slot 顺序，保证重复计算不会改变父级。",
+        "algorithm": "authored_paths",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "repeat_by_path",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-outgoing": {
+      "uuid": "b37856e8-9a6b-4d26-9222-1b2ffac28586",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Explorer Relationships",
+        "body": "按 contains → implements → uses 顺序做确定性正向 BFS，每个真实内容节点只有一个主出现位置，其余父边与回链保留为原关系。已有较短路径优先，不能为了强调某条引用而改写原图。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.implements.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.uses.v1",
+            "direction": "outgoing"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "grouping-semantic": {
+      "uuid": "d5b3e4d4-46f4-4be8-9234-fcf5b1f3e0b0",
+      "type": "polar.explorer.grouping-rule.v1",
+      "properties": {
+        "title": "Semantic Entry Points",
+        "body": "把 anchor-NN 指向的 18 个现有主题节点配置为分组入口；这些入口由配置作者选择，不是程序按标题或正文猜出来的。浏览根始终也是组入口。一个节点沿浏览树向上找，归属于最近的组入口；遇到另一个指定入口，其子树改归新组。一个组可跨文件、容纳多级；文件不是切组条件。\n\n配置入口包括 polarinfra、需求、development、决策、Adam开发、IDEA-CAVE开发、Idea Explorer开发、Polar Station、Idea Tree编写指南、Ideas，以及 Explorer 的关系、浏览、输入、详情、视觉、宿主、共享、验证八个主题。入口在某条浏览路线里不可达就不产生组，例如 Polar Station 根未被当前两套组织规则到达，不会凭空加一层。\n\n组间保留原来的父子连接和边界入口；边界入口只是指向下一组的引用，不把那一组的核心节点重复算进当前组。入口可改，原始内容不动。",
+        "algorithm": "semantic_anchors",
+        "root_is_anchor": true,
+        "membership": "nearest_ancestor_anchor",
+        "boundary": "retain_child_group_root_reference",
+        "group_order": "root_order_then_tree_preorder",
+        "anchor_selection": "explicit anchor-NN context references to existing input nodes"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-grouping"
+          },
+          "properties": {}
+        },
+        "anchor-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "d09b34d2-c2d4-5b72-baf5-4b8d95ff8a76"
+          },
+          "properties": {
+            "document": "itrees/polar.itree.json",
+            "node": "polarinfra",
+            "order": 0
+          }
+        },
+        "anchor-01": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "5d819f37-a109-448e-af8f-8ed49f2048a9"
+          },
+          "properties": {
+            "document": "itrees/polarinfra-requests.itree.json",
+            "node": "requests",
+            "order": 1
+          }
+        },
+        "anchor-02": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "d9fc2b64-c6da-4102-90d1-897a61c60806"
+          },
+          "properties": {
+            "document": "itrees/polarinfra-dev.itree.json",
+            "node": "polarinfra-development",
+            "order": 2
+          }
+        },
+        "anchor-03": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "c63bba01-44d9-43fe-90e7-30c974c7d397"
+          },
+          "properties": {
+            "document": "itrees/polarinfra-decisions.itree.json",
+            "node": "decisions",
+            "order": 3
+          }
+        },
+        "anchor-04": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "d6e1ee35-8cc6-52ee-892f-f3f352bacc98"
+          },
+          "properties": {
+            "document": "itrees/adam-development.itree.json",
+            "node": "adam-development",
+            "order": 4
+          }
+        },
+        "anchor-05": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "2b08b063-de5d-463a-93b7-ed417795b77b"
+          },
+          "properties": {
+            "document": "itrees/ideacave-development.itree.json",
+            "node": "ideacave-development",
+            "order": 5
+          }
+        },
+        "anchor-06": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "d4479d2c-e11c-4f11-a28d-3f8f7f245cb9"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "idea-tree-presentation-development",
+            "order": 6
+          }
+        },
+        "anchor-07": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "8b57895d-55d2-502b-a3a4-8edfe88423ef"
+          },
+          "properties": {
+            "document": "itrees/station-evolution.itree.json",
+            "node": "station",
+            "order": 7
+          }
+        },
+        "anchor-08": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "7dfb40e7-1fb5-5d79-93e6-300dc2bcdac3"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-authoring-standard.itree.json",
+            "node": "idea-tree-authoring-standard",
+            "order": 8
+          }
+        },
+        "anchor-09": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "4eba96e2-031e-4370-919e-c2ea92cda07a"
+          },
+          "properties": {
+            "document": "itrees/polar-ideas.itree.json",
+            "node": "polar-ideas",
+            "order": 9
+          }
+        },
+        "anchor-10": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "7b187369-8e92-44dc-a27a-7296a8ef17d3"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-relations",
+            "order": 10
+          }
+        },
+        "anchor-11": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "1777930f-77ee-432e-bb03-eff053db66ec"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-browsing",
+            "order": 11
+          }
+        },
+        "anchor-12": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "0bb7fdd1-4928-4390-a923-9e1e1abbcd97"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-input",
+            "order": 12
+          }
+        },
+        "anchor-13": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "356c0dfd-6ce0-4da3-afe1-7d1cca531690"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-detail",
+            "order": 13
+          }
+        },
+        "anchor-14": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "ed0b465c-9a56-402b-8e2a-ad4e37826cad"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-visual",
+            "order": 14
+          }
+        },
+        "anchor-15": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "ef6368f8-23c5-4a88-8809-3fdad925f75a"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-host",
+            "order": 15
+          }
+        },
+        "anchor-16": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "121f43dd-f606-4191-b90b-506705284bc8"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-sharing",
+            "order": 16
+          }
+        },
+        "anchor-17": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "70b9de2f-cc68-4913-b8a2-46e4f86abff1"
+          },
+          "properties": {
+            "document": "itrees/idea-tree-presentation-development.itree.json",
+            "node": "group-verification",
+            "order": 17
+          }
+        }
+      }
+    },
+    "grouping-depth": {
+      "uuid": "cfc22486-8bb5-4ae6-8ae5-be4ec227bc96",
+      "type": "polar.explorer.grouping-rule.v1",
+      "properties": {
+        "title": "Two-level Bands",
+        "body": "浏览根深度为 0；深度 0、2、4 等位置各自成为新组入口，每组保持连通。参数 2 是本例可调的分组偏好，不是加载配额或全局默认，不改变原始树的层次。",
+        "algorithm": "depth_bands",
+        "root_is_anchor": true,
+        "membership": "nearest_ancestor_anchor",
+        "boundary": "retain_child_group_root_reference",
+        "group_order": "root_order_then_tree_preorder",
+        "levels_per_band": 2
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-grouping"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "view-polar-hierarchy": {
+      "uuid": "90131e7b-4df9-4e66-a945-4d161446eb9a",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Polar Hierarchy by Topic",
+        "body": "用途：从 Polar 总入口看现有内容的组成结构。\n入口：已有 polar 节点。\n走法：只沿“包含”关系向下走，保留原来的进入路径；使用、实现等其他关系不拿来决定本路线的父级，但原关系仍保留在图里。\n分组：在配置选定的主题入口处另开空间组，其余后代留在最近入口的组中。\n\n主要路径：\npolar → polarinfra → 需求 → Idea Explorer需求。\npolar → polarinfra → development → IDEA-CAVE开发 → Idea Explorer开发 → 浏览主题 → 设计／任务。\n\n当前基线：376 个可达节点、18 个空间组。下面的数量只算本组的核心节点，不包含下级独立组：\n- polar：1 个核心节点。\n- how to compose Idea Tree：23 个核心节点。\n- Ideas：8 个核心节点。\n- polarinfra：1 个核心节点。\n- 决策：32 个核心节点。\n- development：20 个核心节点。\n- adam开发：76 个核心节点。\n- IDEA-CAVE：共享内容、语义重构与演进：31 个核心节点。\n- Idea Explorer开发：10 个核心节点。\n- 二维与 2.5D 森林便于阅读：3 个核心节点。\n- 详情保持可读并支持连续空间浏览：3 个核心节点。\n- 作为原生 Pane 使用并接入讨论：3 个核心节点。\n- 鼠标键盘与触摸板导航一致：3 个核心节点。\n- 真实节点和关系可读可浏览：3 个核心节点。\n- 实验与产品共用表现层：3 个核心节点。\n- 流畅度和双端交付有实际证据：3 个核心节点。\n- 视觉效果承担信息表达：3 个核心节点。\n- 需求：150 个核心节点。\n\n例如需求组的 150 个节点保持多级结构，不是 150 层；Adam开发整组 76 个节点也不是每一级各占一层。这套分组只是一个明确可测的起点，较大的组是否还需细分，要通过实际阅读体验调整配置。未走到的 685 个定义仍在完整 Graph 和独立三维关系地图里。",
+        "status": "draft-real-data-configuration",
+        "role": "technical-regression",
+        "expose_in_perspective_wheel": false
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-polar"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-authored"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-semantic"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "view-explorer-relations": {
+      "uuid": "cf56a259-7b76-4f3e-b75d-a97ae70d08f6",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Idea Explorer Relationships by Topic",
+        "body": "用途：集中看 Explorer 的开发、设计、任务、需求和相关决定。\n入口：已有 Idea Explorer开发 节点。\n走法：先看离入口一跳的节点，再看两跳、三跳；同一位置优先“包含”，再“实现”，再“使用”。一个节点有多个进入路径时，较短路径决定主位置，同长度再按规则与 slot 排序；其他连接保留为语义连线。\n分组：仍使用相同的主题入口配置。\n\n真实例子：浏览需求的主位置在 Idea Explorer开发 → Idea Explorer需求 → 二维与2.5D浏览需求，因为它只有两跳。浏览任务 → 实现 → 同一浏览需求这条边仍显示，但不能为了这条边把需求节点再强塞成任务子级。\n\n当前基线：56 个节点、9 个空间组：\n- Idea Explorer开发：32 个核心节点。\n- 二维与 2.5D 森林便于阅读：3 个核心节点。\n- 详情保持可读并支持连续空间浏览：3 个核心节点。\n- 作为原生 Pane 使用并接入讨论：3 个核心节点。\n- 鼠标键盘与触摸板导航一致：3 个核心节点。\n- 真实节点和关系可读可浏览：3 个核心节点。\n- 实验与产品共用表现层：3 个核心节点。\n- 流畅度和双端交付有实际证据：3 个核心节点。\n- 视觉效果承担信息表达：3 个核心节点。\n\n八个主题组各有主题入口、设计和任务，共 3 个核心节点；Explorer 总组还有需求、相关决定和其他没有另选组入口的内容，共 32 个。这说明当前分组还有改进空间，不是已经确认的最终布局。总组跨越开发、需求和决定文件；组边界不是文件边界。其他 1005 个定义保留在完整 Graph 中。",
+        "status": "draft-real-data-configuration",
+        "role": "technical-regression",
+        "expose_in_perspective_wheel": false
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-explorer"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-outgoing"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-semantic"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "view-explorer-bands": {
+      "uuid": "a145182a-8d35-4777-9d24-ce8189815d8a",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Idea Explorer Relationships in Two-level Groups",
+        "body": "用途：与上一配置对照，测试只改分组而不改入口及组织。\n入口、走法：完全复用 Idea Explorer Relationships by Topic，仍是同一批 56 个节点、同样的父边与进入路径。\n分组：从浏览根算深度 0；深度 0、2、4 等处各开新组。每个组容纳两级，同深度的不同分支分别成组，不把它们强挤进同一层。\n\n具体例子：\n第 0 级：Idea Explorer开发。\n第 1 级：浏览主题、详情主题、Idea Explorer需求等，和根同组。\n第 2 级：浏览设计、浏览任务、浏览需求等，各自另开一组。\n第 3 级：归入各自第 2 级组入口，不改变原始父子关系。\n\n当前基线是 34 个空间组，明显比主题方案的 9 组零碎。这是比较用配置，不推荐直接当默认。参数 2 可以修改；它不是节点加载预算，也不让主视图丢弃更多节点。只改变分组时必须复用原组织结果，不重算浏览树。",
+        "status": "draft-real-data-configuration",
+        "role": "technical-regression",
+        "expose_in_perspective_wheel": false
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-explorer"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-outgoing"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-depth"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-polar-hierarchy": {
+      "uuid": "21442972-48fb-4133-b31b-c77c35c4ace8",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Browse the Existing Polar Hierarchy",
+        "body": "从现有 polar 沿真实 contains 到达 PolarInfra 的需求、开发及 Explorer 浏览分支。跨文件组成仍按选定主题锚点分组，不因文件拆分生成空间层。",
+        "execution_status": "not-run-new-interpreter-not-implemented",
+        "expected": {
+          "original_node_definitions": 1061,
+          "original_relations": 2425,
+          "source_files_byte_identical": true,
+          "full_graph_is_not_filtered_by_current_root": true,
+          "fixed_version_references_preserved": true,
+          "non_tree_relations_preserved": true,
+          "root_uuid": "afa778a6-e6d0-5659-974b-b44d6ef896e9",
+          "required_paths": [
+            {
+              "slots": [
+                "polarinfra",
+                "requirements",
+                "idea-tree-presentation-requirements"
+              ],
+              "target_uuid": "2e0d2524-7a56-43e3-9229-325393e0cfc2"
+            },
+            {
+              "slots": [
+                "polarinfra",
+                "development",
+                "idea",
+                "idea-tree-presentation-development",
+                "browsing"
+              ],
+              "target_uuid": "1777930f-77ee-432e-bb03-eff053db66ec"
+            }
+          ],
+          "required_group_membership": [
+            {
+              "anchor_path": [
+                "polarinfra",
+                "requirements"
+              ],
+              "member_path": [
+                "polarinfra",
+                "requirements",
+                "idea-tree-presentation-requirements"
+              ]
+            },
+            {
+              "anchor_path": [
+                "polarinfra",
+                "development",
+                "idea",
+                "idea-tree-presentation-development",
+                "browsing"
+              ],
+              "member_path": [
+                "polarinfra",
+                "development",
+                "idea",
+                "idea-tree-presentation-development",
+                "browsing",
+                "design"
+              ]
+            }
+          ],
+          "files_are_not_layer_boundaries": true
+        },
+        "observed_reference_counts": {
+          "source_manifest": "input-graph.properties.sources",
+          "occurrences": 376,
+          "reachable_node_definitions": 376,
+          "groups": 18,
+          "outside_current_tree": 685,
+          "qualification": "read-only document reference calculation; new runtime not executed"
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "view-polar-hierarchy"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-explorer-relations": {
+      "uuid": "7a15f1e5-0ee8-4bb4-a88e-c58253d88ec5",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Browse Real Development-to-Requirement Relations",
+        "body": "从现有 Idea Explorer开发 按 BFS 浏览。浏览需求已有更短的 requests/browsing 路径，作为其主位置；browsing/task 的 implements 仍保留为跨分支语义边，不强改为父边。未另选锚点的请求分支与 Explorer 根同组，形成真实跨文件分组。",
+        "execution_status": "not-run-new-interpreter-not-implemented",
+        "expected": {
+          "original_node_definitions": 1061,
+          "original_relations": 2425,
+          "source_files_byte_identical": true,
+          "full_graph_is_not_filtered_by_current_root": true,
+          "fixed_version_references_preserved": true,
+          "non_tree_relations_preserved": true,
+          "root_uuid": "d4479d2c-e11c-4f11-a28d-3f8f7f245cb9",
+          "required_paths": [
+            {
+              "slots": [
+                "requests",
+                "browsing"
+              ],
+              "target_uuid": "147546f2-69a9-4fa0-b280-83638146d013"
+            }
+          ],
+          "required_original_edges": [
+            {
+              "owner_uuid": "6602b2b0-6ff2-432a-a10c-d113e95aa3bc",
+              "slot": "requirement",
+              "relation": "polar.implements.v1",
+              "target_uuid": "147546f2-69a9-4fa0-b280-83638146d013",
+              "is_backbone": false
+            }
+          ],
+          "required_group_membership": [
+            {
+              "anchor_path": [],
+              "member_path": [
+                "requests",
+                "browsing"
+              ]
+            },
+            {
+              "anchor_path": [
+                "browsing"
+              ],
+              "member_path": [
+                "browsing",
+                "task"
+              ]
+            }
+          ],
+          "single_primary_occurrence_per_node": true,
+          "cross_file_group_required": true
+        },
+        "observed_reference_counts": {
+          "source_manifest": "input-graph.properties.sources",
+          "occurrences": 56,
+          "reachable_node_definitions": 56,
+          "groups": 9,
+          "outside_current_tree": 1005,
+          "qualification": "read-only document reference calculation; new runtime not executed"
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "view-explorer-relations"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-explorer-bands": {
+      "uuid": "6a84a03a-038a-4a4a-986d-c4625626c33d",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Regroup without Changing Real Data or the Browsing Tree",
+        "body": "只换成两级深度带。root、组织规则、骨架父边及出现位置不变；browsing/task 与 requests/browsing 位于深度 2，各自成为新组入口。只改变空间分组，不改变原始层次与关系。",
+        "execution_status": "not-run-new-interpreter-not-implemented",
+        "expected": {
+          "original_node_definitions": 1061,
+          "original_relations": 2425,
+          "source_files_byte_identical": true,
+          "full_graph_is_not_filtered_by_current_root": true,
+          "fixed_version_references_preserved": true,
+          "non_tree_relations_preserved": true,
+          "same_organization_as": "view-explorer-relations",
+          "root_uuid": "d4479d2c-e11c-4f11-a28d-3f8f7f245cb9",
+          "required_paths": [
+            {
+              "slots": [
+                "requests",
+                "browsing"
+              ],
+              "target_uuid": "147546f2-69a9-4fa0-b280-83638146d013"
+            }
+          ],
+          "required_group_membership": [
+            {
+              "anchor_path": [],
+              "member_path": [
+                "browsing"
+              ]
+            },
+            {
+              "anchor_path": [
+                "browsing",
+                "task"
+              ],
+              "member_path": [
+                "browsing",
+                "task"
+              ]
+            },
+            {
+              "anchor_path": [
+                "requests",
+                "browsing"
+              ],
+              "member_path": [
+                "requests",
+                "browsing"
+              ]
+            }
+          ],
+          "organization_rebuild_on_grouping_only_change": false
+        },
+        "observed_reference_counts": {
+          "source_manifest": "input-graph.properties.sources",
+          "occurrences": 56,
+          "reachable_node_definitions": 56,
+          "groups": 34,
+          "outside_current_tree": 1005,
+          "qualification": "read-only document reference calculation; new runtime not executed"
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "view-explorer-bands"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "definition-filter": {
+      "uuid": "ebafed43-bdce-4eaf-bd07-fcb7520ddbbd",
+      "type": "polar.tree.definition.v1",
+      "properties": {
+        "title": "Filter Definition",
+        "body": "Filter 保存明确属性的结构化条件和显示方式，不接受自由文本查找。默认 keep_context：保留布局、组、父子骨架、选中和相机；匹配内容清晰，不匹配项弱化，必要上下文仍可读。\n\nclause 内 values 取并集，不同 clause 取交集；空 clauses 表示没有筛选。第一版实例仅用已有 node.type。状态筛选须先有领域明确的状态映射，不能猜 done／complete 等字符串。默认 filter 与临时覆盖分开，临时修改不自动保存。",
+        "describes_type": "polar.explorer.filter.v1",
+        "status": "draft",
+        "runtime_adoption": "not-implemented",
+        "contract": {
+          "required_properties": [
+            "scope",
+            "clauses",
+            "presentation"
+          ],
+          "scope": "current_perspective",
+          "clause_fields": [
+            "field",
+            "operator",
+            "values"
+          ],
+          "first_example_field": "node.type",
+          "operator": "one_of",
+          "combine": "OR within values; AND across clauses",
+          "presentation": "keep_context",
+          "text_search": false,
+          "preserve": [
+            "graph",
+            "organization",
+            "group hierarchy",
+            "group order",
+            "node geometry",
+            "camera",
+            "selection"
+          ],
+          "recompute_organization": false,
+          "recompute_grouping": false,
+          "recompute_layout": false
+        }
+      },
+      "relations": {}
+    },
+    "filters": {
+      "uuid": "ce298bea-db83-440f-bfc4-e85e9fe09545",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Filters",
+        "body": "Clear 为所有业务视角的默认值。Development Tasks 只按现有 polar.development.task.v1 精确类型强调，不冒充全部任务，不做自由文本查找；状态筛选映射尚未核实。"
+      },
+      "relations": {
+        "clear": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        },
+        "development-tasks": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-development-tasks"
+          },
+          "properties": {}
+        },
+        "filter-tasks": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-tasks"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "filter-clear": {
+      "uuid": "5ac8e4ee-b2b8-433f-922b-4f39ba72f48c",
+      "type": "polar.explorer.filter.v1",
+      "properties": {
+        "title": "Clear",
+        "body": "没有筛选，按当前视角正常显示全部内容。",
+        "scope": "current_perspective",
+        "clauses": [],
+        "presentation": "keep_context",
+        "source_mutation": false
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-filter"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "filter-development-tasks": {
+      "uuid": "244352f2-a705-47d0-afa5-e2da66e46150",
+      "type": "polar.explorer.filter.v1",
+      "properties": {
+        "title": "Development Tasks",
+        "body": "仅强调精确 node.type=polar.development.task.v1 的内容；其他项保留位置并减弱，必要上下文保持可读，不根据标题猜任务。",
+        "scope": "current_perspective",
+        "clauses": [
+          {
+            "field": "node.type",
+            "operator": "one_of",
+            "values": [
+              "polar.development.task.v1"
+            ]
+          }
+        ],
+        "presentation": "keep_context",
+        "source_mutation": false
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-filter"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspectives": {
+      "uuid": "f4b00cbe-bc17-4cb7-a75d-5426f1e9cf35",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Business Perspectives",
+        "body": "六个业务入口：Requirements、Development、Task Follow-up、System Structure、Decisions、Ideas。Task Follow-up 默认强调两类真实任务，按项目／主题到任务逐级分组，沿实际关联查看需求、设计和证据；其他五个视角默认 Clear。均引用真实 root；System Structure 的现有数据支持仍为 partial。"
+      },
+      "relations": {
+        "perspective-requirements": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-requirements"
+          },
+          "properties": {}
+        },
+        "perspective-development": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-development"
+          },
+          "properties": {}
+        },
+        "perspective-system": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-system"
+          },
+          "properties": {}
+        },
+        "perspective-decisions": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-decisions"
+          },
+          "properties": {}
+        },
+        "perspective-ideas": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-ideas"
+          },
+          "properties": {}
+        },
+        "perspective-task-follow-up": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-task-follow-up"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "roots-requirements": {
+      "uuid": "4d007ca1-67f5-4ccb-a151-929f74a241e4",
+      "type": "polar.explorer.root-selection.v1",
+      "properties": {
+        "title": "Requirements Root",
+        "body": "引用已有内容节点，不补写 root；业务意义由 Perspective 定义。",
+        "mode": "explicit"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "root-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "5d819f37-a109-448e-af8f-8ed49f2048a9"
+          },
+          "properties": {
+            "document": "itrees/polarinfra-requests.itree.json",
+            "node": "requests",
+            "order": 0
+          }
+        }
+      }
+    },
+    "roots-development": {
+      "uuid": "fa7dd9c5-44ba-47da-bf15-5af9a17328b5",
+      "type": "polar.explorer.root-selection.v1",
+      "properties": {
+        "title": "Development Root",
+        "body": "引用已有内容节点，不补写 root；业务意义由 Perspective 定义。",
+        "mode": "explicit"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "root-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "d9fc2b64-c6da-4102-90d1-897a61c60806"
+          },
+          "properties": {
+            "document": "itrees/polarinfra-dev.itree.json",
+            "node": "polarinfra-development",
+            "order": 0
+          }
+        }
+      }
+    },
+    "roots-decisions": {
+      "uuid": "bb566d96-558f-4a7d-909a-2b8376713a64",
+      "type": "polar.explorer.root-selection.v1",
+      "properties": {
+        "title": "Decisions Root",
+        "body": "引用已有内容节点，不补写 root；业务意义由 Perspective 定义。",
+        "mode": "explicit"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "root-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "c63bba01-44d9-43fe-90e7-30c974c7d397"
+          },
+          "properties": {
+            "document": "itrees/polarinfra-decisions.itree.json",
+            "node": "decisions",
+            "order": 0
+          }
+        }
+      }
+    },
+    "roots-ideas": {
+      "uuid": "bd1bbfd9-19ec-414e-a276-b1c81fd6e08c",
+      "type": "polar.explorer.root-selection.v1",
+      "properties": {
+        "title": "Ideas Root",
+        "body": "引用已有内容节点，不补写 root；业务意义由 Perspective 定义。",
+        "mode": "explicit"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-root"
+          },
+          "properties": {}
+        },
+        "root-00": {
+          "relation": "polar.context.v1",
+          "target": {
+            "kind": "object",
+            "uuid": "4eba96e2-031e-4370-919e-c2ea92cda07a"
+          },
+          "properties": {
+            "document": "itrees/polar-ideas.itree.json",
+            "node": "polar-ideas",
+            "order": 0
+          }
+        }
+      }
+    },
+    "organization-requirements": {
+      "uuid": "840da95b-42e5-41e0-a261-08193b8673bc",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Requirements Organization",
+        "body": "先看已有需求包含结构，再反查真实 implements／satisfies 引用，查看哪些任务或方案回应需求。没有场景或验证关系就标明缺口，不生成假的目标→场景→任务链。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.implements.v1",
+            "direction": "incoming"
+          },
+          {
+            "relation": "polar.station.satisfies.v1",
+            "direction": "incoming"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-development": {
+      "uuid": "521718a3-29cd-4cc1-ace9-996e21e461ca",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Development Organization",
+        "body": "先看已有工作组成，再沿真实边看对应需求、使用方案、产物与观测；有 station.verifies 时反查验证者。设计与任务在原树是兄弟就保留事实，不强改为流程，任务存在不等于已完成。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.implements.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.uses.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.produces.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.observes.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.station.verifies.v1",
+            "direction": "incoming"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-system": {
+      "uuid": "2ec88246-b0fe-4c12-b056-eaa0a022ccab",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "System Organization",
+        "body": "只沿现有 contains 看已记录组成；使用和依赖仍可看原图连线，不冒充包含。polar 下有需求／开发／决策等内容分类，不能宣称因此得到完整组件拓扑。缺失组件事实明确标记，本次不修源数据。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-decisions": {
+      "uuid": "7fc378d3-5a65-4c81-92d8-f6810de2a6e0",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Decisions Organization",
+        "body": "先看决定分类，再沿真实 derived-from 找来源，反查 applies 看采用范围。缺少理由或备选记录时不编造论证。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.derived-from.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.applies.v1",
+            "direction": "incoming"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-ideas": {
+      "uuid": "97290465-04c5-43ac-8566-2237deb60b9a",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Ideas Organization",
+        "body": "先看现有灵感组织，再沿 context 看关联工作。没有转需求的引用就保持未关联，不把灵感自动升级为需求。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.context.v1",
+            "direction": "outgoing"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "grouping-business": {
+      "uuid": "b8d119be-f25b-4b66-97a1-8339c268fb9a",
+      "type": "polar.explorer.grouping-rule.v1",
+      "properties": {
+        "title": "Hierarchical Topics",
+        "body": "以已有明确的 group／development tree／request tree／decision tree 类型作组入口，并保留 root 组。每个出现位置归最近组入口，每个组的 parent 为最近上级入口；自然表达 IDEA-CAVE → Idea Explorer → 浏览／详情等多级分组。\n\n这是类型驱动配置，不是自动理解主题；同一文件可拆多组，一组可跨文件。边界不合适时调整配置的类型或显式 anchor，不修改真实数据制造测试分组，不引入节点配额。\n\nGroup Wheel 横向调整当前视角的整体粒度，以基础层级细分／合并显示组；父级剩余核心内容作为概览组保留，叶子分支不消失。纵向选择当前粒度中的组。粒度是浏览状态，不改本规则定义，不按节点配额裁剪。",
+        "algorithm": "semantic_anchors",
+        "root_is_anchor": true,
+        "membership": "nearest_ancestor_anchor",
+        "boundary": "retain_child_group_root_reference",
+        "group_order": "root_order_then_tree_preorder",
+        "anchor_node_types": [
+          "polar.document.group.v1",
+          "polar.development.tree.v1",
+          "polar.request.tree.v1",
+          "polar.decision.tree.v1"
+        ],
+        "hierarchical": true,
+        "granularity_navigation": {
+          "scope": "whole current perspective",
+          "horizontal": "coarser/finer over cached hierarchy",
+          "vertical": "select display group at current granularity",
+          "preserve_selected_node": true,
+          "preserve_all_organized_occurrences": true
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-grouping"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspective-requirements": {
+      "uuid": "4c28f80b-7b0c-4d46-bb9c-b8871deb9ab0",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Requirements",
+        "body": "业务问题：用户到底想要什么，哪些方案回应了要求？\n看完能做：讨论需求、发现遗漏、沿引用核对工作。\n入口：Requirements Root。\n组织：先看已有需求包含结构，再反查真实 implements／satisfies 引用，查看哪些任务或方案回应需求。没有场景或验证关系就标明缺口，不生成假的目标→场景→任务链。\n分组：按现有主题类型形成多级组；默认不筛选。Perspective Wheel 切此视角，Group Wheel 纵向选组、横向调当前视角的整体分组粒度。",
+        "role": "business-perspective",
+        "business_name": "用户需求",
+        "business_question": "用户到底想要什么，哪些方案回应了要求？",
+        "decision_value": "讨论需求、发现遗漏、沿引用核对工作。",
+        "available_scope": "existing requirements and explicitly linked responders",
+        "data_support": "available",
+        "order": 0,
+        "status": "experimental-standalone-implemented",
+        "expose_in_perspective_wheel": true
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-requirements"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-requirements"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-business"
+          },
+          "properties": {}
+        },
+        "filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspective-development": {
+      "uuid": "2e69f7ff-99ad-4bd6-a0d3-a75d4ecc6b3a",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Development",
+        "body": "业务问题：有哪些工作，准备怎么做，还缺哪些验证？\n看完能做：选择下一步，区分方案、任务和证据。\n入口：Development Root。\n组织：先看已有工作组成，再沿真实边看对应需求、使用方案、产物与观测；有 station.verifies 时反查验证者。设计与任务在原树是兄弟就保留事实，不强改为流程，任务存在不等于已完成。\n分组：按现有主题类型形成多级组；默认不筛选。Perspective Wheel 切此视角，Group Wheel 纵向选组、横向调当前视角的整体分组粒度。",
+        "role": "business-perspective",
+        "business_name": "开发推进",
+        "business_question": "有哪些工作，准备怎么做，还缺哪些验证？",
+        "decision_value": "选择下一步，区分方案、任务和证据。",
+        "available_scope": "existing development and linked requirements/designs/observations",
+        "data_support": "available-with-recorded-gaps",
+        "order": 1,
+        "status": "experimental-standalone-implemented",
+        "expose_in_perspective_wheel": true
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-development"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-development"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-business"
+          },
+          "properties": {}
+        },
+        "filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        },
+        "available-filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-development-tasks"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspective-system": {
+      "uuid": "b8515182-0a37-4867-a420-6f648155a114",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "System Structure",
+        "body": "业务问题：已记录的组成是什么，哪些组件／依赖事实还缺？\n看完能做：建立整体认识，区分内容分类和真实组件结构。\n入口：Polar Root。\n组织：只沿现有 contains 看已记录组成；使用和依赖仍可看原图连线，不冒充包含。polar 下有需求／开发／决策等内容分类，不能宣称因此得到完整组件拓扑。缺失组件事实明确标记，本次不修源数据。\n分组：按现有主题类型形成多级组；默认不筛选。Perspective Wheel 切此视角，Group Wheel 纵向选组、横向调当前视角的整体分组粒度。\n数据支持 partial：不能展示不存在的组件、依赖或宣称已回答完整系统拓扑。",
+        "role": "business-perspective",
+        "business_name": "系统构成",
+        "business_question": "已记录的组成是什么，哪些组件／依赖事实还缺？",
+        "decision_value": "建立整体认识，区分内容分类和真实组件结构。",
+        "available_scope": "authored composition only; not a complete component topology",
+        "data_support": "partial-data-support",
+        "order": 3,
+        "status": "experimental-standalone-implemented",
+        "expose_in_perspective_wheel": true
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-polar"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-system"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-business"
+          },
+          "properties": {}
+        },
+        "filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspective-decisions": {
+      "uuid": "1570356f-8e6c-4551-8aa9-080d8e54d677",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Decisions",
+        "body": "业务问题：为什么这样决定，来源是什么，谁采用了它？\n看完能做：理解取舍、采用范围及理由记录缺口。\n入口：Decisions Root。\n组织：先看决定分类，再沿真实 derived-from 找来源，反查 applies 看采用范围。缺少理由或备选记录时不编造论证。\n分组：按现有主题类型形成多级组；默认不筛选。Perspective Wheel 切此视角，Group Wheel 纵向选组、横向调当前视角的整体分组粒度。",
+        "role": "business-perspective",
+        "business_name": "决策依据",
+        "business_question": "为什么这样决定，来源是什么，谁采用了它？",
+        "decision_value": "理解取舍、采用范围及理由记录缺口。",
+        "available_scope": "decision groups plus recorded derivation/adoption",
+        "data_support": "available-with-recorded-gaps",
+        "order": 4,
+        "status": "experimental-standalone-implemented",
+        "expose_in_perspective_wheel": true
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-decisions"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-decisions"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-business"
+          },
+          "properties": {}
+        },
+        "filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspective-ideas": {
+      "uuid": "875ffd1b-cc16-4781-b248-573dad6ef610",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Ideas",
+        "body": "业务问题：有哪些值得继续想的方向，与已有工作有何关联？\n看完能做：发现关联，把想法带入讨论，不自动变需求。\n入口：Ideas Root。\n组织：先看现有灵感组织，再沿 context 看关联工作。没有转需求的引用就保持未关联，不把灵感自动升级为需求。\n分组：按现有主题类型形成多级组；默认不筛选。Perspective Wheel 切此视角，Group Wheel 纵向选组、横向调当前视角的整体分组粒度。",
+        "role": "business-perspective",
+        "business_name": "灵感探索",
+        "business_question": "有哪些值得继续想的方向，与已有工作有何关联？",
+        "decision_value": "发现关联，把想法带入讨论，不自动变需求。",
+        "available_scope": "existing ideas and explicit context references",
+        "data_support": "available",
+        "order": 5,
+        "status": "experimental-standalone-implemented",
+        "expose_in_perspective_wheel": true
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-ideas"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-ideas"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-business"
+          },
+          "properties": {}
+        },
+        "filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "design": {
+      "uuid": "4f14a23d-9e6d-463d-8f10-2cc3931f801a",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Perspective and Group Navigation Design",
+        "body": "业务视角观察同一真实 Graph，多级分组组织阅读，Filter 减少干扰，Search 找到对象。下级分别说明业务、分组、界面、Filter、Search、边界与验收场景。UI 控件默认英文；实际节点标题原样读取，不改数据做配图。"
+      },
+      "relations": {
+        "design-perspectives": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-perspectives"
+          },
+          "properties": {}
+        },
+        "design-groups": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-groups"
+          },
+          "properties": {}
+        },
+        "design-interface": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-interface"
+          },
+          "properties": {}
+        },
+        "design-filter": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-filter"
+          },
+          "properties": {}
+        },
+        "design-search": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-search"
+          },
+          "properties": {}
+        },
+        "design-boundaries": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-boundaries"
+          },
+          "properties": {}
+        },
+        "design-cases": {
+          "relation": "polar.contains.v1",
+          "target": {
+            "kind": "local",
+            "node": "design-cases"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "design-perspectives": {
+      "uuid": "962bab10-25eb-439b-b64a-71e743516f1d",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Business Meaning of a Perspective",
+        "body": "Perspective 是人能说清楚的观察问题，保存名称、问题、root、组织、分组和默认 filter。Requirements 问用户要什么；Development 问下一步做什么；System Structure 问如何组成配合；Decisions 问为什么决定；Ideas 问还有哪些可能。\n\n同一真实节点可在多个视角出现，正文只存一份。浏览父子是规则选择的骨架，不改变源关系事实。Polar 全局与 Explorer 局部只是范围区别，9 组与 34 组只是切组区别，不自动成为新业务视角。主题性视角也可使用 Adam／Explorer 的实际 root，但须有自己的业务问题。\n\n人选择视角和 root；程序可按明确规则建议入口，不擅自发明主题或组件关系。五个实例都引用真实节点，System Structure 明确 partial。"
+      },
+      "relations": {}
+    },
+    "design-groups": {
+      "uuid": "06b735b3-2663-40c1-9f2e-29c1cb1f19b5",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Hierarchical Groups and Granularity",
+        "body": "同一个 Group Wheel 有两个方向：纵向选择当前分组粒度下的组，横向调整整个当前 Perspective 的分组粒度。双指左右滑动或鼠标左右拖动只在命中 Group Wheel 时生效；规范化的横向意图为向右更细、向左更粗。它改变整棵浏览树如何分成空间层，不只是进入某一个父组的局部分支。\n\n例：粗分时一个 layer 放整个 IDEA-CAVE 工作；更细时分别放共享内容、Idea Explorer 等工作组；再细时 Explorer 拆成浏览、详情、输入等组。树内的设计与任务关系不变。同一业务视角、root、组织结果和完整节点范围不变，变化的是每层装哪些节点。\n\n分组层级先根据规则建立。每个更细粒度是上一粒度的细分：把粗组拆为其下级组，父组自己的核心节点若还有剩余，就保留为概览组；没有更细分组的分支保持原样，不生成空组或重复项。所有可达出现位置在每个粒度都恰好归一个显示组；细组是对应粗组的子集，各细组与概览剩余的并集等于原粗组。不得只取固定 group.depth 而丢掉不齐整分支或父级内容。\n\n越细每个 layer 的核心节点数量不增加，组数不减少；叶子组可以不变，不能承诺每滑一次所有 layer 都严格减少节点。粗层的汇总引用原节点内容，不复制正文，也不删除节点。原 Graph 的关系、跨组连接和独立三维图数据保持完整。\n\nGroup Wheel 纵向滚动在当前粒度的显示组集合中连续、循环、反向跟手；横向粒度有最粗和最细边界，不循环跳端点。保留少量 Coarse／Fine 与当前层级提示，不加第三个 Wheel。高度足够时显示全部组标签。主画面随纵向选择和横向细分／合并同步过渡，不能轮子先动、主画面最后突然跳。\n\n切粒度围绕选中节点：变细定位包含它的细组，变粗定位包含它的粗组；保留精确选中身份。没有选中节点时沿当前组入口定位，不随机跳到列表第一项。保留当前粒度与位置为浏览状态，不改源数据、root 或默认 Filter。\n\n轴向意图由既有平台手势适配归一化，一次手势明确主要轴，不能斜滑时既切组又变粒度，不能传给主画布平移。Mac／Linux 原生方向归一化后使用相同业务意图；输入框焦点继续由原生编辑处理。\n\n切粒度复用已经缓存的组织和基础分组层级，选择已有粒度投影；首次需要的新粒度几何可按现有布局缓存计算一次，同输入和几何复用，不能在手势每帧重算树化、分组或连线路由。过渡优先 Godot 原生能力。本设计没有运行性能证据。\n\n位置：Group Wheel 位于原单 Wheel 区域的下半部分，Perspective Wheel 在其上方；上下叠放、原位复用，绝不横向增加一列。Group Wheel 内纵向选组、横向变粒度，上方 Perspective Wheel 只切业务视角。"
+      },
+      "relations": {}
+    },
+    "design-interface": {
+      "uuid": "c6e48906-86be-4851-88bc-116965defe7d",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Unified Interface and Interaction",
+        "body": "四个观察部分：Perspective Wheel、Group Wheel、主视图、独立三维关系地图；底部沿用唯一 Idea／Chat Bar。以下是静态结构设计，不是产品截图或固定像素规格：\n\n```text\nSame footprint as the existing Wheel     Main view: 2D / 2.5D\n\n  PERSPECTIVE\n    Requirements                         [current group nodes]\n   >Development\n    System Structure\n    Decisions\n    Ideas\n\n  GROUP                                  3D relationship map\n    Coarse < Level > Fine                [full loaded Graph]\n    [other groups]\n   >Idea Explorer开发\n    [other groups]\n    vertical: select group\n    horizontal: change granularity\n\n[Idea] [ instruction.......................... ] [Find] [More*] [Send]\n```\n\n在现有单 Wheel 的原位置、原横向占用内分成上下两个 Wheel：上方 Perspective Wheel，下方 Group Wheel。二者共享原窄区域的可用总高度，不左右并排、不新增导航列，不挤窄主视图。上段容纳业务视角，下段给更多空间容纳数量可变的组，分配随实际可用高度适配。两段通过留白与简短标题辨识，不加厚重分隔、卡片框或第三个 Wheel。标签朝向读者，以适度深度和光影突出当前项，不能严重倾斜牺牲阅读。主画面和输入框优先，粒度仅用紧凑 Coarse／Fine 与当前级别提示，不用长按钮挤占宽度。\n\nPerspective Wheel 只列业务视角。换视角时保持精确选中身份；目标在新视角可达就定位其组，不可达则明确回到该视角 root，不偷偷切别的视角。切回恢复原阅读位置。\n\nGroup Wheel 的横向双指滑动／鼠标拖动调整当前 Perspective 的整体分组粒度，向右细分、向左合并；纵向仍选当前粒度的组。主画面细分与合并同步过渡，粒度两端有界，纵向组选择循环。鼠标在 Wheel 上纵向一格一项；触摸板连续、循环、反向跟手，主画面同步过渡，不能一次手势只切一棵后锁住。指针命中哪一部分就由那部分处理，不能把 Wheel 双指误发给主画布。Mac／Linux 差异由原生适配归一化，不在每个浏览方案重写方向。\n\n键盘按焦点分工：Wheel 上下选项，Group Wheel 左变粗右变细；主画布方向键仍浏览节点；原生输入框拥有编辑、粘贴、语音输入，不被全局快捷键抢走。本草稿不擅自新占平台组合键。\n\nFilter/Search 复用底栏紧凑入口和 More；有筛选时 More 带状态提示，面板列明确条件并有 Clear。Find 打开独立原生搜索输入浮层，保留 Idea Bar 指令草稿，不新增常驻工具栏或聊天侧栏。\n\n2D／2.5D 共用同一业务与选择语义。三维图保留全部已加载 Graph，仅强调当前视角、组与节点，不被 Filter 裁掉。详情沿用空间详情与可中断过渡，批注汇入原正文；打开文件和文字编辑仍由 native 完成。\n\n线框图 01：experiments/polar-browsing-design/polar-browsing-wireframe-01-stacked-wheels.svg；PNG 为同一 SVG 的标准导出。图中节点标题来自现有内容，换行只作示意；这是布局草图，不是运行截图或最终主题。上下两个 Wheel 的命中区域独立，Group Wheel 的横向粒度手势不影响上面的 Perspective Wheel，也不平移画布。",
+        "ascii_wireframe": "Same footprint as the existing Wheel     Main view: 2D / 2.5D\n\n  PERSPECTIVE\n    Requirements                         [current group nodes]\n   >Development\n    System Structure\n    Decisions\n    Ideas\n\n  GROUP                                  3D relationship map\n    Coarse < Level > Fine                [full loaded Graph]\n    [other groups]\n   >Idea Explorer开发\n    [other groups]\n    vertical: select group\n    horizontal: change granularity\n\n[Idea] [ instruction.......................... ] [Find] [More*] [Send]\n",
+        "ui_labels_language": "English; actual source node titles preserved",
+        "review_status": "draft-pending-review",
+        "runtime_evidence": "not-run",
+        "layout_contract": {
+          "navigation_placement": "existing single-wheel footprint",
+          "wheel_axis": "vertical stack",
+          "top": "Perspective Wheel",
+          "bottom": "Group Wheel",
+          "new_navigation_columns": 0,
+          "preserve_main_view_horizontal_space": true,
+          "separator": "spacing and labels; no heavy frame"
+        },
+        "wireframe_assets": [
+          "docs/subprojects/polar-ideacave/experiments/polar-browsing-design/polar-browsing-wireframe-01-stacked-wheels.svg",
+          "docs/subprojects/polar-ideacave/experiments/polar-browsing-design/polar-browsing-wireframe-01-stacked-wheels.png"
+        ]
+      },
+      "relations": {}
+    },
+    "design-filter": {
+      "uuid": "41b110f3-1928-4b32-8e91-58a5d49ce911",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Conservative Filtering",
+        "body": "Filter 按明确类型、状态或属性减少干扰，不查找名字或句子。默认 Clear；状态条件需有领域明确映射，不能从标题／任意状态字符串猜。\n\nkeep_context 保持布局、父子骨架、组身份／顺序、坐标、相机与选择。匹配项清楚，不匹配项减弱；当前选中及理解匹配项所需的祖先／连接仍可读。不能让筛选破坏父子关系或使 Wheel 无法解释。0 matches 仍保留上下文，Clear 立即恢复。\n\n生效条件、作用范围和数量可见，默认当前 Perspective。临时覆盖不自动保存，不静默传到不兼容视角。Search 临时显露不改已保存 filter。\n\nFilter 只更新匹配与强调，不重组织、不重分组、不重布局、不移动相机；必要上下文复用已缓存的祖先／原关系，不逐帧遍历全图。以后若要删除节点式裁剪，须另行设计和用户确认，不混入本次行为。"
+      },
+      "relations": {}
+    },
+    "design-search": {
+      "uuid": "354bb377-6ee8-4969-bc00-379d145fab8d",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Independent Search and Locate",
+        "body": "Search 按标题、正文、UUID 查找定位，自由文本只在此输入。范围明确为 Current perspective／Loaded graph，首次以 Loaded graph 为草稿默认；全图指已加载输入，不假装已查完整仓库。结果显示标题、位置／来源，用 UUID 消歧，不要求看 JSON。\n\nFilter 不排除搜索结果。定位被弱化节点时，临时显露目标、所在组和必要上下文，并标明原因；不改筛选、不重排或重建树／组。临时强调结束后恢复匹配样式，保留用户明确选择。\n\n当前视角可达的结果按当前粒度定位到包含该节点的显示组；若用户明确调整粒度，则继续围绕该节点细分或合并；不可达则提示 Outside current perspective，在完整三维图定位，提供可容纳它的已有 Perspective，用户选择后才切换。不悄悄换 root、不临时编树、不扩大来源假装找到。\n\n输入使用原生编辑，支持粘贴和语音。源更新后结果按精确身份检查，删除／过时明确提示，不跳到同标题对象。索引和数据读取优先复用既有能力，本次不另建搜索存储、队列、轮询或索引算法。"
+      },
+      "relations": {}
+    },
+    "design-boundaries": {
+      "uuid": "e6dcf4fa-07fb-4781-aa06-a110fa52c9ed",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Data, Presentation and Platform Boundaries",
+        "body": "原 Graph 保留真实节点、有类型有方向的边、来源与版本。Perspective 的 root／组织／分组／默认 filter 保存在本配置；搜索词、临时筛选、选中、相机与组路径是浏览状态，不写入源节点，同一内容不随视角复制。\n\n共享 Rust 表现层解释业务配置、组织与分组并提供一致导航；Godot／既有适配负责几何、连线、相机、材质、动画，首选引擎原生能力，不在 Rust 重做图形引擎。GTK／AppKit 负责平台事件、命中适配、焦点、文件选择、编辑和 GPU 生命周期，Linux／Mac 不分别实现业务。\n\n组织缓存依赖源结构、root、组织规则及读取属性；分组缓存依赖组织结果和分组规则／属性。Filter/Search 强调独立，选择、滚轮、相机、主题、临时显露不重建骨架／组。数据变化沿既有事件刷新，旧结果不覆盖新版本，不加轮询。\n\n保留一个进程引擎、全局方案／主题、每 Tab 最多一个 Explorer、只加载当前方案主题、后台不持续绘制。业务视角、输入清单与绘图方案包分属不同职责；切视角不加载另一套引擎。缺少系统组件事实或状态映射只标明，不扩张成本次源数据重写或运行时开发。\n\nPerspective 切换性能约束：同一输入版本的完整关系投影只建一份，分组不重新测量相同标题，文字尺寸／轮子标题适配按实际源版本与字体失效。重复视角／粒度复用组织、分组、Graphviz 路由以及已准备的 native MultiMesh 连线数据。相同真实节点复用一份 Godot 节点资源，离开当前视角的节点留在同一场景中隐藏，避免 Label3D 再次入树重建文字网格，不能为每个视角复制完整场景、viewport、物理世界或正文。源版本变化和场景释放时清理所属资源。小地图只创建实际显示的文字标签，仍保留全部图节点和关系。\n\n性能验证必须同时记录切换回调、随后主循环等待和实际绘制；不能只凭 Rust 缓存命中或回调缩短宣称画面已流畅。日志和诊断产物不作为界面文字，不为性能测试增加状态栏。\n\n首次未缓存 Perspective／粒度的 Graphviz 和避障准备移到 Godot 原生 Thread；沿用现有只读数据、Graphviz 资源缓存和主线程提交，不实现新布局算法或通用调度器。工作线程不访问活动场景、相机、ThemeDB 或创建显示节点。测量字体仍在主线程、同输入与字体只做一次。保留上一份完整画面直到准备成功；单个计算线程只保留最后一次请求，旧完成可以留作本版本缓存但不得覆盖较新的选择；关闭时回收线程与资源。不轮询完成，不提前计算未选择视角。失败保留原画面，错误日志不新增常驻状态栏。"
+      },
+      "relations": {}
+    },
+    "design-cases": {
+      "uuid": "e2f9b9da-6801-4810-8156-55b68cf4d104",
+      "type": "polar.document.group.v1",
+      "properties": {
+        "title": "Design Acceptance Scenarios",
+        "body": "以下为完整行为要求；Linux 实验已有部分开发验证，原生接入、物理手势与人工验收仍待验证：\n\n1. Requirements 与 Development 来自相同真实输入，同一需求 UUID 不复制或变身份，原文件不变。\n2. Perspective Wheel 只列业务问题；旧技术配置不出现，改变切组不增加业务视角。\n3. 在 Development 中用 Group Wheel 横向从粗到细，IDEA-CAVE 再细分为 Explorer 等工作、Explorer 再分浏览／详情等；纵向只选当前粒度的组。选中身份不变，每个粒度覆盖相同出现位置，父级剩余和不齐整叶子均保留，变细后对应 layer 节点数不增加。\n4. Development Tasks 筛选前后，组 ID／parent／顺序、坐标、相机不变，组织／分组／布局计算次数不增加；0 matches 可 Clear。\n5. 被 Filter 弱化的节点仍能 Search 找到并临时显露，不改已保存条件或布局。\n6. 当前 Perspective 不可达的结果先在三维图定位，不擅自切视角或改 root。\n7. 鼠标纵向一格一项；双指纵向连续／循环／反向跟手，横向与鼠标横拖变粒度；轴向明确、不误平移画布，最粗最细不循环，主画面同步细分／合并；文字输入的粘贴与语音不被 Wheel 抢走。\n8. System Structure 显示 partial，不造组件／依赖；未记录理由、完成状态明确为缺口。\n9. 局部组、Filter 和 Search 下三维图的节点／关系集合仍等于完整已加载 Graph。\n10. 文件变更沿既有通知刷新，过时身份明确处理；文档、运行、原生安装、视觉和性能证据分别记录。\n\n11. 各真实业务视角首次访问后再切回，组织／分组、标签测量、Graphviz 和 native 连线几何不重复构建；离开再出现的真实节点复用原生对象身份。测量包括后续绘制与内存，只有回调计时不能当作完整交互延迟。\n\n12. 首次切到未访问视角时立即返回界面线程，准备期间旧主画面、选择和地图仍可用；准备结束一次性提交，连续请求只提交最后目标。线程完成走原生主循环通知，不用帧回调轮询。计算失败或窗口关闭不得留下半成品和游离线程。",
+        "execution_status": "partial-linux-development-evidence",
+        "source_preservation_required": true,
+        "performance_claim": "measured standalone callback, main-loop/draw and whole-process resources; no final acceptance"
+      },
+      "relations": {}
+    },
+    "case-business-perspectives": {
+      "uuid": "101327ec-0dd7-43dc-ae61-b55999206d54",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Six Business Perspectives",
+        "body": "后续执行器与界面的行为预期；当前只校验文档引用，没有运行通过证据。",
+        "execution_status": "passed-shared-domain-and-scene-development-checks",
+        "expected": {
+          "business_perspectives": [
+            "perspective-requirements",
+            "perspective-development",
+            "perspective-task-follow-up",
+            "perspective-system",
+            "perspective-decisions",
+            "perspective-ideas"
+          ],
+          "technical_configurations_in_wheel": false,
+          "system_structure_data_support": "partial-data-support",
+          "default_filters": {
+            "perspective-requirements": "filter-clear",
+            "perspective-development": "filter-clear",
+            "perspective-task-follow-up": "filter-tasks",
+            "perspective-system": "filter-clear",
+            "perspective-decisions": "filter-clear",
+            "perspective-ideas": "filter-clear"
+          }
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-development"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-hierarchical-groups": {
+      "uuid": "ee8c2f8e-f4fa-4077-9e07-730b3f0ef5ca",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Hierarchical Group Navigation",
+        "body": "后续执行器与界面的行为预期；当前只校验文档引用，没有运行通过证据。",
+        "execution_status": "not-run-new-interpreter-not-implemented",
+        "expected": {
+          "hierarchy_acyclic": true,
+          "one_display_group_per_occurrence_at_each_granularity": true,
+          "wheel_vertical_scope": "all display groups at current perspective granularity",
+          "wheel_horizontal_scope": "whole current perspective granularity",
+          "finer_groups_subset_of_coarse": true,
+          "group_count_non_decreasing_when_refining": true,
+          "containing_group_node_count_non_increasing_when_refining": true,
+          "parent_residual_preserved": true,
+          "uneven_leaf_branches_preserved": true,
+          "selected_identity_preserved": true,
+          "horizontal_limits": "clamp",
+          "vertical_selection": "continuous cyclic",
+          "organization_rebuilds_on_granularity_change": 0,
+          "base_group_hierarchy_rebuilds_on_granularity_change": 0,
+          "layout_policy": "compute missing granularity geometry once per relevant cache key; never every gesture frame",
+          "wheel_placement": "original footprint, Perspective above Group",
+          "new_navigation_columns": 0
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-development"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-filter-stability": {
+      "uuid": "1ed94fdf-8e4a-44b9-b16b-82792e408cba",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Filter Keeps the View Stable",
+        "body": "后续执行器与界面的行为预期；当前只校验文档引用，没有运行通过证据。",
+        "execution_status": "not-run-new-interpreter-not-implemented",
+        "expected": {
+          "preserved": [
+            "group identities",
+            "group parents",
+            "group order",
+            "node geometry",
+            "camera",
+            "selection",
+            "original graph"
+          ],
+          "organization_rebuilds": 0,
+          "grouping_rebuilds": 0,
+          "layout_rebuilds": 0,
+          "zero_matches": "keep context; offer Clear"
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-development"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-search-independence": {
+      "uuid": "c36d3b15-787e-4470-82d5-0316a9276a28",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Search Is Independent of Filter",
+        "body": "后续执行器与界面的行为预期；当前只校验文档引用，没有运行通过证据。",
+        "execution_status": "not-run-new-interpreter-not-implemented",
+        "expected": {
+          "filtered_result_excluded": false,
+          "temporary_reveal_mutates_saved_filter": false,
+          "outside_perspective_silently_changes_root": false,
+          "unloaded_graph_search_claimed": false,
+          "native_editing_preserved": true
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-development"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "case-task-follow-up": {
+      "uuid": "3814f7c4-c907-56ea-9f2e-1a50d6a901e2",
+      "type": "polar.explorer.view-test-case.v1",
+      "properties": {
+        "title": "Task Follow-up on Real Polar Data",
+        "body": "业务目标：从任务查看原始完成状态、对应需求、设计和测试观测。使用真实 Development Root；通用开发任务和 Station 任务都被突出。粗分组保留项目／主题，细分组以任务作锚点。非任务上下文和跨组关系保留，缺少关联不补造。",
+        "execution_status": "passed-shared-domain-and-scene-development-checks",
+        "expected": {
+          "perspective": "perspective-task-follow-up",
+          "default_filter": "filter-tasks",
+          "task_types": [
+            "polar.development.task.v1",
+            "polar.station.task.v1"
+          ],
+          "source_status": "unchanged; no completion inference",
+          "known_task": "itrees/idea-tree-presentation-development.itree.json#task-verification",
+          "known_requirement": "itrees/polarinfra-requests.itree.json#idea-tree-verification",
+          "known_design": "itrees/idea-tree-presentation-development.itree.json#design-verification",
+          "known_observation": "itrees/idea-tree-presentation-development.itree.json#observation-linux-installed",
+          "source_mutation": false
+        },
+        "evidence": {
+          "scope": "development checks; human/native visual acceptance remains pending",
+          "contracts": {
+            "passed": 588,
+            "skipped": 0,
+            "exit_code": 0
+          },
+          "clippy": "passed",
+          "godot_scene": {
+            "passed_checks": 24,
+            "failed": 0,
+            "relationship_map_nodes": 1068,
+            "exit_code": 0,
+            "completion_state_detail": "original status verified in detail text control"
+          },
+          "real_content_sources_byte_identical": 50,
+          "configuration_uuids_preserved": true,
+          "evidence_directory": "/data/polar/state/task-follow-up-20261111",
+          "recorded_at": "2026-11-11T09:44:08.493608+00:00"
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-case"
+          },
+          "properties": {}
+        },
+        "view": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "perspective-task-follow-up"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "organization-task-follow-up": {
+      "uuid": "06a94ca1-5189-5369-ae38-78a65473d2b3",
+      "type": "polar.explorer.organization-rule.v1",
+      "properties": {
+        "title": "Task Traceability",
+        "body": "从现有 Development Root 沿包含关系进入项目与工作；从任务沿真实 implements（含 Station 版本）找需求、uses 找设计或验证标准、produces 找产物、context／observes 找已记录观测，verifies 双向连接验证对象和验证者。主树采用确定性 BFS，一个原节点只放一个主位置，其余真实关联仍为跨组／跨层连线，不能保证共享设计总在某一任务下面。缺失或未加载的目标保留为未解析引用，不生成任务完成结论。",
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "relation": "polar.contains.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.implements.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.station.implements.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.uses.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.produces.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.context.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.observes.v1",
+            "direction": "outgoing"
+          },
+          {
+            "relation": "polar.station.verifies.v1",
+            "direction": "both"
+          }
+        ],
+        "edge_order": [
+          "relation_policy_order",
+          "slot",
+          "target_identity"
+        ],
+        "shared_nodes": "single_occurrence",
+        "cycles": "retain_as_reference",
+        "unresolved": "retain_as_reference"
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-organization"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "grouping-task-follow-up": {
+      "uuid": "77061c7e-3566-53a3-8000-c6aca2272799",
+      "type": "polar.explorer.grouping-rule.v1",
+      "properties": {
+        "title": "Projects, Topics and Tasks",
+        "body": "粗粒度沿既有 Development Tree／Group 分项目和主题；在该层次上增加两类真实任务作为细粒度锚点。Group Wheel 横向细分后可以逐项任务浏览，纵向选择当前粒度的组。其他上下文归最近上级锚点，父级剩余内容保留，共享需求、设计或证据保留自身主位置及真实跨组连线。只改变展示分组，不按文件或节点配额裁剪，不把原始 status 推断为统一的完成／未完成分类。",
+        "algorithm": "semantic_anchors",
+        "root_is_anchor": true,
+        "membership": "nearest_ancestor_anchor",
+        "boundary": "retain_child_group_root_reference",
+        "group_order": "root_order_then_tree_preorder",
+        "anchor_node_types": [
+          "polar.document.group.v1",
+          "polar.development.tree.v1",
+          "polar.request.tree.v1",
+          "polar.decision.tree.v1",
+          "polar.development.task.v1",
+          "polar.station.task.v1"
+        ],
+        "hierarchical": true,
+        "granularity_navigation": {
+          "scope": "whole current perspective",
+          "horizontal": "coarser/finer over cached hierarchy",
+          "vertical": "select display group at current granularity",
+          "preserve_selected_node": true,
+          "preserve_all_organized_occurrences": true
+        }
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-grouping"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "filter-tasks": {
+      "uuid": "07a99214-b2f8-5f18-bd89-bb41f6bcf10e",
+      "type": "polar.explorer.filter.v1",
+      "properties": {
+        "title": "Tasks",
+        "body": "默认强调精确类型为 polar.development.task.v1 或 polar.station.task.v1 的任务。项目骨架、需求、设计和证据保持原位置与可读上下文；这不是删节点或搜索。原始完成状态在详情中照原记录显示，不自动合并状态或宣称通过验收。",
+        "scope": "current_perspective",
+        "clauses": [
+          {
+            "field": "node.type",
+            "operator": "one_of",
+            "values": [
+              "polar.development.task.v1",
+              "polar.station.task.v1"
+            ]
+          }
+        ],
+        "presentation": "keep_context",
+        "source_mutation": false
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-filter"
+          },
+          "properties": {}
+        }
+      }
+    },
+    "perspective-task-follow-up": {
+      "uuid": "794801ec-9827-519f-b6a4-5ff79b579c6c",
+      "type": "polar.explorer.view.v1",
+      "properties": {
+        "title": "Task Follow-up",
+        "body": "业务问题：任务完成了吗？对应什么需求、怎样设计、测试证据在哪里？\n入口：现有 Development Root，与 Development 视角使用同一真实节点；没有新增内容节点或虚构的 Tasks 根。\n组织：沿现有工作组成定位任务，再沿实际 implements／uses／produces／context／observes／verifies 关系追踪需求、设计与观测。共享对象仍只有一个主出现位置，其他连线保留原方向。\n分组：先按既有项目／主题，Group Wheel 横向细分至任务锚点，纵向选择组。\n默认 Filter：Tasks，覆盖通用开发任务与 Station 任务；其他上下文保留，Search 仍独立查找全部已加载图。\n状态：详情显示源节点原始 status 与证据内容；有任务或测试记录不等于已完成或已验收。缺失／未加载的链接明确保留，不猜关联；配置不自动加载示例清单。",
+        "role": "business-perspective",
+        "business_name": "任务追踪",
+        "business_question": "任务完成了吗？它对应什么需求、采用什么设计，测试证据在哪里？",
+        "decision_value": "选择任务核对原始状态与证据，识别缺少需求、设计或验证记录的工作。",
+        "available_scope": "loaded Development graph, both authored task types, and explicit requirement/design/evidence relations",
+        "data_support": "available-with-recorded-gaps",
+        "order": 2,
+        "status": "configured-development-verified",
+        "expose_in_perspective_wheel": true
+      },
+      "relations": {
+        "definition": {
+          "relation": "polar.defined-by.v1",
+          "target": {
+            "kind": "local",
+            "node": "definition-view"
+          },
+          "properties": {}
+        },
+        "input": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "input-graph"
+          },
+          "properties": {}
+        },
+        "root": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "roots-development"
+          },
+          "properties": {}
+        },
+        "organization": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "organization-task-follow-up"
+          },
+          "properties": {}
+        },
+        "grouping": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "grouping-task-follow-up"
+          },
+          "properties": {}
+        },
+        "filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-tasks"
+          },
+          "properties": {}
+        },
+        "available-filter": {
+          "relation": "polar.uses.v1",
+          "target": {
+            "kind": "local",
+            "node": "filter-clear"
+          },
+          "properties": {}
+        }
+      }
+    }
+  }
+}

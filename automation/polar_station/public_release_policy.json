@@ -59,7 +59,8 @@
   ],
   "root_inputs": [
     "Cargo.lock",
-    "rust-toolchain.toml"
+    "rust-toolchain.toml",
+    "itrees/polar-browsing.itree.json"
   ],
   "ignored_directory_names": [
     ".git",
