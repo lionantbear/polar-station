@@ -107,6 +107,7 @@ class Retainer:
         if kind not in ('probe', 'build'):
             raise RetentionError('Invalid retention kind')
         self.transport, self.sleep = transport, sleep
+        self.rate_limit_wait_remaining = 65 * 60
         self.repo, self.source = repo, source
         self.tag = f'macos-arm64-trial-{kind}-{run_id}-{attempt}'
         self.api = f'https://api.github.com/repos/{repo}'
@@ -143,6 +144,24 @@ class Retainer:
                 if method != 'GET' or index == self.attempts - 1:
                     raise
             else:
+                # A rate-limited anonymous request proves nothing about privacy.
+                # Retry GETs only, respecting explicit GitHub reset information.
+                delay = None
+                if method == 'GET' and response.status in (403, 429):
+                    after = response.headers.get('Retry-After', '')
+                    reset = response.headers.get('X-RateLimit-Reset', '')
+                    if after.isdigit():
+                        delay = max(1, int(after))
+                    elif response.headers.get('X-RateLimit-Remaining') == '0' and reset.isdigit():
+                        delay = max(1, int(reset) - int(time.time()) + 1)
+                    if delay is not None:
+                        if delay > self.rate_limit_wait_remaining or index == self.attempts - 1:
+                            return response
+                        response.close()
+                        self.rate_limit_wait_remaining -= delay
+                        print(json.dumps({'github_get_rate_limit_wait_seconds': delay}), flush=True)
+                        self.sleep(delay)
+                        continue
                 retry = response.status in (408, 429, 500, 502, 503, 504)
                 retry |= response.status == 404 and kwargs.get('authenticated', False)
                 if method != 'GET' or not retry or index == self.attempts - 1:
@@ -219,7 +238,7 @@ class Retainer:
                 self.pause(index)
         raise RetentionError('Asset not visible under recorded draft ID; do not retry upload blindly')
 
-    def verify_asset(self, asset, expected_name):
+    def verify_asset(self, asset, expected_name, *, defer_anonymous=False):
         aid = positive_id(asset.get('id'))
         api = f'{self.api}/releases/assets/{aid}'
         actual = self.json_request('GET', api)
@@ -231,16 +250,8 @@ class Retainer:
                 raise RetentionError('Asset ID/name/state/size mismatch')
             if value.get('digest') not in (None, 'sha256:' + entry['sha256']):
                 raise RetentionError('Asset digest metadata mismatch')
-        browser = actual.get('browser_download_url', '')
-        parsed = urllib.parse.urlsplit(browser)
-        prefix = f'/{self.repo}/releases/download/'
-        if (parsed.scheme != 'https' or parsed.netloc != 'github.com' or parsed.query or
-                parsed.fragment or not parsed.path.startswith(prefix) or
-                urllib.parse.unquote(parsed.path.rsplit('/', 1)[-1]) != expected_name):
-            raise RetentionError('Unsafe browser download URL')
-        self.anonymous_404(api)
-        self.anonymous_404(api, binary=True)
-        self.anonymous_404(browser, binary=True)
+        if not defer_anonymous:
+            self.verify_asset_anonymous(actual, expected_name)
         # Download from the numeric asset endpoint; never log signed redirect URLs.
         response = self.request('GET', api, authenticated=True, binary=True)
         try:
@@ -273,6 +284,19 @@ class Retainer:
         self.state.setdefault('verified_assets', {})[expected_name] = {
             'id': aid, 'bytes': size, 'sha256': digest.hexdigest()}
         self.save()
+
+    def verify_asset_anonymous(self, asset, expected_name):
+        api = f'{self.api}/releases/assets/{positive_id(asset.get("id"))}'
+        browser = asset.get('browser_download_url', '')
+        parsed = urllib.parse.urlsplit(browser)
+        prefix = f'/{self.repo}/releases/download/'
+        if (parsed.scheme != 'https' or parsed.netloc != 'github.com' or parsed.query or
+                parsed.fragment or not parsed.path.startswith(prefix) or
+                urllib.parse.unquote(parsed.path.rsplit('/', 1)[-1]) != expected_name):
+            raise RetentionError('Unsafe browser download URL')
+        self.anonymous_404(api)
+        self.anonymous_404(api, binary=True)
+        self.anonymous_404(browser, binary=True)
 
     def probe_metadata(self):
         name = 'private-retention-probe.txt'
@@ -399,8 +423,8 @@ class Retainer:
                 current = self.settled_assets(set(self.state['uploads_pending']))
                 if created_id is not None and current[name].get('id') != created_id:
                     raise RetentionError('Uploaded asset ID differs from numeric draft listing')
-            self.verify_asset(current[name], name)
-            print(json.dumps({'verified_retained_asset': name, **self.state['verified_assets'][name]}, sort_keys=True), flush=True)
+            self.verify_asset(current[name], name, defer_anonymous=True)
+            print(json.dumps({'byte_verified_retained_asset': name, **self.state['verified_assets'][name]}, sort_keys=True), flush=True)
             if name in self.state['uploads_pending']:
                 self.state['uploads_pending'].remove(name)
                 self.save()
@@ -413,10 +437,18 @@ class Retainer:
                     asset.get('state') != 'uploaded' or
                     asset.get('digest') not in (None, 'sha256:' + verified['sha256'])):
                 raise RetentionError('Final asset identity changed')
+        # All selected bytes are durably retained before any per-asset anonymous
+        # delay or failure. The successful result still requires every old check.
+        self.state['phase'] = 'bytes-verified-privacy-pending'
+        self.save()
+        for name, asset in current.items():
+            self.verify_asset_anonymous(asset, name)
         self.read_release()
         self.anonymous_404(self.release_url)
         self.state['phase'] = 'verified-private'
         self.save()
+        for name in current:
+            print(json.dumps({'verified_retained_asset': name, **self.state['verified_assets'][name]}, sort_keys=True), flush=True)
         return {'release_id': rid, 'source_commit': self.source,
                 'assets_verified': len(current), 'draft': True, 'public_release_ready': False}
 

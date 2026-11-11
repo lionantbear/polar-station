@@ -53,3 +53,20 @@ The native workflow now selects the already-installed Xcode 26.3 using only
 Zig build runner before expensive compilation. The OS remains macOS 26; no
 compiler pin, Apple security setting, or SDK content is modified. This fix must
 be confirmed by the new native run, not assumed from the previous source CI.
+
+## Private trial retention
+
+The current exported-source native pipeline compiles the app and verifies its
+signatures, installed-copy launch and real terminal child before retaining a
+private draft. Run 43084976157 passed those product checks; retention stopped
+after an anonymous-denial request returned HTTP 403. Its expensive DMG and two
+native source captures were retained, but the remaining evidence was not.
+
+Retention must distinguish explicit API rate limits from a proven private 404.
+GET-only retries may wait for GitHub's advertised rate-limit reset within a
+65-minute total budget; every successful privacy check still requires 404.
+An unexplained 403, an excessive wait or any public response remains a failure.
+Upload the complete explicit file selection and verify its authenticated bytes
+before checking each asset anonymously, so a delayed anonymous check does not
+discard the remaining build evidence. Never retry uncertain writes, replace
+assets, publish the raw draft, or weaken final publication review.
