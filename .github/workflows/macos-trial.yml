@@ -1,6 +1,6 @@
 name: macOS arm64 trial build and draft retention
 # Owner authorized fresh-source release preparation on 2026-11-11.
-# Ad-hoc Host identity and selected Xcode validated after run 43070138327; pinned inputs below.
+# Existing native source/compiler/copy/signing observations are integrated in the shared builders.
 on:
   workflow_dispatch:
   push:
@@ -68,8 +68,6 @@ jobs:
             --receipt "$RUNNER_TEMP/station-private-read-probe/receipt.json"
           echo "The trusted GET-only verifier used contents:write authorization to verify the exact private probe; anonymous access was denied. No application was executed." >> "$GITHUB_STEP_SUMMARY"
   native:
-    # Do not rebuild until the existing capture/observation wiring is restored.
-    if: false
     needs: [private-retention-probe, private-retention-read-probe]
     runs-on: macos-26
     timeout-minutes: 180
@@ -88,10 +86,11 @@ jobs:
           python3 - <<'PY_SOURCE'
           import json
           value = json.load(open('PUBLIC_SOURCE_MANIFEST.json'))
-          assert value['source_provenance']['inputs_sha256'] == '7b5f53cb56130ac533e978fca5dd783234ef7e6ba36dd5016dda7580fc6caab4'
+          assert value['source_provenance']['inputs_sha256'] == '43f1d52aeb18c172ac23f86909fd68f22603a1fb3982bcecd8347c21a356520a'
           assert value['source_provenance']['git_dirty'] is False
           assert value['cargo_lock_normalization'] == 'passed'
           PY_SOURCE
+          test "$(python3 automation/polar_station/public_source_identity.py "$GITHUB_WORKSPACE" --revision)" = "$GITHUB_SHA"
       - name: Prepare pinned upstream sources and tools
         shell: bash
         run: |
@@ -153,6 +152,7 @@ jobs:
           bash apps/polar-station-macos/ghostty-overlay/apply-overlay.sh "$probe"
           /usr/bin/xcodebuild -resolvePackageDependencies \
             -project "$probe/macos/Ghostty.xcodeproj" -scheme Ghostty
+          test "$(python3 automation/polar_station/public_source_identity.py "$GITHUB_WORKSPACE" --revision)" = "$GITHUB_SHA"
       - name: Preflight free Host signing contract
         shell: bash
         run: |
