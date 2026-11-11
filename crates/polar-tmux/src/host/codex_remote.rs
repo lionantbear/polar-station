@@ -50,7 +50,8 @@ impl CodexControlService {
         }
         if matches!(
             request.command,
-            CodexCommandV1::UpdateSettings { .. }
+            CodexCommandV1::StartLocalServer { .. }
+                | CodexCommandV1::UpdateSettings { .. }
                 | CodexCommandV1::SetupCurrentTelegram { .. }
                 | CodexCommandV1::SetTelegramEnabled { .. }
                 | CodexCommandV1::ConnectImessageSender { .. }
@@ -282,7 +283,7 @@ fn project(
 
 fn require_submit_contract(result: &CodexResultV1) -> ControlResult<()> {
     match result {
-        CodexResultV1::Ui { labels } if labels.get("contract_version").and_then(|v| v.parse::<u16>().ok()) == Some(CODEX_CONTROL_API_VERSION) => Ok(()),
+        CodexResultV1::Ui { labels, .. } if labels.get("contract_version").and_then(|v| v.parse::<u16>().ok()) == Some(CODEX_CONTROL_API_VERSION) => Ok(()),
         _ => Err("unsupported_codex_contract"),
     }
 }

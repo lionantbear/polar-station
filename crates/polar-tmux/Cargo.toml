@@ -44,7 +44,7 @@ rusqlite.workspace = true
 polar-tmux-workspace.workspace = true
 polar-dictate = { workspace = true, features = ["runtime"] }
 polar-dictate-store-sqlite.workspace = true
-polar-text-edit.workspace = true
+polar-transcreation.workspace = true
 polar-inhouse-contract.workspace = true
 polar-inhouse-backend-adam.workspace = true
 codex-login.workspace = true

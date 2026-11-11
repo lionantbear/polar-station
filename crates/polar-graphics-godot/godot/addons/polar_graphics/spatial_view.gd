@@ -59,6 +59,10 @@ var card_controls: Dictionary = {}
 var meshes: Dictionary = {}
 var edge_paths: Array = []
 var edge_screen: Array = []
+const NativeEdges = preload("res://addons/polar_graphics/native_edge_layer.gd")
+var _native_edges
+var _native_selected_edges
+var _card_pick_mesh: TriangleMesh
 var source_layout: Dictionary = {}
 var target := Vector3.ZERO
 var view_size := 10.0
@@ -78,6 +82,9 @@ var _suppress_click_release := false
 var _last_click_key := ""
 var _last_click_position := Vector2.INF
 var _last_click_ms := -1000
+var edge_geometry_context:=""
+var edge_geometry_leases:Dictionary={}
+var graph_label_policy:="all" # selected: instantiate only the label actually being shown
 var graph_multimesh: MultiMeshInstance3D
 var graph_instances: Dictionary = {}
 var graph_groups:Dictionary = {}
@@ -88,7 +95,6 @@ var focus_mesh: MeshInstance3D
 var focus_callout: Label
 var _edge_dirty := true
 var _label_dirty := true
-var _settle_frames := 0
 var _camera_tween: Tween
 var _inertia_tween:Tween
 var _drag_key := ""
@@ -167,16 +173,34 @@ func _ready() -> void:
 	focus_callout.visible = false
 	add_child(focus_callout)
 	resized.connect(_resize)
-	get_viewport().size_changed.connect(_resize)
+	_bind_viewport_resize()
 	_sync_render_target()
 	mouse_exited.connect(func():
 		hovered_key = ""
 		tooltip_text = ""
 		_label_dirty = true)
 	_update_camera()
-	_settle_frames = 3
+
+var _resize_viewport:Viewport
+
+func _bind_viewport_resize()->void:
+	if not is_inside_tree():return
+	var current:=get_viewport()
+	if _resize_viewport==current:return
+	_unbind_viewport_resize()
+	_resize_viewport=current
+	_resize_viewport.size_changed.connect(_resize)
+	_resize()
+
+func _unbind_viewport_resize()->void:
+	if is_instance_valid(_resize_viewport) and _resize_viewport.size_changed.is_connected(_resize):
+		_resize_viewport.size_changed.disconnect(_resize)
+	_resize_viewport=null
+
+func _exit_tree()->void:_unbind_viewport_resize()
 
 func _notification(what:int)->void:
+	if what==NOTIFICATION_ENTER_TREE:call_deferred("_bind_viewport_resize")
 	if what==NOTIFICATION_VISIBILITY_CHANGED:_sync_render_target()
 	if what in [NOTIFICATION_VISIBILITY_CHANGED, NOTIFICATION_WM_WINDOW_FOCUS_OUT]:
 		if what==NOTIFICATION_WM_WINDOW_FOCUS_OUT or not is_visible_in_tree():
@@ -188,11 +212,11 @@ func _notification(what:int)->void:
 			_drag_active=false;dragging=false;drag_button=0
 
 func _resize() -> void:
+	if camera==null or not camera.is_inside_tree():return
 	_sync_render_target()
 	if role == "tree" and camera != null: fit_all(false)
 	_edge_dirty = true
 	_label_dirty = true
-	_settle_frames = 3
 
 func set_render_active(value: bool) -> void:
 	_render_active=value
@@ -216,14 +240,17 @@ func _draw() -> void:
 	if viewport_3d != null:
 		draw_texture_rect(viewport_3d.get_texture(), Rect2(Vector2.ZERO, size), false)
 
+func needs_frames()->bool:
+	if not _render_active or not is_visible_in_tree():return false
+	if _edge_dirty or _selection_edge_dirty or _label_dirty or trail_frame_due():return true
+	for tween in [_camera_tween,_mode_tween,_layout_tween,_inertia_tween,_trail_tween]:
+		if tween!=null and tween.is_running():return true
+	return false
+
 func _process(_delta: float) -> void:
 	if trail_frame_due():_draw_browse_path(true)
 	if camera == null:
 		return
-	if _settle_frames > 0:
-		_settle_frames -= 1
-		_edge_dirty = true
-		_label_dirty = true
 	if _edge_dirty or _selection_edge_dirty or _label_dirty:
 		viewport_3d.render_target_update_mode = SubViewport.UPDATE_ONCE
 	if _edge_dirty:
@@ -241,7 +268,7 @@ func _process(_delta: float) -> void:
 		if OS.get_environment("POLAR_LAB_PROFILE") == "1": print("VIEW_LABEL_US ",role," ",Time.get_ticks_usec()-started)
 		_label_dirty = false
 
-func _clear_nodes() -> void:
+func _clear_nodes(retained_instances:Dictionary={}) -> void:
 	_source_planes.clear()
 	for controls in card_controls.values():
 		for control in controls:
@@ -249,6 +276,7 @@ func _clear_nodes() -> void:
 			control.queue_free()
 	card_controls.clear()
 	for child in node_layer.get_children():
+		if retained_instances.has(child.get_instance_id()):continue
 		node_layer.remove_child(child)
 		child.queue_free()
 	points.clear()
@@ -343,7 +371,6 @@ func set_tree(layout: Dictionary, semantic: Array = []) -> void:
 	_edge_dirty = _edge_dirty or base_changed
 	_selection_edge_dirty=true
 	_label_dirty = true
-	_settle_frames = 3
 
 func _animate_layout(previous:Dictionary)->void:
 	var final_points:=points.duplicate()
@@ -588,11 +615,7 @@ func set_graph(graph_data: Dictionary, coordinates: Dictionary) -> void:
 			graph_instances[id]={"shape":shape,"index":i}
 			multi.set_instance_transform(i,Transform3D(Basis.IDENTITY.scaled(Vector3.ONE*radius),coord))
 			multi.set_instance_color(i,_color(item))
-			var label:=Label3D.new();label.text=("▣ " if bool(item.get("container",false)) else "")+_fit_graph_title(str(item.get("title",id)))
-			if not str(item.get("status","")).is_empty():label.text+="\n["+str(item.status)+"]"
-			label.font_size=40;label.pixel_size=0.006;label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
-			label.outline_size=3;label.outline_modulate=PresentationTheme.BACKGROUND;label.modulate=PresentationTheme.TEXT
-			label.position=coord+Vector3(0,radius+0.2,0);node_layer.add_child(label);labels[id]=label
+			if graph_label_policy=="all":_ensure_graph_label(id)
 	var lane_counts:Dictionary={}
 	for link:Dictionary in graph_data.get("links",[]):
 		var pair:Array=[str(link.source),str(link.target)];pair.sort()
@@ -610,7 +633,15 @@ func set_graph(graph_data: Dictionary, coordinates: Dictionary) -> void:
 	graph_outline.material_override=outline_material;node_layer.add_child(graph_outline)
 	update_graph_coordinates(coordinates)
 	set_selection(selected_id,selected_occurrence)
-	_settle_frames=3
+
+func _ensure_graph_label(id:String)->void:
+	if labels.has(id) or not records.has(id) or not points.has(id):return
+	var item:Dictionary=records[id]
+	var label:=Label3D.new();label.text=("▣ " if bool(item.get("container",false)) else "")+_fit_graph_title(str(item.get("title",id)))
+	if not str(item.get("status","")).is_empty():label.text+="\n["+str(item.status)+"]"
+	label.font_size=40;label.pixel_size=.006;label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+	label.outline_size=3;label.outline_modulate=PresentationTheme.BACKGROUND;label.modulate=PresentationTheme.TEXT
+	label.position=points[id]+Vector3(0,.45,0);node_layer.add_child(label);labels[id]=label
 
 func update_graph_coordinates(coordinates:Dictionary)->void:
 	for id:String in coordinates:
@@ -618,7 +649,7 @@ func update_graph_coordinates(coordinates:Dictionary)->void:
 		var p:Vector3=coordinates[id];points[id]=p
 		var spec:Dictionary=graph_instances[id]
 		graph_groups[spec.shape].multimesh.set_instance_transform(int(spec.index),Transform3D(Basis.IDENTITY.scaled(Vector3.ONE*0.25),p))
-		labels[id].position=p+Vector3(0,0.45,0)
+		if labels.has(id):labels[id].position=p+Vector3(0,0.45,0)
 	for edge:Dictionary in edge_paths:
 		var a:Vector3=points[edge.from];var b:Vector3=points[edge.to];var route:=PackedVector3Array()
 		var lane:=float(edge.get("lane",0))
@@ -652,6 +683,10 @@ func set_selection(node_id: String, occurrence: String = "") -> void:
 	if role!="graph":occurrence=key_for_node(node_id,occurrence)
 	selected_id = node_id
 	selected_occurrence = occurrence
+	if role=="graph" and graph_label_policy=="selected":
+		if labels.has(previous_id):labels[previous_id].hide()
+		_ensure_graph_label(node_id)
+		if labels.has(node_id):labels[node_id].show()
 	for key in meshes:
 		var was_selected:bool=key==previous_occurrence if not previous_occurrence.is_empty() else str(records[key].get("node_id",""))==previous_id
 		if bool(source_layout.get("flat_layout",false)):was_selected=str(records[key].get("node_id",""))==previous_id
@@ -669,7 +704,7 @@ func _key_is_selected(key: String) -> bool:
 	return key == selected_occurrence or (selected_occurrence.is_empty() and str(records.get(key, {}).get("node_id", "")) == selected_id)
 
 func _update_camera() -> void:
-	if camera == null:
+	if camera == null or not camera.is_inside_tree():
 		return
 	if role == "graph":
 		camera.projection = Camera3D.PROJECTION_PERSPECTIVE
@@ -688,7 +723,7 @@ func _update_camera() -> void:
 			vector = Vector3(0.025, 0.08, 1.0).normalized()
 		camera.position = target + vector * 70.0
 	camera.look_at(target, Vector3.UP)
-	_edge_dirty = true
+	viewport_3d.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_label_dirty = true
 	if role == "tree": set_focus_region(focus_region)
 
@@ -1044,30 +1079,43 @@ func pick_node(screen: Vector2) -> String:
 	var direction := camera.project_ray_normal(screen)
 	var nearest := INF
 	var result := ""
+	var near_point := camera.project_position(screen, camera.near)
+	var far_point := camera.project_position(screen, camera.far)
 	for key in points:
 		if role=="canvas" and int(records[key].get("layer_distance",0))>0 and not bool(records[key].get("direct_neighbor",false)):continue
 		var point: Vector3 = points[key]
 		if role == "graph":
-			if camera.is_position_behind(point):
-				continue
-			var projected := camera.unproject_position(point)
-			var radius := maxf(7.0, float(bounds[key].x) * 0.5 / _pixel_world(point))
-			var depth := origin.distance_to(point)
-			if projected.distance_to(screen) <= radius and depth < nearest:
-				nearest = depth
-				result = key
+			if not graph_instances.has(key):continue
+			var spec: Dictionary = graph_instances[key]
+			var group: MultiMeshInstance3D = graph_groups[spec.shape]
+			var transform: Transform3D = group.global_transform * group.multimesh.get_instance_transform(spec.index)
+			var depth := maxf(camera.near, -camera.to_local(point).z)
+			var tolerance := camera.project_position(screen,depth).distance_to(camera.project_position(screen+Vector2(7,0),depth))
+			var expansion := maxf(1.0, tolerance / maxf(.00001, bounds[key].x*.5))
+			transform.basis = transform.basis.scaled_local(Vector3.ONE*expansion)
+			var inverse := transform.affine_inverse()
+			var hit: Dictionary = group.multimesh.mesh.generate_triangle_mesh().intersect_segment(inverse*near_point,inverse*far_point)
+			if hit.is_empty():continue
+			var distance: float = origin.distance_to(transform*hit.position)
+			if distance < nearest:
+				nearest = distance;result = key
 		else:
-			var normal:Vector3=camera.global_basis.z
-			var denominator:=direction.dot(normal)
-			if absf(denominator) < 0.000001:
-				continue
-			var distance := (point-origin).dot(normal)/denominator
-			if distance <= 0 or distance >= nearest:
-				continue
-			var hit := origin + direction * distance
-			var b: Vector2 = bounds[key]
-			var local_hit:Vector3=camera.global_basis.inverse()*(hit-point)
-			if absf(local_hit.x) <= b.x * 0.5 and absf(local_hit.y) <= b.y * 0.5:
+			# Reuse Godot's physicsless BVH for the existing camera-facing
+			# rectangular hit region. Only transforms change between cards.
+			if _card_pick_mesh == null:
+				var quad := QuadMesh.new()
+				quad.size = Vector2.ONE
+				_card_pick_mesh = quad.generate_triangle_mesh()
+			var extent: Vector2 = bounds[key]
+			if extent.x <= 0 or extent.y <= 0:continue
+			var transform := Transform3D(camera.global_basis.scaled_local(Vector3(extent.x, extent.y, 1)), point)
+			var inverse := transform.affine_inverse()
+			var hit: Dictionary = _card_pick_mesh.intersect_segment(
+				inverse * near_point,
+				inverse * far_point)
+			if hit.is_empty():continue
+			var distance: float = origin.distance_to(transform * hit.position)
+			if distance < nearest:
 				nearest = distance
 				result = key
 	return result
@@ -1086,111 +1134,52 @@ func screen_card_rect(key: String) -> Rect2:
 
 
 func pick_edge(screen: Vector2) -> Array:
-	var best := 7.0
-	var result: Array = []
-	for edge in edge_screen:
-		for i in range(1, edge.points.size()):
-			if not bool(edge.visible[i - 1]) or not bool(edge.visible[i]):
-				continue
-			var point := Geometry2D.get_closest_point_to_segment(screen, edge.points[i - 1], edge.points[i])
-			var distance := point.distance_to(screen)
-			if distance < best:
-				best = distance
-				result = edge.relations
-	return result
+	if _native_selected_edges != null:
+		var selected: Array = _native_selected_edges.pick(camera,screen)
+		if not selected.is_empty():return selected
+	return _native_edges.pick(camera,screen) if _native_edges != null else []
+
+func _edge_uses_perspective() -> bool:
+	return role=="graph"
 
 func _pixel_world(point: Vector3) -> float:
 	var height := maxf(1.0, size.y)
-	if role != "graph":
+	if not _edge_uses_perspective():
 		return camera.size / height
 	var depth := maxf(0.1, -camera.to_local(point).z)
 	return 2.0 * depth * tan(deg_to_rad(camera.fov) * 0.5) / height
 
 func _rebuild_edge_geometry(selected_only:bool=false) -> void:
-	var vertices := PackedVector3Array()
-	var colors := PackedColorArray()
-	if not selected_only:edge_screen.clear()
-	else:edge_screen=edge_screen.filter(func(edge):return not bool(edge.get("semantic",false)))
+	if _native_edges == null:
+		_native_edges=NativeEdges.new();edge_mesh.add_child(_native_edges)
+		_native_selected_edges=NativeEdges.new();_selection_edges.add_child(_native_selected_edges)
+	var routes: Array = []
 	for edge in edge_paths:
-		var incident:=_key_is_selected(edge.from) or _key_is_selected(edge.to)
-		if selected_only and not incident and str(edge.kind)!="semantic":continue
-		if not selected_only and role=="canvas" and str(edge.kind)=="semantic":continue
-		var path_points: PackedVector3Array = edge.points
-		var active := selected_only and incident
+		var incident := _key_is_selected(edge.from) or _key_is_selected(edge.to)
 		var semantic := str(edge.kind) == "semantic"
+		if selected_only and not incident and not semantic:continue
+		if not selected_only and role == "canvas" and semantic:continue
+		var active := selected_only and incident
 		if role != "graph" and not semantic and _key_is_selected(edge.from) and int(records.get(edge.from, {}).get("depth", 0)) == 0:
 			active = _key_is_selected(edge.to)
-		var color := _color(records.get(edge.from, {})).lerp(PresentationTheme.MUTED,0.25)
-		color.a = 0.9 if active else (0.5 if semantic else 0.43)
+		var record: Dictionary = records.get(edge.from, {})
+		var color := _color(record).lerp(PresentationTheme.MUTED, .25)
+		color.a = .9 if active else .5 if semantic else .43
 		var width := 1.8 if role != "graph" else 1.0
 		if role == "graph":
-			color = Color("f0d6a5") if active else Color(0.42, 0.61, 0.71, 0.18)
-			width = 1.8 if active else 0.85
-		# Optional per-edge presentation only. Existing roles, typed line
-		# styles and the independent selection layer retain their defaults.
-		width = float(edge.get("width_px", width))
-		color.a *= float(edge.get("opacity", 1.0))
-		var clip_frustum := bool(edge.get("clip_frustum", false))
-		var track_pick := not selected_only or (semantic and role == "canvas")
-		var screens := PackedVector2Array()
-		var visible := PackedByteArray()
-		if not clip_frustum:
-			for p in path_points:
-				screens.append(camera.unproject_position(p))
-				visible.append(0 if camera.is_position_behind(p) else 1)
-			if track_pick:edge_screen.append({"points": screens, "visible": visible, "relations": edge.relations,"semantic":semantic})
-		var style:=str(edge.get("visual",{}).get("line_style","solid"))
-		var travelled:=0.0
-		for i in range(1,path_points.size()):
-			var a:=path_points[i-1];var b:=path_points[i]
-			if clip_frustum:
-				# Clip actual world segments before projection. Each surviving
-				# segment owns its pick interval, with no bridge across a culled gap.
-				var original_a:=a;var original_b:=b
-				if not camera.is_position_in_frustum(a):
-					var entry:=Geometry3D.segment_intersects_convex(original_a,original_b,camera.get_frustum())
-					if entry.is_empty():continue
-					a=entry[0]
-				if not camera.is_position_in_frustum(b):
-					var entry:=Geometry3D.segment_intersects_convex(original_b,original_a,camera.get_frustum())
-					if entry.is_empty():continue
-					b=entry[0]
-			var direction:=b-a
-			if direction.length_squared()<0.00000001:continue
-			if clip_frustum and track_pick:
-				edge_screen.append({"points":PackedVector2Array([camera.unproject_position(a),camera.unproject_position(b)]),"visible":PackedByteArray([1,1]),"relations":edge.relations,"semantic":semantic})
-			var middle:Vector3=(a+b)*0.5
-			var unit:=_pixel_world(middle)
-			var normal:=direction.cross(camera.global_basis.z).normalized()
-			if normal.length_squared()<0.00001:normal=camera.global_basis.x
-			var length_pixels:=direction.length()/unit
-			var start:=0.0
-			while start<length_pixels:
-				var step:=(length_pixels-start) if style in ["solid","double"] else minf(2.0,length_pixels-start)
-				var phase:=fposmod(travelled+start,24.0)
-				var draw_segment:=style in ["solid","double"] or (style=="long_dash" and phase<15) or (style=="dotted" and fposmod(phase,8)<2.6) or (style=="dash_dot" and (phase<12 or (phase>17 and phase<20)))
-				if draw_segment:
-					var offsets:Array=[0.0] if style!="double" else [-1.8,1.8]
-					for offset:float in offsets:
-						var p:Vector3=a+direction*(start/length_pixels)+normal*unit*offset
-						var q:Vector3=a+direction*((start+step)/length_pixels)+normal*unit*offset
-						var half:Vector3=normal*unit*width*0.5
-						for vertex in [p-half,p+half,q+half,p-half,q+half,q-half]:vertices.append(vertex);colors.append(color)
-				start+=step
-			travelled+=length_pixels
-		if bool(edge.get("visual",{}).get("arrow",true)) and path_points.size()>=2 and (not clip_frustum or camera.is_position_in_frustum(path_points[-1])):
-			var b:=path_points[-1];var direction:Vector3=(b-path_points[-2]).normalized()
-			var normal:=direction.cross(camera.global_basis.z).normalized();var unit:=_pixel_world(b)
-			for p in [b,b-direction*unit*7+normal*unit*3,b-direction*unit*7-normal*unit*3]:vertices.append(p);colors.append(color)
-	var mesh := ArrayMesh.new()
-	if not vertices.is_empty():
-		var arrays: Array = []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = vertices
-		arrays[Mesh.ARRAY_COLOR] = colors
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	if selected_only:_selection_edges.mesh=mesh
-	else:edge_mesh.mesh = mesh
+			color = Color("f0d6a5") if active else Color(.42,.61,.71,.18)
+			width = 1.8 if active else .85
+		width = float(edge.get("width_px",width))
+		color.a *= float(edge.get("opacity",1.0))
+		var route:Dictionary={"key":[edge.from,edge.to,edge.relations.map(func(relation):return str(relation.get("slot",relation.get("id",""))))],"points":edge.points,"radius":float(edge.get("radius_world",width*.012)),"color":color,
+			"style":str(edge.get("visual",{}).get("line_style","solid")),
+			"arrow":bool(edge.get("visual",{}).get("arrow",true)),
+			"group":str(record.get("source_index",record.get("branch",0))),"relations":edge.relations}
+		if edge.has("point_alpha"):route["point_alpha"]=edge.point_alpha
+		if edge.has("route_key"):route.key=edge.route_key
+		routes.append(route)
+	var layer = _native_selected_edges if selected_only else _native_edges
+	layer.sync(routes, _selection_edges.material_override if selected_only else edge_mesh.material_override,edge_geometry_context+("/selected" if selected_only else "/base") if not edge_geometry_context.is_empty() else "",edge_geometry_leases)
 
 func _update_labels() -> void:
 	var occupied: Array[Rect2] = []

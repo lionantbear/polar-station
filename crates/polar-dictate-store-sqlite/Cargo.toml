@@ -19,4 +19,4 @@ tokio.workspace = true
 tempfile = "3"
 polar-dictate = { workspace = true, features = ["runtime"] }
 polar-voice.workspace = true
-polar-text-edit.workspace = true
+polar-transcreation.workspace = true

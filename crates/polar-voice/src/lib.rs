@@ -5,10 +5,13 @@
 //! deliberately has no thread, message, send, draft, or provider-credential
 //! concepts.
 
+pub mod activity;
 pub mod buffered;
+pub mod pcm;
 pub mod realtime;
 pub mod transcription;
-pub mod activity;
+mod reference;
+pub use reference::{TranscriptionReference, TranscriptionReferenceSupport, TranscriptionTerm};
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -146,6 +149,8 @@ fn valid_profile_id(id: &str) -> bool {
 pub struct VoiceTranscribeRequest {
     operation_id: String,
     audio: Vec<u8>,
+    #[serde(default, skip_serializing_if = "TranscriptionReference::is_empty")]
+    reference: TranscriptionReference,
 }
 
 impl VoiceTranscribeRequest {
@@ -153,7 +158,13 @@ impl VoiceTranscribeRequest {
         Self {
             operation_id: operation_id.into(),
             audio,
+            reference: TranscriptionReference::default(),
         }
+    }
+
+    pub fn with_reference(mut self, reference: TranscriptionReference) -> Self {
+        self.reference = reference;
+        self
     }
 
     pub fn operation_id(&self) -> &str {
@@ -210,6 +221,8 @@ impl VoiceStreamFormat {
 pub struct VoiceStreamBeginRequest {
     operation_id: String,
     format: VoiceStreamFormat,
+    #[serde(default, skip_serializing_if = "TranscriptionReference::is_empty")]
+    reference: TranscriptionReference,
 }
 
 impl VoiceStreamBeginRequest {
@@ -217,7 +230,12 @@ impl VoiceStreamBeginRequest {
         Self {
             operation_id: operation_id.into(),
             format,
+            reference: TranscriptionReference::default(),
         }
+    }
+    pub fn with_reference(mut self, reference: TranscriptionReference) -> Self {
+        self.reference = reference;
+        self
     }
 }
 
@@ -351,6 +369,7 @@ impl Drop for VoicePcm {
 pub enum VoiceError {
     InvalidAudio,
     InvalidOperation,
+    ReferenceUnsupported,
     OperationConflict,
     ProviderUnavailable,
     AuthRequired,
@@ -362,11 +381,21 @@ pub enum VoiceError {
     StreamIncomplete,
     MediaJitterExceeded,
     TranscriptionInvalid,
+    TranscriptionEmpty,
+    RateLimited { retry_after_ms: Option<u64> },
+    ProviderBlocked,
 }
 
 impl VoiceError {
     /// Whether the same complete input may be retried without user repair.
     /// This says nothing about retaining or discarding the caller's recording.
+    /// Per-request result defects do not imply that later saved audio is unusable.
+    pub const fn blocks_following_requests(&self) -> bool {
+        !matches!(
+            self,
+            Self::TranscriptionEmpty | Self::TranscriptionInvalid | Self::InvalidAudio
+        )
+    }
     pub const fn retryable(&self) -> bool {
         matches!(
             self,
@@ -374,13 +403,27 @@ impl VoiceError {
                 | Self::Timeout
                 | Self::TranscriptionFailed
                 | Self::MediaJitterExceeded
+                | Self::RateLimited { .. }
         )
     }
 
+    /// Persist an actionable explanation without serializing provider response bodies.
+    pub fn recording_message(&self) -> String {
+        let detail = match self {
+            Self::TranscriptionEmpty => "The service returned no text for this audio segment; saved audio can be retried".to_owned(),
+            Self::TranscriptionInvalid => "The service returned an invalid transcription response; saved audio can be retried".to_owned(),
+            Self::RateLimited {retry_after_ms:Some(delay)} => format!("The service is rate limited; retry after {} seconds. Saved audio is retained", delay.div_ceil(1000)),
+            Self::RateLimited {retry_after_ms:None} => "The service is rate limited; wait before retrying. Saved audio is retained".to_owned(),
+            Self::ProviderBlocked => "The service blocked this request; check network access before retrying. Saved audio is retained".to_owned(),
+            _ => return self.code().to_owned(),
+        };
+        format!("{}: {detail}", self.code())
+    }
     pub const fn code(&self) -> &'static str {
         match self {
             Self::InvalidAudio => "voice.invalid_audio",
             Self::InvalidOperation => "voice.invalid_operation",
+            Self::ReferenceUnsupported => "voice.reference_unsupported",
             Self::OperationConflict => "voice.operation_conflict",
             Self::ProviderUnavailable => "voice.provider_unavailable",
             Self::AuthRequired => "voice.auth_required",
@@ -392,6 +435,9 @@ impl VoiceError {
             Self::StreamIncomplete => "voice.stream_incomplete",
             Self::MediaJitterExceeded => "voice.media_jitter_exceeded",
             Self::TranscriptionInvalid => "voice.transcription_invalid",
+            Self::TranscriptionEmpty => "voice.transcription_empty",
+            Self::RateLimited { .. } => "voice.rate_limited",
+            Self::ProviderBlocked => "voice.provider_blocked",
         }
     }
 }
@@ -406,6 +452,34 @@ impl Error for VoiceError {}
 
 #[async_trait::async_trait]
 pub trait VoiceTranscriptionProvider: Send + Sync {
+    fn reference_support(&self) -> TranscriptionReferenceSupport {
+        TranscriptionReferenceSupport::Unsupported
+    }
+    async fn transcribe_with_reference(
+        &self,
+        audio: VoicePcm,
+        reference: TranscriptionReference,
+    ) -> Result<String, VoiceError> {
+        reference.require_support(TranscriptionReferenceSupport::Unsupported)?;
+        self.transcribe(audio).await
+    }
+    async fn transcribe_opus_with_reference(
+        &self,
+        audio: buffered::VoiceOpusRecording,
+        reference: TranscriptionReference,
+    ) -> Result<String, VoiceError> {
+        if reference.is_empty() {
+            self.transcribe_opus(audio).await
+        } else {
+            self.transcribe_with_reference(audio.decode()?, reference)
+                .await
+        }
+    }
+
+    /// Provider-specific bounded batch capability; existing providers retain30s.
+    fn maximum_audio_bytes(&self) -> usize {
+        MAXIMUM_AUDIO_BYTES
+    }
     async fn transcribe(&self, audio: VoicePcm) -> Result<String, VoiceError>;
     /// Packet-aware providers override this to avoid a decode/re-encode round trip.
     /// The default preserves existing PCM-only provider behavior.
@@ -419,8 +493,22 @@ pub trait VoiceTranscriptionProvider: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait VoiceStreamingTranscriptionProvider: Send + Sync {
+    fn reference_support(&self) -> TranscriptionReferenceSupport {
+        TranscriptionReferenceSupport::Unsupported
+    }
+    async fn begin_with_reference(
+        &self,
+        format: VoiceStreamFormat,
+        reference: TranscriptionReference,
+    ) -> Result<Arc<dyn VoiceStreamingSession>, VoiceError> {
+        reference.require_support(TranscriptionReferenceSupport::Unsupported)?;
+        self.begin(format).await
+    }
+
     /// Optional transport-only preparation. It creates no recording or audio.
-    async fn prepare(&self) -> Result<(), VoiceError> { Ok(()) }
+    async fn prepare(&self) -> Result<(), VoiceError> {
+        Ok(())
+    }
     async fn release_prepared(&self) {}
     /// Creates a recording-scoped provider session and returns only after its
     /// media path can accept packets.
@@ -436,7 +524,9 @@ pub trait VoiceStreamingSession: Send + Sync {
     async fn commit(&self, packet_count: u32) -> Result<String, VoiceError>;
     async fn abort(&self) -> Result<(), VoiceError>;
     /// A cumulative snapshot; observers may skip previews without losing confirmed text.
-    fn transcript_updates(&self) -> Option<tokio::sync::watch::Receiver<transcription::TranscriptSnapshot>> {
+    fn transcript_updates(
+        &self,
+    ) -> Option<tokio::sync::watch::Receiver<transcription::TranscriptSnapshot>> {
         None
     }
 }
@@ -466,13 +556,14 @@ impl Default for VoiceRuntimeConfig {
 }
 
 struct OperationEntry {
-    audio_digest: blake3::Hash,
+    input_digest: blake3::Hash,
     created_at: Instant,
     result: OnceCell<Result<VoiceTranscribeResult, VoiceError>>,
 }
 
 struct ActiveStream {
     format: VoiceStreamFormat,
+    reference: TranscriptionReference,
     provider_session: Arc<dyn VoiceStreamingSession>,
     state: AsyncMutex<ActiveStreamState>,
     _permit: OwnedSemaphorePermit,
@@ -520,27 +611,47 @@ impl VoiceRuntime {
         self
     }
 
+    pub fn transcription_reference_support(&self, mode: pcm::PcmTranscriptionMode) -> TranscriptionReferenceSupport {
+        match mode {
+            pcm::PcmTranscriptionMode::Buffered => self.provider.reference_support(),
+            pcm::PcmTranscriptionMode::Incremental => self.streaming_provider.as_ref().map_or(TranscriptionReferenceSupport::Unsupported, |p| p.reference_support()),
+        }
+    }
+
     pub async fn transcribe(
         &self,
+        request: VoiceTranscribeRequest,
+    ) -> Result<VoiceTranscribeResult, VoiceError> {
+        self.transcribe_inner(request, None).await
+    }
+
+    async fn transcribe_inner(
+        &self,
         mut request: VoiceTranscribeRequest,
+        encoded: Option<buffered::VoiceOpusRecording>,
     ) -> Result<VoiceTranscribeResult, VoiceError> {
         validate_operation_id(request.operation_id())?;
-        validate_audio(request.audio())?;
+        validate_audio(request.audio(), self.provider.maximum_audio_bytes())?;
 
         let operation_id = request.operation_id().to_string();
-        let digest = blake3::hash(request.audio());
+        request.reference.require_support(self.provider.reference_support())?;
+        let mut digest = blake3::Hasher::new();
+        digest.update(&(request.audio().len() as u64).to_le_bytes());
+        digest.update(request.audio());
+        digest.update(&serde_json::to_vec(&request.reference).map_err(|_| VoiceError::InvalidOperation)?);
+        let digest = blake3::Hasher::finalize(&digest);
         let entry = {
             let mut operations = self.operations.lock().expect("voice operations lock");
             let retention = self.config.idempotent_result_retention;
             operations.retain(|_, entry| entry.created_at.elapsed() <= retention);
             match operations.get(&operation_id) {
-                Some(entry) if entry.audio_digest != digest => {
+                Some(entry) if entry.input_digest != digest => {
                     return Err(VoiceError::OperationConflict)
                 }
                 Some(entry) => Arc::clone(entry),
                 None => {
                     let entry = Arc::new(OperationEntry {
-                        audio_digest: digest,
+                        input_digest: digest,
                         created_at: Instant::now(),
                         result: OnceCell::new(),
                     });
@@ -553,6 +664,7 @@ impl VoiceRuntime {
         // Wrap the bytes before any await so cancellation while waiting for a
         // concurrency permit still runs the zeroizing `VoicePcm` destructor.
         let audio = VoicePcm::new(std::mem::take(&mut request.audio));
+        let reference = std::mem::take(&mut request.reference);
         entry
             .result
             .get_or_init(|| async move {
@@ -570,7 +682,12 @@ impl VoiceRuntime {
                         .acquire()
                         .await
                         .map_err(|_| VoiceError::ProviderUnavailable)?;
-                    let provider_call = self.provider.transcribe(audio);
+                    let provider_call = async {
+                        match encoded {
+                            Some(encoded) => self.provider.transcribe_opus_with_reference(encoded, reference).await,
+                            None => self.provider.transcribe_with_reference(audio, reference).await,
+                        }
+                    };
                     let text = tokio::time::timeout(self.config.provider_timeout, provider_call)
                         .await
                         .map_err(|_| VoiceError::Timeout)??;
@@ -589,10 +706,14 @@ impl VoiceRuntime {
 
     /// Prepare/release only the optional transport; no operation or audio is admitted.
     pub async fn prepare_streaming(&self, enabled: bool) -> Result<(), VoiceError> {
-        if let Some(provider)=&self.streaming_provider {
+        if let Some(provider) = &self.streaming_provider {
             if enabled {
-                tokio::time::timeout(self.config.provider_timeout,provider.prepare()).await.map_err(|_|VoiceError::Timeout)??;
-            } else { provider.release_prepared().await; }
+                tokio::time::timeout(self.config.provider_timeout, provider.prepare())
+                    .await
+                    .map_err(|_| VoiceError::Timeout)??;
+            } else {
+                provider.release_prepared().await;
+            }
         }
         Ok(())
     }
@@ -609,9 +730,10 @@ impl VoiceRuntime {
             .streaming_provider
             .as_ref()
             .ok_or(VoiceError::ProviderUnavailable)?;
+        request.reference.require_support(provider.reference_support())?;
         let mut streams = self.streams.lock().await;
         if let Some(existing) = streams.get(&request.operation_id) {
-            if existing.format != request.format {
+            if existing.format != request.format || existing.reference != request.reference {
                 return Err(VoiceError::OperationConflict);
             }
             let next_sequence = existing.state.lock().await.next_sequence;
@@ -625,7 +747,7 @@ impl VoiceRuntime {
             .map_err(|_| VoiceError::ProviderUnavailable)?;
         let provider_session = tokio::time::timeout(
             self.config.provider_timeout,
-            provider.begin(request.format.clone()),
+            provider.begin_with_reference(request.format.clone(), request.reference.clone()),
         )
         .await
         .map_err(|_| VoiceError::Timeout)??;
@@ -633,6 +755,7 @@ impl VoiceRuntime {
             request.operation_id.clone(),
             Arc::new(ActiveStream {
                 format: request.format,
+                reference: request.reference,
                 provider_session,
                 state: AsyncMutex::new(ActiveStreamState {
                     accepting_packets: true,
@@ -647,9 +770,15 @@ impl VoiceRuntime {
         })
     }
 
-    pub async fn stream_transcript_updates(&self, operation_id: &str) -> Result<Option<tokio::sync::watch::Receiver<transcription::TranscriptSnapshot>>, VoiceError> {
+    pub async fn stream_transcript_updates(
+        &self,
+        operation_id: &str,
+    ) -> Result<Option<tokio::sync::watch::Receiver<transcription::TranscriptSnapshot>>, VoiceError>
+    {
         let streams = self.streams.lock().await;
-        let stream = streams.get(operation_id).ok_or(VoiceError::StreamNotFound)?;
+        let stream = streams
+            .get(operation_id)
+            .ok_or(VoiceError::StreamNotFound)?;
         Ok(stream.provider_session.transcript_updates())
     }
 
@@ -658,7 +787,11 @@ impl VoiceRuntime {
         request: VoiceStreamAppendRequest,
     ) -> Result<VoiceStreamAppendResult, VoiceError> {
         validate_operation_id(&request.operation_id)?;
-        validate_opus_packet_with_limit(request.sequence, &request.packet, self.config.maximum_stream_packets)?;
+        validate_opus_packet_with_limit(
+            request.sequence,
+            &request.packet,
+            self.config.maximum_stream_packets,
+        )?;
         let stream = self
             .streams
             .lock()
@@ -715,12 +848,26 @@ impl VoiceRuntime {
     }
 
     /// Finish the exact stream already admitted by this runtime.
-    pub async fn stream_finish(&self, operation_id: &str) -> Result<VoiceStreamCommitResult, VoiceError> {
-        let stream = self.streams.lock().await.get(operation_id).cloned().ok_or(VoiceError::StreamNotFound)?;
+    pub async fn stream_finish(
+        &self,
+        operation_id: &str,
+    ) -> Result<VoiceStreamCommitResult, VoiceError> {
+        let stream = self
+            .streams
+            .lock()
+            .await
+            .get(operation_id)
+            .cloned()
+            .ok_or(VoiceError::StreamNotFound)?;
         let request = {
             let state = stream.state.lock().await;
             let packets = state.packets.values().cloned().collect::<Vec<_>>();
-            VoiceStreamCommitRequest::new(operation_id, packets.len() as u32, state.encoded_bytes, packet_sha256(&packets))
+            VoiceStreamCommitRequest::new(
+                operation_id,
+                packets.len() as u32,
+                state.encoded_bytes,
+                packet_sha256(&packets),
+            )
         };
         self.stream_commit(request).await
     }
@@ -742,7 +889,11 @@ impl VoiceRuntime {
             if let Some(error) = state.terminal_error.as_ref() {
                 return Err(error.clone());
             }
-            validate_stream_commit_with_limit(&request, &state, self.config.maximum_stream_packets)?;
+            validate_stream_commit_with_limit(
+                &request,
+                &state,
+                self.config.maximum_stream_packets,
+            )?;
             state.accepting_packets = false;
             state.packets.values().cloned().collect::<Vec<_>>()
         };
@@ -808,11 +959,12 @@ fn validate_opus_packet(sequence: u32, packet: &[u8]) -> Result<(), VoiceError> 
     validate_opus_packet_with_limit(sequence, packet, MAXIMUM_SPEECH_PACKETS)
 }
 
-fn validate_opus_packet_with_limit(sequence: u32, packet: &[u8], maximum: u32) -> Result<(), VoiceError> {
-    if sequence >= maximum
-        || packet.is_empty()
-        || packet.len() > MAXIMUM_OPUS_PACKET_BYTES
-    {
+fn validate_opus_packet_with_limit(
+    sequence: u32,
+    packet: &[u8],
+    maximum: u32,
+) -> Result<(), VoiceError> {
+    if sequence >= maximum || packet.is_empty() || packet.len() > MAXIMUM_OPUS_PACKET_BYTES {
         return Err(VoiceError::InvalidStream);
     }
     if ropus::opus::decoder::opus_packet_get_nb_samples(
@@ -833,7 +985,11 @@ fn next_contiguous_sequence(packets: &BTreeMap<u32, Vec<u8>>) -> u32 {
     next
 }
 
-fn validate_stream_commit_with_limit(request: &VoiceStreamCommitRequest, state: &ActiveStreamState, maximum: u32) -> Result<(), VoiceError> {
+fn validate_stream_commit_with_limit(
+    request: &VoiceStreamCommitRequest,
+    state: &ActiveStreamState,
+    maximum: u32,
+) -> Result<(), VoiceError> {
     if !state.accepting_packets
         || !(MINIMUM_SPEECH_PACKETS..=maximum).contains(&request.packet_count)
     {
@@ -1234,10 +1390,8 @@ fn validate_operation_id(operation_id: &str) -> Result<(), VoiceError> {
     Ok(())
 }
 
-fn validate_audio(audio: &[u8]) -> Result<(), VoiceError> {
-    if audio.len() < MINIMUM_AUDIO_BYTES
-        || audio.len() > MAXIMUM_AUDIO_BYTES
-        || !audio.len().is_multiple_of(2)
+fn validate_audio(audio: &[u8], maximum: usize) -> Result<(), VoiceError> {
+    if audio.len() < MINIMUM_AUDIO_BYTES || audio.len() > maximum || !audio.len().is_multiple_of(2)
     {
         return Err(VoiceError::InvalidAudio);
     }

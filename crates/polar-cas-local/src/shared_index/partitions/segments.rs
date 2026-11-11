@@ -73,7 +73,7 @@ fn prepare(
     let native = if rows.len() > SMALL_PARTITION_RECORDS {
         let mut file = store.index_temporary()?;
         let native = ValueIndex::try_build_staged(file.as_file_mut(), &rows, local)?;
-        
+        ;
         if native.is_some() {
             // Private immutable preparation mapping; no root can reference it.
             prepared = Some(PreparedBytes::Mapped(Arc::new(unsafe {
@@ -99,7 +99,7 @@ fn prepare(
         size_bytes: facts_bytes.len() as u64,
     };
     let records = rows.len();
-    
+    ;
     let sorted = if native.is_none() {
         rows.sort_unstable_by_key(|r| identity(&r.locator));
         Some(rows)
@@ -228,13 +228,13 @@ pub(super) fn update(
             || (reclaim && reclaimable >= 4096 && live <= size - size / dead_divisor)
         {
             for prefix in prefixes {
-                
+                ;
                 prepared.insert(prefix, Prepared::existing(&partitions[&prefix])?);
             }
         }
     }
     partitions.extend(emit(publication, prepared.into_iter().map(Ok))?);
-    
+    ;
     Ok(())
 }
 fn emit(

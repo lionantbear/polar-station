@@ -901,6 +901,47 @@ pub const Executor = struct {
 
     /// Adopts a user-selected native Ghostty Tab into the single-writer
     /// Workspace document. No Host intent or projection round trip occurs.
+    pub fn saveNativeSplitRatios(self:*Executor) !void {
+        if(self.workspace.committing or self.applying_physical_snapshot) return;
+        const current=if(self.current) |*value| value else return;
+        const snapshot=self.nativeWorkspaceSnapshot() orelse return;
+        var arena=std.heap.ArenaAllocator.init(self.allocator);defer arena.deinit();
+        const tabs=try arena.allocator().dupe(renderpkg.Tab,snapshot.tabs);
+        var changed=false;
+        for(tabs) |*tab| {
+            const binding=current.findTab(tab.id) orelse continue;
+            const tree=binding.tab.getSurfaceTree() orelse continue;
+            if(tree.nodes.len<=1 or tree.nodes.len>17)continue;
+            var values:std.ArrayListUnmanaged(f32)=.empty;
+            try collectSplitRatios(tree,.root,&values,arena.allocator());
+            if(!std.mem.eql(f32,values.items,tab.split_ratios)){tab.split_ratios=values.items;changed=true;}
+        }
+        if(!changed)return;
+        try self.workspace.begin();defer self.workspace.end();
+        var candidate=snapshot;candidate.tabs=tabs;
+        candidate.workspace_revision=try std.math.add(u64,snapshot.workspace_revision,1);
+        var previous=try self.rememberNativeWorkspace(candidate);
+        defer if(previous) |*old| old.deinit();
+    }
+    fn collectSplitRatios(tree:*Surface.Tree,node:Surface.Tree.Node.Handle,values:*std.ArrayListUnmanaged(f32),allocator:std.mem.Allocator) !void {
+        switch(tree.nodes[node.idx()]){
+            .leaf=>{},.split=>|split|{
+                try values.append(allocator,@floatCast(split.ratio));
+                try collectSplitRatios(tree,split.left,values,allocator);
+                try collectSplitRatios(tree,split.right,values,allocator);
+            },
+        }
+    }
+    fn applySplitRatios(tree:*Surface.Tree,node:Surface.Tree.Node.Handle,ratios:[]const f32,index:*usize) void {
+        switch(tree.nodes[node.idx()]){
+            .leaf=>{},.split=>|split|{
+                const current=index.*;index.*+=1;
+                if(current<ratios.len)tree.resizeInPlace(node,@floatCast(ratios[current]));
+                applySplitRatios(tree,split.left,ratios,index);applySplitRatios(tree,split.right,ratios,index);
+            },
+        }
+    }
+
     pub fn adoptNativeTabSelection(self: *Executor) !bool {
         if (self.workspace.committing) return false;
         const current = if (self.current) |*value| value else return false;
@@ -2415,6 +2456,8 @@ const AppliedRenderState = struct {
         }
         var tree = try self.buildTree(layout);
         defer tree.deinit();
+        var ratio_index:usize=0;
+        Executor.applySplitRatios(&tree,.root,desired.split_ratios,&ratio_index);
         tab.tab.getSplitTree().setTree(&tree);
         if (tab.placeholder_surface) |placeholder| {
             placeholder.unref();

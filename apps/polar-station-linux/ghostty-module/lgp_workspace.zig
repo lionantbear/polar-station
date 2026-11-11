@@ -34,6 +34,7 @@ pub const OpenFn = *const fn (?*anyopaque, *NativeWindow, Content, ?[]const u8) 
 /// Called by native Window.init before any GLArea or terminal is created.
 /// The content root must never be unparented from a Surface render callback.
 pub fn prepareWindow(host: *NativeWindow) void {
+    @import("main.zig").installNativeResizeObserver(host);
     const main = host.as(adw.ApplicationWindow);
     const content = main.getContent() orelse return;
     _ = content.as(gobject.Object).ref();
@@ -53,6 +54,7 @@ pub fn prepareWindow(host: *NativeWindow) void {
 }
 
 pub const Workspace = struct {
+    reference_collection_enabled:?bool=null,
     dictate: *dictate_module.Controller,
     allocator: std.mem.Allocator,
     app: *Application,
@@ -90,19 +92,68 @@ pub const Workspace = struct {
         errdefer c.polar_station_input_free(engine);
         const dictate = try dictate_module.Controller.create();
         self.* = .{ .dictate = dictate, .allocator = allocator, .app = app, .send = send, .open = open, .context = context, .engine = engine, .clock = clock };
-        dictate.context = self; dictate.changed = dictateChanged; dictate.insert_current = insertDictateCurrent;
-        // Lease/deadline maintenance only, never message polling or renderer IO.
-        self.timer = glib.timeoutAdd(1000, maintenance, self);
+        dictate.context = self; dictate.changed = dictateChanged; dictate.insert_current = insertDictateCurrent; dictate.current_project=currentDictateProject; dictate.current_conversation=currentDictateConversation; dictate.refined=refineApplied; dictate.learning_stored=learningStored;
         self.restoreDrafts();
         return self;
     }
-    fn insertDictateCurrent(raw:?*anyopaque,text:[]const u8) dictate_module.Controller.Delivery {
+    fn learningStored(raw:?*anyopaque,intent:[]const u8,success:bool) void {
+        const self:*Workspace=@ptrCast(@alignCast(raw orelse return));self.input(.{.type="learning_stored",.intent=intent,.success=success});
+    }
+    fn refineApplied(raw:?*anyopaque,lease:Value,original:[]const u8,text:[]const u8,english:bool) void {
+        const self:*Workspace=@ptrCast(@alignCast(raw orelse return));
+        self.input(.{.type="refined_input",.lease=lease,.original=original,.text=text,.english=english});
+    }
+    fn currentDictateConversation(raw:?*anyopaque) ?[]const u8 {
+        const self:*Workspace=@ptrCast(@alignCast(raw orelse return null));
+        const window=self.app.as(gtk.Application).getActiveWindow() orelse return null;
+        if(window.isActive()==0)return null;
+        var it=self.composers.valueIterator();
+        while(it.next()) |slot| if(slot.*.host.as(gtk.Window)==window) {
+            const meta=if(slot.*.metadata) |m| m.value else return null;
+            const value=field(meta,"conversation_context") orelse return null;
+            return if(value==.string) value.string else null;
+        };
+        return null;
+    }
+    fn currentDictateProject(raw:?*anyopaque) ?[]const u8 {
+        const self:*Workspace=@ptrCast(@alignCast(raw orelse return null));
+        const window=self.app.as(gtk.Application).getActiveWindow() orelse return null;
+        if(window.isActive()==0)return null;
+        var it=self.composers.valueIterator();
+        while(it.next()) |slot| if(slot.*.host.as(gtk.Window)==window) {
+            const meta=if(slot.*.metadata) |m| m.value else return null;
+            const project=field(meta,"project") orelse return null;
+            return if(project==.string) project.string else null;
+        };
+        return null;
+    }
+    fn insertDictateCurrent(raw:?*anyopaque,effect:Value) dictate_module.Controller.Delivery {
+        const text=string(effect,"text") orelse "";const preserve_selection=boolean(effect,"preserve_selection");
         const self:*Workspace=@ptrCast(@alignCast(raw orelse return .no_target));
         if(self.app.as(gtk.Application).getActiveWindow()) |window| if(window.isActive()!=0) {
             if(window.getFocus()) |focus| if(gobject.ext.cast(gtk.TextView,focus)) |editor| {
                 var active=self.composers.valueIterator();
                 while(active.next()) |slot| if(slot.*.host.as(gtk.Window)==window and slot.*.composing) return .no_target;
-                return dictate_module.Controller.insertEditorCurrent(editor,text);
+                var lease:?std.json.Parsed(Value)=null;
+                defer if(lease) |*value| value.deinit();
+                var composers=self.composers.valueIterator();
+                while(composers.next()) |slot| if(slot.*.host.as(gtk.Window)==window and slot.*.text==editor) {
+                    const meta=if(slot.*.metadata) |m| m.value else break;
+                    if(field(meta,"generic_lease")) |value| {
+                        const bytes=std.json.Stringify.valueAlloc(self.allocator,value,.{}) catch break;
+                        defer self.allocator.free(bytes);
+                        lease=std.json.parseFromSlice(Value,self.allocator,bytes,.{.allocate=.alloc_always}) catch null;
+                    }
+                    break;
+                };
+                const outcome=dictate_module.Controller.insertEditorCurrent(editor,text,preserve_selection);
+                if(outcome==.applied) if(lease) |value| if(field(effect,"source")) |source| if(source==.object) {
+                    var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;
+                    editor.getBuffer().getBounds(&start,&end);
+                    const final=editor.getBuffer().getText(&start,&end,0);defer glib.free(final);
+                    self.input(.{.type="dictated_input",.lease=value.value,.source=source,.text=std.mem.span(final)});
+                };
+                return outcome;
             };
             if(window.getFocus()) |focus| if(gobject.ext.cast(gtk.Editable,focus)!=null) return .no_target;
             var composers=self.composers.valueIterator();
@@ -116,7 +167,22 @@ pub const Workspace = struct {
         return self.dictate.insertExternalCurrent(text);
     }
     pub fn dictateShortcut(self: *Workspace, pressed: bool, discrete: bool) void {
+        self.dictateShortcutSource(pressed,discrete,1);
+    }
+    pub fn dictateLocalShortcut(self:*Workspace,pressed:bool) void {
+        self.dictateShortcutSource(pressed,false,2);
+    }
+    fn dictateShortcutSource(self:*Workspace,pressed:bool,discrete:bool,source:u8) void {
+        if(pressed) {
+            if(self.dictate.shortcut_owner!=0 and self.dictate.shortcut_owner!=source)return;
+            if(!discrete)self.dictate.shortcut_owner=source;
+        } else {
+            if(self.dictate.shortcut_owner!=source)return;
+            self.dictate.shortcut_owner=0;
+        }
         const intent = self.dictate.shortcutIntent(pressed, discrete);
+        if(intent==3){self.dictate.useAvailable();return;}
+        if(intent==1)self.dictate.shortcut_recording_source=source;
         if (intent == 2) { if (pressed) self.dictate.bindHold(); self.dictate.releaseHold(); return; }
         if (intent != 1) return;
         if (std.mem.eql(u8, dictate_module.string(self.dictate.presentation(), "action"), "retry_open")) { self.dictate.input(.{ .type = "retry_open" }); return; }
@@ -169,6 +235,12 @@ pub const Workspace = struct {
     }
     fn dictateChanged(context: ?*anyopaque) void {
         const self: *Workspace = @ptrCast(@alignCast(context orelse return));
+        const enabled=self.dictate.collectsContext();
+        if(self.reference_collection_enabled==null or self.reference_collection_enabled.?!=enabled){
+            self.reference_collection_enabled=enabled;
+            self.input(.{.type="reference_collection",.enabled=enabled});
+        }
+
         var composers = self.composers.valueIterator();
         while (composers.next()) |composer| composer.*.refreshDictate();
     }
@@ -256,6 +328,16 @@ pub const Workspace = struct {
             if(focus!=canvas and focus.isAncestor(canvas)==0 and focus!=composer.text.as(gtk.Widget) and focus.isAncestor(composer.container.as(gtk.Widget))==0) return false;
             if(edit) graphics.command(canvas,"edit_instruction","") else composer.insertNode();return true;
         }return false;
+    }
+    pub fn quoteSelection(self:*Workspace, host:*NativeWindow) bool {
+        var it=self.composers.valueIterator();
+        while(it.next()) |composer| if(composer.*.host==host) {
+            const meta=if(composer.*.metadata) |m| m.value else return false;
+            if(field(meta,"generic_lease")==null) return false;
+            Composer.quoteClicked(composer.*.quote,composer.*);
+            return true;
+        };
+        return false;
     }
     pub fn openInquiry(self:*Workspace, host:*NativeWindow) bool {
         var it=self.composers.valueIterator();
@@ -358,7 +440,7 @@ pub const Workspace = struct {
         while (self.queue.items.len > 0) {
             const next = self.queue.orderedRemove(0);
             defer self.allocator.free(next);
-            const response = c.polar_station_input_dispatch(self.engine, next.ptr, next.len) orelse {
+            const response = c.polar_station_input_dispatch_at(self.engine, next.ptr, next.len, self.clock.read() / std.time.ns_per_ms) orelse {
                 self.showError("LGP state unavailable");
                 continue;
             };
@@ -373,6 +455,12 @@ pub const Workspace = struct {
                 continue;
             }
             for (array(field(parsed.value, "effects"))) |effect| self.consume(effect);
+            if (self.timer != 0) { _ = glib.Source.remove(self.timer); self.timer = 0; }
+            if (field(parsed.value, "next_deadline_ms")) |deadline| if (deadline == .integer) {
+                const now = self.clock.read() / std.time.ns_per_ms;
+                const due: u64 = @intCast(@max(0, deadline.integer));
+                self.timer = glib.timeoutAdd(@intCast(@min(std.math.maxInt(c_uint), @max(1, due -| now))), maintenance, self);
+            };
         }
     }
     fn consume(self: *Workspace, effect: Value) void {
@@ -381,6 +469,8 @@ pub const Workspace = struct {
             const lease=field(effect,"lease") orelse return;
             const composer=self.composers.get(string(lease,"window") orelse return) orelse return;
             composer.insertQuotedText(lease,string(effect,"text") orelse return);
+        } else if (std.mem.eql(u8, kind, "learn_refine")) {
+            self.dictate.storeLearning(field(effect,"sample") orelse return);
         } else if (std.mem.eql(u8, kind, "session_request")) {
             const request = field(effect,"request") orelse return;
             const id = string(request,"request_id") orelse return;
@@ -544,8 +634,9 @@ pub const Workspace = struct {
     fn maintenance(context: ?*anyopaque) callconv(.c) c_int {
         const self: *Workspace = @ptrCast(@alignCast(context orelse return 0));
         if (self.stopped) return 0;
+        self.timer = 0;
         self.input(.{ .type = "tick", .now_ms = self.clock.read() / std.time.ns_per_ms });
-        return 1;
+        return 0;
     }
     fn flush(context: ?*anyopaque) callconv(.c) c_int {
         const self: *Workspace = @ptrCast(@alignCast(context orelse return 0));

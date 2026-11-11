@@ -1,5 +1,5 @@
 //! One correlation ledger for all desktop control APIs. No native/UI ownership.
-use polar_tmux_protocol::{DesktopSendError, LocalClientFrame, LocalHostFrame};
+use polar_tmux_protocol::{DesktopSendError, LocalClientFrame, LocalHostFrame, SessionEditorRequestV1};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, time::Duration};
@@ -65,38 +65,42 @@ impl Requests {
             .or_else(|| command["type"].as_str())
             .unwrap_or("");
         // Unknown commands are conservatively effectful, never safe to replay.
-        let mutation = !matches!(
-            verb,
-            "get_sender_status"
-                | "get_sender_settings"
-                | "get_host"
-                | "get_snapshot"
-                | "list_execution_targets"
-                | "list_sessions"
-                | "list_windows"
-                | "list_panes"
-                | "list_clients"
-                | "get_companion_pairing"
-                | "get_projection"
-                | "session_editor"
-                | "get_ui"
-                | "get_settings"
-                | "get_bindings"
-                | "get_binding"
-                | "get_completions"
-                | "get_receipt"
-                | "get_page"
-                | "list_history"
-                | "list_loaded"
-                | "read_history_detail"
-                | "read_thread"
-                | "read_directory"
-                | "get_telegram_status"
-                | "get_log_tail"
-                | "get_codex_notify_status"
-                | "snapshot"
-                | "prepare_attach"
-        );
+        let mutation = if verb == "session_editor" {
+            !serde_json::from_value::<SessionEditorRequestV1>(command["request"].clone())
+                .is_ok_and(|request| request.is_read_only())
+        } else {
+            !matches!(
+                verb,
+                "get_sender_status"
+                    | "get_sender_settings"
+                    | "get_host"
+                    | "get_snapshot"
+                    | "list_execution_targets"
+                    | "list_sessions"
+                    | "list_windows"
+                    | "list_panes"
+                    | "list_clients"
+                    | "get_companion_pairing"
+                    | "get_projection"
+                    | "get_ui"
+                    | "get_settings"
+                    | "get_bindings"
+                    | "get_binding"
+                    | "get_completions"
+                    | "get_receipt"
+                    | "get_page"
+                    | "list_history"
+                    | "list_loaded"
+                    | "read_history_detail"
+                    | "read_thread"
+                    | "read_directory"
+                    | "get_telegram_status"
+                    | "get_log_tail"
+                    | "get_codex_notify_status"
+                    | "snapshot"
+                    | "prepare_attach"
+            )
+        };
         self.next_sequence = self
             .next_sequence
             .checked_add(1)

@@ -115,6 +115,13 @@ pub const State = struct {
         try content.validate();
         const source = self.snapshot() orelse return error.NativeWorkspaceUnavailable;
         const selected = source.tab(source.selected_tab_id) orelse return error.InvalidSelectedTab;
+        if (content.kind == .idea_tree) {
+            for (selected.panes) |pane| {
+                if (pane.content) |existing| {
+                    if (existing.kind == .idea_tree) return .{ .snapshot = source, .tab_id = selected.id, .pane_id = pane.id };
+                }
+            }
+        }
         if (selected.panes.len >= 9) return error.ChatTabFull;
         const tabs = try allocator.dupe(renderpkg.Tab, source.tabs);
         const tab_index: usize = blk: {
@@ -151,6 +158,13 @@ pub const State = struct {
         const tabs = try allocator.dupe(renderpkg.Tab, source.tabs);
         for (tabs) |*tab| {
             if (!std.mem.eql(u8, tab.id, source.selected_tab_id)) continue;
+            if (content.kind == .idea_tree) {
+                for (tab.panes) |existing| {
+                    if (!std.mem.eql(u8, existing.id, pane_id)) {
+                        if (existing.content) |value| if (value.kind == .idea_tree) return error.IdeaExplorerAlreadyInTab;
+                    }
+                }
+            }
             const panes = try allocator.dupe(renderpkg.Pane, tab.panes);
             for (panes) |*pane| {
                 if (!std.mem.eql(u8, pane.id, pane_id)) continue;
@@ -221,6 +235,27 @@ pub const State = struct {
                     }
                 }
                 if (!target_exists) return error.UnknownTab;
+            },
+            else => {},
+        };
+
+        // Membership is a native layout invariant, including drag/drop paths.
+        if (immediate_action) |action| switch (action) {
+            .move_pane => |move| {
+                if (!std.mem.eql(u8, move.from_tab_id, move.to_tab_id)) {
+                    const origin = workspace.tab(move.from_tab_id) orelse return error.UnknownTab;
+                    const destination = workspace.tab(move.to_tab_id) orelse return error.UnknownTab;
+                    for (origin.panes) |pane| {
+                        if (!std.mem.eql(u8, pane.id, move.pane_id)) continue;
+                        if (pane.content) |content| {
+                            if (content.kind == .idea_tree) {
+                                for (destination.panes) |existing| {
+                                    if (existing.content) |value| if (value.kind == .idea_tree) return error.IdeaExplorerAlreadyInTab;
+                                }
+                            }
+                        }
+                    }
+                }
             },
             else => {},
         };
@@ -312,7 +347,9 @@ pub const State = struct {
                 display_mode,
                 immediate_action,
             );
+            const reset_ratios = if(immediate_action) |action| switch(action){.toggle_display_mode=>|v|std.mem.eql(u8,v.tab_id,source_tab.id),else=>false} else false;
             tabs[tab_index] = .{
+                .split_ratios = if(reset_ratios) &.{} else if(workspace.tab(source_tab.id)) |old| old.split_ratios else &.{},
                 .id = source_tab.id,
                 .title = desiredTabTitle(source_tab, immediate_action),
                 .display_mode = display_mode,
@@ -901,25 +938,21 @@ fn paneCountDelta(
     action: ?control_intent.Action,
 ) isize {
     const value = action orelse return 0;
-    return switch (value) {
-        .remove_pane => |remove| if (controlTabHasPane(tab, remove.pane_id)) -1 else 0,
-        .toggle_session_assignment => |assignment| blk: {
-            const target_tab_id = assignment.tab_id orelse break :blk 0;
-            if (!std.mem.eql(u8, tab.id, target_tab_id)) break :blk 0;
-            break :blk if (controlTabHasSession(
-                tab,
-                assignment.execution_target_id,
-                assignment.tmux_session_id,
-            )) @as(isize, -1) else @as(isize, 1);
+    switch (value) {
+        .remove_pane => |remove| return if (controlTabHasPane(tab, remove.pane_id)) -1 else 0,
+        .toggle_session_assignment => |assignment| {
+            const target_tab_id = assignment.tab_id orelse return 0;
+            if (!std.mem.eql(u8, tab.id, target_tab_id)) return 0;
+            if (controlTabHasSession(tab, assignment.execution_target_id, assignment.tmux_session_id)) return -1;
+            return 1;
         },
-        .move_pane => |move| if (std.mem.eql(u8, tab.id, move.from_tab_id))
-            -1
-        else if (std.mem.eql(u8, tab.id, move.to_tab_id))
-            1
-        else
-            0,
-        else => 0,
-    };
+        .move_pane => |move| {
+            if (std.mem.eql(u8,tab.id,move.from_tab_id)) return -1;
+            if (std.mem.eql(u8,tab.id,move.to_tab_id)) return 1;
+            return 0;
+        },
+        else => return 0,
+    }
 }
 
 fn omitsPane(
@@ -1190,8 +1223,10 @@ fn renderedHasPane(panes: []const renderpkg.Pane, pane_id: []const u8) bool {
 
 
 
-
 // Both windows share stored mappings but retain their own selected Workspace.
+
+
+
 
 
 

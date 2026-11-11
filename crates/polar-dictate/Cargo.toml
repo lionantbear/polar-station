@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-runtime = ["dep:polar-voice", "dep:tokio", "dep:polar-text-edit", "dep:tracing"]
+runtime = ["dep:polar-voice", "dep:tokio", "dep:tracing"]
 
 [dependencies]
 anyhow.workspace = true
@@ -15,7 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 polar-voice = { workspace = true, optional = true }
-polar-text-edit = { workspace = true, optional = true }
+polar-transcreation.workspace = true
 tokio = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 

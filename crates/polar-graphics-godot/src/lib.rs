@@ -1,12 +1,15 @@
 //! Thin native adapter. Godot values are converted only on the calling thread;
 //! workers own plain Rust strings, numbers, and channels, never Godot objects.
+mod events;
 mod file_events;
 mod plaque_raster;
 mod view_packages;
+mod view_selection;
+mod idea_perspective;
 
 use godot::classes::{IRefCounted, RefCounted};
 use godot::prelude::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
@@ -51,6 +54,7 @@ struct WorkerState {
 struct Shared {
     state: Mutex<WorkerState>,
     wake: Condvar,
+    completion: AtomicI64,
 }
 
 #[godot_api]
@@ -81,6 +85,11 @@ fn error_json(message: &str) -> String {
 
 #[godot_api]
 impl PolarForceLayout {
+    #[func]
+    fn on_completed(&mut self, callback: Callable) {
+        let previous = self.shared.completion.swap(events::subscribe(callback), Ordering::AcqRel);
+        events::unsubscribe(previous);
+    }
     /// Deterministic synchronous API for bounded jobs and integration tests.
     #[func]
     fn layout(&self, graph_json: GString, steps: i64) -> GString {
@@ -261,6 +270,7 @@ fn interactive_job(
 
 impl Drop for PolarForceLayout {
     fn drop(&mut self) {
+        events::unsubscribe(self.shared.completion.load(Ordering::Acquire));
         {
             let mut state = self.shared.state.lock().unwrap_or_else(|p| p.into_inner());
             if let Some(flag) = &state.cancellation {
@@ -314,6 +324,8 @@ fn worker_loop(shared: Arc<Shared>) {
             state.result = Some(value.to_string());
             state.running = false;
             state.cancellation = None;
+            drop(state);
+            events::post(shared.completion.load(Ordering::Acquire));
         }
     }
 }

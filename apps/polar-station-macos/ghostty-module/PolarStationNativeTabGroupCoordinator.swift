@@ -24,10 +24,12 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
     private weak var initialController: TerminalController?
     private var controllers: [String: TerminalController] = [:]
     private var expectedTabIDs: [String] = []
+    private var nativeOrderPending = false
+    private var nativeOrderTicket: UInt64 = 0
     private var tabOrderObservation: NSKeyValueObservation?
     private weak var observedTabGroup: NSWindowTabGroup?
     var nativeTransferRequested: (@MainActor (TerminalController) -> Void)?
-    var nativeOrderChanged: (@MainActor ([String]) -> Void)?
+    var nativeOrderChanged: (@MainActor ([String], UInt64) -> Void)?
 
     func tabID(for controller: TerminalController) -> String? {
         controllers.first { $0.value === controller }?.key
@@ -45,6 +47,28 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
         return order
     }
 
+    func nativeTabOrderChanged() {
+        guard let order = nativeTabOrder(), order != expectedTabIDs,
+              let nativeOrderChanged else { return }
+        // The native user intent is authoritative while its existing catalog
+        // transaction waits for disk. A background projection may still be old.
+        expectedTabIDs = order
+        nativeOrderPending = true
+        nativeOrderTicket &+= 1
+        nativeOrderChanged(order, nativeOrderTicket)
+    }
+
+    func rejectNativeTabOrder(ticket: UInt64) -> Bool {
+        guard ticket == nativeOrderTicket else { return false }
+        nativeOrderPending = false
+        return true
+    }
+
+    func acknowledgeNativeTabOrder(ticket: UInt64) {
+        // An older completed drag cannot acknowledge a newer user intention.
+        if ticket == nativeOrderTicket { nativeOrderPending = false }
+    }
+
     private func observeTabOrder() {
         guard let group = controllers.values.compactMap({ $0.window?.tabGroup }).first,
               observedTabGroup !== group else { return }
@@ -56,7 +80,15 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
             MainActor.assumeIsolated {
                 guard let self, !self.isMutatingNativeTabs else { return }
                 DispatchQueue.main.async { [weak self, weak group] in
-                    guard let self, let group, !self.isMutatingNativeTabs,
+                    guard let self, let group, !self.isMutatingNativeTabs else { return }
+                    // A replaced tab-group object is not a tear-out. Inspect
+                    // current registered membership before the captured group.
+                    if self.nativeTabOrder() != nil {
+                        self.observeTabOrder()
+                        self.nativeTabOrderChanged()
+                        return
+                    }
+                    guard self.observedTabGroup === group,
                           let moved = self.controllers.values.first(where: { controller in
                               guard let window = controller.window else { return false }
                               return !group.windows.contains(window)
@@ -66,9 +98,7 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
             }
             // AppKit delivers its tab-group KVO on the main UI thread.
             MainActor.assumeIsolated {
-                guard let self, let order = self.nativeTabOrder(),
-                      order != self.expectedTabIDs else { return }
-                self.nativeOrderChanged?(order)
+                self?.nativeTabOrderChanged()
             }
         }
     }
@@ -124,10 +154,9 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
         // Reuse Ghostty TerminalController's native tab reorder signal. AppKit
         // does not consistently issue windows KVO for mouse-only reorders.
         DispatchQueue.main.async { [weak self] in
-            guard let self, let order = self.nativeTabOrder(),
-                  order != self.expectedTabIDs else { return }
+            guard let self else { return }
             self.observeTabOrder()
-            self.nativeOrderChanged?(order)
+            self.nativeTabOrderChanged()
         }
     }
 
@@ -194,6 +223,8 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
         tabOrderObservation = nil
         observedTabGroup = nil
         expectedTabIDs.removeAll()
+        nativeOrderPending = false
+        nativeOrderTicket &+= 1
         presentationState = NativeTabGroupPresentationState()
         selectionIngressState = NativeTabSelectionIngressState()
         tabTreeMutationDepth = 0
@@ -232,7 +263,16 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
             _ hasInstalledController: Bool
         ) -> Void
     ) -> [String: TerminalController] {
-        let nextExpectedTabIDs = tabs.map(\.id)
+        let catalogOrder = tabs.map(\.id)
+        // A projection can reach us before AppKit's frame/KVO callback. Capture
+        // an already completed physical drag before replaying the same catalog.
+        // An explicit catalog reorder or membership change still takes priority.
+        if catalogOrder == expectedTabIDs { nativeTabOrderChanged() }
+        if nativeOrderPending && Set(catalogOrder) != Set(expectedTabIDs) {
+            nativeOrderPending = false
+            nativeOrderTicket &+= 1
+        }
+        let nextExpectedTabIDs = nativeOrderPending ? expectedTabIDs : catalogOrder
         if let effectiveTabID = selectionIngressState
             .reconcileAvailableTabIDs(Set(nextExpectedTabIDs))
         {
@@ -302,7 +342,7 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
         closeRetiredControllers(retired, retained: nextControllers)
         presentationLogger.notice("Workspace backing windows retained=\(nextControllers.count) visible=\(nextControllers.values.filter { $0.window?.isVisible == true }.count)")
 
-        reorderTabs(tabs.compactMap { nextControllers[$0.id] })
+        reorderTabs(nextExpectedTabIDs.compactMap { nextControllers[$0] })
         observeTabOrder()
         schedulePresentationReconcile()
         return nextControllers

@@ -97,25 +97,44 @@ def expand_path(name: str, loader: Path, executable_dir: Path) -> Path | None:
 
 def resolve_link(name: str, loader: Path, rpaths: list[str],
                  executable_dir: Path, app_root: Path) -> dict[str, str]:
+    blocked = {"install_name": name, "classification": "UNRESOLVED_OR_EXTERNAL"}
+    # System libraries may live only in the dyld cache, so existence is not
+    # required. Never let lexical traversal or symlinks escape these roots.
     if name.startswith(("/usr/lib/", "/System/Library/")):
-        return {"install_name": name, "classification": "apple_system"}
+        if ".." in Path(name).parts:
+            return blocked
+        resolved = Path(name).resolve()
+        if any(resolved.is_relative_to(Path(base)) for base in ("/usr/lib", "/System/Library")):
+            return {"install_name": name, "classification": "apple_system"}
+        return blocked
     attempts: list[Path] = []
     if name.startswith("@rpath/"):
         fragment = name[len("@rpath/"):]
+        if ".." in Path(fragment).parts or Path(fragment).is_absolute():
+            return blocked
         for entry in rpaths:
             base = expand_path(entry, loader, executable_dir)
-            if base is not None:
-                attempts.append(base / fragment)
+            # Unknown or external search roots are not safely skippable merely
+            # because a later in-bundle candidate exists on this machine.
+            if base is None or not base.resolve().is_relative_to(app_root):
+                return blocked
+            attempts.append(base / fragment)
     else:
         expanded = expand_path(name, loader, executable_dir)
         if expanded is not None:
             attempts.append(expanded)
     for candidate in attempts:
         resolved = candidate.resolve()
-        if resolved.is_file() and resolved.is_relative_to(app_root):
+        if not resolved.is_relative_to(app_root):
+            return blocked
+        if candidate.is_symlink() and not resolved.exists():
+            return blocked
+        if resolved.exists():
+            if not resolved.is_file() or not is_macho(resolved):
+                return blocked
             return {"install_name": name, "classification": "in_bundle",
                     "target": resolved.relative_to(app_root).as_posix()}
-    return {"install_name": name, "classification": "UNRESOLVED_OR_EXTERNAL"}
+    return blocked
 
 
 def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
@@ -140,7 +159,10 @@ def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
     blockers: list[str] = []
     symlinks: list[str] = []
     # .app frameworks commonly use in-bundle versioned symlinks; guard escapes.
-    for dirpath, dirs, files in os.walk(root, followlinks=False):
+    def walk_error(error: OSError) -> None:
+        blockers.append(f"Bundle traversal failed: {error}")
+
+    for dirpath, dirs, files in os.walk(root, followlinks=False, onerror=walk_error):
         folder = Path(dirpath)
         for name in list(dirs) + files:
             path = folder / name
@@ -151,7 +173,15 @@ def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
                     blockers.append(f"App symlink escapes bundle: {path.relative_to(root)}")
         for name in files:
             binary = folder / name
-            if binary.is_symlink() or not is_macho(binary):
+            if binary.is_symlink():
+                continue
+            try:
+                with binary.open("rb") as stream:
+                    magic = stream.read(4)
+            except OSError as exc:
+                blockers.append(f"Bundle file unreadable: {binary.relative_to(root)}: {exc}")
+                continue
+            if magic not in MACHO_MAGICS:
                 continue
             relative = binary.relative_to(root).as_posix()
             checksum = hash_file(binary)
@@ -160,7 +190,15 @@ def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
             except (OSError, subprocess.CalledProcessError) as exc:
                 blockers.append(f"otool inspection failed: {relative}: {exc}")
                 continue
+            # Until per-slice and per-executable graph resolution is available,
+            # these contexts must not be certified using a merged rpath list.
+            if load.count("(architecture ") > 1:
+                blockers.append(f"Multi-architecture dependency context requires review: {relative}")
             rpaths = otool_rpaths(load)
+            links = otool_links(load)
+            if binary.parent != root / "Contents/MacOS" and any(
+                    value.startswith("@executable_path") for value in links + rpaths):
+                blockers.append(f"Ambiguous executable dependency context requires review: {relative}")
             dependencies = [resolve_link(link, binary, rpaths, root / "Contents/MacOS", root)
                             for link in otool_links(load)]
             for dependency in dependencies:
@@ -175,10 +213,18 @@ def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
                 if license_path and not Path(license_path).is_absolute() and ".." not in Path(license_path).parts:
                     text_file = root / license_path
                     if text_file.is_file() and text_file.resolve().is_relative_to(root):
-                        license_sha = hash_file(text_file)
+                        contents = text_file.read_bytes()
+                        if contents.strip() and b"\0" not in contents:
+                            try:
+                                contents.decode("utf-8")
+                            except UnicodeDecodeError:
+                                pass
+                            else:
+                                license_sha = sha256(contents).hexdigest()
             if not annotation or annotation.get("sha256") != checksum \
                     or not annotation.get("name") or not annotation.get("license") \
-                    or not annotation.get("source") or not license_sha:
+                    or not annotation.get("source") or not license_sha \
+                    or annotation.get("license_text_sha256") != license_sha:
                 blockers.append(f"Mach-O component missing exact hash-bound license attribution: {relative}")
             found.append({"bundle_path": relative, "sha256": checksum,
                           "name": annotation.get("name") if annotation else None,
@@ -188,6 +234,11 @@ def scan(app: Path, attributions: Path | None = None) -> dict[str, Any]:
                           "license_text_sha256": license_sha,
                           "rpaths": rpaths, "dependencies": dependencies})
 
+    scanned = {entry["bundle_path"] for entry in found}
+    for entry in found:
+        for dependency in entry["dependencies"]:
+            if dependency.get("classification") == "in_bundle" and dependency["target"] not in scanned:
+                blockers.append(f"Dependency target not successfully inventoried: {dependency['target']}")
     if not found:
         blockers.append("No Mach-O executables/libraries found in the app bundle")
     unused = set(mapping) - {entry["bundle_path"] for entry in found}
@@ -205,7 +256,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--attributions", type=Path,
-                        help="JSON {schema_version:1,components:[{bundle_path,sha256,name,license,source,license_text_path}]}; never guess licenses")
+                        help="JSON {schema_version:1,components:[{bundle_path,sha256,name,license,source,license_text_path,license_text_sha256}]}; schema 1 now requires the reviewed UTF-8 license text SHA-256; older maps without it remain blocked; never guess licenses")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:

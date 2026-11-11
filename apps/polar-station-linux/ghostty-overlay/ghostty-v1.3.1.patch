@@ -504,7 +504,7 @@ index c01cad618..5454a08ed 100644
 +        )) self.as(gtk.Window).fullscreen();
 
          // If we have an explicit title set, we set that immediately
-@@ -881,6 +914,405 @@ pub const Window = extern struct {
+@@ -881,6 +914,378 @@ pub const Window = extern struct {
          return self.private().tab_view;
      }
 
@@ -514,7 +514,8 @@ index c01cad618..5454a08ed 100644
 +        action_text: [:0]const u8,
 +    ) void {
 +        const row = gtk.Box.new(.horizontal, 20);
-+        row.as(gtk.Widget).setVexpand(1);
++        row.as(gtk.Widget).setVexpand(0);
++        row.as(gtk.Widget).setSizeRequest(-1,82);
 +        row.as(gtk.Widget).setValign(.fill);
 +        const key = gtk.Label.new(key_text);
 +        key.as(gtk.Widget).addCssClass("polar-shortcut-key");
@@ -535,12 +536,11 @@ index c01cad618..5454a08ed 100644
 +    fn installShortcutHud(self: *Self) void {
 +        const css_provider = gtk.CssProvider.new();
 +        css_provider.loadFromString(
-+            ".polar-shortcut-hud { background-color: rgba(8, 18, 32, 0.20); }" ++
-+                ".polar-shortcut-title { font-size: 68px; font-weight: 700; color: rgba(244, 247, 251, 0.88); }" ++
++            ".polar-shortcut-hud { background-color: rgba(8, 18, 32, 0.74); }" ++
++                ".polar-shortcut-title { font-size: 36px; font-weight: 700; color: rgba(244, 247, 251, 0.88); }" ++
 +                ".polar-shortcut-heading { font-size: 52px; font-weight: 700; color: rgba(244, 247, 251, 0.88); }" ++
-+                ".polar-shortcut-key { min-width: 220px; font-size: 50px; font-weight: 700; color: rgba(114, 220, 186, 0.88); }" ++
-+                ".polar-shortcut-action { font-size: 44px; color: rgba(244, 247, 251, 0.88); }" ++
-+                ".polar-shortcut-compact .polar-shortcut-title { font-size: 28px; } .polar-shortcut-compact .polar-shortcut-heading { font-size: 24px; } .polar-shortcut-compact .polar-shortcut-key { min-width: 150px; font-size: 22px; } .polar-shortcut-compact .polar-shortcut-action { font-size: 20px; }" ++
++                ".polar-shortcut-key { min-width: 144px; font-size: 48px; font-weight: 700; color: rgba(114, 220, 186, 0.88); }" ++
++                ".polar-shortcut-action { font-size: 40px; color: rgba(244, 247, 251, 1); }" ++
 +                ".polar-pane-number { font-weight: 800; color: rgba(114, 220, 186, 0.66); text-shadow: 0 0 5px rgba(8, 18, 32, 0.66); } .polar-pane-number-size-32 { font-size: 32px; } .polar-pane-number-size-48 { font-size: 48px; } .polar-pane-number-size-64 { font-size: 64px; } .polar-pane-number-size-96 { font-size: 96px; } .polar-pane-number-size-128 { font-size: 128px; } .polar-pane-number-size-160 { font-size: 160px; } .polar-pane-number-size-192 { font-size: 192px; } .polar-pane-number-size-256 { font-size: 256px; } .polar-pane-number-size-320 { font-size: 320px; } .polar-pane-number-size-384 { font-size: 384px; } .polar-pane-number-size-448 { font-size: 448px; } .polar-pane-number-size-512 { font-size: 512px; } .polar-pane-number-size-640 { font-size: 640px; } .polar-pane-number-size-768 { font-size: 768px; } .polar-pane-number-size-896 { font-size: 896px; }",
 +        );
 +        gtk.StyleContext.addProviderForDisplay(
@@ -574,52 +574,10 @@ index c01cad618..5454a08ed 100644
 +        title.as(gtk.Widget).setHalign(.center);
 +        content.append(title.as(gtk.Widget));
 +
-+        const columns = gtk.Box.new(.horizontal, 32);
++        const columns = gtk.Box.new(.horizontal,32);
 +        columns.setHomogeneous(1);
 +        columns.as(gtk.Widget).setHexpand(1);
-+        columns.as(gtk.Widget).setVexpand(1);
-+        const station = gtk.Box.new(.vertical, 0);
-+        station.as(gtk.Widget).setHexpand(1);
-+        station.as(gtk.Widget).setVexpand(1);
-+        const station_heading = gtk.Label.new("POLAR STATION");
-+        station_heading.setXalign(0);
-+        station_heading.as(gtk.Widget).addCssClass("polar-shortcut-heading");
-+        station.append(station_heading.as(gtk.Widget));
-+        for (0..polar_shortcuts.catalogCount()) |index| {
-+            const entry = polar_shortcuts.catalogEntry(index);
-+            if (entry.action == 5 and entry.number != 1) continue;
-+            appendShortcutRow(station, if (entry.action == 5) "1–9" else std.mem.span(entry.key), std.mem.span(entry.label));
-+        }
-+        columns.append(station.as(gtk.Widget));
-+        const ghostty = gtk.Box.new(.vertical, 0);
-+        ghostty.as(gtk.Widget).setHexpand(1);
-+        ghostty.as(gtk.Widget).setVexpand(1);
-+        const ghostty_heading = gtk.Label.new("GHOSTTY");
-+        ghostty_heading.setXalign(0);
-+        ghostty_heading.as(gtk.Widget).addCssClass("polar-shortcut-heading");
-+        ghostty.append(ghostty_heading.as(gtk.Widget));
-+        if (self.getConfig()) |config| {
-+            const items = [_]struct { action: input.Binding.Action, label: [:0]const u8 }{
-+                .{ .action = .previous_tab, .label = "Previous Tab" },
-+                .{ .action = .next_tab, .label = "Next Tab" },
-+                .{ .action = .new_tab, .label = "New Tab" },
-+                .{ .action = .{ .close_tab = .this }, .label = "Close Tab" },
-+                .{ .action = .start_search, .label = "Search" },
-+                .{ .action = .toggle_command_palette, .label = "Command palette" },
-+                .{ .action = .{ .copy_to_clipboard = .mixed }, .label = "Copy" },
-+                .{ .action = .paste_from_clipboard, .label = "Paste" },
-+                .{ .action = .{ .new_split = .right }, .label = "Split right" },
-+                .{ .action = .{ .new_split = .down }, .label = "Split down" },
-+                .{ .action = .toggle_split_zoom, .label = "Zoom split" },
-+            };
-+            for (items) |item| {
-+                const trigger = config.get().keybind.set.getTrigger(item.action) orelse continue;
-+                var buffer: [256]u8 = undefined;
-+                const chord = std.fmt.bufPrintZ(&buffer, "{f}", .{trigger}) catch continue;
-+                appendShortcutRow(ghostty, chord, item.label);
-+            }
-+        }
-+        columns.append(ghostty.as(gtk.Widget));
++        hud_widget.as(gobject.Object).setData("polar-shortcut-columns",columns);
 +        content.append(columns.as(gtk.Widget));
 +        self.private().polar_station_shell.addOverlay(hud_widget);
 +        self.private().shortcut_hud = hud_widget;
@@ -635,6 +593,23 @@ index c01cad618..5454a08ed 100644
 +        self.as(gtk.Widget).addController(keys.as(gtk.EventController));
 +    }
 +
++    fn rebuildShortcutHud(self:*Self) void {
++        const hud=self.private().shortcut_hud orelse return;
++        const columns:*gtk.Box=@ptrCast(@alignCast(hud.as(gobject.Object).getData("polar-shortcut-columns") orelse return));
++        while(columns.as(gtk.Widget).getFirstChild())|child|columns.remove(child);
++        const context=polar_tmux.shortcutHintContext(self);
++        const column_count:usize=if(self.as(gtk.Widget).getWidth()>=1050) 2 else 1;
++        const capacity:usize=@intCast(@max(1,@divTrunc(self.as(gtk.Widget).getHeight()-150,82)));
++        const count=@min(polar_shortcuts.hintCount(context),capacity*column_count);
++        const rows=@max(1,@min(capacity,(count+column_count-1)/column_count));
++        var column:?*gtk.Box=null;
++        for(0..count)|index|{
++            if(index%rows==0){column=gtk.Box.new(.vertical,0);column.?.as(gtk.Widget).setHexpand(1);columns.append(column.?.as(gtk.Widget));}
++            const entry=polar_shortcuts.hintEntry(context,index);
++            appendShortcutRow(column.?,std.mem.span(entry.key),std.mem.span(entry.label));
++        }
++    }
++
 +    fn shortcutKeyPressed(
 +        _: *gtk.EventControllerKey,
 +        keyval: c_uint,
@@ -646,10 +621,7 @@ index c01cad618..5454a08ed 100644
 +        priv.shortcut_modifiers.press(keyval, mods);
 +        const visible = priv.shortcut_modifiers.visible();
 +        if (priv.shortcut_hud) |hud| {
-+            if (self.as(gtk.Widget).getWidth() < 1800 or self.as(gtk.Widget).getHeight() < 1100)
-+                hud.addCssClass("polar-shortcut-compact")
-+            else
-+                hud.removeCssClass("polar-shortcut-compact");
++            if(visible) self.rebuildShortcutHud();
 +            hud.setVisible(@intFromBool(visible));
 +        }
 +        polar_tmux.setNumberBadgesVisible(self, visible);
@@ -658,6 +630,7 @@ index c01cad618..5454a08ed 100644
 +        if (priv.shortcut_pressed_keycode == keycode and !polar_shortcuts.repeatable(keyval, keycode)) return 1;
 +        if (!polar_tmux.dispatchWindowShortcut(self, action)) return 0;
 +        priv.shortcut_pressed_keycode = keycode;
++        self.rebuildShortcutHud();
 +        return 1;
 +    }
 +
@@ -910,7 +883,7 @@ index c01cad618..5454a08ed 100644
      /// Get the current window decoration value for this window.
      pub fn getWindowDecoration(self: *Self) configpkg.WindowDecoration {
          const priv = self.private();
-@@ -1084,11 +1509,21 @@ pub const Window = extern struct {
+@@ -1084,11 +1486,21 @@ pub const Window = extern struct {
                  .{err},
              );
          };
@@ -932,7 +905,7 @@ index c01cad618..5454a08ed 100644
 +            }
 +        }
          // Hide quick-terminal if set to autohide
-@@ -1140,6 +1575,7 @@ pub const Window = extern struct {
+@@ -1140,6 +1552,7 @@ pub const Window = extern struct {
          self: *Self,
      ) callconv(.c) void {
          self.syncAppearance();
@@ -940,7 +913,7 @@ index c01cad618..5454a08ed 100644
      }
 
      fn propMenuActive(
-@@ -1303,3 +1739,7 @@ pub const Window = extern struct {
+@@ -1303,3 +1716,7 @@ pub const Window = extern struct {
      fn btnNewTab(_: *adw.SplitButton, self: *Self) callconv(.c) void {
 +        if (comptime build_options.polar_tmux) {
 +            polar_tmux.requestManagedNewTab(self);
@@ -948,7 +921,7 @@ index c01cad618..5454a08ed 100644
 +        }
          self.performBindingAction(.new_tab);
      }
-@@ -1307,6 +1747,10 @@ pub const Window = extern struct {
+@@ -1307,6 +1724,10 @@ pub const Window = extern struct {
      fn tabOverviewCreateTab(
          _: *adw.TabOverview,
          self: *Self,
@@ -959,7 +932,7 @@ index c01cad618..5454a08ed 100644
 +        }
          return self.newTabPage(if (self.getActiveSurface()) |v| v.core() else null, .tab, .none);
      }
-@@ -2085,6 +2529,10 @@ pub const Window = extern struct {
+@@ -2085,6 +2506,10 @@ pub const Window = extern struct {
              });
 
              // Bindings
@@ -1094,24 +1067,18 @@ diff --git a/src/build/Config.zig b/src/build/Config.zig
 index 3a8a4e0c7..2efe68c2f 100644
 --- a/src/build/Config.zig
 +++ b/src/build/Config.zig
-@@ -34,6 +34,8 @@ sentry: bool = true,
+@@ -34,6 +34,7 @@ sentry: bool = true,
  simd: bool = true,
  i18n: bool = true,
  wasm_shared: bool = true,
-+polar_tmux: bool = false,
 +polar_station_client_lib_dir: ?[]const u8 = null,
 
  /// Ghostty exe properties
  exe_entrypoint: ExeEntrypoint = .ghostty,
-@@ -203,6 +205,20 @@ pub fn init(b: *std.Build, appVersion: []const u8) !Config {
+@@ -203,6 +205,15 @@ pub fn init(b: *std.Build, appVersion: []const u8) !Config {
          else => false,
      };
 
-+    config.polar_tmux = b.option(
-+        bool,
-+        "polar-tmux",
-+        "Compile the Polar Station Linux frontend into the GTK application.",
-+    ) orelse false;
 +    config.polar_station_client_lib_dir = if (config.polar_tmux)
 +        b.option(
 +            []const u8,
@@ -1124,14 +1091,6 @@ index 3a8a4e0c7..2efe68c2f 100644
      //---------------------------------------------------------------
      // Ghostty Exe Properties
 
-@@ -485,6 +501,7 @@ pub fn addOptions(self: *const Config, step: *std.Build.Step.Options) !void {
-     step.addOption(RendererBackend, "renderer", self.renderer);
-     step.addOption(ExeEntrypoint, "exe_entrypoint", self.exe_entrypoint);
-     step.addOption(WasmTarget, "wasm_target", self.wasm_target);
-+    step.addOption(bool, "polar_tmux", self.polar_tmux);
-     step.addOption(bool, "wasm_shared", self.wasm_shared);
-
-     // Our version. We also add the string version so we don't need
 diff --git a/src/build/GhosttyExe.zig b/src/build/GhosttyExe.zig
 index 3e63b6026..f46693a60 100644
 --- a/src/build/GhosttyExe.zig

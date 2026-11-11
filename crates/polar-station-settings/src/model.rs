@@ -22,6 +22,8 @@ pub struct SettingsV1 {
     #[serde(default)]
     pub monitoring: MonitoringSettingsV1,
     pub session_summary: SessionSummarySettingsV1,
+    #[serde(default)]
+    pub session_creation: SessionCreationSettingsV1,
 }
 
 impl Default for SettingsV1 {
@@ -33,8 +35,20 @@ impl Default for SettingsV1 {
             attention: AttentionSettingsV1::default(),
             monitoring: MonitoringSettingsV1::default(),
             session_summary: SessionSummarySettingsV1::default(),
+            session_creation: SessionCreationSettingsV1::default(),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionCreationSettingsV1 {
+    #[serde(default = "default_true")]
+    pub yolo: bool,
+}
+
+impl Default for SessionCreationSettingsV1 {
+    fn default() -> Self { Self { yolo: true } }
 }
 
 impl SettingsV1 {

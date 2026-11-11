@@ -1,5 +1,6 @@
 #if POLAR_STATION
     import AppKit
+    import CPolarStationDesktopClient
     import PolarTmuxHostClient
     import PolarTmuxMacUI
     import SwiftUI
@@ -138,6 +139,7 @@
                     retry: model.retryBackend
                 )
                 ResourcesControlView(
+                    filePrefill:model.resourceFilePrefill,
                     projection: model.resourcesProjection,
                     logTail: model.resourceLogTail,
                     isLoading: model.isResourcesLoading,
@@ -424,6 +426,7 @@
                     rootView: PolarStationResourcesRoot(
                         model: model,
                         dismiss: { [weak self] in
+                            self?.model.cancelResourceFile()
                             self?.model.send(
                                 .closeAuxiliary(surface: .resources)
                             )
@@ -464,6 +467,7 @@
                 sender.orderOut(nil)
                 return false
             }
+            if surface == .resources { model.cancelResourceFile() }
             model.send(.closeAuxiliary(surface: surface))
             return false
         }
@@ -587,6 +591,11 @@
             },
             badgesVisible: { [weak self] visible in
                 self?.executor.setNumberBadgesVisible(visible)
+            },
+            context: { [weak self] in
+                guard let layout=self?.executor.layoutView(),let tab=layout.tabs.first(where:{$0.tabID==layout.selectedTabID}) else {return StationShortcutHintContext(panes:0,tabs:0,idea:false)}
+                let idea=tab.panes.first(where:{$0.paneID==layout.selectedPaneID})?.content?.kind == .ideaTree
+                return StationShortcutHintContext(panes:UInt32(tab.panes.count),tabs:UInt32(layout.tabs.count),idea:idea)
             }
         )
         private var pendingControllerAttachments: [ObjectIdentifier: Bool] = [:]
@@ -848,6 +857,7 @@
                 keyEquivalent: ""
             )
             menu.addItem(.separator())
+            menu.addItem(withTitle:"Open Selected File",action:#selector(openSelectedFileFromMenu(_:)),keyEquivalent:"")
             menu.addItem(
                 withTitle: "Resources…",
                 action: #selector(showResourcesFromMenu(_:)),
@@ -875,6 +885,21 @@
 
         @objc private func toggleControlCenterFromMenu(_ sender: Any?) {
             toggleControlCenter(sender)
+        }
+
+        @objc private func openSelectedFileFromMenu(_:Any?) {
+            guard let context=lastActiveWindow,let selected=context.executor.selectedResourceFile() else{return}
+            _=openResourceFile(selected.value,surface:selected.surface)
+        }
+        func openResourceFile(_ value:String,surface:Ghostty.SurfaceView)->Bool {
+            let bytes=Array(value.utf8)
+            guard let result=bytes.withUnsafeBufferPointer({polar_station_resource_file_path($0.baseAddress,$0.count)}) else{return false}
+            defer{polar_station_desktop_string_free(result)}
+            guard let window=surface.window,let context=context(for:window),let source=context.executor.resourceFileSource(surface:surface) else{return false}
+            model.requestFileMapping={ [weak self] in self?.requestAuxiliaryPresentation(.resources) }
+            model.loadResources()
+            model.openResourceFile(target:source.target,path:value,cwd:source.cwd,terminalSessionID:source.session)
+            return true
         }
 
         @objc private func showResourcesFromMenu(_: Any?) {
@@ -939,6 +964,7 @@
                   let context = context(for: window), !context.executor.isMutatingNativeTabs else { return false }
             guard !quitRequested else { return true }
             let executor = context.executor
+            if action == "native_tab_order_changed" { executor.nativeTabOrderChanged(); return true }
             let tabID = executor.nativeTabID(controller)
             do {
                 let decision = try executor.nativeActionDecision(action, tabID: tabID)
@@ -1510,6 +1536,11 @@
             primaryWindow.executor.requestStartupFullscreen()
         }
 
+        func nativeSplitResizeEnded() {
+            guard let window=NSApp.keyWindow, let context=context(for:window) else{return}
+            context.executor.saveSplitRatios()
+        }
+
         private func performShortcut(
             _ action: PolarStationShortcutAction
         ) -> Bool {
@@ -1526,6 +1557,14 @@
                 return activateFocusTarget(.previous)
             case .focusNext:
                 return activateFocusTarget(.next)
+            case .previousTab, .nextTab:
+                guard let layout = model.nativeLayoutView,
+                      let index = layout.tabs.firstIndex(where: { $0.tabID == layout.selectedTabID }),
+                      layout.tabs.count > 1 else { return true }
+                let offset = action == .previousTab ? -1 : 1
+                let next = (index + offset + layout.tabs.count) % layout.tabs.count
+                performLocalWorkspaceOperation(.selectTab(tabID: layout.tabs[next].tabID))
+                return true
             case let .focusPaneNumber(number):
                 guard let paneID = executor.numberedPaneTarget(number) else {
                     return false
@@ -1550,6 +1589,12 @@
             case .editIdeaInstruction:
                 guard let window = NSApp.keyWindow else { return false }
                 return lgpWorkspace.editIdeaInstruction(in: window)
+            case .openFileReference:
+                guard let selected=executor.selectedResourceFile() else{return false}
+                return openResourceFile(selected.value,surface:selected.surface)
+            case .quoteSelection:
+                guard let window = NSApp.keyWindow else { return false }
+                return lgpWorkspace.quoteSelection(in: window)
             case .openIdeaTree:
                 Task { @MainActor in
                     do { try await executor.openConversation(.init(viewID: UUID().uuidString.lowercased())) }

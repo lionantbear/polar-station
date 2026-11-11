@@ -1,64 +1,7 @@
 # Generated from the public Station cargo dependency closure.
 # Do not replace pinned dependencies by unreviewed latest versions.
 [workspace]
-members = [
-    "crates/polar-cas",
-    "crates/polar-cas-fs",
-    "crates/polar-cas-fs-sys",
-    "crates/polar-cas-local",
-    "crates/polar-connector-contract",
-    "crates/polar-dictate",
-    "crates/polar-dictate-store-sqlite",
-    "crates/polar-edge-presentation",
-    "crates/polar-force-layout-core",
-    "crates/polar-graphics-godot",
-    "crates/polar-graphics-package",
-    "crates/polar-ideacave",
-    "crates/polar-ideacave-presentation",
-    "crates/polar-identity",
-    "crates/polar-inhouse-backend-adam",
-    "crates/polar-inhouse-contract",
-    "crates/polar-inhouse-model",
-    "crates/polar-inhouse-prompt",
-    "crates/polar-inquiry-graph-model",
-    "crates/polar-inquiry-graph-runtime",
-    "crates/polar-lgp-model",
-    "crates/polar-lgp-presentation",
-    "crates/polar-lgp-reader",
-    "crates/polar-lgp-store",
-    "crates/polar-local-access-contract",
-    "crates/polar-local-access-runtime",
-    "crates/polar-package-tree",
-    "crates/polar-payload-codec",
-    "crates/polar-pki",
-    "crates/polar-protocol",
-    "crates/polar-runtime-paths",
-    "crates/polar-sqlite-runtime",
-    "crates/polar-station-inbox",
-    "crates/polar-station-input",
-    "crates/polar-station-lgp",
-    "crates/polar-station-session",
-    "crates/polar-station-settings",
-    "crates/polar-station-store-sqlite",
-    "crates/polar-storage-core",
-    "crates/polar-storage-migration",
-    "crates/polar-telegram",
-    "crates/polar-text-edit",
-    "crates/polar-tmux",
-    "crates/polar-tmux-core",
-    "crates/polar-tmux-protocol",
-    "crates/polar-tmux-resources",
-    "crates/polar-tmux-types",
-    "crates/polar-tmux-workspace",
-    "crates/polar-tools-model",
-    "crates/polar-transport",
-    "crates/polar-trust",
-    "crates/polar-vault",
-    "crates/polar-vault-store-sqlite",
-    "crates/polar-voice",
-    "crates/polar-voice-provider-codex",
-    "vendor/grammers-tl-gen",
-]
+members = ["crates/polar-cas", "crates/polar-cas-fs", "crates/polar-cas-fs-sys", "crates/polar-cas-local", "crates/polar-connector-contract", "crates/polar-dictate", "crates/polar-dictate-store-sqlite", "crates/polar-edge-presentation", "crates/polar-force-layout-core", "crates/polar-graphics-godot", "crates/polar-graphics-package", "crates/polar-ideacave", "crates/polar-ideacave-presentation", "crates/polar-identity", "crates/polar-inhouse-backend-adam", "crates/polar-inhouse-contract", "crates/polar-inhouse-model", "crates/polar-inhouse-prompt", "crates/polar-inquiry-graph-model", "crates/polar-inquiry-graph-runtime", "crates/polar-lgp-model", "crates/polar-lgp-presentation", "crates/polar-lgp-reader", "crates/polar-lgp-store", "crates/polar-local-access-contract", "crates/polar-local-access-runtime", "crates/polar-package-tree", "crates/polar-payload-codec", "crates/polar-pki", "crates/polar-protocol", "crates/polar-runtime-paths", "crates/polar-sqlite-runtime", "crates/polar-station-inbox", "crates/polar-station-input", "crates/polar-station-lgp", "crates/polar-station-session", "crates/polar-station-settings", "crates/polar-station-store-sqlite", "crates/polar-storage-core", "crates/polar-storage-migration", "crates/polar-telegram", "crates/polar-tmux", "crates/polar-tmux-core", "crates/polar-tmux-protocol", "crates/polar-tmux-resources", "crates/polar-tmux-types", "crates/polar-tmux-workspace", "crates/polar-tools-model", "crates/polar-transcreation", "crates/polar-transport", "crates/polar-trust", "crates/polar-vault", "crates/polar-vault-store-sqlite", "crates/polar-voice", "crates/polar-voice-provider-codex", "vendor/grammers-tl-gen"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -69,13 +12,14 @@ bip39 = { version = "=2.2.0", default-features = false, features = ["zeroize"] }
 blake3 = "1"
 chacha20poly1305 = "0.10"
 clap = { version = "4", features = ["derive"] }
-codex-api = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
-codex-app-server-client = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
-codex-app-server-protocol = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
-codex-http-client = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
-codex-login = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
-codex-protocol = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
-codex-utils-rustls-provider = { git = "https://github.com/leoricshcn/codex.git", rev = "7eea594e1264e37e08f029633f2f476f03fbda6c" }
+codex-api = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+codex-app-server-client = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+codex-app-server-protocol = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+codex-http-client = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+codex-login = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+codex-protocol = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+codex-utils-rustls-provider = { git = "https://github.com/leoricshcn/codex.git", rev = "6203904da314b5dd5445dfdae2fa00581148f64d" }
+deadpool-postgres = "0.14"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 hex = "0.4"
 hkdf = "0.12"
@@ -118,13 +62,13 @@ polar-station-store-sqlite = { path = "crates/polar-station-store-sqlite" }
 polar-storage-core = { path = "crates/polar-storage-core" }
 polar-storage-migration = { path = "crates/polar-storage-migration" }
 polar-telegram = { path = "crates/polar-telegram", default-features = false }
-polar-text-edit = { path = "crates/polar-text-edit" }
 polar-tmux-core = { path = "crates/polar-tmux-core" }
 polar-tmux-protocol = { path = "crates/polar-tmux-protocol" }
 polar-tmux-resources = { path = "crates/polar-tmux-resources" }
 polar-tmux-types = { path = "crates/polar-tmux-types" }
 polar-tmux-workspace = { path = "crates/polar-tmux-workspace" }
 polar-tools-model = { path = "crates/polar-tools-model" }
+polar-transcreation = { path = "crates/polar-transcreation" }
 polar-transport = { path = "crates/polar-transport" }
 polar-trust = { path = "crates/polar-trust" }
 polar-vault = { path = "crates/polar-vault" }
@@ -145,6 +89,8 @@ sha2 = "0.10"
 thiserror = "2"
 time = { version = "0.3", features = ["std", "formatting"] }
 tokio = { version = "1.54.1", features = ["full"] }
+tokio-postgres = "0.7"
+tokio-postgres-rustls = { version = "0.14", features = ["native-certs", "ring"] }
 tokio-tungstenite = { git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "132f5b39c862e3a970f731d709608b3e6276d5f6", features = ["rustls-tls-webpki-roots"] }
 toml = "0.8"
 tower = "0.5"

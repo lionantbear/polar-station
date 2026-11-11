@@ -79,6 +79,7 @@ final class PolarStationDisplaySurface: NSObject {
         NotificationCenter.default.addObserver(self, selector: #selector(frameChanged), name: NSView.frameDidChangeNotification, object: view)
     }
 
+    func setIdeaPresentation(scope: String, visible: Bool) { graphicsView?.setPresentation(scope: scope, visible: visible) }
     func subscribeIdea(_ callback: (([String: Any]) -> Void)?) { graphicsView?.hostEvent = callback }
     func ideaCommand(_ action: String, query: String) { graphicsView?.sendCommand(action, query: query) }
 

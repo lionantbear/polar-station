@@ -58,7 +58,7 @@ impl SharedPackStore {
                 temp.as_file()
                     .set_permissions(std::fs::Permissions::from_mode(0o444))?;
                 temp.as_file().sync_all()?;
-                
+                ;
                 self.dir.rename(
                     format!(
                         "tmp/{}",
@@ -72,7 +72,7 @@ impl SharedPackStore {
                 )?;
                 self.sync("packs")?;
                 self.sync("tmp")?;
-                
+                ;
             }
             // The current head and its compact registration are durable before
             // the last name of the obsolete complete member list is removed.
@@ -94,7 +94,7 @@ impl SharedPackStore {
                 .map_err(|_| Error::Backend("shared index cache poisoned".into()))?;
             cache.pop(&key);
             cache.pop(&pending);
-            
+            ;
         }
         Ok(())
     }

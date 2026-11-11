@@ -317,9 +317,16 @@ func navigate_visible(direction:String,peers:Array=[],parents:Array=[],children:
 		if not str(route.get("error","")).is_empty():return false
 		target=str(route.occurrence)
 	elif direction=="right" and not children.is_empty():
-		expand_occurrence(occurrence,layout)
-		target=MapLayout.child_occurrence(occurrence,children[0])
-	else:return navigate(direction,layout)
+		if bool(children[0].get("derived_browsing_edge",false)):
+			# The actual definition is selected through the existing owner. The
+			# projected edge is not invented as a canonical source occurrence.
+			var route:Dictionary=_choose_route(str(children[0].to))
+			if not str(route.get("error","")).is_empty():return false
+			target=str(route.occurrence)
+		else:
+			expand_occurrence(occurrence,layout)
+			target=MapLayout.child_occurrence(occurrence,children[0])
+	else:return false # Empty displayed candidates are a boundary, not full-Graph navigation.
 	if target==occurrence:return false
 	var route:Dictionary=route_for_occurrence(target)
 	if not str(route.get("error","")).is_empty():return false

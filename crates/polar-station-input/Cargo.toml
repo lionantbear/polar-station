@@ -6,6 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+polar-transcreation.workspace = true
 polar-station-lgp.workspace = true
 polar-station-session.workspace = true
 polar-tmux-protocol.workspace = true

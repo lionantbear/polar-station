@@ -18,6 +18,6 @@ The inspected 99 C/header files comprise 87 `GPL-2.0+ OR MIT`, 8 MIT, 2 BSD-2-Cl
 
 ## What still blocks a binary release, not source inspection
 
-The exact macOS Graphviz/dylib, Ghostty Zig/native, Godot and Linux native binary closure has not been built and inventoried here. A binary release must collect the actual versions, legal notices, any source obligations and provenance for the files it ships. This review does not certify those nonexistent artifacts, imply macOS build verification, or provide legal advice.
+Historical macOS CI evidence for a separately identified public-source commit is described in `docs/release/NATIVE_BINARY_AUDIT.md`. It does not validate this PolarInfra working-tree export. Both native builds for this new input identity, complete static-library/resource composition, exact reviewed attribution, corresponding-source/relink compliance and interactive clean-machine behavior remain unverified. A binary release must satisfy those gates for the actual bytes it ships. See `docs/release/NATIVE_BINARY_AUDIT.md` for source-bound evidence and its limits. This source review is not binary certification or legal advice.
 
 Some Cargo packages declare their licenses but do not ship license text or an exact resolvable legal-text location. They are listed as missing in the evidence instead of substituting arbitrary current-branch texts. These dependency-source gaps remain relevant before vendoring those packages or distributing binaries containing them; a lockfile reference alone does not redistribute their implementation.

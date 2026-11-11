@@ -17,6 +17,8 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     private let ideaAttach = NSButton(title: "+", target: nil, action: nil)
     private let ideaReferenceMenu = NSPopUpButton(frame: .zero, pullsDown: true)
     var onIdeaAction: ((String, String) -> Void)?
+    private(set) var refineProject:String?
+    private(set) var conversationContext:String?
     var genericLease: [String:Any]?
     var dictateInputIdentity: Data? {
         guard let genericLease else { return nil }
@@ -32,6 +34,8 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     var onChoose: (() -> Void)?; var onMode: ((ChatSendModeV1) -> Void)?
     var onInquiry: ((String,String?,String?) -> Void)?
     var onEnvironment: ((Bool,Bool) -> Void)?
+    var onDictated: (([String:Any],[String:Any],String)->Void)?
+    var onRefined: (([String:Any],String,String,Bool)->Void)?
     var onNativeIdeaCommand: ((String, String) -> Void)?
     private let inquiryButton = NSButton(title:"Inquiry",target:nil,action:nil)
     private let inquiryPopover = NSPopover()
@@ -65,11 +69,11 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     private let toggle = NSButton(title: "▾ Chat", target: nil, action: nil)
     private let mode = NSPopUpButton(frame: .zero, pullsDown: true)
     private let editorRow = NSStackView()
+    private var footerEditorConstraints: [NSLayoutConstraint] = []
     private let ideaRow = NSStackView()
     private let ideaMenu = NSPopUpButton(frame: .zero, pullsDown: true)
     private let ideaSearchButton = NSButton(title: "⌕", target: nil, action: nil)
     private let ideaSearchPopover = NSPopover()
-    private let ideaEditorPopover = NSPopover()
     private let ideaDocument = NSStackView()
     private var ideaGeneralHeight: NSLayoutConstraint?
     private var ideaBlockEditors: [String: IdeaNodeInstructionEditor] = [:]
@@ -102,7 +106,6 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         }
         return false
     }
-    private let ideaExpand = NSButton(title: "↗", target: nil, action: nil)
     private let editorScroll = NSScrollView()
     private let ideaStatus = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private var ideaCompact = false
@@ -127,6 +130,12 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     init(dictate: PolarStationDictate) {
         dictateControls = StationDictateControls(dictate: dictate)
         super.init(frame: .zero)
+        dictateControls.activateInput = { [weak self] in
+            guard let self, let window = self.window, self.paneID != nil, window.isVisible,
+                  !self.text.isHiddenOrHasHiddenAncestor else { return }
+            window.makeFirstResponder(self.text)
+        }
+        dictateControls.refineContext = { [weak self] in self?.paneID ?? "" }
         dictateControls.refine = { [weak self, weak dictate] in
             guard let self, let dictate, self.paneID != nil else { return }
             let editor = self.isIdea ? self.lastIdeaEditor ?? self.text : self.text
@@ -134,10 +143,13 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             let pane = self.paneID, revision = self.dictateRevision, identity = self.dictateInputIdentity
             self.window?.makeFirstResponder(editor)
             editor.setSelectedRange(NSRange(location: 0, length: (editor.string as NSString).length))
-            guard let target = StationDictateTarget.editor(editor, valid: { [weak self] in
+            let lease=self.genericLease,original=editor.string,english=dictate.refineEnglish(contextID:self.paneID ?? "")
+            guard let target = StationDictateTarget.editor(editor, applied:{[weak self] result in
+                if let lease {self?.onRefined?(lease,original,result,english)}
+            }, valid: { [weak self] in
                 self?.paneID == pane && self?.dictateRevision == revision && self?.dictateInputIdentity == identity
             }) else { return }
-            dictate.refine(target: target, text: editor.string)
+            dictate.refine(target: target, text: editor.string, contextID:self.paneID ?? "",project:self.refineProject)
         }
         text.isRichText = false; text.isAutomaticQuoteSubstitutionEnabled = false
         text.isAutomaticDashSubstitutionEnabled = false; text.allowsUndo = true; text.delegate = self
@@ -154,7 +166,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         targetButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         targetButton.lineBreakMode = .byTruncatingMiddle
         quote.target = self; quote.action = #selector(quotePressed); quote.isHidden = true
-        quote.toolTip = "Quote selection"
+        quote.toolTip = "Quote selection · ⌘⌥G"
         quote.setAccessibilityLabel("Quote selection")
         retry.target = self; retry.action = #selector(retryPressed); retry.isHidden = true
         retry.toolTip = "Reconnect this conversation; messages are not resent"
@@ -173,7 +185,8 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         let controller = NSViewController(); controller.view = details
         statusPopover.contentViewController = controller; statusPopover.behavior = .transient
         mode.addItems(withTitles: ["▾", "Enter sends", "Cmd+Enter sends"]); mode.target = self; mode.action = #selector(modePressed)
-        editorRow.orientation = .horizontal; editorRow.distribution = .fill; editorRow.spacing = 0; editorRow.addArrangedSubview(scroll)
+        editorRow.orientation = .horizontal; editorRow.distribution = .fill; editorRow.spacing = 0
+        editorRow.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
         editorRow.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
         scroll.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
         inquiryButton.target = self; inquiryButton.action = #selector(inquiryEntryPressed); inquiryButton.isHidden = true
@@ -183,8 +196,10 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         ideaAttach.setAccessibilityLabel("Insert node")
         ideaReferenceMenu.addItem(withTitle:"References")
         ideaAttach.isHidden = true; ideaReferenceMenu.isHidden = true
-        let row = NSStackView(views: [toggle,ideaMenu,targetButton,inquiryButton,ideaRow,ideaSearchButton,editorRow,ideaReferenceMenu,ideaAttach,ideaExpand,statusButton,retry,quote,tools,ideaMore,ideaTheme,dictateControls,send,mode]); row.orientation = .horizontal
+        let row = NSStackView(views: [toggle,ideaMenu,targetButton,inquiryButton,ideaRow,ideaSearchButton,editorRow,ideaReferenceMenu,ideaAttach,statusButton,retry,quote,tools,ideaMore,ideaTheme,dictateControls,send,mode]); row.orientation = .horizontal
         row.alignment = .bottom; row.distribution = .fill; row.spacing = 6
+        row.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        editorRow.heightAnchor.constraint(equalToConstant: 30).isActive = true
         ideaRow.orientation = .horizontal; ideaRow.spacing = 6; ideaRow.isHidden = true
         ideaSearch.placeholderString = "Search nodes…"
         ideaSearch.target = self; ideaSearch.action = #selector(ideaSearchChanged)
@@ -196,17 +211,14 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         ideaMenu.addItem(withTitle: "Idea"); ideaMenu.menu?.autoenablesItems = false
         ideaSearchButton.target = self; ideaSearchButton.action = #selector(openIdeaSearch)
         ideaSearchButton.toolTip = "Search nodes"; ideaSearchButton.setAccessibilityLabel("Search nodes")
-        ideaExpand.target = self; ideaExpand.action = #selector(expandIdeaEditor)
-        ideaExpand.toolTip = "Expand instruction"; ideaExpand.setAccessibilityLabel("Expand instruction")
-        for button in [ideaSearchButton, ideaExpand] { button.bezelStyle = .rounded }
-        for view in [ideaMenu, ideaSearchButton, ideaExpand, ideaMore, ideaTheme] { view.isHidden = true }
+        for button in [ideaSearchButton] { button.bezelStyle = .rounded }
+        for view in [ideaMenu, ideaSearchButton, ideaMore, ideaTheme] { view.isHidden = true }
         let searchController = NSViewController()
         let searchBox = NSStackView(views: [ideaSearch]); searchBox.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         searchController.view = searchBox
         ideaSearch.widthAnchor.constraint(equalToConstant: 280).isActive = true
         ideaSearchPopover.contentViewController = searchController
         ideaSearchPopover.behavior = .transient; ideaSearchPopover.delegate = self
-        ideaEditorPopover.behavior = .transient; ideaEditorPopover.delegate = self
         let column = NSStackView(views: [row]); column.orientation = .vertical
         column.alignment = .leading; column.spacing = 4
         row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
@@ -214,7 +226,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         targetWidthLimit = targetButton.widthAnchor.constraint(lessThanOrEqualToConstant: 200)
         targetWidthMinimum = targetButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
         NSLayoutConstraint.activate([
-            column.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            column.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 4),
             column.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             column.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             column.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
@@ -223,6 +235,18 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             mode.widthAnchor.constraint(equalToConstant: 28),
             statusButton.widthAnchor.constraint(lessThanOrEqualToConstant: 180),
         ])
+        mountFooterEditor()
+    }
+    private func mountFooterEditor() {
+        // The fixed stack owns the horizontal slot; only its sibling scroll
+        // viewport extends upward. Inquiry temporarily reparents this same view.
+        addSubview(editorScroll)
+        footerEditorConstraints = [
+            editorScroll.leadingAnchor.constraint(equalTo: editorRow.leadingAnchor),
+            editorScroll.trailingAnchor.constraint(equalTo: editorRow.trailingAnchor),
+            editorScroll.bottomAnchor.constraint(equalTo: editorRow.bottomAnchor),
+        ]
+        NSLayoutConstraint.activate(footerEditorConstraints)
     }
     func attach(to window: NSWindow) {
         guard let target = (window.windowController as? TerminalController)?.terminalViewContainer else { return }
@@ -252,7 +276,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         if let closedObserver { NotificationCenter.default.removeObserver(closedObserver) }; closedObserver = nil
     }
     func clearSelection() {
-        genericLease = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
+        genericLease = nil; refineProject = nil; conversationContext = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
         focusWork?.cancel(); focusWork=nil
         hideInquiry()
         dictateRevision = 0
@@ -283,7 +307,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         guard inquiryEditorMounted else { return }
         inquiryEditorWidth?.isActive=false;inquiryEditorWidth=nil
         (editorScroll.superview as? NSStackView)?.removeArrangedSubview(editorScroll)
-        editorScroll.removeFromSuperview(); editorRow.insertArrangedSubview(editorScroll, at: 0)
+        editorScroll.removeFromSuperview(); mountFooterEditor()
         inquiryEditorMounted=false; resizeEditor()
     }
     private func closeInquiryPanel() {
@@ -367,7 +391,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             if routing {root.addArrangedSubview(label(value["task_label"] as? String ?? "",dim:true))}
             if !routing && !prompt {root.addArrangedSubview(label(value["question"] as? String ?? ""))}
             if value["editable"] as? Bool == true {
-                editorRow.removeArrangedSubview(editorScroll);editorScroll.removeFromSuperview()
+                NSLayoutConstraint.deactivate(footerEditorConstraints); footerEditorConstraints = []; editorScroll.removeFromSuperview()
                 root.addArrangedSubview(editorScroll);inquiryEditorWidth=editorScroll.widthAnchor.constraint(equalToConstant:panelWidth-24);inquiryEditorWidth?.isActive=true;inquiryEditorMounted=true;editorHeight.constant=110;container?.showStationComposer(self,height:40)
             } else {
                 let task=label(value["task_preview"] as? String ?? "");task.isSelectable=true;root.addArrangedSubview(task)
@@ -501,14 +525,18 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         update(["pane_id":pane,"text":view["text"] as? String ?? "", "draft_revision":lease["draft_revision"] ?? 0,
                 "status":view["unavailable"] as? String ?? "Ready", "can_send":view["can_send"] as? Bool ?? false])
         genericLease = lease
+        refineProject = view["project"] as? String
+        conversationContext = view["conversation_context"] as? String
+        let sendLabel=view["send_label"] as? String ?? "Send"
+        if sendLabel == "Send" { setSendMode(sendMode) } else { send.title=sendLabel }
         tools.isHidden = true
         quote.isHidden = false
-        retry.isHidden = false
+        retry.isHidden = view["can_refresh"] as? Bool != true
         retry.title = "↻"
-        retry.toolTip = "Check receipt or refresh target"
-        retry.setAccessibilityLabel("Check receipt or refresh target")
-        targetButton.title = view["target_label"] as? String ?? "Terminal input"
-        targetButton.toolTip = targetButton.title
+        retry.toolTip = "Refresh sending status"
+        retry.setAccessibilityLabel("Refresh sending status")
+        targetButton.title = view["target_status"] as? String ?? view["target_label"] as? String ?? "Terminal input"
+        targetButton.toolTip = view["unavailable"] as? String ?? targetButton.title
         targetButton.isEnabled = false
         toggle.isHidden = true
         expanded = true
@@ -517,7 +545,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         resizeEditor()
     }
     func update(_ effect: [String: Any]) {
-        genericLease = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
+        genericLease = nil; refineProject = nil; conversationContext = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
         dictateRevision = (effect["draft_revision"] as? NSNumber)?.uint64Value ?? 0
         setIdeaMode(false)
         text.toolTip = sendMode == .enter ? "Enter sends; Shift+Enter inserts newline" : "Cmd+Enter sends; Enter inserts newline"
@@ -546,6 +574,9 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             ideaDocument.orientation = .vertical; ideaDocument.alignment = .leading; ideaDocument.spacing = 8
             ideaDocument.translatesAutoresizingMaskIntoConstraints = false
             text.translatesAutoresizingMaskIntoConstraints = false
+            text.isVerticallyResizable = false
+            text.textContainer?.heightTracksTextView = false
+            text.textContainer?.containerSize.height = .greatestFiniteMagnitude
             ideaDocument.addArrangedSubview(text)
             ideaGeneralHeight = text.heightAnchor.constraint(equalToConstant: 30); ideaGeneralHeight?.isActive = true
             text.widthAnchor.constraint(equalTo: ideaDocument.widthAnchor).isActive = true
@@ -558,21 +589,21 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             ideaDocument.removeArrangedSubview(text); text.removeFromSuperview()
             ideaGeneralHeight?.isActive = false; ideaGeneralHeight = nil
             text.translatesAutoresizingMaskIntoConstraints = true
+            text.isVerticallyResizable = true
             editorScroll.documentView = text; ideaDocumentMounted = false
         }
         isIdea = value; ideaRow.isHidden = !value; targetButton.isHidden = false
         ideaAttach.isHidden = !value; ideaReferenceMenu.isHidden = true
-        toggle.isHidden = true; statusButton.isHidden = false
+        toggle.isHidden = true; statusButton.isHidden = true
         ideaMenu.isHidden = !value
         for view in [ideaSearchButton, ideaMore, ideaTheme] { view.isHidden = true }
-        ideaExpand.isHidden = inquiryActive
         if value { ideaRow.isHidden = true; statusButton.isHidden = true; send.title = "Send ⌘↵" }
         tools.isHidden = value; mode.isHidden = value || inquiryActive; send.isHidden = inquiryActive
         if !value { targetWidthLimit.constant = 200; targetWidthMinimum.constant = 80 }
         toggle.title = value ? (expanded ? "▾ Idea" : "▸ Idea") : (expanded ? "▾ Chat" : "▸ Chat")
     }
     func updateIdea(_ effect: [String: Any]) {
-        genericLease = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
+        genericLease = nil; refineProject = nil; conversationContext = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
         dictateRevision = (effect["draft_revision"] as? NSNumber)?.uint64Value ?? 0
         hideInquiry()
         let changed = paneID != effect["pane_id"] as? String
@@ -619,10 +650,12 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             let item = ideaItems[key] ?? NSMenuItem(title: label, action: #selector(ideaMenuPressed(_:)), keyEquivalent: "")
             if ideaItems[key] == nil {
                 item.target = self; item.representedObject = ["action": action, "query": query]
-                ideaActionMenu(action).addItem(item)
+                ideaActionMenu(action, group: control["group"] as? String ?? "").addItem(item)
                 ideaItems[key] = item
             }
             item.title = action == "back" ? "Back" : action == "forward" ? "Forward" : label
+            let tooltip = control["tooltip"] as? String ?? ""
+            item.toolTip = tooltip.isEmpty ? nil : tooltip
             item.isEnabled = control["enabled"] as? Bool == true
             item.state = control["active"] as? Bool == true ? .on : .off
             if false {
@@ -641,7 +674,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             search.target = self; ideaMenu.menu?.addItem(search)
             let edit = NSMenuItem(title: "Edit instruction…", action: #selector(editSelectedInstruction), keyEquivalent: "")
             edit.target = self; ideaMenu.menu?.addItem(edit)
-            let check = NSMenuItem(title: "Check receipt", action: #selector(checkIdeaReceipt), keyEquivalent: "")
+            let check = NSMenuItem(title: "Refresh sending status", action: #selector(checkIdeaReceipt), keyEquivalent: "")
             check.target = self; ideaMenu.menu?.addItem(check)
             let session = NSMenuItem(title: "Show original session", action: #selector(showIdeaSession), keyEquivalent: "")
             session.target = self; ideaMenu.menu?.addItem(session)
@@ -649,7 +682,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             unbind.target = self; ideaMenu.menu?.addItem(unbind)
             ideaMenu.menu?.addItem(ideaStatus)
         }
-        ideaMenu.menu?.items.first(where: { $0.action == #selector(checkIdeaReceipt) })?.isEnabled = effect["can_check_receipt"] as? Bool == true
+        ideaMenu.menu?.items.first(where: { $0.action == #selector(checkIdeaReceipt) })?.isHidden = effect["can_check_receipt"] as? Bool != true
         ideaStatus.title = effect["status"] as? String ?? "Local preview"; ideaStatus.isEnabled = false
         ideaSearch.isEnabled = effect["can_search"] as? Bool == true
         ideaSearchButton.isEnabled = ideaSearch.isEnabled
@@ -663,16 +696,27 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         NSColor.windowBackgroundColor.setFill()
         // AppKit may invalidate beyond our bounds; NSView no longer clips by
         // default on macOS 14+. Never paint over sibling terminal surfaces.
-        bounds.intersection(dirtyRect).fill()
+        NSRect(x: 0, y: 0, width: bounds.width, height: 40).intersection(dirtyRect).fill()
+    }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        if !inquiryEditorMounted && !editorRow.isHidden && editorScroll.frame.contains(local) {
+            return editorScroll.hitTest(convert(local, to: editorScroll.superview))
+        }
+        guard local.y <= 40 else { return nil }
+        return super.hitTest(point)
     }
     override func layout() {
         super.layout()
+        if !inquiryEditorMounted { editorScroll.isHidden = editorRow.isHidden }
         updateIdeaWidth()
         resizeEditor()
     }
-    private func ideaActionMenu(_ action: String) -> NSMenu {
+    private func ideaActionMenu(_ action: String, group explicitGroup: String = "") -> NSMenu {
+        if action == "open_files", let menu = ideaMenu.menu { return menu }
         let group: String
-        if action == "open_files" || action == "open_source" { group = "Files" }
+        if !explicitGroup.isEmpty { group = explicitGroup }
+        else if action == "open_files" || action == "open_source" { group = "Files" }
         else if (action.hasPrefix("theme_") || action == "select_theme") { group = "Theme" }
         else if ["back","forward","locate","read","fit","focus_this_node"].contains(action) { group = "Navigate" }
         else if ["navigation_animation","frame_endpoints","path_feedback","camera_inertia","node_elasticity","reduce_motion","connection_flow"].contains(action) { group = "Motion" }
@@ -702,40 +746,17 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     private func closeIdeaPopovers() {
         ideaPopoverPane = nil
         ideaMore.menu?.cancelTracking(); ideaTheme.menu?.cancelTracking()
-        ideaSearchPopover.close(); ideaEditorPopover.close()
+        ideaSearchPopover.close()
     }
     func focusIdeaSearch() { if isIdea { openIdeaSearch() } }
     @objc private func openIdeaSearch() {
         guard isIdea, ideaSearch.isEnabled else { return }
-        ideaEditorPopover.close()
         ideaPreviousResponder = window?.firstResponder; ideaPopoverPane = paneID
         ideaSearchPopover.show(relativeTo: ideaMenu.bounds, of: ideaMenu, preferredEdge: .maxY)
         ideaSearch.window?.makeFirstResponder(ideaSearch)
     }
-    @objc private func expandIdeaEditor() {
-        guard paneID != nil, !inquiryActive, !text.hasMarkedText() else { return }
-        ideaSearchPopover.close()
-        if ideaEditorPopover.isShown { ideaEditorPopover.close(); return }
-        ideaPreviousResponder = window?.firstResponder; ideaPopoverPane = paneID
-        // Move the existing editor, preserving its text storage, undo and IME.
-        editorRow.removeArrangedSubview(editorScroll); editorScroll.removeFromSuperview()
-        editorHeight.constant = max(60, min(240, (window?.contentView?.bounds.height ?? 600) - 100))
-        let box = NSStackView(views: [editorScroll]); box.orientation = .vertical
-        box.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-        let controller = NSViewController(); controller.view = box
-        box.widthAnchor.constraint(equalToConstant: max(240, min(640, bounds.width - 32))).isActive = true
-        ideaEditorPopover.contentViewController = controller
-        ideaEditorPopover.show(relativeTo: ideaExpand.bounds, of: ideaExpand, preferredEdge: .maxY)
-        text.window?.makeFirstResponder(text)
-    }
     func popoverDidClose(_ notification: Notification) {
         if notification.object as? NSPopover === inquiryPopover { restoreInquiryEditor() }
-        if notification.object as? NSPopover === ideaEditorPopover {
-            text.unmarkText()
-            (editorScroll.superview as? NSStackView)?.removeArrangedSubview(editorScroll)
-            editorScroll.removeFromSuperview(); editorRow.insertArrangedSubview(editorScroll, at: 0)
-            editorHeight.constant = 30; resizeEditor()
-        }
         if isIdea, paneID == ideaPopoverPane, window?.isKeyWindow == true {
             window?.makeFirstResponder(ideaPreviousResponder ?? text)
         }
@@ -746,6 +767,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     @objc private func ideaSearchChanged() { onIdeaAction?("search", ideaSearch.stringValue) }
     func showStatus(_ message: String) {
         status.stringValue = message; statusButton.toolTip = message
+        targetButton.toolTip = message.isEmpty ? targetButton.title : message
         statusButton.title = "●"
         statusButton.setAccessibilityLabel(message.isEmpty ? "Not connected" : message)
         statusButton.lineBreakMode = .byTruncatingTail
@@ -759,15 +781,15 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     }
     private func resizeEditor() {
         if inquiryEditorMounted { editorHeight.constant=130; return }
-        if ideaEditorPopover.isShown { container?.showStationComposer(self,height:40); return }
         if isIdea {
             text.textContainer?.containerSize.width = max(80, editorScroll.contentSize.width)
             if let manager = text.layoutManager, let tc = text.textContainer {
                 manager.ensureLayout(for: tc)
                 ideaGeneralHeight?.constant = max(30, manager.usedRect(for: tc).height + 12)
             }
-            let total = (ideaGeneralHeight?.constant ?? 30) + ideaBlockEditors.values.reduce(CGFloat(0)) { $0 + $1.measuredHeight + 8 }
-            ideaDocument.frame.size.height = total
+            // The arranged views' constraints own document geometry. Mixing a
+            // manual frame with wrapping-header totals creates a resize feedback loop.
+            let total = ideaDocument.fittingSize.height
             let line = text.layoutManager?.defaultLineHeight(for: text.font ?? NSFont.systemFont(ofSize: 14)) ?? 18
             let height = max(30, min(total, line * 6 + 12))
             if abs(editorHeight.constant - height) > 0.5 { editorHeight.constant = height }
@@ -800,7 +822,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
 
         if inquiryActive && selector == #selector(NSResponder.cancelOperation(_:)) && !textView.hasMarkedText() { inquiryLater(); return true }
         if selector == #selector(NSResponder.cancelOperation(_:)) && !textView.hasMarkedText() {
-            if ideaEditorPopover.isShown { ideaEditorPopover.close() } else { onExit?() }
+            onExit?()
             return true
         }
         guard selector == #selector(NSResponder.insertNewline(_:)), !textView.hasMarkedText() else { return false }
@@ -838,11 +860,24 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     private func ownsIdeaEditor(_ candidate: NSTextView) -> Bool {
         candidate === text || ideaBlockEditors.values.contains(where: { $0.editor === candidate }) || ideaDetailEditor?.editor === candidate
     }
+    func dictateEditorTarget(_ editor:NSTextView, preserveSelection:Bool=false)->StationDictateTarget? {
+        let pane=paneID, revision=dictateRevision, identity=dictateInputIdentity, lease=genericLease
+        let target=StationDictateTarget.editor(editor,preserveSelection:preserveSelection,includeContext:dictateControls.dictate?.collectsContext == true,valid:{[weak self] in
+            self?.paneID==pane && self?.dictateRevision==revision && self?.dictateInputIdentity==identity
+        })
+        if editor === text, let lease {
+            target?.sourceApplied = {[weak self,weak editor] source in
+                guard let self,let editor else{return}
+                self.onDictated?(lease,source,editor.string)
+            }
+        }
+        return target
+    }
     func dictateDefaultTarget(node: Bool) -> StationDictateTarget? {
         let identity = paneID, viewID = ideaViewID, revision = dictateRevision, inputIdentity = dictateInputIdentity
         if node, isIdea, let selected = ideaSelectedNode, let uuid = selected["node_uuid"], !uuid.isEmpty {
             let original = ideaBlockEditors[uuid]?.editor.string ?? ""
-            return StationDictateTarget(kind: "idea_node", context: String((selected["title"] ?? "").prefix(1024)) + "\n" + String(original.prefix(1024))) { [weak self] text in
+            return StationDictateTarget(kind: "idea_node", context: dictateControls.dictate?.collectsContext == true ? String((selected["title"] ?? "").prefix(1024)) + "\n" + String(original.prefix(1024)) : "") { [weak self] text in
                 guard let self, self.window != nil, self.paneID == identity, self.ideaViewID == viewID, self.dictateRevision == revision,
                       self.ideaSelectedNode?["node_uuid"] == uuid,
                       (self.ideaBlockEditors[uuid]?.editor.string ?? "") == original else { return .unchanged }
@@ -853,7 +888,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         }
         guard text.isEditable else { return nil }
         window?.makeFirstResponder(text)
-        return StationDictateTarget.editor(text, kind: "default_editor", valid: { [weak self] in self?.paneID == identity && self?.dictateRevision == revision && self?.dictateInputIdentity == inputIdentity })
+        return StationDictateTarget.editor(text, kind: "default_editor", includeContext:dictateControls.dictate?.collectsContext == true, valid: { [weak self] in self?.paneID == identity && self?.dictateRevision == revision && self?.dictateInputIdentity == inputIdentity })
     }
     private func setDictateNode(_ uuid: String, title: String, view: String, text: String) {
         guard ideaViewID == view else { return }
@@ -1022,6 +1057,9 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         onDraft?(text.string); onSend?()
     }
     @objc private func quotePressed() {
+        quoteSelection()
+    }
+    func quoteSelection() {
         guard genericLease != nil, !text.hasMarkedText() else { return }
         onQuote?()
     }
@@ -1030,7 +1068,9 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         window?.makeFirstResponder(text)
         // NSTextView publishes this edit once through textDidChange.
         // A second queued edit would reuse the pre-insertion draft lease.
+        text.breakUndoCoalescing()
         text.insertText(selection, replacementRange: text.selectedRange())
+        text.breakUndoCoalescing()
     }
     @objc private func olderPressed() { onOlder?() }
     @objc private func retryPressed() { onRetry?() }
@@ -1389,15 +1429,15 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
     private var flatButtons: [NSButton] = []
     private var detailScroll: NSScrollView?
     var maxEditorHeight: CGFloat = 200 { didSet { measure() } }
-    var measuredHeight: CGFloat { editorHeight.constant + header.fittingSize.height + (detail ? 32 : 4) }
+    var measuredHeight: CGFloat { fittingSize.height }
     init(block: [String: String], detail: Bool) {
         nodeID = block["node_uuid"] ?? ""; nodeTitle = block["title"] ?? "Node"; self.detail = detail
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        let title = NSTextField(wrappingLabelWithString: "\(nodeTitle)\n\(nodeID)")
+        let title = NSTextField(labelWithString: detail ? "\(nodeTitle)\n\(nodeID)" : "\(nodeTitle) · \(nodeID)")
         titleLabel = title
-        title.isSelectable = true; title.lineBreakMode = .byCharWrapping
-        title.maximumNumberOfLines = 0
+        title.isSelectable = true; title.lineBreakMode = .byTruncatingMiddle
+        title.maximumNumberOfLines = detail ? 2 : 1
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         title.toolTip = title.stringValue
         let locate = NSButton(title: "Locate", target: self, action: #selector(locatePressed))
@@ -1406,7 +1446,8 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
         flatButtons = [locate, remove]
         for child in [title, locate, remove] { header.addArrangedSubview(child) }; header.orientation = .horizontal; header.spacing = 6
         editor.isRichText = false; editor.allowsUndo = true; editor.delegate = self
-        editor.isVerticallyResizable = true; editor.isHorizontallyResizable = false
+        editor.isVerticallyResizable = detail; editor.isHorizontallyResizable = false
+        editor.textContainer?.heightTracksTextView = false
         editor.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         editor.textContainerInset = NSSize(width: 6, height: 6)
         editor.isAutomaticQuoteSubstitutionEnabled = false; editor.isAutomaticDashSubstitutionEnabled = false
@@ -1484,6 +1525,7 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
     }
     private func measure() {
         editor.textContainer?.containerSize.width = max(80, bounds.width - 12)
+        editor.textContainer?.containerSize.height = .greatestFiniteMagnitude
         if let lm = editor.layoutManager, let tc = editor.textContainer {
             lm.ensureLayout(for: tc)
             let contentHeight = max(detail ? 100 : 30, lm.usedRect(for: tc).height + 12)

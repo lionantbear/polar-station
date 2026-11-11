@@ -316,7 +316,7 @@ impl SharedPackStore {
         directory: &str,
         covered: Option<&BTreeMap<String, ObjectId>>,
     ) -> Result<Vec<String>> {
-        
+        ;
         let mut result = Vec::new();
         for (count, entry) in self.dir.read_dir(directory)?.enumerate() {
             let entry = entry?;

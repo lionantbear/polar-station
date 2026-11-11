@@ -51,8 +51,19 @@ final class PolarStationLgpWorkspace: NSObject {
         deinit { if let handle { polar_station_input_free(handle) } }
     }
 
+    private var referenceCollectionEnabled:Bool?
     override init() {
         super.init()
+        dictate.selectedReference = { [weak self] in
+            guard let self, let window=NSApp.keyWindow else { return "" }
+            if let editor=window.firstResponder as? NSTextView {
+                guard !(editor.delegate is NSSecureTextField) else { return "" }
+                let text=editor.string as NSString, range=editor.selectedRange()
+                return range.location != NSNotFound && NSMaxRange(range)<=text.length ? text.substring(with:range) : ""
+            }
+            guard let panel=self.composers.values.first(where:{$0.window === window}), let pane=panel.paneID else {return ""}
+            return self.terminalSelection?(window,pane) ?? ""
+        }
         dictate.shortcutTargets = { [weak self] in
             guard let self, NSApp.isActive, let window = NSApp.keyWindow else { return [] }
             if let panel = self.composers.values.first(where: { $0.window === window }) {
@@ -60,17 +71,31 @@ final class PolarStationLgpWorkspace: NSObject {
             }
             if let editor = window.firstResponder as? NSTextView,
                !(editor.delegate is NSSecureTextField) {
-                return StationDictateTarget.editor(editor).map { [$0] } ?? []
+                return StationDictateTarget.editor(editor,includeContext:self.dictate.collectsContext).map { [$0] } ?? []
             }
             return []
         }
         dictate.changed = { [weak self] in
+            if let self,self.referenceCollectionEnabled != self.dictate.collectsContext {
+                self.referenceCollectionEnabled = self.dictate.collectsContext
+                self.input(["type":"reference_collection","enabled":self.dictate.collectsContext])
+            }
             for panel in self?.composers.values ?? Dictionary<String, StationInputBarView>().values { panel.dictateControls.refresh() }
         }
-        dictate.focusedTarget = { [weak self] editor in
-            let panel = self?.composers.values.first(where: { $0.window === editor.window })
-            let pane = panel?.paneID, revision = panel?.dictateRevision, inputIdentity = panel?.dictateInputIdentity
-            return StationDictateTarget.editor(editor, valid: { [weak panel] in panel?.paneID == pane && panel?.dictateRevision == revision && panel?.dictateInputIdentity == inputIdentity })
+        dictate.currentProject = {[weak self] in
+            guard NSApp.isActive,let window=NSApp.keyWindow else{return nil}
+            return self?.composers.values.first(where:{$0.window === window})?.refineProject
+        }
+        dictate.currentConversation = {[weak self] in
+            guard NSApp.isActive,let window=NSApp.keyWindow else{return nil}
+            return self?.composers.values.first(where:{$0.window === window})?.conversationContext
+        }
+        dictate.currentTarget = {[weak self] editor,preserve in
+            self?.composers.values.first(where:{$0.window === editor.window})?.dictateEditorTarget(editor,preserveSelection:preserve)
+        }
+        dictate.focusedTarget = {[weak self] editor in
+            self?.composers.values.first(where:{$0.window === editor.window})?.dictateEditorTarget(editor)
+                ?? StationDictateTarget.editor(editor)
         }
         restoreDrafts()
         // Only pending-request deadlines and lease maintenance. Message data
@@ -197,6 +222,12 @@ final class PolarStationLgpWorkspace: NSObject {
             panel.onIdeaInput = { [weak self] value in
                 var value = value; value["window_id"] = windowID
                 self?.input(value); self?.scheduleDraftSave()
+            }
+            panel.onDictated = {[weak self] lease,source,text in
+                self?.input(["type":"dictated_input","lease":lease,"source":source,"text":text])
+            }
+            panel.onRefined = { [weak self] lease,original,text,english in
+                self?.input(["type":"refined_input","lease":lease,"original":original,"text":text,"english":english])
             }
             panel.onDraft = { [weak self, weak panel] text in
                 if let lease = panel?.genericLease {
@@ -352,6 +383,12 @@ final class PolarStationLgpWorkspace: NSObject {
               panel.acceptsIdeaShortcut(canvas: pane.display.view) else { return false }
         pane.display.ideaCommand("edit_instruction", query: ""); return true
     }
+    func quoteSelection(in window: NSWindow) -> Bool {
+        guard let panel = composers.values.first(where: { $0.window === window }),
+              panel.genericLease != nil else { return false }
+        panel.quoteSelection()
+        return true
+    }
     func openInquiry(in window: NSWindow) -> Bool {
         guard let panel = composers.values.first(where: { $0.window === window }), panel.hasInquiry else { return false }
         panel.publishInquiryEnvironment(); panel.onInquiry?("show", nil, nil); return true
@@ -401,6 +438,9 @@ final class PolarStationLgpWorkspace: NSObject {
             guard let lease = value["lease"] as? [String:Any], let window = lease["window"] as? String,
                   let text = value["text"] as? String else { return }
             composers[window]?.insertQuotedText(text, lease: lease)
+        case "learn_refine":
+            guard let sample=value["sample"] as? [String:Any],let intent=sample["intent"] as? String else{return}
+            dictate.storeLearning(sample){[weak self] success in self?.input(["type":"learning_stored","intent":intent,"success":success])}
         case "session_request":
             guard let request = value["request"], let data = try? JSONSerialization.data(withJSONObject:request) else {return}
             Task { @MainActor [weak self] in

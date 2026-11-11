@@ -7,6 +7,8 @@
         case workspaceModeToggle
         case focusPrevious
         case focusNext
+        case previousTab
+        case nextTab
         case focusPaneNumber(Int)
         case newShell
         case newCodex
@@ -15,6 +17,8 @@
         case openInquiry
         case insertIdeaNode
         case editIdeaInstruction
+        case quoteSelection
+        case openFileReference
         case newWorkspace
         case renameWorkspace
         case refreshSessions
@@ -27,6 +31,7 @@
         typealias Dispatch = @MainActor (PolarStationShortcutAction) -> Bool
         typealias BadgesVisible = @MainActor (Bool) -> Void
 
+        private let context: @MainActor () -> StationShortcutHintContext
         private let dispatch: Dispatch
         private let badgesVisible: BadgesVisible
         private var keyMonitor: Any?
@@ -34,7 +39,8 @@
         private var modifiersHeld = false
         private var hintView: PolarStationShortcutHints?
 
-        init(dispatch: @escaping Dispatch, badgesVisible: @escaping BadgesVisible) {
+        init(dispatch: @escaping Dispatch, badgesVisible: @escaping BadgesVisible, context: @escaping @MainActor () -> StationShortcutHintContext) {
+            self.context = context
             self.dispatch = dispatch
             self.badgesVisible = badgesVisible
             super.init()
@@ -67,6 +73,7 @@
                     return nil
                 }
                 let handled = dispatch(match.action)
+                self.showHints(self.modifiersHeld)
                 if (match.action == .insertIdeaNode || match.action == .editIdeaInstruction) && !handled { return event }
                 return nil // A resolved Station action is consumed even when disabled.
             }
@@ -144,7 +151,7 @@
                 return
             }
             badgesVisible(true)
-            let view = PolarStationShortcutHints(frame: content.bounds)
+            let view = PolarStationShortcutHints(frame: content.bounds, context: context())
             view.autoresizingMask = [.width, .height]
             content.addSubview(view, positioned: .above, relativeTo: nil)
             hintView = view
@@ -184,6 +191,10 @@
             case 14: action = .openInquiry
             case 15: action = .insertIdeaNode
             case 16: action = .editIdeaInstruction
+            case 17: action = .quoteSelection
+            case 18: action = .previousTab
+            case 19: action = .nextTab
+            case 20: action = .openFileReference
             default: return nil
             }
             return Match(action: action, repeatable: entry.repeatable)
@@ -192,91 +203,30 @@
     /// Draw-only overlay: focus and mouse hit testing remain with the terminal.
     @MainActor
     private final class PolarStationShortcutHints: NSView {
+        private let context: StationShortcutHintContext
+        init(frame:NSRect,context:StationShortcutHintContext){self.context=context;super.init(frame:frame)}
+        required init?(coder:NSCoder){return nil}
         override var isFlipped: Bool { true }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
         override var acceptsFirstResponder: Bool { false }
         override func draw(_ dirtyRect: NSRect) {
-            NSColor(calibratedRed: 8/255, green: 18/255, blue: 32/255, alpha: 0.20).setFill()
-            bounds.fill()
-            var rows: [(String, String)] = []
-            for index in 0..<polar_station_shortcut_count() {
-                let entry = polar_station_shortcut_at(index)
-                if entry.action == 5 && entry.number != 1 { continue }
-                rows.append((entry.action == 5 ? "1–9" : String(cString: entry.key), String(cString: entry.label)))
-            }
-            let terminal = terminalRows()
-            let fontSize = max(10, min(30, min((bounds.width - 72) / 58, (bounds.height - 100) / CGFloat(max(rows.count, terminal.count) + 2) / 1.5)))
-            let lineHeight = fontSize * 1.5
-            let text: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize), .foregroundColor: NSColor.white.withAlphaComponent(0.88)]
-            let key: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold), .foregroundColor: NSColor(calibratedRed: 114/255, green: 220/255, blue: 186/255, alpha: 0.88)]
-            ("Hold ⌘ + ⌥ · release either to hide" as NSString).draw(at: NSPoint(x: 24, y: 20), withAttributes: text)
-            for (column, section) in [("POLAR STATION", rows), ("GHOSTTY", terminal)].enumerated() {
-                let x = 24 + CGFloat(column) * (bounds.width / 2)
-                (section.0 as NSString).draw(at: NSPoint(x: x, y: 28 + lineHeight), withAttributes: text)
-                for (index, row) in section.1.enumerated() {
-                    let y = 28 + lineHeight * CGFloat(index + 2)
-                    (row.0 as NSString).draw(at: NSPoint(x: x, y: y), withAttributes: key)
-                    (row.1 as NSString).draw(at: NSPoint(x: x + fontSize * (column == 0 ? 3 : 6), y: y), withAttributes: text)
-                }
-            }
-        }
-
-        // Native menu equivalents already reflect Ghostty's current configuration.
-        private func terminalRows() -> [(String, String)] {
-            var items: [String: NSMenuItem] = [:]
-            func collect(_ menu: NSMenu) {
-                for item in menu.items {
-                    if let submenu = item.submenu { collect(submenu) }
-                    if let action = item.action, !item.keyEquivalent.isEmpty {
-                        items[NSStringFromSelector(action)] = item
-                    }
-                }
-            }
-            if let menu = NSApp.mainMenu { collect(menu) }
-            return [("selectPreviousTab:", "Previous Tab"), ("selectNextTab:", "Next Tab"),
-                    ("newTab:", "New Tab"), ("closeTab:", "Close Tab"), ("find:", "Search"),
-                    ("toggleCommandPalette:", "Command palette"), ("copy:", "Copy"), ("paste:", "Paste")].compactMap { selector, label in
-                guard let item = items[selector] else { return nil }
-                let flags = item.keyEquivalentModifierMask
-                let prefix = (flags.contains(.control) ? "⌃" : "") + (flags.contains(.option) ? "⌥" : "") + (flags.contains(.shift) ? "⇧" : "") + (flags.contains(.command) ? "⌘" : "")
-                return (prefix + item.keyEquivalent.uppercased(), label)
+            NSColor(calibratedRed:8/255,green:18/255,blue:32/255,alpha:0.74).setFill();bounds.fill()
+            let title:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:36,weight:.semibold),.foregroundColor:NSColor.white]
+            ("⌘ + ⌥ · Shortcuts" as NSString).draw(at:NSPoint(x:32,y:28),withAttributes:title)
+            let text:[NSAttributedString.Key:Any]=[.font:NSFont.systemFont(ofSize:40),.foregroundColor:NSColor.white]
+            let key:[NSAttributedString.Key:Any]=[.font:NSFont.monospacedSystemFont(ofSize:48,weight:.semibold),.foregroundColor:NSColor(calibratedRed:114/255,green:220/255,blue:186/255,alpha:1)]
+            let columns=bounds.width>=1050 ? 2 : 1
+            let capacity=max(1,Int((bounds.height-150)/82))
+            let count=min(Int(polar_station_shortcut_hint_count(context)),columns*capacity)
+            let rows=max(1,min(capacity,(count+columns-1)/columns))
+            let width=(bounds.width-64)/CGFloat(columns)
+            for index in 0..<count {
+                let entry=polar_station_shortcut_hint_at(context,index)
+                let x:CGFloat=32+CGFloat(index/rows)*width,y:CGFloat=124+CGFloat(index%rows)*82
+                (String(cString:entry.key) as NSString).draw(at:NSPoint(x:x,y:y),withAttributes:key)
+                (String(cString:entry.label) as NSString).draw(in:NSRect(x:x+164,y:y+8,width:width-174,height:60),withAttributes:text)
             }
         }
     }
 
-    /// Physical capture only. No recording, provider, focus, or editor calls.
-    @MainActor
-    final class StationDictateKeyCapture {
-        private var held = false
-        func handle(_ event: NSEvent, binding text: String, emit: (UInt32) -> Void) -> Bool {
-            let binding = Self.binding(text) ?? (63, NSEvent.ModifierFlags.function)
-            let modifiers = event.modifierFlags.intersection([.control, .option, .shift, .command, .function])
-            if event.keyCode == binding.0 {
-                if (event.type == .flagsChanged || event.type == .keyDown), modifiers == binding.1 {
-                    if !held { held = true; emit(1) }
-                    return true
-                }
-                if held, event.type == .flagsChanged || event.type == .keyUp {
-                    held = false; emit(2); return true
-                }
-            }
-            if held, event.type == .flagsChanged, !modifiers.isSuperset(of: binding.1) {
-                held = false; emit(2); return false
-            }
-            // Fn navigation is passed through after emitting cancellation.
-            if held, event.type == .keyDown || event.type == .flagsChanged {
-                held = false; emit(4)
-            }
-            return false
-        }
-        static func binding(_ text: String) -> (UInt16, NSEvent.ModifierFlags)? {
-            switch text {
-            case "Fn": return (63, .function)
-            case "RightOption": return (61, .option)
-            case "Control+Option+Space": return (49, [.control, .option])
-            case "Control+Shift+Space": return (49, [.control, .shift])
-            default: return nil
-            }
-        }
-    }
 #endif

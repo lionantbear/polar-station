@@ -63,7 +63,7 @@ impl Head {
             std::fs::TryLockError::WouldBlock => Error::Conflict,
             std::fs::TryLockError::Error(e) => Error::Io(e),
         })?;
-        
+        ;
         Ok(writer)
     }
     /// First projection selection waits for this same short publication lock.
@@ -131,7 +131,7 @@ impl Head {
         
         pending.write_all(&bytes)?;
         pending.sync_all()?;
-        
+        ;
         drop(pending);
         self.directory
             .rename(".pending-current", &self.directory, "current")?;

@@ -30,7 +30,7 @@ def replace_once(path: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new), encoding="utf-8")
 
 
-def apply(root: Path) -> None:
+def apply(root: Path) -> dict:
     apply_first_party_license(root)
     replace_once(root / "apps/polar-station-macos/ghostty-module/PolarStationRuntime.swift",
                  '"host", "--listen", "0.0.0.0:47820", "--advertise",',
@@ -48,8 +48,14 @@ def apply(root: Path) -> None:
                 raise ValueError("Companion view source drift; manual review required")
             view.write_text(text[:start] + UNAVAILABLE_VIEW + text[end:], encoding="utf-8")
 
+    import source_cleanup
+    if (root / "automation/polar_station/source_cleanup.py").exists():
+        import subprocess
+        subprocess.run([source_cleanup.executable('POLAR_STATION_AST_PYTHON'),
+                        str(Path(__file__).with_name('source_manifest.py')), str(root)], check=True)
     apply_test_cleanup(root)
     apply_test_cleanup(root, "public_native_cleanup.json")
+    apply_test_cleanup(root, "public_build_cleanup.json")
 
     # Standalone SwiftPM test targets refer to excluded private Tests directories.
     manifest = root / "apps/polar-station-macos/Package.swift"
@@ -62,6 +68,11 @@ def apply(root: Path) -> None:
             if ".target(" in text[start:]:
                 raise ValueError("Swift manifest target order drift")
             manifest.write_text(text[:start] + "    ]\n)\n", encoding="utf-8")
+
+    import source_cleanup
+    if (root / "automation/polar_station/source_cleanup.py").exists():
+        return source_cleanup.apply(root)
+    return {}
 
 
 def apply_first_party_license(root: Path) -> None:
@@ -91,16 +102,22 @@ def apply_first_party_license(root: Path) -> None:
             text = text.replace("[package]\n", '[package]\nlicense = "' + data["license"] + '"\n', 1)
         else:
             raise ValueError("Existing first-party license requires review: " + manifest.as_posix())
+        if tomllib.loads(text).get("package", {}).get("license") != data["license"]:
+            raise ValueError("Unsupported first-party license syntax requires review: " + manifest.as_posix())
         manifest.write_text(text)
 
 
 def apply_test_cleanup(root: Path, filename: str = "public_test_cleanup.json") -> None:
     """Replay reviewed AST removals, refusing drift before mutating any file."""
-    import json, hashlib
+    import json, hashlib, re
     specification = root / "automation/polar_station" / filename
     if not specification.is_file():
         return
     data = json.loads(specification.read_text())
+    if data.get("schema_version") == 2:
+        import source_cleanup
+        source_cleanup.contextual(root, data)
+        return
     digest = lambda b: hashlib.sha256(b).hexdigest()
     pending = {}
     deleted = {entry["path"] for entry in data["deletions"]}
@@ -122,6 +139,15 @@ def apply_test_cleanup(root: Path, filename: str = "public_test_cleanup.json") -
         if not path.exists() and entry["path"] in deleted:
             continue
         before = path.read_bytes()
+        normalized = entry.get("normalized_after")
+        if normalized is not None:
+            if (filename != "public_test_cleanup.json" or entry["path"] != "Cargo.lock"
+                    or not isinstance(normalized, dict)
+                    or normalized.get("input_sha256") != entry["after"]
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(normalized.get("sha256", "")))):
+                raise ValueError("invalid normalized Cargo.lock guard")
+            if digest(before) == normalized["sha256"]:
+                continue
         if digest(before) in (entry["after"], final_hashes.get(entry["path"])):
             continue
         if digest(before) != entry["before"]:

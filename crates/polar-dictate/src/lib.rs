@@ -9,7 +9,9 @@ pub use store::DictateStore;
 pub mod runtime;
 
 mod settings;
-pub use settings::{ShortcutMode, ShortcutModeChoice, TranscriptionMode, TranscriptionModeChoice, VoiceSettings};
+pub use settings::{
+    ReferencePolicy, ShortcutMode, ShortcutModeChoice, TranscriptionMode, TranscriptionModeChoice, VoiceSettings,
+};
 
 mod audio;
 pub use audio::pcm_wav;
@@ -22,3 +24,14 @@ mod cleanup;
 
 #[cfg(feature = "runtime")]
 mod segmentation;
+
+mod policy;
+pub use policy::{CleanupPlan, CleanupReport, DictateOutputMode, RetentionPolicy};
+
+pub mod history;
+pub use history::{
+    DictateEvent, HistoryCursor, HistoryItem, HistoryKind, HistoryPage, HistorySummary,
+    ImportReport, ItemChange, LegacyInput, TextEditRecord,
+};
+
+pub use polar_transcreation::RefineMode;

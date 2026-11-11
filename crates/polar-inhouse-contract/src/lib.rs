@@ -3,7 +3,10 @@ mod reply_generation;
 pub mod session_environment;
 pub use backend_auth::{InhouseBackendAuthAction, InhouseBackendAuthInput, InhouseBackendAuthView};
 pub use polar_lgp_model::InhousePromptLayer;
-pub use reply_generation::{ReplyGenerationView, ReplyMessageKey, MessageActivityQuery, MessageActivityPage, ToolActivityObservation};
+pub use reply_generation::{
+    MessageActivityPage, MessageActivityQuery, ReplyGenerationView, ReplyMessageKey,
+    ToolActivityObservation,
+};
 pub use session_environment::{
     BoundPromptTool, SessionEnvironmentRef, ToolActor, ToolCallContext, ToolSessionScope,
 };
@@ -137,14 +140,18 @@ pub trait InhouseApprovalHandler: Send + Sync {
 
 pub trait InhouseTurnEventHandler: Send {
     /// Await observation persistence before publishing tool activity.
-    fn on_tool_started(&mut self, call: &InhouseToolCallEnvelope)
-        -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>> {
+    fn on_tool_started(
+        &mut self,
+        call: &InhouseToolCallEnvelope,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>> {
         let result = self.on_tool_call(&call.tool_name, &call.arguments);
         Box::pin(async move { result })
     }
 
-    fn on_tool_finished(&mut self, result: &InhouseToolResultEnvelope)
-        -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>> {
+    fn on_tool_finished(
+        &mut self,
+        result: &InhouseToolResultEnvelope,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send>> {
         let result = self.on_tool_result(&result.tool_name, &result.arguments, &result.result_text);
         Box::pin(async move { result })
     }
@@ -377,11 +384,16 @@ impl InhouseToolExecutionError {
 
     /// Trusted tool adapters opt in only when correcting input cannot repeat effects.
     pub fn with_argument_correction(mut self) -> Self {
-        self.argument_correction_allowed = matches!(self.kind, InhouseToolExecutionErrorKind::InvalidInput | InhouseToolExecutionErrorKind::NotFound);
+        self.argument_correction_allowed = matches!(
+            self.kind,
+            InhouseToolExecutionErrorKind::InvalidInput | InhouseToolExecutionErrorKind::NotFound
+        );
         self
     }
 
-    pub fn argument_correction_allowed(&self) -> bool { self.argument_correction_allowed }
+    pub fn argument_correction_allowed(&self) -> bool {
+        self.argument_correction_allowed
+    }
 
     pub fn kind(&self) -> InhouseToolExecutionErrorKind {
         self.kind
@@ -1986,8 +1998,23 @@ pub struct InhouseBackendModelCatalog {
     pub endpoint: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InhousePreparationOutcome {
+    Prepared,
+    Unsupported,
+    Busy,
+}
+
 #[async_trait::async_trait]
 pub trait InhouseAgentRunner: Send {
+    /// Transport preparation only: no prompt, turn, tool or message is submitted.
+    async fn prepare_execution(
+        &mut self,
+        _turn_ref: &InhouseBackendTurnRef,
+    ) -> anyhow::Result<InhousePreparationOutcome> {
+        Ok(InhousePreparationOutcome::Unsupported)
+    }
+
     /// Discover selectable models through the backend's authoritative
     /// protocol. `None` means the backend has no model-selection surface.
     /// Discovery errors must remain explicit; callers must not replace them
@@ -2093,7 +2120,10 @@ pub trait InhouseAgentRunner: Send {
 }
 
 pub trait InhouseRunnerFactory: Send + Sync {
-    fn build_tool_free_runner(&self, input: InhouseRunnerBuildInput<'_>) -> anyhow::Result<Box<dyn InhouseAgentRunner + Send>> {
+    fn build_tool_free_runner(
+        &self,
+        input: InhouseRunnerBuildInput<'_>,
+    ) -> anyhow::Result<Box<dyn InhouseAgentRunner + Send>> {
         self.build_memory_runner(input)
     }
     /// Isolated text generation with all native and dynamic tools disabled.

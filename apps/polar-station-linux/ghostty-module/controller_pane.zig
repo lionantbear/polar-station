@@ -847,7 +847,7 @@ pub const Controller = struct {
     ) bool {
         const projection = self.model.projection() orelse return false;
         switch (action) {
-            .open_inquiry, .insert_idea_node, .edit_idea_instruction => return false,
+            .open_inquiry, .insert_idea_node, .edit_idea_instruction, .quote_selection, .open_file_reference => return false,
             .resume_codex => {
                 if (self.session_create_window) |window| {
                     if (window.as(gtk.Widget).getVisible() != 0) {
@@ -3614,7 +3614,8 @@ pub const Controller = struct {
         self.session_create_command_label.?.as(gtk.Widget).setVisible(
             @intFromBool(command_visible),
         );
-        self.session_create_yolo.?.setActive(0);
+        self.session_create_yolo.?.setActive(1);
+        self.session_create_advanced.?.setExpanded(1);
         self.session_create_configuring = false;
         self.updateSessionCreateChoices();
         self.session_create_window.?.as(gtk.Window).present();
@@ -5291,7 +5292,7 @@ pub const Controller = struct {
         defer output.deinit();
         if (self.session_end) |window| window.apply(output.value.view);
         for (output.value.effects) |effect| {
-            if (std.mem.eql(u8, effect.type, "read")) {
+            if ((std.mem.eql(u8, effect.type, "read") or std.mem.eql(u8, effect.type, "save_preference"))) {
                 self.dispatch(.{ .session_editor = .{ .generation = effect.token, .request = effect.request orelse continue, .ending = true } });
             } else if (std.mem.eql(u8, effect.type, "cancel")) {
                 self.dispatch(.{ .cancel_session_editor = .{ .token = effect.token, .ending = true } });
@@ -5693,6 +5694,7 @@ pub const Controller = struct {
         self.requestSessionHistory(true);
     }
     pub fn historySearchChanged(_: *gtk.Editable, self: *Controller) callconv(.c) void { self.syncSharedEditor(); }
+    pub fn startLocalCodexClicked(_: *gtk.Button,self:*Controller) callconv(.c) void {self.editorInput(.{.type="start_local_server"});}
     pub fn historyMoreClicked(_: *gtk.Button, self: *Controller) callconv(.c) void { self.editorInput(.{ .type = "retry_history" }); }
     pub fn historyDetailRetryClicked(_: *gtk.Button, self: *Controller) callconv(.c) void { self.editorInput(.{ .type = "retry_detail" }); }
     pub fn historyCopyClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
@@ -5705,8 +5707,8 @@ pub const Controller = struct {
         self.editorInput(.{ .type = "select", .id = std.mem.span(selected.as(gtk.Widget).getName()), .checked = @as(?bool, null) });
     }
 
-    pub fn historyRowActivated(_: *gtk.ListBox, _: *gtk.ListBoxRow, self: *Controller) callconv(.c) void {
-        if (self.session_create_submit.?.as(gtk.Widget).getSensitive() != 0) self.submitSessionCreate();
+    pub fn historyRowActivated(_: *gtk.ListBox, row: *gtk.ListBoxRow, self: *Controller) callconv(.c) void {
+        self.editorInput(.{.type="activate",.id=std.mem.span(row.as(gtk.Widget).getName())});
     }
     pub fn historyViewportChanged(adjustment: *gtk.Adjustment, self: *Controller) callconv(.c) void {
         if (self.editor_applying) return;
@@ -5787,12 +5789,14 @@ pub const Controller = struct {
             self.editorInput(.{ .type = "edit", .draft = draft });
         }
     }
-    fn editorInput(self: *Controller, input: anytype) void {
+    pub fn editorInput(self: *Controller, input: anytype) void {
         var output = self.editor_engine.dispatch(self.allocator, input) catch return;
         defer output.deinit();
         if (self.session_create_window != null) self.renderEditorView(output.value.view);
         for (output.value.effects) |effect| {
-            if (std.mem.eql(u8, effect.type, "read")) {
+            if(std.mem.eql(u8,effect.type,"start_local_server")) {
+                self.dispatch(.{.start_local_codex=.{.endpoint_id=effect.endpoint_id orelse continue,.owner_host_id=effect.owner_host_id orelse continue,.token=effect.token}});
+            } else if ((std.mem.eql(u8, effect.type, "read") or std.mem.eql(u8, effect.type, "save_preference"))) {
                 self.dispatch(.{ .session_editor = .{ .generation = effect.token, .request = effect.request orelse continue, .shared = true } });
             } else if (std.mem.eql(u8, effect.type, "cancel")) {
                 self.dispatch(.{ .cancel_session_editor = .{ .token = effect.token } });
@@ -5821,6 +5825,11 @@ pub const Controller = struct {
             if (directory_ready and self.editor_open) sessionDirectoryBrowseClicked(self.session_create_browse.?, self);
         }
         const d = view.draft;
+        if(self.editor.start_server) |button| {
+            button.as(gtk.Widget).setVisible(@intFromBool(view.can_start_local_server or view.server_starting));
+            button.as(gtk.Widget).setSensitive(@intFromBool(view.can_start_local_server));
+            const title=self.allocator.dupeZ(u8,view.server_start_label) catch return;defer self.allocator.free(title);button.as(gtk.Widget).setTooltipText(title);
+        }
         // Only projected field values are copied into native widgets.
         inline for (.{ .{ "session_create_name", "name" }, .{ "session_create_directory", "directory" }, .{ "session_create_resume_id", "original_id" } }) |pair| {
             const entry = @field(self, pair[0]).?;
@@ -5844,7 +5853,7 @@ pub const Controller = struct {
         self.session_create_type.?.as(gtk.Widget).setSensitive(@intFromBool(!view.pending and !d.bind_only));
         self.session_create_machine.?.as(gtk.Widget).setSensitive(@intFromBool(!view.pending));
         self.session_create_mode_bar.?.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only));
-        if(self.editor.options_menu) |menu| menu.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only));
+        if(self.editor.options_menu) |menu| menu.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only and std.mem.eql(u8,d.session_type,"codex") and std.mem.eql(u8,d.mode,"resume")));
         self.session_create_window.?.as(gtk.Window).setTitle(if(d.bind_only) "Bind Codex session" else "Add Session");
         self.session_create_submit.?.as(gtk.Widget).setSensitive(@intFromBool(view.can_submit));
         const caption = self.allocator.dupeZ(u8, view.submit_label) catch return;
@@ -5949,7 +5958,7 @@ pub const Controller = struct {
     }
 
     pub fn sessionCreateChoiceChanged(source: *gobject.Object, _: *gobject.ParamSpec, self: *Controller) callconv(.c) void {
-        if (self.editor_applying) return;
+        if (self.editor_applying or self.session_create_configuring) return;
         self.updateSessionCreateChoices();
         if (source != self.session_create_mode.?.as(gobject.Object) or self.session_history_rows.?.getRowAtIndex(0) == null) self.requestSessionHistory(true);
     }
@@ -5999,7 +6008,7 @@ pub const Controller = struct {
         self.session_manual_id.?.as(gtk.Widget).setVisible(@intFromBool(is_resume and !is_codex));
         self.editor.manual_button.?.as(gtk.Widget).setVisible(@intFromBool(is_resume and is_codex));
         session_editor_window.showHistoryOptions(self, is_resume and is_codex);
-        session_editor_window.resize(self, is_resume and is_codex, false);
+        session_editor_window.resize(self, is_resume and is_codex, self.session_create_advanced.?.getExpanded() != 0);
         self.session_create_resume_label.?.as(gtk.Widget).setVisible(@intFromBool(is_resume));
         self.session_create_resume_id.?.as(gtk.Widget).setVisible(@intFromBool(is_resume));
         const endpoints = gtk.StringList.new(null);

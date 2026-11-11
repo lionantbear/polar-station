@@ -60,6 +60,10 @@ fn encodePlain(alloc: std.mem.Allocator, operation: Operation, text: []const u8)
 
 
 
+
+
+
+
 const BackgroundRole = enum { message_header, message_body, reference };
 const Style = struct { source_grapheme: usize = 0, source: ?struct { start: usize, end: usize } = null, background: ?BackgroundRole = null, bold: bool = false, italic: bool = false, dim: bool = false, strike: bool = false, code: bool = false, foreground: ?u8 = null, link: ?[]const u8 = null };
 const Run = struct { text: []const u8, style: Style = .{} };
@@ -114,6 +118,9 @@ fn encodeRuns(alloc: std.mem.Allocator, operation: Operation, json: []const u8, 
     try output.appendSlice(alloc, "\x1b[0m\x1b[?2026l");
     return output.toOwnedSlice(alloc);
 }
+
+
+
 
 
 

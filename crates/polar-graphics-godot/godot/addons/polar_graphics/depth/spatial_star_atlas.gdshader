@@ -9,7 +9,9 @@ void vertex() {
     phase=INSTANCE_CUSTOM.z*47.0;
     radius_px=mix(32.0,160.0,heat);
     vec2 center=INSTANCE_CUSTOM.xy*2.0-1.0;
-    center.y=-center.y;
+    // Atlas coordinates have a top-left origin. Use the native camera's Y
+    // correction: Mobile/Forward+ and Compatibility do not share clip-space Y.
+    center.y *= -sign(PROJECTION_MATRIX[1][1]);
     vec2 offset=(UV*2.0-1.0)*radius_px*2.0/VIEWPORT_SIZE;
     POSITION=vec4(center+offset,CLIP_SPACE_FAR+0.000001,1.0);
 }

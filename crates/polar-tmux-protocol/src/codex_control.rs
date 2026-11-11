@@ -124,6 +124,7 @@ pub struct CodexLoadedThreadV1 {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CodexCommandV1 {
     GetUi,
+    StartLocalServer { endpoint_id:String },
     GetSettings,
     GetTelegramStatus,
     SetupCurrentTelegram {
@@ -157,7 +158,12 @@ pub enum CodexCommandV1 {
     /// Submit visible text to exactly this original Thread; resume only when unloaded.
     SubmitThreadText { endpoint_id: String, thread_id: String, intent_id: String, text: String },
     GetThreadBinding { endpoint_id: String, thread_id: String },
-    ReadThread { endpoint_id: String, thread_id: String },
+    ReadThread {
+        endpoint_id: String,
+        thread_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file_reference: Option<String>,
+    },
     ReadHistoryDetail { endpoint_id: String, thread_id: String },
     RenameThread { endpoint_id: String, thread_id: String, name: String },
     ReadDirectory { endpoint_id: String, path: String },
@@ -318,9 +324,14 @@ impl CodexCommandV1 {
             }
             Self::OpenThread { endpoint_id, thread_id }
             | Self::GetThreadBinding { endpoint_id, thread_id }
-            | Self::ReadThread { endpoint_id, thread_id }
+            | Self::ReadThread { endpoint_id, thread_id, .. }
             | Self::ReadHistoryDetail { endpoint_id, thread_id } => {
                 validate_stable_identifier(endpoint_id, "Codex endpoint")?;
+                if let Self::ReadThread { file_reference: Some(path), .. } = self {
+                    if path.is_empty() || path.len() > 16384 || path.chars().any(char::is_control) {
+                        return Err(ProtocolValidationError::InvalidIdentifier("source file reference"));
+                    }
+                }
                 validate_stable_identifier(thread_id, "Codex Thread ID")
             }
             Self::ListHistory { endpoint_id, cursor, search_term, .. } => {
@@ -332,7 +343,7 @@ impl CodexCommandV1 {
                 }
                 Ok(())
             }
-            Self::ListLoaded { endpoint_id } => {
+            Self::StartLocalServer { endpoint_id } | Self::ListLoaded { endpoint_id } => {
                 validate_stable_identifier(endpoint_id, "Codex endpoint")
             }
             Self::Bind {
@@ -435,6 +446,8 @@ impl CodexRequestEnvelopeV1 {
 pub enum CodexResultV1 {
     Ui {
         labels: std::collections::BTreeMap<String, String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        file_reference_lookup: bool,
     },
     Completions {
         completions: Vec<CodexCompletionProjectionV1>,
@@ -446,7 +459,11 @@ pub enum CodexResultV1 {
     Settings {
         settings: CodexControlSettingsV1,
     },
-    Thread { thread: CodexHistoryThreadV1 },
+    Thread {
+        thread: CodexHistoryThreadV1,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolved_file_reference: Option<String>,
+    },
     HistoryDetail { detail: CodexHistoryDetailV1 },
     Directories { paths: Vec<String> },
     History {

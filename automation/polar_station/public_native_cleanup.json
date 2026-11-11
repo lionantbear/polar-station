@@ -1,1005 +1,592 @@
 {
-  "schema_version": 1,
-  "description": "Reviewed first-party native test/fixture/benchmark removals; hashes reject source drift. Not test source.",
+  "schema_version": 2,
   "edits": [
     {
       "path": "apps/polar-ideacave-godot/IMPORT.json",
-      "before": "55f84984efb79df31bc903e7972dc49b965dd3ccdf38f7011bc37e4368703799",
-      "after": "ab9f2fbba79a1503541e9c011023b3ad9fd8322742fb31c289e87149a2f5d2bf",
-      "ranges": [
-        [
-          13696,
-          13696,
-          "  ],\n  \"public_export_note\": \"This is a historical import provenance ledger, not the current distribution inventory. Development examples, tests and oracle material may be excluded; PUBLIC_SOURCE_MANIFEST.json is authoritative for included files.\",\n  \"public_export_excluded_files\": [\n    \"apps/polar-ideacave-godot/itree-koala-sample.json\",\n    \"apps/polar-ideacave-godot/itree_card.gdshader\",\n    \"apps/polar-ideacave-godot/itree_dual_map_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_graph_projection_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_navigation_state_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_tree_projection_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_zoom_selftest.gd\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-cycle.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-semantics.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-version-b.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/navigation-encoded-slots.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/polar-station-native.itree.json\",\n    \"crates/polar-force-layout-core/src/bin/oracle.rs\",\n    \"crates/polar-force-layout-core/upstream/golden.json\",\n    \"crates/polar-force-layout-core/upstream/oracle.mjs\",\n    \"crates/polar-force-layout-core/upstream/package-lock.json\",\n    \"crates/polar-force-layout-core/upstream/package.json\"\n"
-        ]
+      "rules": [
+        {
+          "old": "    \"Root workspace owns both migrated crates. Native library renamed polar_graphics_godot.\",\n    \"Standalone source startup changed to Idea Tree workspace.\"\n  ]\n}\n",
+          "new": "    \"Root workspace owns both migrated crates. Native library renamed polar_graphics_godot.\",\n    \"Standalone source startup changed to Idea Tree workspace.\"\n  ],\n  \"public_export_note\": \"This is a historical import provenance ledger, not the current distribution inventory. Development examples, tests and oracle material may be excluded; PUBLIC_SOURCE_MANIFEST.json is authoritative for included files.\",\n  \"public_export_excluded_files\": [\n    \"apps/polar-ideacave-godot/itree-koala-sample.json\",\n    \"apps/polar-ideacave-godot/itree_card.gdshader\",\n    \"apps/polar-ideacave-godot/itree_dual_map_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_graph_projection_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_navigation_state_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_tree_projection_selftest.gd\",\n    \"apps/polar-ideacave-godot/itree_zoom_selftest.gd\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-cycle.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-semantics.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/model-version-b.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/navigation-encoded-slots.itree.json\",\n    \"apps/polar-ideacave-godot/test-fixtures/polar-station-native.itree.json\",\n    \"crates/polar-force-layout-core/src/bin/oracle.rs\",\n    \"crates/polar-force-layout-core/upstream/golden.json\",\n    \"crates/polar-force-layout-core/upstream/oracle.mjs\",\n    \"crates/polar-force-layout-core/upstream/package-lock.json\",\n    \"crates/polar-force-layout-core/upstream/package.json\"\n  ]\n}\n"
+        }
       ]
     },
     {
       "path": "apps/polar-ideacave-godot/itree_view_model.gd",
-      "before": "a60da5d7bc84630c5b89b83d24165dc569cf7333a22eee872bfd1d6fb5f09076",
-      "after": "fe68433d13013b1605d4af4965c65cd5f472ca48f40376c997ed1a417c18ab3b",
-      "ranges": [
-        [
-          1866,
-          1911,
-          "\tvar path := \"\"\n"
-        ],
-        [
-          2009,
-          2009,
-          "\tif path.is_empty():\n\t\terror = \"Open an Idea Tree file to continue.\"\n\t\treturn false\n"
-        ]
+      "rules": [
+        {
+          "old": "\tif not OS.get_environment(\"POLAR_LAB_GRAPH\").is_empty():\n\t\treturn _load_projection(OS.get_environment(\"POLAR_LAB_GRAPH\"))\n\tvar path := \"res://itree-koala-sample.json\"\n\tfor arg in OS.get_cmdline_user_args():\n\t\tif arg.begins_with(\"--itree=\"):\n\t\t\tpath = arg.substr(8)\n\treturn _load_itree(path)\n\n",
+          "new": "\tif not OS.get_environment(\"POLAR_LAB_GRAPH\").is_empty():\n\t\treturn _load_projection(OS.get_environment(\"POLAR_LAB_GRAPH\"))\n\tvar path := \"\"\n\tfor arg in OS.get_cmdline_user_args():\n\t\tif arg.begins_with(\"--itree=\"):\n\t\t\tpath = arg.substr(8)\n\tif path.is_empty():\n\t\terror = \"Open an Idea Tree file to continue.\"\n\t\treturn false\n\treturn _load_itree(path)\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-macos/Package.swift",
-      "before": "bc9a014f5566beacfdbf66f144530b8af6bd58ad1b2d7e3362ba45e7ca4b9b51",
-      "after": "82ad4f266e4d6a973a0460d20125583be34c05617904905e2b86fcbbcc4b4e93",
-      "ranges": [
-        [
-          923,
-          1056,
-          "            dependencies: [\"CPolarStationDesktopClient\"]\n"
-        ]
+      "rules": [
+        {
+          "old": "        .target(\n            name: \"PolarTmuxHostClient\",\n            dependencies: [\"CPolarStationDesktopClient\"],\n            resources: [\n                .copy(\"Resources\"),\n            ]\n        ),\n        .target(\n",
+          "new": "        .target(\n            name: \"PolarTmuxHostClient\",\n            dependencies: [\"CPolarStationDesktopClient\"]\n        ),\n        .target(\n"
+        },
+        {
+          "old": "            ]\n        ),\n        .testTarget(\n            name: \"PolarTmuxHostClientTests\",\n            dependencies: [\"PolarTmuxHostClient\"]\n        ),\n        .testTarget(\n            name: \"PolarStationNativeWorkspaceTests\",\n            dependencies: [\"PolarStationNativeWorkspace\"],\n            path: \"Tests/PolarStationNativeWorkspaceTests\",\n            sources: [\n                \"NativeLifecycleStateTests.swift\",\n                \"NativeWorkspaceLayoutTests.swift\",\n                \"StationDictateKeyCaptureTests.swift\",\n            ]\n        ),\n        .testTarget(\n            name: \"PolarTmuxMacUITests\",\n            dependencies: [\"PolarTmuxMacUI\"]\n        ),\n    ]\n)\n",
+          "new": "            ]\n        ),\n    ]\n)\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-macos/ghostty-module/ControlCenterStore.swift",
-      "before": "49821ccb4059cba50c309b7f2270136885cfeea85899b157bf4de205921989ea",
-      "after": "23111ff15275d34ccc530a408a1c2b8b1f779154f239ccab144c0b70c596d4bb",
-      "ranges": [
-        [
-          504,
-          599,
-          "/// Host.\n"
-        ],
-        [
-          4198,
-          4274,
-          ""
-        ],
-        [
-          6630,
-          6690,
-          ""
-        ],
-        [
-          6888,
-          6919,
-          ""
-        ],
-        [
-          9409,
-          9668,
-          ""
-        ],
-        [
-          26385,
-          26694,
-          "        submitHostIntent(\n            hydrateNativeIdentity(\n                in: intent.operation,\n                projection: projection\n"
-        ],
-        [
-          26708,
-          27066,
-          "        )\n"
-        ],
-        [
-          29429,
-          30109,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "///\n/// Production always loads and mutates through the authenticated local Rust\n/// Host. A fixture source is injectable only for deterministic unit and\n/// screenshot tests.\n@MainActor\nfinal class ControlCenterStore: ObservableObject {\n",
+          "new": "///\n/// Production always loads and mutates through the authenticated local Rust\n/// Host.\n@MainActor\nfinal class ControlCenterStore: ObservableObject {\n"
+        },
+        {
+          "old": "        PolarStationBackendAvailability = .starting\n\n    private let fixtureSource:\n        (any ControlCenterProjectionSource)?\n    var inboxOriginSource: (@MainActor (PolarTmuxSessionKey) -> [TerminalOriginHandleV1])?\n\n",
+          "new": "        PolarStationBackendAvailability = .starting\n\n    var inboxOriginSource: (@MainActor (PolarTmuxSessionKey) -> [TerminalOriginHandleV1])?\n\n"
+        },
+        {
+          "old": "\n    init(\n        source: (any ControlCenterProjectionSource)? = nil,\n        backendSession: PolarStationBackendSession =\n            PolarStationBackendSession(),\n",
+          "new": "\n    init(\n        backendSession: PolarStationBackendSession =\n            PolarStationBackendSession(),\n"
+        },
+        {
+          "old": "        intentSink: @escaping IntentSink = { _ in }\n    ) {\n        fixtureSource = source\n        self.backendSession = backendSession\n        hostIsReady = !awaitsHostReadiness\n",
+          "new": "        intentSink: @escaping IntentSink = { _ in }\n    ) {\n        self.backendSession = backendSession\n        hostIsReady = !awaitsHostReadiness\n"
+        },
+        {
+          "old": "        projectionLoadInFlight = true\n        isLoading = true\n        if let fixtureSource {\n            defer { finishProjectionLoad() }\n            do {\n                try accept(fixtureSource.loadProjection())\n            } catch {\n                failProjectionLoad(error)\n            }\n            return\n        }\n        Task {\n            defer { finishProjectionLoad() }\n",
+          "new": "        projectionLoadInFlight = true\n        isLoading = true\n        Task {\n            defer { finishProjectionLoad() }\n"
+        },
+        {
+          "old": "        lastIntent = intent\n\n        guard let fixtureSource =\n            fixtureSource\n                as? any ControlCenterFixtureInteractionSource\n        else {\n            submitHostIntent(\n                hydrateNativeIdentity(\n                    in: intent.operation,\n                    projection: projection\n                )\n            )\n            return\n        }\n        do {\n            if let nextProjection = try fixtureSource.nextProjection(\n                after: intent,\n                current: projection\n            ) {\n                accept(nextProjection)\n            }\n            intentSink(intent)\n        } catch {\n            loadError = error.localizedDescription\n        }\n    }\n\n",
+          "new": "        lastIntent = intent\n\n        submitHostIntent(\n            hydrateNativeIdentity(\n                in: intent.operation,\n                projection: projection\n            )\n        )\n    }\n\n"
+        },
+        {
+          "old": "        )\n        lastIntent = currentIntent\n        if let fixtureSource =\n            fixtureSource\n                as? any ControlCenterFixtureInteractionSource\n        {\n            do {\n                if let nextProjection =\n                    try fixtureSource.nextProjection(\n                        after: currentIntent,\n                        current: projection\n                    )\n                {\n                    accept(nextProjection)\n                }\n                intentSink(currentIntent)\n                completion(nil)\n            } catch {\n                loadError = error.localizedDescription\n                completion(error.localizedDescription)\n            }\n            return\n        }\n        submitHostIntent(\n            currentIntent.operation,\n",
+          "new": "        )\n        lastIntent = currentIntent\n        submitHostIntent(\n            currentIntent.operation,\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-macos/ghostty-module/PolarStationRuntime.swift",
-      "before": "d58a6bff0d3cc4a1946b2bc44acb25b25774311b87f2cc30f09980dbbf3f9d71",
-      "after": "b2263b03de04a8839f622815d51711e17608aedce2aed4062a19e77ab532788e",
-      "ranges": [
-        [
-          27907,
-          28383,
-          "            model = ControlCenterStore(awaitsHostReadiness: true)\n"
-        ],
-        [
-          31267,
-          31532,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "\n        override private init() {\n            #if DEBUG\n                if ProcessInfo.processInfo.environment[\n                    \"POLAR_STATION_UI_TEST_AUXILIARY\"\n                ] == \"resources\" {\n                    model = ControlCenterStore(source: ControlCenterFixtureSource())\n                } else {\n                    model = ControlCenterStore(awaitsHostReadiness: true)\n                }\n            #else\n                model = ControlCenterStore(awaitsHostReadiness: true)\n            #endif\n            super.init()\n        }\n",
+          "new": "\n        override private init() {\n            model = ControlCenterStore(awaitsHostReadiness: true)\n            super.init()\n        }\n"
+        },
+        {
+          "old": "            )\n            model.prepareForPresentation()\n            #if DEBUG\n                if ProcessInfo.processInfo.environment[\n                    \"POLAR_STATION_UI_TEST_AUXILIARY\"\n                ] == \"resources\" {\n                    requestAuxiliaryPresentation(.resources)\n                }\n            #endif\n            model.startHostConnection()\n            if !startHost() { scheduleHostRestart() }\n",
+          "new": "            )\n            model.prepareForPresentation()\n            model.startHostConnection()\n            if !startHost() { scheduleHostRestart() }\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-macos/ghostty-overlay/apply-overlay.sh",
-      "before": "db98c94ba6551346c392c089d0f2f7e928eecccca123f0f46278238e82020602",
-      "after": "94c7fbcd88ee05ee9487a2814edbbde4d1c114f34cb4c794ef907446b55cd4cd",
-      "ranges": [
-        [
-          4243,
-          4446,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "    \"$repo_root/apps/polar-station-macos/Resources/PolarStation.icns\" \\\n    \"$source_dir/macos/Sources/PolarStation/PolarStation.icns\"\ninstall -m 0644 \\\n    \"$repo_root/apps/polar-station-macos/ghostty-module/GhosttyUITests/PolarStationMouseStateUITests.swift\" \\\n    \"$source_dir/macos/GhosttyUITests/PolarStationMouseStateUITests.swift\"\n\ninstall -m 0644 \\\n",
+          "new": "    \"$repo_root/apps/polar-station-macos/Resources/PolarStation.icns\" \\\n    \"$source_dir/macos/Sources/PolarStation/PolarStation.icns\"\n\ninstall -m 0644 \\\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/README.md",
-      "before": "caae8487fb43e931c2ae0f4971f78b57c1ca2bca5990b46ed730f2fce53f210a",
-      "after": "34053f7ea45f4b9edef371254bba7dd8a094bb64a65931d8d378abe47f0de997",
-      "ranges": [
-        [
-          642,
-          805,
-          "The retired Python/PyGObject frontend is excluded from this public repository.\nThe managed Zig frontend is a thin client of the per-user Rust Host:\n"
-        ],
-        [
-          2700,
-          2721,
-          "## Public source scope\n"
-        ],
-        [
-          2722,
-          3009,
-          "The obsolete Python frontend, its UI resources, pip package, development launcher,\nand tests are not exported. Python scripts under `automation/polar_station/`\nare build/export/license utilities, not the retired UI, and remain necessary.\nThe Linux source directory is `apps/polar-station-linux`. Rust Host/IPC identifiers\nremain unchanged. The public exporter excludes the retired paths and rejects\nsnapshots that reintroduce them.\n"
-        ],
-        [
-          6569,
-          6696,
-          "gjs -m apps/polar-station-linux/tools/wayland-capture.mjs\ngjs -m apps/polar-station-linux/tools/wayland-capture.mjs --source=monitor\n"
-        ]
+      "rules": [
+        {
+          "old": "is created.\n\nThe older PyGObject source in this directory is migration evidence only and is\nnot the product runtime. Both frontends are thin clients of the per-user Rust\nHost:\n\n- the Host owns execution targets, tmux inspection, mutations, revisions, and\n",
+          "new": "is created.\n\nThe retired Python/PyGObject frontend is excluded from this public repository.\nThe managed Zig frontend is a thin client of the per-user Rust Host:\n\n- the Host owns execution targets, tmux inspection, mutations, revisions, and\n"
+        },
+        {
+          "old": "supported development path.\n\n## Retired bootstrap\n\nHistorical Python/PyGObject files may remain temporarily as migration evidence.\nThey receive no fixes or product behavior and are not prerequisites for the\nmanaged application. Reusable fixtures move to Rust/Zig ownership before those\nfiles are removed in a separately reviewed cleanup.\n\nGhostty's `new-window-command` action accepts Ghostty CLI arguments rather than\n",
+          "new": "supported development path.\n\n## Public source scope\n\nThe obsolete Python frontend, its UI resources, pip package, development launcher,\nand tests are not exported. Python scripts under `automation/polar_station/`\nare build/export/license utilities, not the retired UI, and remain necessary.\nThe Linux source directory is `apps/polar-station-linux`. Rust Host/IPC identifiers\nremain unchanged. The public exporter excludes the retired paths and rejects\nsnapshots that reintroduce them.\n\nGhostty's `new-window-command` action accepts Ghostty CLI arguments rather than\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/README.md",
-      "before": "236ebdeecb50046c38bad5aa3fd5d50a32680bcbd2a2d800a391dd80536228fb",
-      "after": "654053d088ab29f25ba0159d337f29eadde1dad51b265dc109706ab891649aa4",
-      "ranges": [
-        [
-          4024,
-          4080,
-          "# Private monorepo test entrypoint omitted from the public source export.\n"
-        ],
-        [
-          4085,
-          4383,
-          "The retired Python/PyGObject Phase 5 bootstrap remains only in the private\nmonorepo as migration evidence. It is excluded from this public source export\nand does not participate in the product runtime.\n"
-        ]
+      "rules": [
+        {
+          "old": "\n```text\nzig test apps/polar-station-linux/ghostty-module/tests.zig\n```\n\nThe Python/PyGObject tree elsewhere under `apps/polar-station-linux/` is retired\nPhase 5 bootstrap evidence and does not participate in this product runtime.\nNo new product behavior may be added to it; reusable fixtures move to\nRust/Zig before that tree is deleted in its separately reviewed cleanup.\n",
+          "new": "\n```text\n# Private monorepo test entrypoint omitted from the public source export.\n```\n\nThe retired Python/PyGObject Phase 5 bootstrap remains only in the private\nmonorepo as migration evidence. It is excluded from this public source export\nand does not participate in the product runtime.\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/application_refresh.zig",
-      "before": "ba8af4f7b6e5454edb3d1fde8d8026af4017e126a1be49c745881cf36b161bb3",
-      "after": "6c99d90e5be42e8cead6cf3275bfe98e76a48e1edb4637b82a0a2ba8bafe30b2",
-      "ranges": [
-        [
-          2311,
-          3448,
-          "\n"
-        ]
+      "rules": [
+        {
+          "old": "};\n\ntest \"equal displayed content retains widgets while order status and action changes invalidate\" {\n    const std = @import(\"std\");\n    const Inputs = struct { names: []const []const u8, online: bool, enabled: bool };\n    var inputs: RenderedInputs = .{};\n    defer inputs.deinit(std.testing.allocator);\n    const original = Inputs{ .names = &.{ \"one\", \"two\" }, .online = true, .enabled = true };\n    try std.testing.expect(inputs.changed(std.testing.allocator, original));\n    const copy = try std.testing.allocator.dupe(u8, \"one\");\n    defer std.testing.allocator.free(copy);\n    try std.testing.expect(!inputs.changed(std.testing.allocator, Inputs{ .names = &.{ copy, \"two\" }, .online = true, .enabled = true }));\n    try std.testing.expect(inputs.changed(std.testing.allocator, Inputs{ .names = &.{ \"two\", \"one\" }, .online = true, .enabled = true }));\n    try std.testing.expect(inputs.changed(std.testing.allocator, Inputs{ .names = &.{ \"two\", \"one\" }, .online = false, .enabled = true }));\n    try std.testing.expect(inputs.changed(std.testing.allocator, Inputs{ .names = &.{ \"two\", \"one\" }, .online = false, .enabled = false }));\n}\n",
+          "new": "};\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/codex.zig",
-      "before": "8094b6321cd5ef6264b25f5109b30d7a0ad63b224f0047918fab4f598309bca5",
-      "after": "f7f76d832c42a5ee9d55b1856cd2391c7e5872141adcefe311b75d0a4cb44279",
-      "ranges": [
-        [
-          6678,
-          9514,
-          "\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"native confirmation keeps original owner binding revision and turn\" {\n    const allocator = std.testing.allocator;\n    var state: State = .{ .binding = .{ .owner_host_id = \"owner-a\", .binding_id = \"binding\", .revision = 7, .session = .{ .execution_target = \"local\", .tmux_session_id = \"$1\" }, .endpoint_id = \"endpoint\", .thread_id = \"thread\", .imessage_enabled = false }, .connection = \"connected\", .activity = \"active\", .turn_id = \"turn-a\", .can_queue = true, .can_steer = true, .can_interrupt = true };\n    var action: controls.Action = .{ .id = \"interrupt\", .label = \"Interrupt\", .role = .destructive, .enabled = true, .selected = false, .disabled_reason = null, .confirmation = null, .accessibility_label = \"Interrupt\" };\n    const payload = try encodeAction(allocator, \"unique-intent\", state, action, \"\");\n    defer allocator.free(payload);\n    state.turn_id = \"turn-b\";\n    state.binding.revision = 8;\n    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, payload, .{});\n    defer parsed.deinit();\n    const request = parsed.value.object.get(\"request\").?.object;\n    const command = request.get(\"command\").?.object;\n    try std.testing.expectEqualStrings(\"owner-a\", request.get(\"owner_host_id\").?.string);\n    try std.testing.expectEqualStrings(\"turn-a\", command.get(\"turn_id\").?.string);\n    try std.testing.expectEqual(@as(i64, 7), command.get(\"expected_revision\").?.integer);\n    action.enabled = false;\n    try std.testing.expectError(error.ActionDisabled, encodeAction(allocator, \"later\", state, action, \"\"));\n}\ntest \"Codex original input and typed receipt do not pass through terminal commands\" {\n    const allocator = std.testing.allocator;\n    const wire = try encode(allocator, \"rpc\", \"owner\", .{ .kind = \"steer\", .binding_id = \"binding\", .expected_revision = 7, .intent_id = \"intent\", .expected_turn_id = \"turn\", .text = \"/literal\\nexact text\" });\n    defer allocator.free(wire);\n    var value = try std.json.parseFromSlice(std.json.Value, allocator, wire, .{});\n    defer value.deinit();\n    const request = value.value.object.get(\"request\").?.object;\n    try std.testing.expectEqualStrings(\"owner\", request.get(\"owner_host_id\").?.string);\n    const command = request.get(\"command\").?.object;\n    try std.testing.expectEqualStrings(\"/literal\\nexact text\", command.get(\"text\").?.string);\n    try std.testing.expectEqualStrings(\"turn\", command.get(\"expected_turn_id\").?.string);\n    var response = try decode(allocator, \"{\\\"type\\\":\\\"application_response\\\",\\\"response\\\":{\\\"protocol_version\\\":1,\\\"api\\\":\\\"codex_v1\\\",\\\"owner_host_id\\\":\\\"owner\\\",\\\"request_id\\\":\\\"rpc\\\",\\\"result\\\":{\\\"kind\\\":\\\"receipt\\\",\\\"receipt\\\":{\\\"intent_id\\\":\\\"intent\\\",\\\"status\\\":\\\"unknown\\\"}}}}\");\n    defer response.deinit();\n    try std.testing.expectEqualStrings(\"unknown\", response.value.response.result.receipt.?.status);\n}\n",
+          "new": "}\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/content_lifecycle.zig",
-      "before": "bd60c40e8848a36389c6f1f8cd249939191b31eb5b387dfcb841fd99c3962698",
-      "after": "fa3b94ff308d9f11ff1f298e37722883e4edc02702c699d4f5a4e10c7bbc8a26",
-      "ranges": [
-        [
-          8993,
-          9215,
-          ""
-        ],
-        [
-          9216,
-          9473,
-          ""
-        ],
-        [
-          9474,
-          9855,
-          ""
-        ],
-        [
-          9856,
-          10059,
-          ""
-        ],
-        [
-          10060,
-          10529,
-          ""
-        ],
-        [
-          10530,
-          11363,
-          ""
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/ghostty-module/control_center/intent.zig",
-      "before": "9feac413032001e9d53e1877c282eae236c4291e661d07edd733b3ceb2a81342",
-      "after": "9411b064d976621e0c4f448d8461b1f3b792e5867771b49c24dfe81987264adf",
-      "ranges": [
-        [
-          15934,
-          17269,
-          "\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"channel identity remains unique across warm window replacement\" {\n    const allocator = std.testing.allocator;\n    var lifecycle = Lifecycle.init(allocator, 4108582, \"frontend-run-22\");\n    defer lifecycle.deinit();\n\n    var first = try lifecycle.allocateChannel(allocator, \"/run/user/1000\");\n    defer first.deinit(allocator);\n    var replacement = try lifecycle.allocateChannel(\n        allocator,\n        \"/run/user/1000\",\n    );\n    defer replacement.deinit(allocator);\n\n    try std.testing.expect(!std.mem.eql(\n        u8,\n        first.channel_id,\n        replacement.channel_id,\n    ));\n    try std.testing.expect(!std.mem.eql(\n        u8,\n        first.control_socket,\n        replacement.control_socket,\n    ));\n    try std.testing.expect(std.mem.indexOf(\n        u8,\n        replacement.control_socket,\n        \"pane-4108582-\",\n    ) != null);\n}\n\ntest \"failed exact retirement remains retryable until completion\" {\n    const allocator = std.testing.allocator;\n    var lifecycle = Lifecycle.init(allocator, 44, \"run-a\");\n    defer lifecycle.deinit();\n\n    const lease_id = try lifecycle.beginRetirement(.{\n        .channel_id = \"linux-surface-44-a-1\",\n        .channel_generation = 1,\n        .content_revision = 2,\n        .control_socket = \"/run/user/1000/polar-tmux/pane-44-a-1.sock\",\n    });\n    lifecycle.markRetirementAttempt(lease_id);\n    try std.testing.expectEqual(@as(usize, 1), lifecycle.pendingRetirementCount());\n    try std.testing.expectEqual(@as(u32, 1), lifecycle.retirement(lease_id).?.attempt_count);\n\n    const duplicate = try lifecycle.beginRetirement(.{\n        .channel_id = \"linux-surface-44-a-1\",\n        .channel_generation = 1,\n        .content_revision = 2,\n        .control_socket = \"/run/user/1000/polar-tmux/pane-44-a-1.sock\",\n    });\n    try std.testing.expectEqual(lease_id, duplicate);\n    try std.testing.expect(lifecycle.completeRetirement(lease_id));\n    try std.testing.expectEqual(@as(usize, 0), lifecycle.pendingRetirementCount());\n}\n\ntest \"missing exact retirement endpoint completes idempotently\" {\n    try std.testing.expectEqual(\n        RetirementFailureDisposition.already_retired,\n        classifyRetirementTransportFailure(error.FileNotFound),\n    );\n    try std.testing.expectEqual(\n        RetirementFailureDisposition.retry,\n        classifyRetirementTransportFailure(error.ConnectionRefused),\n    );\n}\n",
+          "new": "}\n\n\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/control_center/width_preferences.zig",
-      "before": "51baeab6630a0dee3e22b69333fb961bcd7503fde0b6720e1a6fc37250cf7661",
-      "after": "8a550a5212e1393a8aeddcfc9f15bfbde406f91b2e2e9c06ada63423c487b5d1",
-      "ranges": [
-        [
-          7168,
-          7413,
-          ""
-        ],
-        [
-          7414,
-          8260,
-          ""
-        ],
-        [
-          8261,
-          9116,
-          "\n\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"large editor ignores legacy compact geometry while retaining map width\" {\n    var temp = std.testing.tmpDir(.{});\n    defer temp.cleanup();\n    try temp.dir.writeFile(.{ .sub_path = \"preferences.json\", .data = \"{\\\"editor_width\\\":1040,\\\"editor_height\\\":700,\\\"map_width\\\":320}\" });\n    const dir = try temp.dir.realpathAlloc(std.testing.allocator, \".\");\n    defer std.testing.allocator.free(dir);\n    var prefs = Preferences{ .allocator = std.testing.allocator, .path = try std.fs.path.join(std.testing.allocator, &.{dir, \"preferences.json\"}) };\n    defer prefs.deinit();\n    try std.testing.expect(prefs.loadEditorSize(false) == null);\n    try std.testing.expectEqual(@as(c_int, 320), prefs.loadOrDefault(1280));\n    try prefs.saveEditorSize(false, .{1152, 720});\n    try std.testing.expectEqual([2]c_int{1152, 720}, prefs.loadEditorSize(true).?);\n}\n",
+          "new": "}\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/host_frame_batch.zig",
-      "before": "c7ce8f67018d55badef6040f47c91d35b9a75ca78a39217830930f2d0e48fc56",
-      "after": "a23ebb1c45d83f7f650535fda5e1300a768c6bef798a11bf61fd843e446a102b",
-      "ranges": [
-        [
-          1293,
-          1501,
-          ""
-        ],
-        [
-          1502,
-          2129,
-          ""
-        ],
-        [
-          2130,
-          2318,
-          ""
-        ],
-        [
-          2319,
-          2500,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "};\n\ntest \"1,220 Session events are split into bounded one-render batches\" {\n    var remaining: usize = 1_220;\n    var batch_count: usize = 0;\n    var projection_count: usize = 0;\n    var render_count: usize = 0;\n\n    while (remaining > 0) {\n        var batch: Batch = .{};\n        while (remaining > 0 and batch.canPop()) {\n            batch.observedFrame();\n            batch.requestSessionProjection();\n            remaining -= 1;\n        }\n        try std.testing.expect(batch.processed <= max_frames_per_tick);\n        if (batch.takeSessionProjection()) {\n            projection_count += 1;\n            batch.requestRender();\n        }\n        try std.testing.expect(!batch.takeSessionProjection());\n        if (batch.takeRender()) render_count += 1;\n        try std.testing.expect(!batch.takeRender());\n        batch_count += 1;\n    }\n\n    try std.testing.expectEqual(@as(usize, 10), batch_count);\n    try std.testing.expectEqual(batch_count, projection_count);\n    try std.testing.expectEqual(batch_count, render_count);\n}\n\ntest \"a Host frame batch without a display-state change does not render\" {\n",
+          "new": "};\n\n\n\n\ntest \"a Host frame batch without a display-state change does not render\" {\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/inbox.zig",
-      "before": "d8c59c2d18043db6cd96bb986780613453ebd3f006e08d5f28fdf25decdd3af2",
-      "after": "0ed9e01d2be3cff5c224a1ac6cc210d2d03382a5c5b17a4a792d7333b7cf6911",
-      "ranges": [
-        [
-          6739,
-          7145,
-          "\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"Inbox approval is revisioned and defaults are explicit\" {\n    const value = try encodeApprove(std.testing.allocator, \"inbox-1\", \"message-1\", 4, \"insert\", \"nonce-1\");\n    defer std.testing.allocator.free(value);\n    try std.testing.expect(std.mem.indexOf(u8, value, \"\\\"expected_revision\\\":4\") != null);\n    try std.testing.expect(std.mem.indexOf(u8, value, \"\\\"delivery_mode\\\":\\\"insert\\\"\") != null);\n}\n",
+          "new": "}\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/ipc_client.zig",
-      "before": "a7b12d84368829204d7a319f21650600c5fad757aa555d629be7503f5a4b2733",
-      "after": "2a863af4272409e2214dbdb36c7f992807238b2650c1b6db80367b56db8a7bba",
-      "ranges": [
-        [
-          12889,
-          13393,
-          "\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"Zig adapter owns only wake drain and explicit endpoint selection\" {\n    const source = @embedFile(\"ipc_client.zig\");\n    try std.testing.expect(std.mem.indexOf(u8, source, \"connectUnix\" ++ \"Socket\") == null);\n    try std.testing.expect(std.mem.indexOf(u8, source, \"connection_\" ++ \"generation\") == null);\n    try std.testing.expect(std.mem.indexOf(u8, source, \"polar_station_desktop_client_new\") != null);\n    try std.testing.expect(std.mem.indexOf(u8, source, \"POLAR_TMUX_IPC_SOCKET\") != null);\n}\n",
+          "new": "}\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/native_surface_transition.zig",
-      "before": "42a9249f75d115cd93158804f8d349a63ede1237544b14c1cca57fdd0211ecdc",
-      "after": "8231b6032feca7f7f958c7390f797c9fd857f74beeb5d344a55f33222d8721af",
-      "ranges": [
-        [
-          735,
-          1297,
-          "\n"
-        ],
-        [
-          4885,
-          5567,
-          ""
-        ],
-        [
-          5568,
-          5943,
-          ""
-        ],
-        [
-          5944,
-          6159,
-          ""
-        ],
-        [
-          6160,
-          6771,
-          ""
-        ],
-        [
-          6772,
-          7452,
-          "\n\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"Focus input follows MAIN while Monitor retains its explicit terminal\" {\n    try std.testing.expectEqualStrings(\"main\", terminalFocusPaneId(.focus, \"main\", \"sidebar\").?);\n    try std.testing.expectEqualStrings(\"next\", terminalFocusPaneId(.focus, \"next\", \"main\").?);\n    try std.testing.expectEqualStrings(\"former-main\", terminalFocusPaneId(.monitor, null, \"former-main\").?);\n    try std.testing.expectEqualStrings(\"selected\", terminalFocusPaneId(.monitor, null, \"selected\").?);\n    try std.testing.expect(terminalFocusPaneId(.focus, null, null) == null);\n}\n\npub const Plan = struct {\n",
+          "new": "}\n\n\n\npub const Plan = struct {\n"
+        },
+        {
+          "old": "}\n\ntest \"Linux add and remove mutate one Surface and one content binding\" {\n    const two = [_][]const u8{ \"p1\", \"p2\" };\n    const three = [_][]const u8{ \"p1\", \"p2\", \"p3\" };\n    const add = try plan(two[0..], three[0..]);\n    try std.testing.expectEqualSlices([]const u8, &.{\"p3\"}, add.created());\n    try std.testing.expectEqual(@as(usize, 1), add.rust_content_request_count);\n\n    const remove = try plan(three[0..], two[0..]);\n    try std.testing.expectEqualSlices([]const u8, &.{\"p3\"}, remove.retired());\n    try std.testing.expectEqual(@as(usize, 1), remove.rust_content_request_count);\n}\n\ntest \"Linux cross-Tab move transfers the same pointer without touching content\" {\n",
+          "new": "}\n\n\n\ntest \"Linux cross-Tab move transfers the same pointer without touching content\" {\n"
+        },
+        {
+          "old": "}\n\ntest \"Linux independently plans Surface movement and Rust content mutation\" {\n    try std.testing.expectEqual(\n        ContentMutation.reuse_surface,\n        planContentMutation(\"tab-1\", \"local-$1\", \"tab-1\", \"local-$1\"),\n    );\n    try std.testing.expectEqual(\n        ContentMutation.rebind_content,\n        planContentMutation(\"tab-1\", \"local-$1\", \"tab-1\", \"local-$2\"),\n    );\n    try std.testing.expectEqual(\n        ContentMutation.move_surface,\n        planContentMutation(\"tab-1\", \"local-$1\", \"tab-2\", \"local-$1\"),\n    );\n    try std.testing.expectEqual(\n        ContentMutation.move_and_rebind,\n        planContentMutation(\"tab-1\", \"local-$1\", \"tab-2\", \"ssh-$8\"),\n    );\n}\n",
+          "new": "}\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/native_workspace_layout.zig",
-      "before": "7d04b37808a52fc2322992c269a767f7c44fb97c53b46773df6f621eb7923fb8",
-      "after": "2c672e8167e3a6e5c3210579281088a234e678bde59d27a086dc959c17d2e868",
-      "ranges": [
-        [
-          13234,
-          13821,
-          ""
-        ],
-        [
-          13822,
-          14415,
-          ""
-        ],
-        [
-          14416,
-          15093,
-          ""
-        ],
-        [
-          15094,
-          15791,
-          ""
-        ],
-        [
-          15792,
-          16397,
-          ""
-        ],
-        [
-          16398,
-          17176,
-          ""
-        ],
-        [
-          17177,
-          17381,
-          ""
-        ],
-        [
-          17382,
-          17689,
-          ""
-        ],
-        [
-          17690,
-          18013,
-          ""
-        ],
-        [
-          18014,
-          18518,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"approved native Monitor and Focus corpus covers one through nine Panes\" {\n    const pane_ids = [_][]const u8{\n        \"p1\", \"p2\", \"p3\", \"p4\", \"p5\", \"p6\", \"p7\", \"p8\", \"p9\",\n    };\n    const monitor_expected = [_][]const usize{\n        &.{1},         &.{ 1, 1 },    &.{ 1, 2 },    &.{ 1, 2, 1 }, &.{ 1, 2, 2 },\n        &.{ 2, 2, 2 }, &.{ 2, 3, 2 }, &.{ 2, 3, 3 }, &.{ 3, 3, 3 },\n    };\n    const focus_expected = [_][]const usize{\n        &.{1},         &.{ 1, 1 },    &.{ 1, 2 },    &.{ 1, 2, 1 }, &.{ 1, 2, 2 },\n        &.{ 1, 2, 3 }, &.{ 1, 3, 3 }, &.{ 1, 3, 4 }, &.{ 1, 4, 4 },\n    };\n\n    for (1..10) |pane_count| {\n        const monitor = try layout(pane_ids[0..pane_count], .monitor, null);\n        try std.testing.expectEqualSlices(\n            usize,\n            monitor_expected[pane_count - 1],\n            monitor.columnPopulations(),\n        );\n        try std.testing.expectEqualSlices(\n            []const u8,\n            pane_ids[0..pane_count],\n            monitor.visualPaneIds(),\n        );\n        for (monitor.slotsSlice()) |slot| {\n            try std.testing.expectEqual(Role.monitor, slot.role);\n            try std.testing.expectEqual(\n                Ratio.init(1, monitor.column_count),\n                slot.width,\n            );\n        }\n\n        const focus = try layout(\n            pane_ids[0..pane_count],\n            .focus,\n            pane_ids[pane_count - 1],\n        );\n        try std.testing.expectEqualSlices(\n            usize,\n            focus_expected[pane_count - 1],\n            focus.columnPopulations(),\n        );\n        try std.testing.expectEqualStrings(\n            pane_ids[pane_count - 1],\n            focus.visualPaneIds()[0],\n        );\n        try std.testing.expectEqual(Role.main, focus.slotsSlice()[0].role);\n        for (focus.slotsSlice()[1..]) |slot| {\n            switch (slot.role) {\n                .sidebar => {},\n                else => return error.ExpectedSidebarRole,\n            }\n        }\n\n        const widths = focus.columnsSlice();\n        if (pane_count == 1) {\n            try std.testing.expectEqual(Ratio.init(1, 1), widths[0].width);\n        } else if (pane_count <= 3) {\n            try std.testing.expectEqual(Ratio.init(4, 5), widths[0].width);\n            try std.testing.expectEqual(Ratio.init(1, 5), widths[1].width);\n        } else {\n            try std.testing.expectEqual(Ratio.init(3, 5), widths[0].width);\n            try std.testing.expectEqual(Ratio.init(1, 5), widths[1].width);\n            try std.testing.expectEqual(Ratio.init(1, 5), widths[2].width);\n        }\n    }\n}\n\ntest \"native layout rejects invalid Pane sets and Focus main identity\" {\n",
+          "new": "}\n\n\n\n\n\ntest \"native layout rejects invalid Pane sets and Focus main identity\" {\n"
+        },
+        {
+          "old": "}\n\ntest \"Focus cycle follows canonical order and swaps only main and target visual slots\" {\n    const canonical = [_][]const u8{ \"A\", \"B\", \"C\", \"D\" };\n    const visual = [_][]const u8{ \"D\", \"A\", \"B\", \"C\" };\n\n    const next = try cycleFocus(canonical[0..], visual[0..], .next);\n    try std.testing.expect(next.changed);\n    try std.testing.expectEqualStrings(\"A\", next.mainPaneId().?);\n    try std.testing.expectEqualSlices(\n        []const u8,\n        &.{ \"A\", \"D\", \"B\", \"C\" },\n        next.visualPaneIds(),\n    );\n\n    const previous = try cycleFocus(\n        canonical[0..],\n        next.visualPaneIds(),\n        .previous,\n    );\n    try std.testing.expectEqualStrings(\"D\", previous.mainPaneId().?);\n    try std.testing.expectEqualSlices(\n        []const u8,\n        &.{ \"D\", \"A\", \"B\", \"C\" },\n        previous.visualPaneIds(),\n    );\n}\n\ntest \"Focus cycle is a no-op for one Pane and rejects mismatched visual identity\" {\n",
+          "new": "}\n\n\n\n\ntest \"Focus cycle is a no-op for one Pane and rejects mismatched visual identity\" {\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/native_workspace_state.zig",
-      "before": "895c4146b1170c1ad447f9a7f0eacc298940709e188ff42f474014adbfcbebe5",
-      "after": "64365cfb4606f9621ed8759b8c0088ccb691caa70dd8b389986b1a461d474d70",
-      "ranges": [
-        [
-          48104,
-          48891,
-          ""
-        ],
-        [
-          48892,
-          49705,
-          ""
-        ],
-        [
-          49706,
-          50917,
-          ""
-        ],
-        [
-          50918,
-          51276,
-          ""
-        ],
-        [
-          51277,
-          52315,
-          ""
-        ],
-        [
-          52316,
-          53375,
-          ""
-        ],
-        [
-          53376,
-          54212,
-          ""
-        ],
-        [
-          54213,
-          55072,
-          ""
-        ],
-        [
-          55073,
-          55812,
-          ""
-        ],
-        [
-          55813,
-          57400,
-          ""
-        ],
-        [
-          57401,
-          58754,
-          "\n\n\n\n\n\n\n"
-        ],
-        [
-          58834,
-          62039,
-          ""
-        ],
-        [
-          62041,
-          64650,
-          ""
-        ],
-        [
-          64652,
-          65826,
-          ""
-        ],
-        [
-          65828,
-          66441,
-          ""
-        ],
-        [
-          66443,
-          67600,
-          "\n\n\n\n\n\n\n\n\n\n\n"
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/ghostty-module/native_workspace_store.zig",
-      "before": "cbcf55cbda859cccd45b2875839c7178f0509fdefdeaa62604b43d592c64c6ac",
-      "after": "7aa4eeb898202c32b7590bba93fa78e1d5b2c49e5a43882678f5aa545531ab55",
-      "ranges": [
-        [
-          22985,
-          27061,
-          ""
-        ],
-        [
-          27063,
-          28671,
-          ""
-        ],
-        [
-          28673,
-          29952,
-          "\n\n\n\n\n\n\n\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\nfn fixtureState() !State {\n    const allocator = std.testing.allocator;\n    const pane: renderpkg.Pane = .{ .id = \"p1\", .execution_target_id = \"local\", .tmux_session_id = \"$1\", .transport_status = .online, .attach_fingerprint = \"fixture\", .attach_plan = .{ .program = \"\", .args = &.{} } };\n    const empty: renderpkg.Tab = .{ .id = \"tab-2\", .title = \"Two\", .display_mode = .monitor, .focused_pane_id = null, .layout = .{ .pane_order = &.{}, .slots = &.{}, .fingerprint = \"native\" }, .panes = &.{} };\n    var first = empty;\n    first.id = \"tab-1\";\n    first.title = \"One\";\n    first.panes = &.{pane};\n    first.visual_pane_ids = &.{\"p1\"};\n    return .{ .allocator = allocator, .catalog = try native_workspace_store.OwnedCatalog.clone(allocator, .{ .catalog_revision = 1, .selected_workspace_id = \"workspace\", .workspaces = &.{.{ .workspace_id = \"workspace\", .workspace_name = \"Workspace\", .workspace_revision = 1, .font_size_points = 14, .selected_tab_id = \"tab-1\", .tabs = &.{ first, empty }, .snapshot_fingerprint = \"fixture\" }} }) };\n}\n\ntest \"native observation adopts second Tab once without changing Pane identity or binding\" {\n",
+          "new": "}\n\n\ntest \"native observation adopts second Tab once without changing Pane identity or binding\" {\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/pane_content.zig",
-      "before": "3cf82543a56b0e69b98598784be508ded185071a8d3b5461c7e34bdc344dbc68",
-      "after": "532ea2e490b271096ae773e7467538b0ad2b9f1df2fb20b3b8630c1125892df8",
-      "ranges": [
-        [
-          10700,
-          11693,
-          ""
-        ],
-        [
-          11694,
-          12539,
-          ""
-        ],
-        [
-          12540,
-          12913,
-          ""
-        ],
-        [
-          12914,
-          13766,
-          ""
-        ],
-        [
-          13767,
-          14497,
-          "\n\n\n"
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/ghostty-module/protocol.zig",
-      "before": "dcd51993d5937d15f9a1d0897f1e805567b98874e47133a919e9e7b70e60e23c",
-      "after": "57747389416f1fec87cfe3b3c4f0583a43c70d8e51cb8c2b95b3834c71aead7c",
-      "ranges": [
-        [
-          11635,
-          12262,
-          "\n"
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/ghostty-module/resources.zig",
-      "before": "08197251f1b82e4f5c82f55fd46e5eb60697e536f47260d376d3693268bb7916",
-      "after": "68c6cb9f1a9728f401ff208a7b71b9e985a19be3773464303b2c3d04a845df10",
-      "ranges": [
-        [
-          8390,
-          8990,
-          "\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"content response must match exact physical channel generation and revision\" {\n    const allocator = std.testing.allocator;\n    const expected: Identity = .{\n        .request_id = \"content-7\",\n        .channel_id = \"surface-3\",\n        .channel_generation = 2,\n        .content_revision = 7,\n    };\n    var outcome = try decodeResponse(\n        allocator,\n        \"{\\\"protocol_version\\\":1,\\\"api\\\":\\\"pane_content_v1\\\",\\\"request_id\\\":\\\"content-7\\\",\\\"channel_id\\\":\\\"surface-3\\\",\\\"channel_generation\\\":2,\\\"content_revision\\\":7,\\\"result\\\":{\\\"status\\\":\\\"ready\\\",\\\"binding\\\":{\\\"execution_target\\\":\\\"local\\\",\\\"tmux_session_id\\\":\\\"$1\\\"}}}\",\n        expected,\n    );\n    defer outcome.deinit(allocator);\n    try std.testing.expectEqual(ResultKind.ready, outcome.kind);\n    try std.testing.expectEqualStrings(\"$1\", outcome.binding.?.tmux_session_id);\n\n    try std.testing.expectError(\n        error.ResponseIdentityMismatch,\n        decodeResponse(\n            allocator,\n            \"{\\\"protocol_version\\\":1,\\\"api\\\":\\\"pane_content_v1\\\",\\\"request_id\\\":\\\"content-7\\\",\\\"channel_id\\\":\\\"surface-4\\\",\\\"channel_generation\\\":2,\\\"content_revision\\\":7,\\\"result\\\":{\\\"status\\\":\\\"detached\\\"}}\",\n            expected,\n        ),\n    );\n}\n\ntest \"content transport frames one exact request and bounded response\" {\n",
+          "new": "}\n\n\n\ntest \"content transport frames one exact request and bounded response\" {\n"
+        },
+        {
+          "old": "}\n\ntest \"retire request carries only exact content identity\" {\n    const allocator = std.testing.allocator;\n    const payload = try encodeRetire(\n        allocator,\n        .{\n            .request_id = \"retire-9\",\n            .channel_id = \"surface-3\",\n            .channel_generation = 2,\n            .content_revision = 9,\n        },\n    );\n    defer allocator.free(payload);\n    try std.testing.expect(std.mem.indexOf(\n        u8,\n        payload,\n        \"\\\"operation\\\":\\\"retire\\\"\",\n    ) != null);\n    for ([_][]const u8{\n        \"\\\"binding\\\"\",\n        \"\\\"workspace_id\\\"\",\n        \"\\\"tab_id\\\"\",\n        \"\\\"pane_id\\\"\",\n    }) |forbidden| {\n        try std.testing.expect(std.mem.indexOf(u8, payload, forbidden) == null);\n    }\n}\n",
+          "new": "}\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/session_runtime.zig",
-      "before": "9706877bd70936439c5737a1a05dc685af464adfdc84c3f88d3685eeb27359e4",
-      "after": "de36839919e89f1fbc971eede7420e3ba3f8b867b27ffec7b1503d8c8c39cf45",
-      "ranges": [
-        [
-          13332,
-          14699,
-          ""
-        ],
-        [
-          14700,
-          15545,
-          ""
-        ],
-        [
-          15546,
-          16048,
-          "\n\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"accepted Ending feed remains observable without final Ended\" {\n    var cache = Cache.init(std.testing.allocator);\n    defer cache.deinit();\n    try cache.applySnapshot(\n        \\\\{\"type\":\"session_feed_snapshot\",\"snapshot\":{\"epoch\":\"host-ending\",\"revision\":1,\"sessions\":[{\"key\":{\"execution_target\":\"local\",\"tmux_session_id\":\"$1\"},\"display_name\":\"original\",\"lifecycle\":\"ending\",\"revision\":1}]}}\n    );\n    try std.testing.expectEqualStrings(\"ending\", @tagName(cache.lifecycle(\"local\", \"$1\").?));\n}\n",
+          "new": "}\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/settings.zig",
-      "before": "31d6afab5d31bf5a4e38adb3400594d6def1140b90611b61d2448d9599ab64f8",
-      "after": "6190604c30af75c1b0b3594f60af3ae06a3521bec8acbbcdba70954474cdeec5",
-      "ranges": [
-        [
-          6644,
-          7204,
-          ""
-        ],
-        [
-          7205,
-          7602,
-          ""
-        ],
-        [
-          7603,
-          7890,
-          ""
-        ],
-        [
-          7891,
-          8372,
-          ""
-        ],
-        [
-          8373,
-          8898,
-          "\n\n\n"
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/ghostty-module/shortcuts.zig",
-      "before": "4f384d2251236e1353640b77b6044e13cd1b982a052aaf1fec6da0a6c120314d",
-      "after": "e6ffb275140993df7ca7ffc22f61bc95e04179cf6ba4e2181afddfd21d255837",
-      "ranges": [
-        [
-          3621,
-          4141,
-          ""
-        ],
-        [
-          4142,
-          4452,
-          ""
-        ],
-        [
-          4453,
-          5619,
-          "\n\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"Settings wire preserves shared interface scale and summary quiet period\" {\n    const appearance = try encodeUpdateAppearance(std.testing.allocator, \"settings-appearance-1\", 4, .{\n        .interface_text_scale_percent = 140,\n    });\n    defer std.testing.allocator.free(appearance);\n    try std.testing.expect(std.mem.indexOf(u8, appearance, \"\\\"interface_text_scale_percent\\\":140\") != null);\n\n    const summary = try encodeUpdateSessionSummary(std.testing.allocator, \"settings-summary-1\", 5, .{\n        .quiet_period_ms = 7_000,\n    });\n    defer std.testing.allocator.free(summary);\n    try std.testing.expect(std.mem.indexOf(u8, summary, \"\\\"quiet_period_ms\\\":7000\") != null);\n}\n\ntest \"Settings wire exposes the shared event monitor owner\" {\n",
+          "new": "}\n\n\n\ntest \"Settings wire exposes the shared event monitor owner\" {\n"
+        },
+        {
+          "old": "}\n\ntest \"Appearance mutations preserve theme and other sections\" {\n    const encoded = try encodeUpdateAppearance(std.testing.allocator, \"theme-save\", 9, .{\n        .theme = .{ .mode = \"preset\", .preset = \"nord\", .terminal_theme = \"Dracula\" },\n        .layout_map_width = 260,\n    });\n    defer std.testing.allocator.free(encoded);\n    try std.testing.expect(std.mem.indexOf(u8, encoded, \"\\\"terminal_theme\\\":\\\"Dracula\\\"\") != null);\n    try std.testing.expect(std.mem.indexOf(u8, encoded, \"\\\"layout_map_width\\\":260\") != null);\n}\n",
+          "new": "}\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-module/station_content.zig",
-      "before": "e495d64773c206a42330ed268650d77788d34f3849f26c1ead901ab226683346",
-      "after": "7724de24cdc425d8f1914b72cc55e9877979f78a5cdde306a3db5bb3af66ac4a",
-      "ranges": [
-        [
-          3734,
-          4379,
-          ""
-        ],
-        [
-          4380,
-          5086,
-          "\n\n"
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/ghostty-overlay/apply-overlay.sh",
-      "before": "71419b0acf15c21d4226cd575da0565bd794fb95168808e01a687f7c593834d6",
-      "after": "9a7a809b9d26adf081ce21378d2f36fc53c00d29ce7ff1446f5a76a8dc36f17c",
-      "ranges": [
-        [
-          1511,
-          1571,
-          "cp -R \"$repo_root/apps/polar-station-linux/ghostty-module/.\" \\\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"Idea Tree round trips without conversation fields\" {\n    const value: Content = .{ .kind = .idea_tree, .view_id = \"idea-tree-main\" };\n    try value.validate();\n    const json = try std.json.Stringify.valueAlloc(std.testing.allocator, value, .{});\n    defer std.testing.allocator.free(json);\n    try std.testing.expectEqualStrings(\"{\\\"kind\\\":\\\"idea_tree\\\",\\\"view_id\\\":\\\"idea-tree-main\\\"}\", json);\n    var parsed = try std.json.parseFromSlice(Content, std.testing.allocator, json, .{});\n    defer parsed.deinit();\n    try std.testing.expect(value.eql(parsed.value));\n    var invalid = value; invalid.thread = \"fake\";\n    try std.testing.expectError(error.InvalidContentIdentity, invalid.validate());\n}\n",
+          "new": "}\n\n\n\n"
+        }
       ]
     },
     {
       "path": "apps/polar-station-linux/ghostty-overlay/ghostty-v1.3.1.patch",
-      "before": "e33ff1c50c2f28233d71956638afa153c8ea3a5e8aa407ef2ffbfb57c4bb7f00",
-      "after": "6cbf297cb1ae1310a24d41400d2e3ec6ef59f755da34c837321d4b072ea54611",
-      "ranges": [
-        [
-          75955,
-          77148,
-          ""
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/systemd/polar-tmux-host.service",
-      "before": "7a0fe631e263d7a5a27a86cb59c8e5fadc1f212e83d6ad8d4c6967af53cde5d2",
-      "after": "122820a30fdb1548988d1eb872fce43800a2f9b1e44e7ddc909e3638b1f623ad",
-      "ranges": [
-        [
-          7,
-          49,
-          "Description=Polar Station per-user Rust Host\n"
-        ]
-      ]
-    },
-    {
-      "path": "apps/polar-station-linux/tools/wayland-capture.mjs",
-      "before": "bd66ad7a813a1c72294e7dc4dbbd9ad39ccf9d99d7386fb7d27fef6c92c65c0c",
-      "after": "000f8074e9beef7c35f299dbef5dbcef0c6eb70dbee91bf434f7b47def8546d0",
-      "ranges": [
-        [
-          981,
-          1064,
-          "  gjs -m apps/polar-station-linux/tools/wayland-capture.mjs [--source=window|monitor]\n"
-        ]
+      "rules": [
+        {
+          "old": " /// Control the auto-update functionality of Ghostty. This is only supported\n /// on macOS currently, since Linux builds are distributed via package\n@@ -10302,6 +10308,33 @@\n     try testing.expectEqualStrings(cmd.direct[2], \"bar baz\");\n }\n\n+test \"async backend defaults follow the managed Linux build\" {\n+    const testing = std.testing;\n+    var cfg = try Config.default(testing.allocator);\n+    defer cfg.deinit();\n+\n+    if (builtin.os.tag == .linux and @import(\"build_options\").polar_tmux) {\n+        try testing.expectEqual(AsyncBackend.epoll, cfg.@\"async-backend\");\n+    } else {\n+        try testing.expectEqual(AsyncBackend.auto, cfg.@\"async-backend\");\n+    }\n+}\n+\n+test \"explicit async backend overrides the product default\" {\n+    const testing = std.testing;\n+    inline for (.{\n+        .{ \"auto\", AsyncBackend.auto },\n+        .{ \"epoll\", AsyncBackend.epoll },\n+        .{ \"io_uring\", AsyncBackend.io_uring },\n+    }) |entry| {\n+        var cfg = try Config.default(testing.allocator);\n+        defer cfg.deinit();\n+        var it: TestIterator = .{ .data = &.{\"--async-backend=\" ++ entry[0]} };\n+        try cfg.loadIter(cfg._arena.?.allocator(), &it);\n+        try testing.expectEqual(entry[1], cfg.@\"async-backend\");\n+    }\n+}\n+\n test \"clone default\" {\n     const testing = std.testing;\n     const alloc = testing.allocator;\ndiff --git a/src/build/GhosttyResources.zig b/src/build/GhosttyResources.zig\n--- a/src/build/GhosttyResources.zig\n",
+          "new": " /// Control the auto-update functionality of Ghostty. This is only supported\n /// on macOS currently, since Linux builds are distributed via package\ndiff --git a/src/build/GhosttyResources.zig b/src/build/GhosttyResources.zig\n--- a/src/build/GhosttyResources.zig\n"
+        }
       ]
     },
     {
       "path": "apps/polar-tmux-shared/ghostty/StationDisplay.zig",
-      "before": "7cdad6bda672c8f520e9faeb80114a49cfd32dedf53aa5ed935ceb8d90de1765",
-      "after": "6f657a808a033d5d41be677a522acca721d180cd8cfef9f045c975d7d1c15654",
-      "ranges": [
-        [
-          2472,
-          2762,
-          ""
-        ],
-        [
-          2763,
-          3005,
-          ""
-        ],
-        [
-          3006,
-          3244,
-          ""
-        ],
-        [
-          3245,
-          3585,
-          ""
-        ],
-        [
-          3586,
-          4095,
-          "\n\n\n\n\n"
-        ],
-        [
-          7431,
-          8712,
-          ""
-        ],
-        [
-          8714,
-          9306,
-          "\n\n\n\n"
-        ]
+      "rules": [
+        {
+          "old": "}\n\ntest \"capacity and allocation failure have no partial output\" {\n    const text = try std.testing.allocator.alloc(u8, max_text_bytes + 1);\n    defer std.testing.allocator.free(text);\n    @memset(text, 'x');\n    try std.testing.expectError(error.TextLimit, encode(std.testing.allocator, .append_text, text));\n    var buffer: [1]u8 = undefined;\n    var fixed = std.heap.FixedBufferAllocator.init(&buffer);\n    try std.testing.expectError(error.OutOfMemory, encode(fixed.allocator(), .replace_window, \"text\"));\n}\n\nconst BackgroundRole = enum { message_header, message_body, reference };\n",
+          "new": "}\n\n\n\n\n\n\n\nconst BackgroundRole = enum { message_header, message_body, reference };\n"
+        },
+        {
+          "old": "\n\ntest \"message backgrounds use semantic theme roles and reject arbitrary values\" {\n    const json = \"[{\\\"text\\\":\\\"card\\\",\\\"style\\\":{\\\"background\\\":\\\"message_body\\\"}}]\";\n    const encoded = try encodeThemed(std.testing.allocator, .replace_runs, json, .{240,240,240}, .{16,16,16});\n    defer std.testing.allocator.free(encoded);\n    try std.testing.expect(std.mem.indexOf(u8, encoded, \"\\x1b[48;2;24;24;24m\") != null);\n    try std.testing.expectError(error.InvalidEnumTag, encode(std.testing.allocator, .replace_runs,\n        \"[{\\\"text\\\":\\\"card\\\",\\\"style\\\":{\\\"background\\\":\\\"arbitrary\\\"}}]\"));\n}\n",
+          "new": "\n\n\n\n\n\n"
+        }
       ]
     },
     {
       "path": "automation/polar_station/apply_display_overlay.py",
-      "before": "3a4d12935675be4a313f800a75d1c0a543dc2118f8c37f75817de78f6ad3b180",
-      "after": "830b97c7e36bd74446427116e905fcc76ea4dde703ebd9dbd916a1336cbe9db3",
-      "ranges": [
-        [
-          1247,
-          1330,
-          "    \"\"\"Shared production renderer corrections for both native backends.\"\"\"\n"
-        ],
-        [
-          1492,
-          2096,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "\ndef renderer_edits() -> dict[str, list[tuple[str, str]]]:\n    \"\"\"Shared renderer corrections and provider tests for both native backends.\"\"\"\n    out: dict[str, list[tuple[str, str]]] = {}\n    def add(path: str, before: str, after: str) -> None:\n        out.setdefault(path, []).append((before, after))\n\n    # Behavioral tests exercise the real provider, including a zero-allocation\n    # path; they are also compiled by the upstream filtered unit-test target.\n    before = 'test \"renderCellMap\" {'\n    add(\"src/renderer/link.zig\", before,\n        (ROOT / 'apps/polar-tmux-shared/ghostty/StationLinkTests.zig').read_text() + '\\n' + before)\n    before = \"            try texture.replaceRegion(0, 0, atlas.size, atlas.size, atlas.data);\\n        }\\n    };\\n}\\n\"\n    add(\"src/renderer/generic.zig\", before, before + '\\n' +\n        (ROOT / 'apps/polar-tmux-shared/ghostty/StationRendererTests.zig').read_text())\n    generic = \"src/renderer/generic.zig\"\n    before = \"                self.terminal_state = .empty;\\n            }\\n            self.terminal_state_frame_count += 1;\"\n",
+          "new": "\ndef renderer_edits() -> dict[str, list[tuple[str, str]]]:\n    \"\"\"Shared production renderer corrections for both native backends.\"\"\"\n    out: dict[str, list[tuple[str, str]]] = {}\n    def add(path: str, before: str, after: str) -> None:\n        out.setdefault(path, []).append((before, after))\n\n    generic = \"src/renderer/generic.zig\"\n    before = \"                self.terminal_state = .empty;\\n            }\\n            self.terminal_state_frame_count += 1;\"\n"
+        }
       ]
     },
     {
       "path": "automation/polar_station/native_action_overlay.py",
-      "before": "652019754c7ac738c3a33dd68a83c08eec7bafc2d96cf6e7b0170fee9899553e",
-      "after": "3cd63d14588680a89e4a17787f015a9660b65bb703bc5900785a5fbb1bac316c",
-      "ranges": [
-        [
-          82,
-          107,
-          ""
-        ],
-        [
-          467,
-          756,
-          ""
-        ]
-      ]
-    },
-    {
-      "path": "crates/polar-force-layout-core/Cargo.toml",
-      "before": "cede025ab8ab0a7b1b4de08b041bbfed8797d65cf9565596a3617674746d88db",
-      "after": "0e3187e1e5a997600669846280a095c3e5ba42855de617da3c609a4a1029df03",
-      "ranges": [
-        [
-          288,
-          351,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "\"\"\"Pinned Ghostty ingress hooks; native adapters own all implementation/state.\"\"\"\nfrom pathlib import Path\n\ndef edits(platform):\n",
+          "new": "\"\"\"Pinned Ghostty ingress hooks; native adapters own all implementation/state.\"\"\"\n\ndef edits(platform):\n"
+        },
+        {
+          "old": "            add(config, '.{ .esc = \"' + suffix + '\" },',\n                '.{ .csi = \"1;3' + code + '\" },')\n        test_anchor = '    test \"parseCLI chain applies to most recent table binding\" {'\n        test_source = Path(__file__).resolve().parents[2] / 'apps/polar-tmux-shared/ghostty/StationOptionArrowTests.zig'\n        add(config, test_anchor, test_source.read_text() + '\\n' + test_anchor)\n        terminal = 'macos/Sources/Features/Terminal/TerminalController.swift'\n        base = 'macos/Sources/Features/Terminal/BaseTerminalController.swift'\n",
+          "new": "            add(config, '.{ .esc = \"' + suffix + '\" },',\n                '.{ .csi = \"1;3' + code + '\" },')\n        terminal = 'macos/Sources/Features/Terminal/TerminalController.swift'\n        base = 'macos/Sources/Features/Terminal/BaseTerminalController.swift'\n"
+        }
       ]
     },
     {
       "path": "crates/polar-inhouse-backend-adam/src/projection_store.rs",
-      "before": "dd0e274c55168fb7cc2baf99ade5e865f130124838b005277a98c1814957a304",
-      "after": "a165eec5f1f8b7cde87f5d1874cc7e7aa3a08fe020679ac49c7829a42a8985ea",
-      "ranges": [
-        [
-          14408,
-          14498,
-          ""
-        ],
-        [
-          15966,
-          16384,
-          ""
-        ],
-        [
-          27430,
-          27719,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "    tool_invocations: HashMap<String, AdamToolInvocationEvidence>,\n    tool_invocation_writes: Vec<AdamToolInvocationEvidence>,\n    tool_invocation_write_count: usize,\n    fail_tool_invocation_write_on: Option<usize>,\n    run_reports: HashMap<String, AdamRunReport>,\n}\n",
+          "new": "    tool_invocations: HashMap<String, AdamToolInvocationEvidence>,\n    tool_invocation_writes: Vec<AdamToolInvocationEvidence>,\n    run_reports: HashMap<String, AdamRunReport>,\n}\n"
+        },
+        {
+          "old": "    }\n\n    /// Installs a deterministic one-shot failure for fault-injection tests.\n    /// Write numbering starts at one and is reset whenever this is called.\n    pub fn fail_tool_invocation_write_on(&self, write_number: usize) {\n        let mut inner = self.inner.lock().expect(\"projection store lock\");\n        inner.tool_invocation_write_count = 0;\n        inner.fail_tool_invocation_write_on = Some(write_number);\n    }\n\n    pub fn llama_evidence_snapshot(&self) -> Vec<AdamLlamaCacheEvidence> {\n",
+          "new": "    }\n\n\n    pub fn llama_evidence_snapshot(&self) -> Vec<AdamLlamaCacheEvidence> {\n"
+        },
+        {
+          "old": "    ) -> anyhow::Result<()> {\n        let mut inner = self.inner.lock().expect(\"projection store lock\");\n        inner.tool_invocation_write_count += 1;\n        if inner.fail_tool_invocation_write_on == Some(inner.tool_invocation_write_count) {\n            inner.fail_tool_invocation_write_on = None;\n            anyhow::bail!(\"injected Adam tool invocation evidence write failure\");\n        }\n        inner.tool_invocation_writes.push(evidence.clone());\n        inner\n",
+          "new": "    ) -> anyhow::Result<()> {\n        let mut inner = self.inner.lock().expect(\"projection store lock\");\n        inner.tool_invocation_writes.push(evidence.clone());\n        inner\n"
+        }
       ]
     },
     {
       "path": "crates/polar-tmux-protocol/README.md",
-      "before": "fc3d04680c2699026d61896b8103ce3a54bde0ff39a37887c23eaec0d3293142",
-      "after": "1c956c98fcd63d670aaadef32af96a2907aaa6922cefb2a122b78754fee2e1e1",
-      "ranges": [
-        [
-          2742,
-          2820,
-          "the private monorepo protocol fixtures (not included in this source export). Mobile DTOs deliberately omit client, PID, TTY,\n"
-        ]
+      "rules": [
+        {
+          "old": "\nThe canonical cross-language vectors live in\n`fixtures/v1/phase4_v1.json`. Mobile DTOs deliberately omit client, PID, TTY,\ncommand, working-path, raw-error, terminal-window, and secret fields. The\nmobile command policy allows sanitized reads, constrained session creation,\n",
+          "new": "\nThe canonical cross-language vectors live in\nthe private monorepo protocol fixtures (not included in this source export). Mobile DTOs deliberately omit client, PID, TTY,\ncommand, working-path, raw-error, terminal-window, and secret fields. The\nmobile command policy allows sanitized reads, constrained session creation,\n"
+        }
       ]
     },
     {
       "path": "crates/polar-tmux/src/host_identity.rs",
-      "before": "49fea6b55701e07e71df76cd0762351588d86fd0946058579d9afe900df78948",
-      "after": "d2727fa69931407434988a39c13694c8b6ed417adfaf6b0cb2ee770e9b461826",
-      "ranges": [
-        [
-          3711,
-          3945,
-          ""
-        ]
+      "rules": [
+        {
+          "old": "    }\n\n    #[cfg(any(test, debug_assertions))]\n    pub fn fixture(host_id: &str, root_secret: [u8; 32]) -> Self {\n        Self {\n            host_id: host_id.to_string(),\n            root_secret: Zeroizing::new(root_secret),\n        }\n    }\n\n    fn encode(&self) -> Result<Zeroizing<String>> {\n",
+          "new": "    }\n\n\n    fn encode(&self) -> Result<Zeroizing<String>> {\n"
+        }
       ]
     }
   ],
   "deletions": [
     {
-      "path": "apps/polar-ideacave-godot/graphics_reuse_test.gd",
-      "sha256": "8710608e741b9b3fbcb1bf5c5e41e7fab3588bbd57f58baf07d83b7d47c22c19"
+      "path": "apps/polar-ideacave-godot/graphics_reuse_test.gd"
     },
     {
-      "path": "apps/polar-ideacave-godot/itree-koala-sample.json",
-      "sha256": "79b928c3cff1abf5427f892cfc2ff29d988e0c156d2fd764ff943b1419eae2f9"
+      "path": "apps/polar-ideacave-godot/itree-koala-sample.json"
     },
     {
-      "path": "apps/polar-ideacave-godot/itree_experiment.gd",
-      "sha256": "13a57f9c9ddd45e268642e6a7294ed6f59c2f3ab019a1fe827af5199b79f209b"
+      "path": "apps/polar-ideacave-godot/itree_experiment.gd"
     },
     {
-      "path": "apps/polar-ideacave-godot/itree_experiment.tscn",
-      "sha256": "bb4e1ec117573eea86a937f4a8ec7f33bd44fd8fcfc744f86ba8d63894e914db"
+      "path": "apps/polar-ideacave-godot/itree_experiment.tscn"
     },
     {
-      "path": "apps/polar-ideacave-godot/view_packages/example/manifest.json",
-      "sha256": "9ea4d29d3f9bedfca47de6cddbac1f403e7af375e2d34b5f7f75f656f50214b0"
+      "path": "apps/polar-ideacave-godot/view_packages/example/manifest.json"
     },
     {
-      "path": "apps/polar-ideacave-godot/view_packages/example/view_packages/aurora/1.0.0/browser.gd",
-      "sha256": "44c656f6d55bf9885408b93bc0c0b132e66f8ea4100d0f24c8a9c589712cc5a1"
+      "path": "apps/polar-ideacave-godot/view_packages/example/view_packages/aurora/1.0.0/browser.gd"
     },
     {
-      "path": "apps/polar-ideacave-godot/view_packages/example/view_packages/aurora/1.0.0/night.tres",
-      "sha256": "871b24ee51ecdae59b1bf90b1b9848dcf982981ceb59fbdacf28a2a20abed3fd"
+      "path": "apps/polar-ideacave-godot/view_packages/example/view_packages/aurora/1.0.0/night.tres"
     },
     {
-      "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/ControlCenterFixtureSource.swift",
-      "sha256": "3ac9f5977fe50f812816699ef84d7454aca1550219a965a7c6b5ca7dd3ba203a"
+      "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/ControlCenterFixtureSource.swift"
     },
     {
-      "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/Resources/ControlCenterFixtures/controller-sessions-closed.json",
-      "sha256": "9e0650f9045e04d04f173d8fc092f51501dc923e719aed7700f33bac332279bf"
+      "path": "apps/polar-station-macos/Sources/PolarTmuxHostClient/Resources/ControlCenterFixtures/controller-sessions-closed.json"
     },
     {
-      "path": "apps/polar-station-macos/ghostty-module/GhosttyUITests/PolarStationMouseStateUITests.swift",
-      "sha256": "0db08cab0d037eee6a6da2b9dc7c340d058a2383665de270aaf804d261a18c93"
+      "path": "apps/polar-station-macos/ghostty-module/GhosttyUITests/PolarStationMouseStateUITests.swift"
     },
     {
-      "path": "apps/polar-station-linux/ghostty-module/desktop_semantics_test.zig",
-      "sha256": "a7bc0253729fe38b652d356fcad310f1f8f695ee1b1fae1aa744a30df14b922d"
+      "path": "apps/polar-station-linux/ghostty-module/desktop_semantics_test.zig"
     },
     {
-      "path": "apps/polar-station-linux/ghostty-module/fixtures/controller-sessions-closed.json",
-      "sha256": "5fa035bce1e9db13ff5c2cb1152040738ae393e03d7d26bce92e3b0641a101a3"
+      "path": "apps/polar-station-linux/ghostty-module/fixtures/controller-sessions-closed.json"
     },
     {
-      "path": "apps/polar-station-linux/ghostty-module/pane_drag_test.zig",
-      "sha256": "81c0f91937cbe79ddd1e9ea66ac1200ef2ef9898551aa2e3946562fa03f283ed"
+      "path": "apps/polar-station-linux/ghostty-module/pane_drag_test.zig"
     },
     {
-      "path": "apps/polar-station-linux/ghostty-module/tests.zig",
-      "sha256": "c8b99add9cf3232f396a5d862d52c98679a25082f2adb013254adf2199a7e42b"
+      "path": "apps/polar-station-linux/ghostty-module/tests.zig"
     },
     {
-      "path": "apps/polar-station-linux/session-editor-tests.zig",
-      "sha256": "821ccb9cf4406de1f59ac62f07171d1afbbef13a79dd096904aa886b687233dc"
+      "path": "apps/polar-station-linux/session-editor-tests.zig"
     },
     {
-      "path": "apps/polar-station-linux/tools/test-controller-measurement.mjs",
-      "sha256": "72c6c90a0c6c25f0d8d38ea8254808a2472b9149e092d69b20b8c491f8fe216e"
+      "path": "apps/polar-station-linux/tools/test-controller-measurement.mjs"
     },
     {
-      "path": "apps/polar-tmux-shared/dictate/test_audio_linux.c",
-      "sha256": "959d9c5354ae273e64e8c00165619206241416721d8ba88c9dbafa945e0a66ca"
+      "path": "apps/polar-tmux-shared/dictate/test_audio_linux.c"
     },
     {
-      "path": "apps/polar-tmux-shared/ghostty/StationLinkTests.zig",
-      "sha256": "6a9f54ea2583dcada31fa8dee544999344fdbf8c6d4f75f8872d337253d4b5f2"
+      "path": "apps/polar-tmux-shared/ghostty/StationLinkTests.zig"
     },
     {
-      "path": "apps/polar-tmux-shared/ghostty/StationOptionArrowTests.zig",
-      "sha256": "33acfdab7f6a9fcfec59b6d19e677cc2b4d069216e0f0ea662dff473fe5d5a4e"
+      "path": "apps/polar-tmux-shared/ghostty/StationOptionArrowTests.zig"
     },
     {
-      "path": "apps/polar-tmux-shared/ghostty/StationRendererTests.zig",
-      "sha256": "06032bc2b2d9242ff7996d50cdaca22f41b43307bf2f199ba1010700a92bd1fa"
+      "path": "apps/polar-tmux-shared/ghostty/StationRendererTests.zig"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench.rs",
-      "sha256": "6b8d32baefaf1280fac376099044e7334d3f386e8b1e0393e16836c8e43dab9d"
+      "path": "crates/polar-cas-local/examples/search_index_bench.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/accounting.rs",
-      "sha256": "5a276237126369ad322f37cf94901150a35afc20dae782f00d0c66be6f62469f"
+      "path": "crates/polar-cas-local/examples/search_index_bench/accounting.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/catalog.rs",
-      "sha256": "009e2f64383d00de18050eba98e9bb9e97ac64e19d1c92580d8f7a772190582d"
+      "path": "crates/polar-cas-local/examples/search_index_bench/catalog.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/cold.rs",
-      "sha256": "52c207a31a5ed12bb0278616cf958bb250c1ff34b5c03ff46a12ddd75e5eb790"
+      "path": "crates/polar-cas-local/examples/search_index_bench/cold.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/concurrency.rs",
-      "sha256": "2d33bd336e2be7abea3446a7c61b4bdd6026aa4793699ae39f235268ae02f591"
+      "path": "crates/polar-cas-local/examples/search_index_bench/concurrency.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/direct.rs",
-      "sha256": "b0eae1a9a207646182ddc327e604a201bf58aa83c3a3c7cab36d4b65228e19c4"
+      "path": "crates/polar-cas-local/examples/search_index_bench/direct.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/foundation.rs",
-      "sha256": "5f0c20435924f6452a43b0a879c96e74bf6a1ff69b0b1f72eb29564636d76c2e"
+      "path": "crates/polar-cas-local/examples/search_index_bench/foundation.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/growth.rs",
-      "sha256": "9922090a420b2d046fa4636d99451742f9af5ea81951878ba5c19bafb33063a1"
+      "path": "crates/polar-cas-local/examples/search_index_bench/growth.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/matrix.rs",
-      "sha256": "feaf8878a0a463e97eb109501b6fdca6d42bf9da8f98dc0f57aed946d9efd6be"
+      "path": "crates/polar-cas-local/examples/search_index_bench/matrix.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/paging.rs",
-      "sha256": "91602f0000079f35642c96b2252cd06b8e2dc80638ef0b3463f1cb2ac8024fc9"
+      "path": "crates/polar-cas-local/examples/search_index_bench/paging.rs"
     },
     {
-      "path": "crates/polar-cas-local/examples/search_index_bench/snapshot.rs",
-      "sha256": "29d9fc17eb024f3c2a305ab9505854fee6098c92d2dfe887f03ca04d0e3b58f7"
+      "path": "crates/polar-cas-local/examples/search_index_bench/snapshot.rs"
     },
     {
-      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment.rs",
-      "sha256": "020be7d726f9898815dad9680e35447351ee07858d313e53816e1a2f27c8bba0"
+      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment.rs"
     },
     {
-      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment/versions.rs",
-      "sha256": "4e2110a8bfe773c03081a88e84a2d6276c3aa6beecfee9258a1eda53b58e2d60"
+      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment/versions.rs"
     },
     {
-      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment/versions/deferred.rs",
-      "sha256": "9f85dad7924053ea72999110a0f7ffec75a427165da2b371bd1fdfe84631047f"
+      "path": "crates/polar-cas-local/src/shared_index/values/uuid_inline_experiment/versions/deferred.rs"
     },
     {
-      "path": "crates/polar-force-layout-core/src/bin/oracle.rs",
-      "sha256": "0550a305c10694f20550bd33821d495829262287caee71336f0ab86788d969cd"
+      "path": "crates/polar-force-layout-core/src/bin/oracle.rs"
     },
     {
-      "path": "crates/polar-tmux-protocol/fixtures/control-center/v1/controller-sessions-closed.json",
-      "sha256": "f37ce26b8dcdf7481e3d9f26805ace768206fae964cf7c03a82b1202af87e768"
+      "path": "crates/polar-tmux-protocol/fixtures/control-center/v1/controller-sessions-closed.json"
     },
     {
-      "path": "crates/polar-tmux-protocol/fixtures/control-center/v1/intent-traces.json",
-      "sha256": "f5586eb87fe82a60cb44ddb9754f8f4cb8829a04360d31307543df2331a16d14"
+      "path": "crates/polar-tmux-protocol/fixtures/control-center/v1/intent-traces.json"
     },
     {
-      "path": "crates/polar-tmux-protocol/fixtures/v1/phase4_v1.json",
-      "sha256": "91e03a5b29bb45e90f55054350a47c4d18ea01d2d7292e934e28f195b5a7abe7"
+      "path": "crates/polar-tmux-protocol/fixtures/v1/phase4_v1.json"
     },
     {
-      "path": "crates/polar-tmux/src/host/terminal_forwarding_benchmark.rs",
-      "sha256": "bc36eb9e27a08f99121aa8863335d3cddc3c28c53a7d26bfea6972c0b7b609fe"
+      "path": "crates/polar-tmux/src/host/terminal_forwarding_benchmark.rs"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/animation_invalidation_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/browser_snapshot_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/cross_layer_ports_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/depth_wheel_gesture_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/detail_geometry_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/edge_bake_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/edge_runs_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/frustum_mask_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/material_resources_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/native_card_pick_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/native_edges_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/native_path_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/plaque_update_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/presentation_lifecycle_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/reading_stencil_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/rounded_corridor_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/rounded_routes_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/route_retention_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/space_bridge_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/standalone_depth_gesture_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/star_atlas_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/window_browser_selftest.gd"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/browsing_input_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/browsing_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/host_controls_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_dual_map_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_graph_projection_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_navigation_state_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_tree_projection_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/itree_zoom_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/local_sources_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/multi_view_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/navigation_focus_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/navigation_performance_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/overview_dispatch_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/overview_gesture_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/reader_browsing_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_actual_data_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_interaction_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_modes_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_motion_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_preferences_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_reader_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_rendering_selftest.gd.uid"
+    },
+    {
+      "path": "apps/polar-ideacave-godot/ui_v1_selftest.gd.uid"
     }
   ]
 }

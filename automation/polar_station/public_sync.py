@@ -17,8 +17,8 @@ repository. Remote HEAD is checked before import and again before push. This is
 not an atomic compare-and-swap, but Git rejects concurrent non-fast-forward
 updates; it never force-overwrites a parallel successor. A changed branch must
 be replanned. The flag means the operator authorizes this exact public upload.
-Publishing needs an already available native non-interactive HTTPS authentication
-mechanism (for example libcurl-managed credentials). Git credential helpers and
+Publishing uses existing non-interactive HTTPS credentials or an SSH agent.
+SSH is restricted to git@github.com with strict host-key checking. Git credential helpers and
 askpass scripts are deliberately not executed. Global/system Git configuration
 and injected GIT_CONFIG environment values are disabled; credentials
 are never provisioned, saved, or printed by this tool. Authentication failure
@@ -44,6 +44,11 @@ import tempfile
 
 MANIFEST = 'PUBLIC_SOURCE_MANIFEST.json'
 DEFAULT_PROTECT = ['.github', 'CI.md', 'RELEASE_PLAN.md']
+
+
+def github_url(url):
+    path = r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*(?:\.git)?'
+    return bool(re.fullmatch(r'(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)' + path, url))
 
 
 class SyncError(RuntimeError):
@@ -143,7 +148,9 @@ def git(repo, *args, data=None):
     cmd = ['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false',
            '-c', 'core.attributesFile=' + os.devnull, '-c', 'commit.gpgsign=false',
            '-c', 'protocol.ext.allow=never', '-c', 'core.quotePath=false',
-           '-c', 'init.templateDir=', '-C', str(repo), *args]
+           '-c', 'init.templateDir=',
+           '-c', 'core.sshCommand=ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes',
+           '-C', str(repo), *args]
     result = subprocess.run(cmd, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     if result.returncode:
         raise SyncError('git ' + args[0] + ' failed: ' + result.stderr.decode(errors='replace')[:500])
@@ -204,15 +211,15 @@ def identity(entry):
     return {k: entry[k] for k in ('mode', 'sha256')} if entry else None
 
 
-def make_plan(repository, previous, new, branch='main', protect=None):
+def make_plan(repository, previous, new, branch='main', protect=None, reviewed_remote_changes=None):
     repo = Path(repository).resolve()
     if git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
         raise SyncError('repository worktree is not clean')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]*', branch) or '..' in branch or branch.endswith('/'):
         raise SyncError('invalid branch')
     url = git(repo, 'remote', 'get-url', 'origin').decode().strip()
-    if not re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?', url):
-        raise SyncError('origin must be a credential-free HTTPS github.com repository URL')
+    if not github_url(url):
+        raise SyncError('origin must be a credential-free HTTPS or git-user SSH github.com repository URL')
     head = git(repo, 'rev-parse', 'HEAD').decode().strip()
     if remote_head(repo, url, branch) != head:
         raise SyncError('checkout HEAD differs from remote; fetch/review before planning')
@@ -220,6 +227,11 @@ def make_plan(repository, previous, new, branch='main', protect=None):
     prefixes = sorted(set(DEFAULT_PROTECT + (protect or [])))
     for p in prefixes:
         safe_path(p)
+    reviewed = dict(reviewed_remote_changes or {})
+    for path, expected in reviewed.items():
+        safe_path(path)
+        if not isinstance(expected, dict) or expected.get('mode') not in ('100644','100755','120000') or not re.fullmatch('[0-9a-f]{64}', expected.get('sha256','')):
+            raise SyncError('invalid reviewed remote identity: ' + path)
     old_doc, old, old_hash = snapshot(previous)
     new_doc, fresh, new_hash = snapshot(new, hygiene=True)
     old_managed = set(old_doc.get('sync_managed_paths', old)) - {MANIFEST}
@@ -229,14 +241,17 @@ def make_plan(repository, previous, new, branch='main', protect=None):
     new_managed = {p for p in fresh if p != MANIFEST and not protected(p, prefixes)}
     remote = tree_entries(repo, head)
     for p in old_managed:
-        if identity(remote.get(p)) != old[p]:
+        observed = identity(remote.get(p))
+        if observed != old[p] and reviewed.get(p) != observed:
             raise SyncError('remote changed baseline-managed path: ' + p)
     for p in fresh:
         if protected(p, prefixes) and fresh[p] != old.get(p):
             raise SyncError('new snapshot attempts to change repository-owned path: ' + p)
     for p in new_managed - old_managed:
-        if p in remote:
+        if p in remote and reviewed.get(p) != identity(remote[p]):
             raise SyncError('new managed path collides with unmanaged remote file: ' + p)
+    if any(p not in old_managed | new_managed or reviewed[p] != identity(remote.get(p)) for p in reviewed):
+        raise SyncError('reviewed remote identity no longer matches')
     final = {p: identity(e) for p, e in remote.items() if p not in old_managed and p != MANIFEST}
     final.update({p: fresh[p] for p in new_managed})
     for p in final:
@@ -284,7 +299,7 @@ def make_plan(repository, previous, new, branch='main', protect=None):
     result = {'schema': 1, 'repository': str(repo), 'remote_url': url, 'branch': branch,
               'base_head': head, 'base_tree': tree, 'previous': str(Path(previous).resolve()),
               'snapshot': str(Path(new).resolve()), 'previous_digest': old_hash, 'snapshot_digest': new_hash,
-              'protect': prefixes, 'changes': changes, 'result_manifest': doc}
+              'protect': prefixes, 'reviewed_remote_changes': reviewed, 'changes': changes, 'result_manifest': doc}
     result['plan_sha256'] = digest(canonical(result))
     return result
 
@@ -296,7 +311,7 @@ def apply_plan(plan, bundle, message):
     signature = original.pop('plan_sha256', None)
     if digest(canonical(original)) != signature:
         raise SyncError('plan was edited or corrupted')
-    current = make_plan(plan['repository'], plan['previous'], plan['snapshot'], plan['branch'], plan['protect'])
+    current = make_plan(plan['repository'], plan['previous'], plan['snapshot'], plan['branch'], plan['protect'], plan.get('reviewed_remote_changes'))
     if current != plan:
         raise SyncError('plan inputs or remote state drifted; replan')
     output = Path(bundle).resolve()
@@ -348,8 +363,8 @@ def publish_receipt(receipt, confirm=False):
     if receipt.get('published') is not False:
         raise SyncError('receipt must describe an unpublished prepared commit')
     url, branch = receipt['remote_url'], receipt['branch']
-    if not re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\.git)?', url):
-        raise SyncError('receipt URL must be credential-free HTTPS github.com')
+    if not github_url(url):
+        raise SyncError('receipt URL must be credential-free HTTPS or git-user SSH github.com')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]*', branch) or '..' in branch or branch.endswith('/'):
         raise SyncError('invalid receipt branch')
     for key in ('parent', 'tree', 'commit'):
@@ -396,6 +411,7 @@ def main():
         p.add_argument('--' + name, required=True)
     p.add_argument('--branch', default='main')
     p.add_argument('--protect', action='append', default=[])
+    p.add_argument('--reviewed-remote-changes', type=Path, help='Explicit path to exact reviewed remote identities; original baseline remains unchanged')
     p = sub.add_parser('apply')
     for name in ('plan', 'bundle', 'message'):
         p.add_argument('--' + name, required=True)
@@ -407,7 +423,8 @@ def main():
     try:
         if args.command == 'plan':
             out = Path(args.output)
-            result = make_plan(args.repository, args.previous, args.snapshot, args.branch, args.protect)
+            reviewed = json.loads(args.reviewed_remote_changes.read_text()) if args.reviewed_remote_changes else None
+            result = make_plan(args.repository, args.previous, args.snapshot, args.branch, args.protect, reviewed)
             with out.open('x') as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
                 f.write('\n')

@@ -1672,9 +1672,15 @@ async fn process_application_request(
                     },
                 ))
             } else {
-                HostApplicationMessage::ResourcesV1(Box::new(
-                    state.resources.dispatch(*request).await,
-                ))
+                #[cfg(feature = "codex-control")]
+                let response=state.resources.dispatch_from_session(*request,state.codex.as_deref(),Some(crate::host::resource_service::SessionFileContext {
+                    lifecycle: &state.session_lifecycle,
+                    targets: &state.targets,
+                    ssh: &state.ssh_connections,
+                })).await;
+                #[cfg(not(feature = "codex-control"))]
+                let response=state.resources.dispatch(*request).await;
+                HostApplicationMessage::ResourcesV1(Box::new(response))
             }
         }
         ClientApplicationMessage::SettingsV1(request) => {
@@ -2767,6 +2773,10 @@ async fn serve_local_connection(
     if let LocalClientFrame::ExtensionRequest { request } = &first {
         if request.extension == crate::dictate_host::EXTENSION {
             local_ipc::verify_peer(&stream)?;
+            if request.payload.get("op").and_then(serde_json::Value::as_str) == Some("subscribe_history") {
+                let service=state.dictate.as_ref().context("Voice could not initialize; open Settings → Voice diagnostics")?;
+                return service.serve_history(stream, request.clone()).await;
+            }
             if request.payload.get("op").and_then(serde_json::Value::as_str) == Some("subscribe") {
                 let service=state.dictate.as_ref().context("Voice could not initialize; open Settings → Voice diagnostics")?;
                 return service.serve_preview(stream, request.clone()).await;

@@ -9,6 +9,7 @@ const gio = @import("gio");
 const glib = @import("glib");
 const gobject = @import("gobject");
 const gtk = @import("gtk");
+const gdk = @import("gdk");
 const Application = @import("../class/application.zig").Application;
 const Window = @import("../class/window.zig").Window;
 const application_refresh = @import("application_refresh.zig");
@@ -101,6 +102,7 @@ const State = struct {
     restore_initialized: bool = false,
     number_badges_visible: bool = false,
     pending_unbound_windows: usize = 0,
+    resource_file_flow: @import("resource_file_open.zig").Adapter = .{},
     repairing_native_transfer: bool = false,
 
     fn executorForWindow(self: *State, window: *Window) ?*presentation_executor.Executor {
@@ -214,6 +216,8 @@ const State = struct {
         self.controller_model.deinit();
         self.attention_engine.deinit();
         self.session_cache.deinit();
+        clearResourceFile(self);
+        self.resource_file_flow.deinit();
         self.resources_model.deinit();
         self.resources_window.deinit();
         self.theme.deinit();
@@ -355,6 +359,7 @@ pub fn init(app: *Application) !void {
         .connector_window = connector_window.Window.init(allocator, app, sendCodexPayload, undefined),
     };
     state.?.resources_window.action_context = &state.?;
+    state.?.codex_window.server_started=codexServerStarted;
     state.?.settings_window.action_context = &state.?;
     state.?.codex_window.context = &state.?;
     state.?.connector_window.context = &state.?;
@@ -526,6 +531,10 @@ pub fn tick(app: *Application) void {
         }
         if (current.syncWindowSelections()) batch.requestRender();
         if (batch.takeRender()) current.renderControllers();
+        // A native focus event also matters when selection was already adopted
+        // or a composer mounted after that observation. Reuse the idempotent
+        // input selection path after mounting; catalog mutation is not its gate.
+        if (native_changed) current.activeExecutor().activateSelectedConversation();
         if (current.client.hasPending()) current.app.wakeup();
         syncFocusCycleActions(current);
     }
@@ -1117,6 +1126,18 @@ pub fn setNumberBadgesVisible(window: *Window, visible: bool) void {
     current.activeExecutor().setNumberBadgesVisible(window, visible);
 }
 
+pub fn shortcutHintContext(window:*Window) shortcuts.HintContext {
+    const current=if(state)|*value|value else return .{.panes=0,.tabs=0,.idea=false};
+    const executor=current.executorForWindow(window) orelse return .{.panes=0,.tabs=0,.idea=false};
+    const snapshot=executor.nativeWorkspaceSnapshot() orelse return .{.panes=0,.tabs=0,.idea=false};
+    const tab=snapshot.tab(executor.nativeSelectedTabId() orelse snapshot.selected_tab_id) orelse return .{.panes=0,.tabs=0,.idea=false};
+    var idea=false;
+    for(tab.panes)|pane| if(std.mem.eql(u8,pane.id,executor.nativeSelectedPaneId(tab.id) orelse "")) {
+        if(pane.content)|content|idea=content.kind==.idea_tree;
+    };
+    return .{.panes=@intCast(tab.panes.len),.tabs=@intCast(snapshot.tabs.len),.idea=idea};
+}
+
 /// Native menu copy and suffix come from the shared action catalog.
 pub fn shortcutMenuLabel(action: u32, buffer: []u8) [:0]const u8 {
     for (0..shortcuts.catalogCount()) |index| {
@@ -1126,6 +1147,24 @@ pub fn shortcutMenuLabel(action: u32, buffer: []u8) [:0]const u8 {
         }) catch "Station action";
     }
     return "Station action";
+}
+
+pub fn installNativeResizeObserver(window:*Window) void {
+    const events=gtk.EventControllerLegacy.new();events.as(gtk.EventController).setPropagationPhase(.capture);
+    _=gtk.EventControllerLegacy.signals.event.connect(events,*Window,resizePointerEvent,window,.{});
+    window.as(gtk.Widget).addController(events.as(gtk.EventController));
+}
+fn resizePointerEvent(_: *gtk.EventControllerLegacy,event:*gdk.Event,window:*Window) callconv(.c) c_int {
+    if(event.getEventType()==.button_release or event.getEventType()==.touch_end){
+        _=window.as(gobject.Object).ref();
+        _ = glib.idleAddOnce(resizePointerEnded,window);
+    }
+    return 0;
+}
+fn resizePointerEnded(raw:?*anyopaque) callconv(.c) void {
+    const window:*Window=@ptrCast(@alignCast(raw orelse return));defer window.as(gobject.Object).unref();
+    const current=if(state) |*value| value else return;
+    if(current.executorForWindow(window)) |executor| executor.saveNativeSplitRatios() catch |err| current.resources_window.showError(@errorName(err));
 }
 
 pub fn installShortcuts(app: *Application) void {
@@ -1141,6 +1180,8 @@ pub fn dispatchWindowShortcut(window: *Window, action: shortcuts.Action) bool {
 
     switch (action) {
         .insert_idea_node, .edit_idea_instruction => {return if(current.lgp) |lgp| lgp.ideaInstruction(window,action==.edit_idea_instruction) else false;},
+        .open_file_reference => {openSelectedFileInWindow(window);return true;},
+        .quote_selection => { return if(current.lgp) |lgp| lgp.quoteSelection(window) else false; },
         .open_inquiry => {return if(current.lgp) |lgp| lgp.openInquiry(window) else false;},
         .open_idea_tree => {
             showIdeaTree(current.app);
@@ -1160,6 +1201,19 @@ pub fn dispatchWindowShortcut(window: *Window, action: shortcuts.Action) bool {
         .control_center_toggle => {
             toggleControlCenter(current.app);
             return true;
+        },
+        .previous_tab, .next_tab => {
+            const executor = current.activeExecutor();
+            const snapshot = executor.nativeWorkspaceSnapshot() orelse return false;
+            if (snapshot.tabs.len <= 1) return true;
+            for (snapshot.tabs, 0..) |tab, index| {
+                if (!std.mem.eql(u8, tab.id, snapshot.selected_tab_id)) continue;
+                const offset: usize = if (action == .previous_tab) snapshot.tabs.len - 1 else 1;
+                const target = snapshot.tabs[(index + offset) % snapshot.tabs.len].id;
+                sendControllerRequest(current, 0, .{ .select_tab = .{ .tab_id = target } });
+                return true;
+            }
+            return false;
         },
         .focus_previous, .focus_next => {
             if (!current.activeExecutor().canCycleNativeFocus()) return false;
@@ -1190,7 +1244,7 @@ pub fn dispatchWindowShortcut(window: *Window, action: shortcuts.Action) bool {
 
 pub fn dispatchShortcut(app: *Application, action: shortcuts.Action) void {
     switch (action) {
-        .new_shell, .new_codex, .resume_codex, .open_idea_tree, .open_inquiry, .insert_idea_node, .edit_idea_instruction, .close_focused_pane => {
+        .previous_tab, .next_tab, .new_shell, .new_codex, .resume_codex, .open_idea_tree, .open_inquiry, .insert_idea_node, .edit_idea_instruction, .quote_selection, .open_file_reference, .close_focused_pane => {
             const window = activeGhosttyWindow(app) orelse return;
             _ = dispatchWindowShortcut(window, action);
         },
@@ -2068,12 +2122,17 @@ fn clearPendingControlEffects(current: *State) void {
     current.pending_control_effects.clearRetainingCapacity();
 }
 
+fn codexServerStarted(raw:?*anyopaque,controller_id:u64,token:u64,message:?[]const u8) void {
+    const current:*State=@ptrCast(@alignCast(raw orelse return));
+    if(controllerById(current,controller_id)) |controller| controller.editorInput(.{.type="server_started",.token=token,.@"error"=message});
+}
 fn sendControllerRequest(
     current: *State,
     controller_id: u64,
     action: controller_pane.Action,
 ) void {
     if (current.quitting) return;
+    if(action==.start_local_codex){const value=action.start_local_codex;current.codex_window.startLocalServer(value.owner_host_id,value.endpoint_id,controller_id,value.token);return;}
     const executor = current.controllerExecutor(controller_id) orelse return;
     if (action == .invoke_action and (std.mem.eql(u8, action.invoke_action.action_id, "workspace.window.new") or std.mem.eql(u8, action.invoke_action.action_id, "native.open_local_terminal"))) {
         var decision = executor.lifecycleDecision("new_window", null) catch return;
@@ -2636,9 +2695,92 @@ fn resetControlRefresh(current: *State) void {
     }
 }
 
+fn clearResourceFile(current:*State) void {
+    var result=current.resource_file_flow.dispatch(current.allocator,.{.type="cancel"}) orelse return;
+    result.deinit();
+}
+fn resourceFileInput(current:*State,input:anytype) void {
+    resourceFileTrace("dispatch");
+    var result=current.resource_file_flow.dispatch(current.allocator,input) orelse return;
+    defer result.deinit();
+    const dict=@import("dictate.zig");const effects=dict.field(result.value,"effects");
+    if(effects!=.array)return;
+    for(effects.array.items)|effect|{
+        const kind=dict.string(effect,"type");
+        resourceFileTrace(kind);
+        if(std.mem.eql(u8,kind,"resolve")){
+            const origin=dict.field(effect,"origin");
+            const bytes=resources.encodeResolveFile(current.allocator,dict.string(effect,"request_id"),dict.string(origin,"execution_target_id"),dict.string(effect,"path"),if(dict.string(origin,"cwd").len>0)dict.string(origin,"cwd")else null,if(dict.string(origin,"terminal_session_id").len>0)dict.string(origin,"terminal_session_id")else null) catch continue;
+            defer current.allocator.free(bytes);
+            current.client.sendJson(bytes) catch {resourceFileInput(current,.{.type="failed",.request_id=dict.string(effect,"request_id"),.message="Could not resolve the source file."});};
+        }else if(std.mem.eql(u8,kind,"start_resource")){
+            resourceAction(current,.{.restart=dict.string(effect,"resource_id")});
+        }else if(std.mem.eql(u8,kind,"create_mapping")){
+            const access=dict.field(effect,"access");
+            current.resources_window.present(current.resources_model.projection());
+            current.resources_window.prefillFile(dict.string(access,"execution_target_id"),dict.string(access,"remote_directory"));
+        }else if(std.mem.eql(u8,kind,"open_local_file")){
+            const path=dict.string(effect,"path");
+            const opened=if(std.mem.eql(u8,dict.string(effect,"strategy"),"reveal")) resources_window.revealLocalFile(current.allocator,path) else resources_window.openLocalPath(current.allocator,path);
+            if(!opened)resourceFileInput(current,.{.type="viewer_failed",.path=path});
+        }else if(std.mem.eql(u8,kind,"show_error")){
+            current.resources_window.present(current.resources_model.projection());
+            current.resources_window.showError(dict.string(effect,"message"));
+        }
+    }
+}
+pub fn openSelectedFile(app:*Application) void {
+    resourceFileTrace("selected-action");
+    openSelectedFileInWindow(activeGhosttyWindow(app) orelse return);
+}
+fn openSelectedFileInWindow(window:*Window) void {
+    const current=if(state) |*v| v else return;
+    const executor=current.executorForWindow(window) orelse return;
+    const page=window.getTabView().getSelectedPage() orelse return;
+    const Tab=@import("../class/tab.zig").Tab;const tab=gobject.ext.cast(Tab,page.getChild()) orelse return;
+    const surface=tab.getActiveSurface() orelse return;const pane=executor.nativePaneIdForSurface(surface) orelse return;
+    const selected=executor.terminalSelection(current.allocator,pane) orelse return;defer current.allocator.free(selected);
+    resourceFileTrace("selection-read");
+    _=openResourceFile(selected,surface);
+}
+pub fn openResourceFile(value:[]const u8,source:?*@import("../class/surface.zig").Surface) bool {
+    resourceFileTrace("native-reference");
+    const current=if(state) |*v| v else return false;
+    const c=@cImport({@cInclude("polar_station_desktop_client.h");});
+    const path=c.polar_station_resource_file_path(value.ptr,value.len);if(path==null)return false;defer c.polar_station_desktop_string_free(path);
+    resourceFileTrace("reference-parsed");
+    const surface=source orelse return false;
+    const root=surface.as(gtk.Widget).getRoot() orelse return false;
+    const window=gobject.ext.cast(Window,root.as(gobject.Object)) orelse return false;
+    const executor=current.executorForWindow(window) orelse return false;
+    const snapshot=executor.nativeWorkspaceSnapshot() orelse return false;
+    const pane_id=executor.nativePaneIdForSurface(surface) orelse return false;
+    const location=snapshot.pane(pane_id) orelse return false;const pane=location.pane;
+    if(!pane.isTerminal())return false;
+    resourceFileTrace("source-bound");
+    const cwd: ?[]const u8=surface.getPwd();
+    const id=nextRequestId(current) orelse return true;defer current.allocator.free(id);
+    resourceFileInput(current,.{.type="open",.request_id=id,.text=value,.origin=.{.execution_target_id=pane.execution_target_id,.cwd=cwd,.terminal_session_id=pane.tmux_session_id}});
+    requestResourcesProjection(current);return true;
+}
+fn resourceFileTrace(stage: []const u8) void {
+    if (std.posix.getenv("POLAR_STATION_TRACE_DIR") != null)
+        std.log.info("Polar Station file open: {s}", .{stage});
+}
+fn requestResourceFile(current:*State) void {
+    const id=nextRequestId(current) orelse return;defer current.allocator.free(id);
+    resourceFileInput(current,.{.type="refresh",.request_id=id});
+}
+
 fn handleResourcesResponse(current: *State, payload: []const u8) void {
     var outcome = current.resources_model.applyResponse(payload) catch return;
     defer outcome.deinit(current.allocator);
+    if(outcome.kind==.file_access){
+        if(current.resources_model.fileAccess())|access|resourceFileInput(current,.{.type="resolved",.request_id=outcome.request_id,.access=access});
+    }else if(outcome.kind==.@"error"){
+        resourceFileInput(current,.{.type="failed",.request_id=outcome.request_id,.message=outcome.error_message orelse "The file Resource is unavailable."});
+    }
+    if(outcome.kind==.projection or outcome.kind==.command_accepted)requestResourceFile(current);
     const completes_refresh = if (current.resources_refresh_request_id) |request_id|
         std.mem.eql(u8, outcome.request_id, request_id)
     else
@@ -2886,6 +3028,7 @@ fn resourceAction(
     action: resources_window.Action,
 ) void {
     const current: *State = @ptrCast(@alignCast(context orelse return));
+    if(action==.cancel_file_open){clearResourceFile(current);return;}
     if (current.backend_state != .ready) {
         current.resources_window.setBackendAvailable(false);
         return;
@@ -2894,6 +3037,7 @@ fn resourceAction(
     defer current.allocator.free(request_id);
     const projection = current.resources_model.projection();
     const payload = switch (action) {
+        .cancel_file_open => unreachable,
         .reload => resources.encodeGetProjection(
             current.allocator,
             request_id,

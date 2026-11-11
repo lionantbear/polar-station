@@ -1,6 +1,7 @@
 import Foundation
 
 public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
+    case setCreationYolo(Bool)
     case history(target: String, endpoint: String, cursor: String?, search: String?, archived: Bool, subagents: Bool)
     case historyDetail(target: String, endpoint: String, thread: String)
     case launchContext(target: String, sourceSession: String?)
@@ -8,7 +9,7 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     case previewEnd(SessionRowProjectionV1.Identity)
     case previewEndAgent(target: String, owner: String, endpoint: String, thread: String)
     enum CodingKeys: String, CodingKey {
-        case type, path, cursor, threads, detail
+        case type, path, cursor, threads, detail, yolo
         case search = "search_term", archived, subagents = "include_subagents"
         case owner = "owner_host_id", thread = "thread_id"
         case target = "execution_target_id", source = "source_session_id"
@@ -17,6 +18,8 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case let .setCreationYolo(yolo):
+            try c.encode("set_creation_yolo", forKey: .type); try c.encode(yolo, forKey: .yolo)
         case let .history(target, endpoint, cursor, search, archived, subagents):
             try c.encode("history", forKey: .type); try c.encode(target, forKey: .target); try c.encode(endpoint, forKey: .endpoint)
             try c.encodeIfPresent(cursor, forKey: .cursor); try c.encodeIfPresent(search, forKey: .search)
@@ -64,16 +67,18 @@ public struct SessionEndPreviewV1: Codable, Equatable, Sendable {
 public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
     case history([CodexHistoryThreadV1], String?)
     case historyDetail(CodexHistoryDetailV1)
-    case launchContext(SessionDirectoryV1, String?)
+    case launchContext(SessionDirectoryV1, String?, Bool)
+    case creationYolo(Bool)
     case directory(SessionDirectoryV1)
     case endPreview(SessionEndPreviewV1)
-    enum CodingKeys: String, CodingKey { case type, directory, notice, preview, threads, detail, next_cursor }
+    enum CodingKeys: String, CodingKey { case type, directory, notice, preview, threads, detail, next_cursor, yolo }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switch try c.decode(String.self, forKey: .type) {
         case "history": self = try .history(c.decode([CodexHistoryThreadV1].self, forKey: .threads), c.decodeIfPresent(String.self, forKey: .next_cursor))
         case "history_detail": self = try .historyDetail(c.decode(CodexHistoryDetailV1.self, forKey: .detail))
-        case "launch_context": self = try .launchContext(c.decode(SessionDirectoryV1.self, forKey: .directory), c.decodeIfPresent(String.self, forKey: .notice))
+        case "launch_context": self = try .launchContext(c.decode(SessionDirectoryV1.self, forKey: .directory), c.decodeIfPresent(String.self, forKey: .notice), c.decodeIfPresent(Bool.self, forKey: .yolo) ?? true)
+        case "creation_yolo": self = try .creationYolo(c.decode(Bool.self, forKey: .yolo))
         case "directory": self = try .directory(c.decode(SessionDirectoryV1.self, forKey: .directory))
         case "end_preview": self = try .endPreview(c.decode(SessionEndPreviewV1.self, forKey: .preview))
         default: throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "Unsupported Session editor result")

@@ -27,7 +27,8 @@ pub const ConnectionChange = union(enum) {
 pub const ConnectionUpdate = struct { expected_revision: []const u8, change: ConnectionChange };
 pub const EditorRequest = struct {
     type: []const u8,
-    execution_target_id: []const u8,
+    execution_target_id: ?[]const u8 = null,
+    yolo: ?bool = null,
     cursor: ?[]const u8 = null,
     search_term: ?[]const u8 = null,
     archived: ?bool = null,
@@ -41,6 +42,7 @@ pub const EditorRequest = struct {
 };
 
 pub const Action = union(enum) {
+    start_local_codex:struct{endpoint_id:[]const u8,owner_host_id:[]const u8,token:u64},
     session_editor: struct { request: EditorRequest, generation: u64, shared: bool = false, ending: bool = false },
     cancel_session_editor: struct { token: u64, ending: bool = false },
     update_connection: ConnectionUpdate,
@@ -174,6 +176,7 @@ pub fn encodeAction(
     action: Action,
 ) ![]u8 {
     return switch (action) {
+        .start_local_codex=>error.InvalidNativeAction,
         .cancel_session_editor => error.InvalidAction,
         .session_editor => |v| std.json.Stringify.valueAlloc(allocator, .{
             .type = "application_request",

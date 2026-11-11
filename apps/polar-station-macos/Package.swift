@@ -40,6 +40,7 @@ let package = Package(
                 .linkedLibrary("bz2"),
                 .linkedLibrary("z"),
                 .linkedLibrary("lzma"),
+                .linkedLibrary("c++"),
                 .linkedFramework("SystemConfiguration"),
             ]
         ),
@@ -74,6 +75,7 @@ let package = Package(
                 "NativeTabGroupPresentationState.swift",
                 "NativeWorkspaceLayout.swift",
                 "NativeWorkspaceState.swift",
+                "StationDictateKeyCapture.swift",
             ]
         ),
     ]

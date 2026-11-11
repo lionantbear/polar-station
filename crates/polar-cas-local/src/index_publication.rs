@@ -32,10 +32,10 @@ impl<'a> IndexPublication<'a> {
         let mut temporary = self.store.index_temporary()?;
         
         temporary.write_all(bytes)?;
-        
+        ;
         
         temporary.as_file().sync_all()?;
-        
+        ;
         let key = reference.id.content_key();
         let marker = format!(".polar-index-artifacts-v1/{key}");
         let existing = self.store.root.join(&key);
@@ -109,7 +109,7 @@ impl<'a> IndexPublication<'a> {
         for path in directories {
             
             self.store.sync_directory(path)?;
-            
+            ;
         }
         Ok(())
     }

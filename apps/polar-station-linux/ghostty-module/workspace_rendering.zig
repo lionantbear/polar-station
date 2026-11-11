@@ -71,6 +71,7 @@ pub const Pane = struct {
 };
 
 pub const Tab = struct {
+    split_ratios: []const f32 = &.{},
     id: []const u8,
     title: []const u8,
     display_mode: DisplayMode,

@@ -102,6 +102,20 @@ pub const Watcher = struct {
         };
         self.changed(self.context);
     }
+    pub fn selectedText(self:*Watcher) ?[:0]u8 {
+        const snapshot=Snapshot{.bus=self.bus,.name=self.name orelse return null,.path=self.path orelse return null,.original=@constCast(""),.caret=0,.offset=0};
+        const role=snapshot.call(accessible,"GetRoleName",null,"(s)") orelse return null;defer role.unref();
+        const name=role.getChildValue(0);defer name.unref();
+        if(same(std.mem.span(name.getString(null)),"password text") or !snapshot.foreground())return null;
+        const state=snapshot.call(accessible,"GetState",null,"(au)") orelse return null;defer state.unref();
+        const bits=state.getChildValue(0);defer bits.unref();if(bits.nChildren()==0)return null;
+        const focused=bits.getChildValue(0);defer focused.unref();if(focused.getUint32() & (1<<12)==0)return null;
+        const selection=snapshot.call(text_interface,"GetSelection",glib.Variant.newParsed("(0,)"),"(ii)") orelse return null;defer selection.unref();
+        const begin=selection.getChildValue(0);defer begin.unref();const end=selection.getChildValue(1);defer end.unref();
+        const first=begin.getInt32();const last=end.getInt32();if(first<0 or last<=first or last-first>16384)return null;
+        const reply=snapshot.call(text_interface,"GetText",glib.Variant.newParsed("(%i, %i)",first,last),"(s)") orelse return null;defer reply.unref();
+        const text=reply.getChildValue(0);defer text.unref();return a.dupeZ(u8,std.mem.span(text.getString(null))) catch null;
+    }
     pub fn capture(self: *Watcher) ?*Snapshot {
         return Snapshot.create(self.bus, self.name orelse return null, self.path orelse return null);
     }

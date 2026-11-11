@@ -53,10 +53,24 @@ def install(source: Path, expected: str, destination: Path) -> None:
             raise
 
 
+def materialize_browsing_config(root: Path, project: Path) -> None:
+    """Package the canonical configuration verbatim, never its content sources."""
+    shutil.copy2(root / "itrees/polar-browsing.itree.json", project / "polar-browsing.itree.json")
+
+
+def validate_engine_function_bindings(godot: Path) -> None:
+    """Reject engines whose font calls can bind to the executable's FreeType."""
+    relocations = subprocess.check_output(["readelf", "--relocs", "--wide", str(godot)], text=True)
+    for symbol in ("FT_Open_Face", "FT_Init_FreeType", "FT_Error_String"):
+        if any(symbol in line.split() for line in relocations.splitlines()):
+            raise ValueError(f"shared engine font function is interposable: {symbol}")
+
+
 def build(root: Path, output: Path, godot: Path, editor: Path, extension: Path, graphviz: Path) -> None:
     # Inputs are already built artifacts. Launch never runs a compiler/editor.
     if output.exists():
         raise ValueError("choose a new bundle output directory")
+    validate_engine_function_bindings(godot)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".graphics-build-", dir=output.parent) as temporary:
         stage = Path(temporary) / "graphics"
@@ -66,7 +80,7 @@ def build(root: Path, output: Path, godot: Path, editor: Path, extension: Path, 
             license_path = root / "crates/polar-force-layout-core/upstream" / package / "LICENSE"
             if license_path.is_file():
                 shutil.copy2(license_path, stage / "licenses" / (package + "-LICENSE"))
-        libname = "libgodot.linuxbsd.template_debug.x86_64.so"
+        libname = godot.name
         shutil.copy2(godot, stage / libname)
         flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", "gtk4", "epoxy"], text=True))
         subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-fPIC", "-shared",
@@ -75,6 +89,7 @@ def build(root: Path, output: Path, godot: Path, editor: Path, extension: Path, 
                         "-L" + str(stage), "-l:" + libname, "-Wl,-rpath,$ORIGIN"], check=True)
         shutil.copytree(root / "apps/polar-ideacave-godot", stage / "project",
                         ignore=shutil.ignore_patterns(".godot", "*.uid", "*.so", "AGENTS.md", "test-fixtures", "*_selftest.gd", "*_test.gd"))
+        materialize_browsing_config(root, stage / "project")
         shutil.copy2(extension, stage / "project/native/libpolar_graphics_godot.so")
         shutil.copytree(graphviz / "usr/lib/x86_64-linux-gnu", stage / "graphviz/lib")
         (stage / "graphviz/bin").mkdir()

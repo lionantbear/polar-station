@@ -8,6 +8,7 @@ let polarStationPortFormat = IntegerFormatStyle<UInt16>.number.grouping(.never)
 /// Draft edits remain local until Apply submits the complete revision-bound
 /// candidate. Rust remains the owner of validation, lifecycle, and recovery.
 public struct ResourcesControlView: View {
+    public var filePrefill:ResourceFileAccessV1?
     public let projection: ResourcesControlProjectionV1?
     public let logTail: ResourceLogTailV1?
     public let isLoading: Bool
@@ -32,6 +33,7 @@ public struct ResourcesControlView: View {
     @State private var selectedLogResourceID: String?
 
     public init(
+        filePrefill:ResourceFileAccessV1?=nil,
         projection: ResourcesControlProjectionV1?,
         logTail: ResourceLogTailV1?,
         isLoading: Bool,
@@ -44,6 +46,7 @@ public struct ResourcesControlView: View {
         loadLog: @escaping @MainActor (String) -> Void,
         dismiss: @escaping @MainActor () -> Void
     ) {
+        self.filePrefill=filePrefill
         self.projection = projection
         self.logTail = logTail
         self.isLoading = isLoading
@@ -68,17 +71,19 @@ public struct ResourcesControlView: View {
                 editor
             }
         }
+        .onChange(of:filePrefill){next in applyFilePrefill(next)}
         .background(.regularMaterial)
         .onAppear {
             synchronizeDraft(projection)
             ensureSelection()
+            applyFilePrefill(filePrefill)
         }
         .onChange(of: projection) { next in
             synchronizeDraft(next)
             ensureSelection()
+            applyFilePrefill(filePrefill)
         }
         .onChange(of: selectedKind) { _ in
-            selectedResourceID = nil
             ensureSelection()
         }
         .confirmationDialog(
@@ -603,6 +608,15 @@ public struct ResourcesControlView: View {
             return
         }
         selectedResourceID = resourceItems.first?.id
+    }
+
+    @State private var consumedFilePrefill:String?
+    private func applyFilePrefill(_ next:ResourceFileAccessV1?){
+        guard let prefill=next,let target=prefill.executionTargetID,let remote=prefill.remoteDirectory,consumedFilePrefill != prefill.sourcePath else{return}
+        consumedFilePrefill=prefill.sourcePath
+        selectedKind = .files
+        let value=FileMappingSpecV1(name:"File Mapping",enabled:true,executionTargetID:target,remotePath:remote,localPath:"~/Polar/remote/"+UUID().uuidString)
+        draft.fileMappings.append(value);selectedResourceID=value.id
     }
 
     private func addSelectedKind() {

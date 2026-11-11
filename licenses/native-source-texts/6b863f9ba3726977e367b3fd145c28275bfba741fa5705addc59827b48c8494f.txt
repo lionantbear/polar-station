@@ -1,0 +1,9 @@
+/* This file contains tables of Unicode properties that are extracted from
+Unicode data files. See the comments at the start of maint/GenerateUcd.py for
+details.
+
+As well as being part of the PCRE2 library, this file is #included by the
+pcre2test program, which redefines the PRIV macro to change table names from
+_pcre2_xxx to xxxx, thereby avoiding name clashes with the library. At present,
+just one of these tables is actually needed. When compiling the library, some
+headers are needed. */

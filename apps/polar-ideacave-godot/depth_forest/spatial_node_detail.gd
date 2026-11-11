@@ -15,6 +15,7 @@ var context_ids: Array=[]
 var base_points: Dictionary={}
 var base_bounds: Dictionary={}
 var base_edges: Array=[]
+var base_atlas_points:Dictionary={}
 var base_cache: Dictionary={}
 var effect: Tween
 const PIXELS_PER_UNIT:=44.0
@@ -29,6 +30,8 @@ var regions: Dictionary={}
 var instruction_open:=false
 var instruction_editor_rect:=Rect2()
 var instruction_button: Button
+var close_button:Button
+const ActionButton=preload("res://node_action_button.gd")
 var annotations: Control
 var headings: Dictionary={}
 var counters: Dictionary={}
@@ -74,7 +77,7 @@ func setup(owner_app) -> void:
 	app.reader.reparent(viewport);app.reader.position=Vector2.ZERO;app.reader.size=Vector2(viewport.size)
 	app.reader.theme=app.theme
 	for font_name in ["normal_font","bold_font","italics_font","bold_italics_font","mono_font"]:app.reader_text.add_theme_font_override(font_name,ThemeDB.fallback_font)
-	var panel:=StyleBoxFlat.new();panel.bg_color=Color(0,0,0,0);panel.set_content_margin_all(24)
+	var panel:=StyleBoxFlat.new();panel.bg_color=Color(0,0,0,0);panel.set_content_margin_all(24);panel.content_margin_right=68
 	app.reader.add_theme_stylebox_override("panel",panel)
 	app.reader_text.add_theme_font_size_override("normal_font_size",36)
 	app.reader_text.add_theme_font_size_override("bold_font_size",36)
@@ -82,8 +85,7 @@ func setup(owner_app) -> void:
 	var column: VBoxContainer=app.reader.get_child(0)
 	var close: Button=column.get_child(0)
 	for connection in close.pressed.get_connections():close.pressed.disconnect(connection.callable)
-	close.pressed.connect(app._close_details);close.text="Return to tree   ·   Enter / Esc";close.focus_mode=Control.FOCUS_NONE
-	close.add_theme_font_size_override("font_size",24);column.move_child(close,column.get_child_count()-1)
+	close.hide()
 	shell=Plaque.new();shell.dimensions=DIMENSIONS;shell.title="";add_child(shell)
 	shell.title_label.hide();shell.glyph_label.hide();shell.skin.rotation=Vector3.ZERO
 	shell.set_selected(true,true)
@@ -93,12 +95,13 @@ func setup(owner_app) -> void:
 	surface.material_override=material;surface.position.z=.24;add_child(surface);hide()
 	departing_surface=MeshInstance3D.new();departing_surface.mesh=QuadMesh.new();departing_surface.material_override=material;forest.world.add_child(departing_surface);departing_surface.hide()
 	annotations=Control.new();annotations.mouse_filter=Control.MOUSE_FILTER_IGNORE;annotations.z_index=12;forest.add_child(annotations);annotations.hide()
-	instruction_button=Button.new();instruction_button.text="Edit instruction"
-	instruction_button.focus_mode=Control.FOCUS_NONE
+	instruction_button=ActionButton.create("edit","Edit instruction (Enter)")
 	instruction_button.pressed.connect(func():
 		if app.has_signal("instruction_requested"):app.instruction_requested.emit())
 	annotations.add_child(instruction_button)
 	instruction_button.visible=app.has_signal("instruction_requested")
+	close_button=ActionButton.create("close","Return to tree (Esc)")
+	close_button.pressed.connect(app._close_details);annotations.add_child(close_button)
 	for role in ["parents","children","previous","next"]:
 		var heading:=Label.new();heading.add_theme_font_size_override("font_size",18);heading.modulate=Color("afccd5");heading.mouse_filter=Control.MOUSE_FILTER_IGNORE;annotations.add_child(heading);headings[role]=heading
 		if role in ["parents","children"]:
@@ -159,9 +162,9 @@ func _restore_geometry() -> void:
 	if base_points.is_empty():return
 	forest.points=base_points.duplicate();forest.bounds=base_bounds.duplicate();forest.edge_paths=base_edges.duplicate(true);forest._route_cache=base_cache.duplicate(true)
 	forest.visible_nodes.clear()
-	for id in forest.points:
+	for id in forest.plaques_3d:
 		var card=forest.plaques_3d[id]
-		card.position=forest.points[id];card.visible=true;card.scale=Vector3.ONE;card.title_label.scale=Vector3.ONE;card.title_label.modulate.a=1;forest.visible_nodes[id]=true
+		card.position=forest.points[id];card.visible=true;card.scale=Vector3.ONE;card.skin.scale=Vector3.ONE;card.title_label.scale=Vector3.ONE;card.title_label.modulate.a=1;forest.visible_nodes[id]=true
 		# The selected reader also morphs its hidden plaque, but need not have
 		# a context-label cache. Restore every mesh independently of that cache.
 		card.resize_geometry(base_bounds[id])
@@ -169,7 +172,7 @@ func _restore_geometry() -> void:
 			var state: Dictionary=base_cards[id]
 			card.title_label.text=state.text;card.title_label.position=state.position;card.title_label.pixel_size=state.pixel_size;card.title_label.width=state.width
 			card.glyph_label.show()
-	forest.star_atlas.world_points=base_points
+	forest.star_atlas.world_points=base_atlas_points
 
 func _shared_parent(id: String) -> bool:
 	for parent in app.model.parents.get(id,[]):
@@ -278,7 +281,9 @@ func _focus_card(id: String,screen: Vector2,pixels: Vector2,full: bool=false) ->
 	card.title_label.position.x=0;card.glyph_label.hide()
 	forest.bounds[id]=bounds;packed_bounds[id]=bounds
 	goals[id]=layout_origin+Vector3((screen.x-forest.size.x*.5)/PIXELS_PER_UNIT,(forest.size.y*.5-screen.y)/PIXELS_PER_UNIT,0)
-	focus_visible[id]=true
+	var rectangle:=Rect2(screen-pixels*.5,pixels)
+	var content:=Rect2(12,142,maxf(1,forest.size.x-24),maxf(1,forest.size.y-192))
+	if content.encloses(rectangle):focus_visible[id]=true
 
 func _build_context() -> bool:
 	_collect_bands();compact_wheel=true;detail_zoom=1.0
@@ -304,15 +309,23 @@ func _build_context() -> bool:
 		goals[id]=layout_origin+Vector3(0,1000,0)
 		forest.bounds[id]=base_bounds[id]
 	goals[focus_id]=layout_origin+Vector3((reader_center.x-w*.5)/PIXELS_PER_UNIT,(h*.5-reader_center.y)/PIXELS_PER_UNIT,0);forest.bounds[focus_id]=dimensions
-	var edge_width:=maxf(100,(w-rw)*.5-54)
+	var edge_width:=maxf(60,(w-rw)*.5-90)
+	var edge_widths:Dictionary={"parents":edge_width,"children":edge_width}
+	if instruction_open:
+		# The native editor moves the reader off centre. Context stays outside
+		# their combined footprint, rather than overlapping the shifted reader.
+		var left_room:=reader_center.x-rw*.5
+		var right_begin:=maxf(reader_center.x+rw*.5,instruction_editor_rect.end.x)
+		band_x.parents=left_room*.5;band_x.children=(right_begin+w)*.5
+		edge_widths={"parents":maxf(60,left_room-28),"children":maxf(60,w-right_begin-28)}
 	for role in ["parents","children"]:
 		var y:=150.0;var step:=maxf(66,72*context_density+font_delta*2)
 		for index in range(int(offsets[role]),band_ids[role].size()):
 			if y+step>h-55:break
 			var id: String=band_ids[role][index]
-			_focus_card(id,Vector2(band_x[role],y+step*.5),Vector2(edge_width,step-18));y+=step
+			_focus_card(id,Vector2(band_x[role],y+step*.5),Vector2(edge_widths[role],step-18));y+=step
 	var at: int=band_ids.level.find(focus_id)
-	var full_height:=maxf(48,54+font_delta*2);var gap:=10.0
+	var full_height:=maxf(48,54+font_delta*2);var gap:=24.0
 	var cols:=clampi(int(rw/maxf(150,(180+font_delta*5)*context_density)),2,5)
 	var cellw: float=(rw-gap*(cols-1))/cols
 	var cellh:=maxf(34,36*context_density+font_delta*2)
@@ -359,7 +372,8 @@ func update_annotations() -> void:
 	if not active:return
 	var box:=_reader_rect()
 	if instruction_button!=null:
-		instruction_button.position=Vector2(box.end.x-instruction_button.size.x-12,box.end.y-instruction_button.size.y-44)
+		instruction_button.position=Vector2(box.end.x-38,box.position.y+10)
+		close_button.position=instruction_button.position+Vector2(0,36)
 	move_hint.hide();resize_hint.hide()
 	for role in ["parents","level","children"]:
 		var heading: Label=headings.previous if role=="level" else headings[role]
@@ -410,18 +424,14 @@ func avoid_reader(start: Vector3,end: Vector3) -> PackedVector3Array:
 
 func _apply_context_positions() -> void:
 	forest.visible_nodes.clear()
-	for id in forest.points:
+	for id in forest.plaques_3d:
 		var card=forest.plaques_3d[id];card.position=forest.points[id];card.visible=id in context_ids
 		if id in context_ids:
 			forest.visible_nodes[id]=true
 			card.set_context_strength(0 if id==focus_id or id in roles.parents or id in roles.children else .22)
 			card.skin.position=Vector3.ZERO;card.skin.rotation=Vector3.ZERO
 			card.title_label.show();card.glyph_label.hide()
-	forest._route_cache.clear()
-	for i in forest.edge_paths.size():
-		var edge: Dictionary=forest.edge_paths[i]
-		if str(edge.from) in context_ids and str(edge.to) in context_ids:edge.points=forest._relation_path(str(edge.from),str(edge.to),i)
-	forest.routes_pending=false;forest.star_atlas.world_points=base_points;forest._edge_dirty=true;forest._label_dirty=true
+	forest.star_atlas.world_points=base_atlas_points;forest._edge_dirty=true;forest._label_dirty=true
 
 func _refresh_camera() -> void:
 	forest.source_index=app.active_index;forest.depth_value=app.wheel_value
@@ -435,15 +445,14 @@ func present(id: String,animate: bool=true) -> void:
 	var old_points: Dictionary=forest.points.duplicate();var old_context:=context_ids.duplicate()
 	var old_position:=position;var old_scale:=scale
 	var old_extents: Dictionary={}
-	for key in context_ids:old_extents[key]=forest.bounds[key]*Vector2(forest.plaques_3d[key].scale.x,forest.plaques_3d[key].scale.y)
+	for key in context_ids:
+		if forest.plaques_3d.has(key):old_extents[key]=forest.bounds[key]*Vector2(forest.plaques_3d[key].scale.x,forest.plaques_3d[key].scale.y)
 	var rapid: bool=not opening and Time.get_ticks_msec()-last_navigation_ms<180
 	if changed or opening:last_navigation_ms=Time.get_ticks_msec()
 	if effect and effect.is_valid():effect.kill()
 	if opening:
-		base_points=forest.points.duplicate();base_bounds=forest.bounds.duplicate();base_edges=forest.edge_paths.duplicate(true);base_cache=forest._route_cache.duplicate(true);saved_direction=forest.view_direction;layout_key=""
-	else:
-		var next_key: String=str(forest.source_by_node.get(id))+":"+str(snappedf(base_points[id].x,.1))+":"+str(forest.size)
-		if next_key!=layout_key:_restore_geometry()
+		base_points=forest.points.duplicate();base_bounds=forest.bounds.duplicate();base_edges=forest.edge_paths.duplicate(true);base_cache=forest._route_cache.duplicate(true);base_atlas_points=forest.star_atlas.world_points;saved_direction=forest.view_direction;layout_key=""
+
 	active=true;forest.detail_active=true;focus_id=id;forest.overview_mode=false;forest.relation_mode=false;forest.relation_overlay.hide();tooltip.hide()
 	var fresh:=_build_context()
 	var node_goal: Vector3=goals[id]
@@ -478,6 +487,45 @@ func present(id: String,animate: bool=true) -> void:
 		goal_scale*=face_scale
 		reader_goal.x=goal_target.x+(reader_goal.x-goal_target.x)*face_scale
 		reader_goal.y=goal_target.y+(reader_goal.y-goal_target.y)*face_scale
+	# Target geometry is prepared once. Godot transforms stretch the existing
+	# shell during the morph; keep glyph size independent of that transform.
+	for key in goals:forest.plaques_3d[key].resize_geometry(target_extents[key])
+	# Cache final world-space geometry, never an animation frame or projection.
+	var digest:=HashingContext.new();digest.start(HashingContext.HASH_SHA256)
+	var route_bounds: Dictionary={}
+	for key in goals:route_bounds[key]=target_extents[key]
+	digest.update(var_to_bytes([focus_id,context_ids,goals,route_bounds,reader_goal,dimensions,goal_scale]))
+	var route_key:=digest.finish().hex_encode()
+	var final_paths: Dictionary=forest.detail_route_layouts.get(route_key,{})
+	if not forest.detail_route_layouts.has(route_key):
+		var saved_points: Dictionary=forest.points.duplicate()
+		var saved_position:=position;var saved_scale:=scale
+		position=reader_goal;scale=goal_scale
+		for key in goals:
+			forest.points[key]=goals[key];forest.plaques_3d[key].position=goals[key]
+			forest.plaques_3d[key].skin.scale=Vector3.ONE
+		var route_ids: Array=focus_visible.keys()
+		if focus_id not in route_ids:route_ids.append(focus_id)
+		final_paths=forest.prepare_planar_routes(route_ids,forest.points,target_extents,forest.full_relations)
+
+		forest.detail_route_layouts[route_key]=final_paths
+		forest.points=saved_points;position=saved_position;scale=saved_scale
+	# Sample the departing path with native Curve3D once. Tween frames only
+	# interpolate these prepared vertices; no solver or Curve bake runs there.
+	var motion_paths: Array=[]
+	var departing: Dictionary={}
+	for edge in forest.edge_paths:departing[forest._slot_key(edge.relations[0])]=edge.points
+	forest.edge_paths=base_edges.duplicate(true)
+	for edge in forest.edge_paths:
+		var key: String=forest._slot_key(edge.relations[0])
+		if not final_paths.has(key):continue
+		var target_path: PackedVector3Array=final_paths[key]
+		var curve:=Curve3D.new()
+		for point in departing.get(key,edge.points):curve.add_point(point)
+		var start_path:=PackedVector3Array()
+		var length:=curve.get_baked_length()
+		for i in target_path.size():start_path.append(curve.sample_baked(length*float(i)/maxf(1,target_path.size()-1)))
+		motion_paths.append({"edge":edge,"start":start_path,"target":target_path})
 	var initial_alpha: float=app.reader.modulate.a
 	var frame:=func(t: float):
 		position=start_position.lerp(reader_goal,t);scale=start_scale.lerp(goal_scale,t)
@@ -494,7 +542,9 @@ func present(id: String,animate: bool=true) -> void:
 			var from_extent: Vector2=old_extents.get(key,target_extent)
 			var extent:=from_extent.lerp(target_extent,t)
 			var card=forest.plaques_3d[key]
-			card.resize_geometry(extent);forest.bounds[key]=extent;card.scale=Vector3.ONE;card.title_label.scale=Vector3.ONE
+			forest.bounds[key]=extent;card.scale=Vector3.ONE
+			card.skin.scale=Vector3(extent.x/target_extent.x,extent.y/target_extent.y,1)
+			card.title_label.scale=Vector3(1.0/card.skin.scale.x,1.0/card.skin.scale.y,1)
 			if not from_extent.is_equal_approx(target_extent):
 				card.title_label.modulate.a=absf(2*t-1)
 			else:card.title_label.modulate.a=1
@@ -505,11 +555,18 @@ func present(id: String,animate: bool=true) -> void:
 			if departing_surface.visible and departing_surface.get_parent()==card:
 				departing_surface.mesh.size=extent-Vector2(.15,.15);card.title_label.modulate.a=0
 
+		for motion in motion_paths:
+			var path:=PackedVector3Array()
+			for i in motion.target.size():path.append(motion.start[i].lerp(motion.target[i],t))
+			motion.edge.points=path
 		_apply_context_positions()
 		forest.target=start_target.lerp(goal_target,t);forest.view_size=lerpf(start_size,goal_size,t);forest.view_direction=start_direction.lerp(Vector3(0,0,1),t).normalized();forest.depth_clearance=0
 		_refresh_camera()
 	if forest.reduced_motion or not animate:frame.call(1.0)
 	else:
+		# Tween runs after Node processing. Install the initial detail visibility
+		# now, so the next render does not rebuild/draw the entire restored forest.
+		frame.call(0.0)
 		effect=create_tween().set_trans(Tween.TRANS_LINEAR);effect.tween_method(frame,0.0,1.0,.09 if rapid else .18);effect.finished.connect(app._trace_state)
 
 func _settle() -> void:
@@ -560,8 +617,8 @@ func close() -> void:
 	viewport.render_target_update_mode=SubViewport.UPDATE_DISABLED;app.reader.hide()
 	var id:=focus_id;var start_scale:=scale;var start_position:=position
 	var start_target: Vector3=forest.target;var start_size: float=forest.view_size
-	_restore_geometry();forest.set_selection(app.navigation.selected_id)
-	app._place_tree();app.tree_pan+=forest.ensure_reading_visible([app.navigation.selected_id]);app._place_tree()
+	_restore_geometry();forest.set_selection(app.displayed_selection())
+	app._place_tree();app.tree_pan+=forest.ensure_reading_visible([app.displayed_selection()]);app._place_tree()
 	var goal_target: Vector3=forest.target;var goal_size: float=forest.view_size
 	var goal_scale:=Vector3(base_bounds[id].x/dimensions.x,base_bounds[id].y/dimensions.y,1)
 	if forest.reduced_motion:hide();return
@@ -581,6 +638,9 @@ func handle_pointer(event: InputEvent) -> bool:
 	if event is InputEventMagnifyGesture:zoom_at(event.position,event.factor);return true
 	if not (event is InputEventMouse or event is InputEventPanGesture):return false
 	var point: Vector2=event.position
+	# Native GUI action hits must reach Button before reader forwarding/picking.
+	for button in [instruction_button,close_button]:
+		if button.visible and button.get_rect().has_point(point):return false
 	var box:=_reader_rect()
 	if event is InputEventMouseButton:
 		if event.button_index==MOUSE_BUTTON_RIGHT:return true

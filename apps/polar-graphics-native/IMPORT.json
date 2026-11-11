@@ -7,5 +7,14 @@
     "linux-libgodot/modules/gtk_surface/SCsub": "729b9df25c9f749febb0be9e18c8589ed30b667bf26c61da701ebc2ec75c6328",
     "linux-libgodot/modules/gtk_surface/register_types.h": "76e54b71e963be2a9aa7806d38bd8914279031eb996c22c72fffbe9e98412ae6",
     "linux-libgodot/modules/gtk_surface/gtk_surface.cpp": "2227b10a30598075b5e447fc95e46702c72041a95654d2a189240b4b79f9e5a2"
+  },
+  "native_mobile": {
+    "commit": "8f4bf461b7d7187b3b20df2b5422300bc445e48d",
+    "adaptation": "Reuse existing product views, input and readiness; one Vulkan export per visible GTK view; shared Metal device/queue on macOS.",
+    "files": {
+      "experiments/native-rd/modules/gtk_surface/gtk_surface.cpp": "803e5d80e3396ef1d8ed9f9edf05a0e2d70328c5c1a7d35ed8be119bf801b1e5",
+      "experiments/native-rd/gtk_host.c": "0c6f34ab861eff0b1e9251719b89642a07cb7054974171b3cd8b35dcdfdd8ca2",
+      "experiments/native-rd/mac_host.mm": "95a91885f24b874847981065c63d4a9af787cb9674a0f0cb24c7c057d96850a3"
+    }
   }
 }

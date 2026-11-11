@@ -26,6 +26,9 @@ var _composition_by_node: Dictionary = {}
 var _source_nodes: Dictionary = {}
 var _multi_file_preview := false
 # Godot's ResourceCache holds weak entries; models own the strong leases.
+static var _source_lock:=Mutex.new()
+static var _source_cache:Dictionary={}
+static var _source_events=ClassDB.instantiate("PolarGraphicsEvents")
 static var _snapshot_lock := Mutex.new()
 static var _graph_lock := Mutex.new()
 var _snapshot_leases: Array[Resource] = []
@@ -127,6 +130,25 @@ static func content(properties: Dictionary) -> String:
 	return "\n\n".join(parts)
 
 func _read_snapshot(path: String, byte_budget: int = -1) -> Dictionary:
+	_source_lock.lock()
+	var absolute:=ProjectSettings.globalize_path(path).simplify_path()
+	var revision:int=_source_events.source_revision(absolute)
+	var cached:Dictionary=_source_cache.get(absolute,{})
+	if revision>=0 and cached.get("revision",-2)==revision:
+		var lease=cached.lease.get_ref()
+		if lease!=null:
+			var snapshot:Dictionary=lease.get_meta("snapshot")
+			if byte_budget<0 or int(snapshot.size_bytes)<=byte_budget:
+				_snapshot_leases.append(lease);_source_lock.unlock();return snapshot
+	var result:=_read_snapshot_uncached(path,byte_budget)
+	if not result.is_empty() and revision>=0 and revision==_source_events.source_revision(absolute):
+		_source_cache[absolute]={"revision":revision,"lease":weakref(_snapshot_leases.back())}
+	for key in _source_cache.keys():
+		if _source_cache[key].lease.get_ref()==null:_source_cache.erase(key)
+	_source_lock.unlock()
+	return result
+
+func _read_snapshot_uncached(path: String, byte_budget: int = -1) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		_load_error("Cannot open I-tree preview input: " + path)

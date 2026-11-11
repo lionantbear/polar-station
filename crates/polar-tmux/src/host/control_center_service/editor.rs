@@ -8,6 +8,13 @@ impl ControlCenterService {
         request: SessionEditorRequestV1,
     ) -> Result<SessionEditorResultV1, ControlCenterErrorV1> {
         match request {
+            SessionEditorRequestV1::SetCreationYolo { yolo } => {
+                let settings = &self.connection_dependencies.get()
+                    .ok_or_else(|| control_error("settings_unavailable", "Desktop settings are unavailable."))?.settings;
+                let yolo = settings.set_new_codex_yolo(yolo)
+                    .map_err(|_| control_error("settings_save_failed", "YOLO preference could not be saved. Try again."))?;
+                Ok(SessionEditorResultV1::CreationYolo { yolo })
+            }
             SessionEditorRequestV1::HistoryDetail { execution_target_id, endpoint_id, thread_id } => {
                 #[cfg(feature = "codex-control")]
                 { self.codex.get().ok_or_else(|| control_error("codex_unavailable", "Codex is unavailable."))?
@@ -95,7 +102,10 @@ impl ControlCenterService {
                     self.read_directory(&execution_target_id, None, None, false)
                         .await?
                 };
-                Ok(SessionEditorResultV1::LaunchContext { directory, notice })
+                let yolo = self.connection_dependencies.get()
+                    .ok_or_else(|| control_error("settings_unavailable", "Desktop settings are unavailable."))?.settings
+                    .load_or_initialize().map_err(|_| control_error("settings_unavailable", "Desktop settings could not be read."))?.session_creation.yolo;
+                Ok(SessionEditorResultV1::LaunchContext { directory, notice, yolo })
             }
             SessionEditorRequestV1::BrowseDirectory {
                 execution_target_id,

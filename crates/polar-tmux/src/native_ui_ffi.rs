@@ -5,6 +5,60 @@ use std::{
     sync::OnceLock,
 };
 
+/// Decode a filesystem image reference through the Resource domain.
+/// # Safety
+/// `bytes` is readable for `len`; returned text uses the desktop string free ABI.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_resource_image_path(bytes:*const u8,len:usize)->*mut c_char {
+    if bytes.is_null()||len==0||len>16384{return std::ptr::null_mut()}
+    std::panic::catch_unwind(|| {
+        let value=std::str::from_utf8(unsafe{std::slice::from_raw_parts(bytes,len)}).ok()?;
+        CString::new(polar_tmux_resources::image_path(value)?).ok().map(CString::into_raw)
+    }).ok().flatten().unwrap_or(std::ptr::null_mut())
+}
+
+/// Parse a general filesystem reference through the Resource domain.
+/// # Safety
+/// `bytes` contains `len` readable bytes; returned text uses desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_resource_file_path(bytes:*const u8,len:usize)->*mut c_char {
+    if bytes.is_null()||len==0||len>16384{return std::ptr::null_mut()}
+    let value=std::str::from_utf8(unsafe {std::slice::from_raw_parts(bytes,len)}).ok();
+    value.and_then(polar_tmux_resources::parse_file_reference)
+        .and_then(|r|CString::new(r.path).ok()).map_or(std::ptr::null_mut(),CString::into_raw)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn polar_station_resource_file_rule_count()->usize {polar_tmux_resources::file_link_rules().len()}
+#[unsafe(no_mangle)]
+pub extern "C" fn polar_station_resource_file_rule_at(index:usize)->*const c_char {
+    static RULES:OnceLock<Vec<CString>>=OnceLock::new();
+    RULES.get_or_init(||polar_tmux_resources::file_link_rules().iter().map(|v|CString::new(*v).expect("static file rule")).collect())
+        .get(index).map_or(std::ptr::null(),|s|s.as_ptr())
+}
+pub struct ResourceFileOpenHandle(polar_tmux_resources::FileOpenFlow);
+#[unsafe(no_mangle)]
+pub extern "C" fn polar_station_resource_file_open_new()->*mut ResourceFileOpenHandle {
+    Box::into_raw(Box::new(ResourceFileOpenHandle(Default::default())))
+}
+/// # Safety
+/// Handle is live, exclusively borrowed, and serialized on its owning UI thread.
+/// `bytes` contains `len` readable bytes; free output with desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_resource_file_open_dispatch(handle:*mut ResourceFileOpenHandle,bytes:*const u8,len:usize)->*mut c_char {
+    if handle.is_null()||bytes.is_null()||len>128*1024{return std::ptr::null_mut()}
+    let Ok(input)=serde_json::from_slice::<polar_tmux_resources::FileOpenInput>(unsafe{std::slice::from_raw_parts(bytes,len)}) else {return std::ptr::null_mut()};
+    let flow=&mut unsafe{&mut *handle}.0;
+    let effects=flow.dispatch(input);
+    serde_json::to_string(&serde_json::json!({"pending":flow.is_pending(),"effects":effects})).ok()
+        .and_then(|v|CString::new(v).ok()).map_or(std::ptr::null_mut(),CString::into_raw)
+}
+/// # Safety
+/// Handle came from file_open_new and is freed once without a concurrent call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_resource_file_open_free(handle:*mut ResourceFileOpenHandle) {
+    if !handle.is_null(){drop(unsafe{Box::from_raw(handle)});}
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct StationShortcutView {
@@ -17,8 +71,9 @@ pub struct StationShortcutView {
 fn strings() -> &'static Vec<(CString, CString)> {
     static STRINGS: OnceLock<Vec<(CString, CString)>> = OnceLock::new();
     STRINGS.get_or_init(|| {
-        STATION_SHORTCUTS
-            .iter()
+        STATION_SHORTCUTS.iter().copied()
+            .chain(polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:2,tabs:2,idea:true}))
+            .chain(polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:2,tabs:2,idea:false}))
             .map(|e| {
                 (
                     CString::new(e.key).expect("static key"),
@@ -27,6 +82,9 @@ fn strings() -> &'static Vec<(CString, CString)> {
             })
             .collect()
     })
+}
+fn static_c_string(value:&str)->*const c_char {
+    strings().iter().flat_map(|(key,label)|[key,label]).find(|s|s.as_bytes()==value.as_bytes()).map_or(std::ptr::null(),|s|s.as_ptr())
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_shortcut_count() -> usize {
@@ -263,20 +321,20 @@ pub unsafe extern "C" fn polar_station_attention_free(handle: *mut AttentionHand
 }
 
 /// Main-thread shortcut input handle, independent of background Dictate IO.
-pub struct StationShortcutGesture(polar_tmux_workspace::shortcuts::DictateGesture);
+pub struct StationShortcutGesture {gesture: polar_tmux_workspace::shortcuts::DictateGesture, clock: std::time::Instant}
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_shortcut_gesture_new() -> *mut StationShortcutGesture {
-    Box::into_raw(Box::new(StationShortcutGesture(Default::default())))
+    Box::into_raw(Box::new(StationShortcutGesture{gesture:Default::default(),clock:std::time::Instant::now()}))
 }
 /// # Safety
 /// Handle is live and exclusively borrowed; events: press=1, release=2,
-/// discrete nonrepeat activation=3, cancel=4. Returns none=0/start=1/stop=2.
+/// discrete nonrepeat activation=3, cancel=4. Returns none=0/start=1/stop=2/use-original=3.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn polar_station_shortcut_gesture_event(handle: *mut StationShortcutGesture, event: u32, toggle: bool, recording: bool, can_start: bool) -> u32 {
+pub unsafe extern "C" fn polar_station_shortcut_gesture_event(handle: *mut StationShortcutGesture, event: u32, recording: bool, can_start: bool, can_use_available: bool) -> u32 {
     use polar_tmux_workspace::shortcuts::ShortcutEvent;
     let Some(handle) = (unsafe { handle.as_mut() }) else { return 0; };
     let event = match event { 1 => ShortcutEvent::Press, 2 => ShortcutEvent::Release, 3 => ShortcutEvent::Activate, _ => ShortcutEvent::Cancel };
-    handle.0.interpret(event, toggle, recording, can_start) as u32
+    handle.gesture.interpret(event, handle.clock.elapsed().as_millis().min(u128::from(u64::MAX)) as u64, recording, can_start, can_use_available) as u32
 }
 /// # Safety
 /// Handle is null or uniquely owned and live; no calls race destruction.
@@ -286,3 +344,17 @@ pub unsafe extern "C" fn polar_station_shortcut_gesture_free(handle: *mut Statio
 }
 
 
+
+/// Shared contextual hint catalog; the native shell owns measurements and drawing.
+#[repr(C)]
+#[derive(Clone,Copy,Default)]
+pub struct StationShortcutHintContext {pub panes:u32,pub tabs:u32,pub idea:bool}
+#[unsafe(no_mangle)]
+pub extern "C" fn polar_station_shortcut_hint_count(context:StationShortcutHintContext)->usize {
+    polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:context.panes,tabs:context.tabs,idea:context.idea}).count()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn polar_station_shortcut_hint_at(context:StationShortcutHintContext,index:usize)->StationShortcutView {
+    let entries=polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:context.panes,tabs:context.tabs,idea:context.idea});
+    match entries.into_iter().nth(index) {Some(entry)=>StationShortcutView{action:entry.action as u32,number:entry.number,repeatable:entry.repeatable,key:static_c_string(entry.key),label:static_c_string(entry.label)},None=>StationShortcutView{action:0,number:0,repeatable:false,key:std::ptr::null(),label:std::ptr::null()}}
+}

@@ -8,7 +8,8 @@ use std::sync::{
 };
 use tokio::sync::{mpsc, watch};
 
-pub type ProgressCallback = extern "C" fn(*mut std::ffi::c_void, *const u8, usize, u64, *const u8, usize);
+pub type ProgressCallback =
+    extern "C" fn(*mut std::ffi::c_void, *const u8, usize, u64, *const u8, usize);
 #[derive(Clone, Copy)]
 struct Progress {
     callback: ProgressCallback,
@@ -20,13 +21,16 @@ fn report_progress(
     response: &Value,
     preview: bool,
 ) -> anyhow::Result<()> {
-    let mut receipt: polar_dictate::SaveReceipt = serde_json::from_value(response["receipt"].clone())?;
+    let mut receipt: polar_dictate::SaveReceipt =
+        serde_json::from_value(response["receipt"].clone())?;
     anyhow::ensure!(
         receipt.recording_id == id
             && receipt.saved_through_sample <= polar_dictate::MAX_RECORDING_SAMPLES,
         "dictate.invalid_save_receipt"
     );
-    if !preview { receipt.transcript_preview.clear(); }
+    if !preview {
+        receipt.transcript_preview.clear();
+    }
     if let Ok(progress) = progress.lock() {
         if let Some(progress) = *progress {
             (progress.callback)(
@@ -41,7 +45,24 @@ fn report_progress(
     }
     Ok(())
 }
+pub type HistoryCallback = extern "C" fn(*mut std::ffi::c_void, *const u8, usize);
+type HistorySlot = Arc<Mutex<Option<(HistoryCallback, usize)>>>;
+fn history_input(slot: &HistorySlot, input: Value) {
+    if let Ok(bytes) = serde_json::to_vec(&input) {
+        if let Ok(slot) = slot.lock() {
+            if let Some((callback, context)) = *slot {
+                callback(
+                    context as *mut std::ffi::c_void,
+                    bytes.as_ptr(),
+                    bytes.len(),
+                );
+            }
+        }
+    }
+}
 pub struct DictateSpeech {
+    history_callback: HistorySlot,
+    history_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     progress: Arc<Mutex<Option<Progress>>>,
     playback: Mutex<Vec<tempfile::NamedTempFile>>,
     client: DictateClient,
@@ -59,7 +80,7 @@ struct SpeechWork {
 }
 struct Capture {
     id: String,
-    sender: mpsc::Sender<Vec<u8>>,
+    sender: Option<mpsc::Sender<Vec<u8>>>,
     pending: Arc<AtomicUsize>,
     error: Arc<Mutex<Option<String>>>,
     task: tokio::task::JoinHandle<Result<(), String>>,
@@ -74,6 +95,8 @@ impl DictateSpeech {
             .build()
             .map_err(|e| e.to_string())?;
         Ok(Self {
+            history_callback: Arc::new(Mutex::new(None)),
+            history_task: Mutex::new(None),
             client: DictateClient::default(),
             progress: Arc::new(Mutex::new(None)),
             playback: Mutex::new(Vec::new()),
@@ -90,6 +113,42 @@ impl DictateSpeech {
         if let Ok(mut progress) = self.progress.lock() {
             *progress = callback.map(|callback| Progress { callback, context });
         }
+    }
+    pub fn set_history(&self, callback: Option<HistoryCallback>, context: usize) {
+        let Ok(mut task) = self.history_task.lock() else {
+            return;
+        };
+        if let Ok(mut slot) = self.history_callback.lock() {
+            *slot = callback.map(|c| (c, context));
+        }
+        if callback.is_none() {
+            if let Some(task) = task.take() {
+                task.abort();
+            }
+            return;
+        }
+        if task.as_ref().is_some_and(|t| !t.is_finished()) {
+            return;
+        }
+        let Some(runtime) = &self.runtime else {
+            return;
+        };
+        let client = self.client.clone();
+        let slot = self.history_callback.clone();
+        *task = Some(runtime.spawn(async move {
+            let result = client.observe_history(|event| {
+                let input = if event["settings_changed"]==true {json!({"type":"refresh_settings"})}
+                    else if event["refresh"] == true { json!({"type":"refresh_history","removed":event["removed"]}) }
+                    else if !event["item"].is_null() {json!({"type":"history_item_event","item":event["item"]})}
+                    else { json!({"type":"history_event","recording":event["recording"]}) };
+                let bytes = serde_json::to_vec(&input)?;
+                if let Ok(slot) = slot.lock() { if let Some((callback,context)) = *slot {
+                    callback(context as *mut std::ffi::c_void,bytes.as_ptr(),bytes.len());
+                } }
+                Ok(())
+            }).await;
+            if result.is_err() {history_input(&slot,json!({"type":"host_disconnected","error":"Voice Host disconnected; saved results retained. Start again to reconnect."}));}
+        }));
     }
     pub fn request(&self, payload: Value) -> Result<Value, String> {
         if payload.get("op").and_then(Value::as_str) == Some("export_audio") {
@@ -157,17 +216,32 @@ impl DictateSpeech {
     }
     /// Start the durable owner before handing it microphone frames. Context is
     /// captured now; a later focus change cannot change the pending operation.
+    #[allow(clippy::too_many_arguments)] // Same capture contract as the shared application port.
     pub fn begin(
         &self,
         id: &str,
         context: Option<String>,
+        reference: String,
+        project: Option<String>,
         cleanup: bool,
         is_test: bool,
     ) -> Result<(), String> {
         if !polar_dictate::identifier(id) {
             return Err("Invalid Dictate operation".into());
         }
+        // A new user capture reuses registration and reopens a completed
+        // subscription after a Host restart; no timer or polling loop.
+        let history = self.history_callback.lock().ok().and_then(|slot| *slot);
+        if let Some((callback, context)) = history {
+            self.set_history(Some(callback), context);
+        }
         let mut capture = self.capture.lock().map_err(|_| "Voice client stopped")?;
+        if capture
+            .as_ref()
+            .is_some_and(|c| c.sender.is_none() && c.task.is_finished())
+        {
+            capture.take();
+        }
         if capture.is_some() {
             return Err("A recording is already active".into());
         }
@@ -182,10 +256,11 @@ impl DictateSpeech {
         let operation = id.to_owned();
         let client = self.client.clone();
         let progress = self.progress.clone();
+        let history = self.history_callback.clone();
         let task=self.runtime.as_ref().ok_or("Voice client stopped")?.spawn(async move {
             let mut preview=None;
             let result=async {
-                client.call(json!({"op":"start","id":operation,"now_ms":now_ms(),"is_test":is_test,"cleanup":cleanup,"context":context})).await?;
+                client.call(json!({"op":"start","id":operation,"now_ms":now_ms(),"is_test":is_test,"cleanup":cleanup,"context":context,"project":project,"reference":reference})).await?;
                 let observer=client.clone();let observer_id=operation.clone();let observer_progress=progress.clone();
                 preview=Some(tokio::spawn(async move {
                     observer.observe(&observer_id, |response| report_progress(&observer_progress,&observer_id,&response,true)).await
@@ -207,20 +282,19 @@ impl DictateSpeech {
             }.await.map_err(|e|e.to_string());
             if let Err(message)=&result {
                 if let Ok(mut error)=failure.lock(){*error=Some(message.clone());}
+                history_input(&history,json!({"type":"failed","operation_id":operation,"error":message}));
                 let _=client.call(json!({"op":"stop","id":operation,"reason":"Audio storage stopped; only acknowledged audio is recoverable"})).await;
             }
-            if let Some(preview)=preview {
-                if result.is_err() { preview.abort(); }
-                else if !matches!(preview.await,Ok(Ok(()))) {
-                    tracing::warn!("Dictate preview observation ended; durable result remains available");
-                }
-            }
+            // Capture owns only saving/preview. Global Recording observations
+            // continue independently while transcription/refinement runs.
+            if let Some(preview)=preview {preview.abort();}
+
             let _=done.send(true);
             result
         });
         *capture = Some(Capture {
             id: id.into(),
-            sender,
+            sender: Some(sender),
             pending,
             error,
             task,
@@ -258,11 +332,27 @@ impl DictateSpeech {
                 "Audio storage cannot keep up; recording stopped, saved audio retained".into(),
             );
         }
-        if capture.sender.try_send(pcm.to_vec()).is_err() {
+        if capture
+            .sender
+            .as_ref()
+            .is_none_or(|sender| sender.try_send(pcm.to_vec()).is_err())
+        {
             capture.pending.fetch_sub(pcm.len(), Ordering::AcqRel);
             return Err("Audio storage queue is unavailable; saved audio retained".into());
         }
         Ok(())
+    }
+    /// Close native PCM input without waiting for recognition/refinement.
+    /// The existing writer drains its queue and sends Stop; subscribers own results.
+    pub fn finish(&self, id: &str) -> bool {
+        let Ok(mut capture) = self.capture.lock() else {
+            return false;
+        };
+        let Some(capture) = capture.as_mut().filter(|c| c.id == id) else {
+            return false;
+        };
+        capture.sender.take();
+        true
     }
     pub fn reserve(&self, id: &str) -> Result<(), String> {
         if !polar_dictate::identifier(id) {
@@ -391,6 +481,7 @@ fn now_ms() -> u64 {
 }
 impl Drop for DictateSpeech {
     fn drop(&mut self) {
+        self.set_history(None, 0);
         let id = self
             .capture
             .get_mut()
@@ -430,3 +521,5 @@ impl Drop for DictateSpeech {
         }
     }
 }
+
+

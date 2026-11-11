@@ -10,6 +10,8 @@ var entries:Array[Dictionary]=[]
 var paused:=false
 var _queue:Array[Dictionary]=[]
 var _thread:Thread
+var _events=ClassDB.instantiate("PolarGraphicsEvents")
+var _completion:int
 var _generation:=0
 var _active:Dictionary={}
 var _model
@@ -93,13 +95,16 @@ func _pump()->void:
 	_active=_queue.pop_front();_active.status="loading";_active.generation=_generation
 	var job:=_active.duplicate(true);var generation:=_generation
 	var source_paths:=paths.duplicate();source_paths.append(str(job.path))
+	if _completion==0:_completion=_events.subscribe(_worker_completed)
+	var notify:Callable=_events.waker(_completion)
 	_thread=Thread.new()
 	var error:=_thread.start(func():
 		var candidate=Model.new()
 		var message:=""
 		if not candidate.load_files(source_paths):message=candidate.error
 		if message.is_empty():message=_verify(candidate,job)
-		call_deferred("_completed",generation,candidate,source_paths,message)
+		notify.call()
+		return {"generation":generation,"candidate":candidate,"paths":source_paths,"message":message}
 	)
 	if error!=OK:
 		_thread=null;_active.status="failed";_active.reason="Could not start file reader";_active={}
@@ -147,5 +152,11 @@ func _publish_staged()->void:
 				entry.status="failed";entry.reason="Related tree could not be applied; existing view retained"
 
 func _exit_tree()->void:
+	if _completion:_events.unsubscribe(_completion)
 	_generation+=1;_queue.clear()
 	if _thread!=null:_thread.wait_to_finish();_thread=null
+
+func _worker_completed()->void:
+	if _thread==null:return
+	var result:Dictionary=_thread.wait_to_finish();_thread=null
+	_completed(result.generation,result.candidate,result.paths,result.message)

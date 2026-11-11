@@ -3,7 +3,7 @@ use codex_app_server_client::{
     AppServerClient, AppServerEvent, AppServerRequestHandle, RemoteAppServerClient,
     RemoteAppServerConnectArgs, RemoteAppServerEndpoint,
 };
-use codex_app_server_protocol::{ClientRequest, ServerNotification, ServerRequest, ThreadItem};
+use codex_app_server_protocol::{ClientRequest, ServerNotification, ServerRequest, ThreadItemPayload};
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -58,6 +58,7 @@ impl CodexEndpoint {
                 .map_err(|_| RpcFailure::InvalidRequest)?,
         };
         let remote = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
+            required_human_approval: false,
             endpoint,
             client_name: "polar_station".into(),
             client_version: env!("CARGO_PKG_VERSION").into(),
@@ -187,7 +188,7 @@ pub(super) fn relevant_event(event: &AppServerEvent) -> bool {
             | ServerNotification::TurnStarted(_)
             | ServerNotification::TurnCompleted(_) => true,
             ServerNotification::ItemCompleted(n) => {
-                matches!(n.item, ThreadItem::AgentMessage { .. })
+                matches!(n.item.payload, ThreadItemPayload::AgentMessage { .. })
             }
             _ => false,
         },

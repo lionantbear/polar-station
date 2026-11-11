@@ -1,4 +1,5 @@
 shader_type spatial;
+stencil_mode read, compare_not_equal, 1;
 render_mode unshaded, cull_disabled;
 uniform vec4 canvas_region = vec4(0.0, 0.0, 1.0, 1.0);
 varying vec4 line_color;

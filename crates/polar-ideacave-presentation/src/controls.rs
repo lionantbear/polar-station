@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     OpenFiles,
+    OpenBrowsingConfiguration,
+    BrowsingConfigurationInfo,
+    BrowsingConfigurationError,
+    OpenBrowsingConfigurationSource,
+    UseDefaultBrowsingConfiguration,
     SelectBrowser,
     SelectTheme,
     InstallViewPackage,
@@ -36,7 +41,6 @@ pub enum Action {
     FramingBoth,
     FramingFixed,
     ConnectionFlow,
-    ConnectionLabels,
     BrowserMindMap,
     BrowserDepthForest,
     ThemeDefault,
@@ -107,7 +111,9 @@ pub struct InstructionAnchor {
 // Internally tagged native inputs buffer numbers through Serde Content. The
 // full Host enables arbitrary_precision, whose buffered decimals use JSON's
 // Number representation. Reuse that decoder rather than a plain f64 visitor.
-fn deserialize_anchor_coordinate<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+fn deserialize_anchor_coordinate<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<f64, D::Error> {
     serde_json::Number::deserialize(deserializer)?
         .as_f64()
         .filter(|value| value.is_finite())
@@ -128,6 +134,7 @@ pub struct InstructionStyle {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ControlsState {
+    pub browsing_configuration: crate::browsing_configuration::ConfigurationInfo,
     pub source_paths: Vec<String>,
     pub related_sources: Vec<RelatedSource>,
     pub loading_paused: bool,
@@ -147,6 +154,7 @@ pub struct ControlsState {
     pub can_back: bool,
     pub can_forward: bool,
     pub reader_open: bool,
+    pub selected_group_reference: bool,
     pub tilted: bool,
     pub canvas_mode: CanvasMode,
     pub canvas_modes: Vec<CanvasMode>,
@@ -154,7 +162,6 @@ pub struct ControlsState {
     pub frame_endpoints: bool,
     pub framing_policy: FramingPolicy,
     pub connection_flow: bool,
-    pub connection_labels: bool,
     pub relationship_focus: bool,
     pub path_feedback: bool,
     pub camera_inertia: bool,
@@ -168,6 +175,7 @@ pub struct ControlsState {
 impl Default for ControlsState {
     fn default() -> Self {
         Self {
+            browsing_configuration: Default::default(),
             source_paths: Vec::new(),
             related_sources: Vec::new(),
             loading_paused: false,
@@ -187,6 +195,7 @@ impl Default for ControlsState {
             can_back: false,
             can_forward: false,
             reader_open: false,
+            selected_group_reference: false,
             tilted: false,
             relations: false,
             canvas_mode: CanvasMode::TwoD,
@@ -195,7 +204,6 @@ impl Default for ControlsState {
             frame_endpoints: true,
             framing_policy: FramingPolicy::ReadingPriority,
             connection_flow: true,
-            connection_labels: true,
             relationship_focus: false,
             path_feedback: true,
             camera_inertia: true,
@@ -215,6 +223,8 @@ pub struct Control {
     pub enabled: bool,
     pub active: bool,
     pub overflow: bool,
+    pub group: String,
+    pub tooltip: String,
 }
 impl ControlsState {
     pub fn controls(&self) -> Vec<Control> {
@@ -248,11 +258,21 @@ impl ControlsState {
                 self.theme_id == "christmas",
                 true,
             ),
-            (OpenFiles, "Open files", true, false, true),
+            (OpenFiles, "Open Trees…", true, false, true),
             (Back, "←", self.can_back, false, false),
             (Forward, "→", self.can_forward, false, false),
             (Locate, "Locate", self.has_selection, false, true),
-            (Read, "Read", self.has_selection, self.reader_open, true),
+            (
+                Read,
+                if self.selected_group_reference && !self.reader_open {
+                    "Go to Group"
+                } else {
+                    "Read"
+                },
+                self.has_selection,
+                self.reader_open,
+                true,
+            ),
             (Fit, "Fit", self.ready, false, true),
             (
                 RelationshipFocus,
@@ -318,7 +338,6 @@ impl ControlsState {
                 self.framing_policy == FramingPolicy::FixedZoom,
                 true,
             ),
-            (ConnectionLabels, "Connection labels", self.ready, self.connection_labels, true),
             (
                 ConnectionFlow,
                 "Connection flow",
@@ -370,25 +389,143 @@ impl ControlsState {
             enabled,
             active,
             overflow,
+            group: String::new(),
+            tooltip: String::new(),
         })
         .collect();
-        for (items, action, current) in [(&self.browsers, SelectBrowser, &self.browser_id), (&self.themes, SelectTheme, &self.theme_id)] {
+        let configuration = &self.browsing_configuration;
+        for (action, label, enabled, active, tooltip) in [
+            (
+                OpenBrowsingConfiguration,
+                "Open…".to_owned(),
+                true,
+                false,
+                String::new(),
+            ),
+            (
+                BrowsingConfigurationInfo,
+                format!("Current: {}", configuration.title),
+                false,
+                false,
+                configuration.path.clone(),
+            ),
+            (
+                OpenBrowsingConfigurationSource,
+                "Open Source".to_owned(),
+                !configuration.path.is_empty(),
+                false,
+                configuration.path.clone(),
+            ),
+            (
+                UseDefaultBrowsingConfiguration,
+                "Use Built-in Default".to_owned(),
+                true,
+                configuration.using_builtin,
+                String::new(),
+            ),
+        ] {
+            controls.push(Control {
+                action,
+                label,
+                enabled,
+                active,
+                tooltip,
+                query: String::new(),
+                overflow: true,
+                group: "Browsing Configuration".into(),
+            });
+        }
+        if !configuration.error.is_empty() {
+            controls.push(Control {
+                action: BrowsingConfigurationError,
+                label: format!("Error: {}", configuration.error),
+                enabled: false,
+                active: false,
+                tooltip: configuration.requested_path.clone(),
+                query: String::new(),
+                overflow: true,
+                group: "Browsing Configuration".into(),
+            });
+        }
+        for (items, action, current) in [
+            (&self.browsers, SelectBrowser, &self.browser_id),
+            (&self.themes, SelectTheme, &self.theme_id),
+        ] {
             for item in items {
-                controls.push(Control { action, label: item.title.clone(), query: item.id.clone(), enabled: self.ready, active: &item.id == current, overflow: true });
+                controls.push(Control {
+                    action,
+                    label: item.title.clone(),
+                    query: item.id.clone(),
+                    enabled: self.ready,
+                    active: &item.id == current,
+                    overflow: true,
+                    group: String::new(),
+                    tooltip: String::new(),
+                });
             }
         }
-        controls.push(Control { action: InstallViewPackage, label: "Install trusted view package…".into(), query: String::new(), enabled: true, active: false, overflow: true });
+        controls.push(Control {
+            action: InstallViewPackage,
+            label: "Install trusted view package…".into(),
+            query: String::new(),
+            enabled: true,
+            active: false,
+            overflow: true,
+            group: String::new(),
+            tooltip: String::new(),
+        });
         for package in &self.view_packages {
-            for (action, verb) in [(ExportViewPackage,"Export"),(UninstallViewPackage,"Uninstall")] {
-                controls.push(Control { action, label: format!("{verb} {}",package.title), query: package.id.clone(), enabled: true, active: false, overflow: true });
+            for (action, verb) in [
+                (ExportViewPackage, "Export"),
+                (UninstallViewPackage, "Uninstall"),
+            ] {
+                controls.push(Control {
+                    action,
+                    label: format!("{verb} {}", package.title),
+                    query: package.id.clone(),
+                    enabled: true,
+                    active: false,
+                    overflow: true,
+                    group: String::new(),
+                    tooltip: String::new(),
+                });
             }
         }
         if !self.related_sources.is_empty() {
-            controls.push(Control { action: PauseLoading, label: if self.loading_paused { "Resume related loading" } else { "Pause related loading" }.into(), query: String::new(), enabled: self.ready, active: self.loading_paused, overflow: true });
+            controls.push(Control {
+                action: PauseLoading,
+                label: if self.loading_paused {
+                    "Resume related loading"
+                } else {
+                    "Pause related loading"
+                }
+                .into(),
+                query: String::new(),
+                enabled: self.ready,
+                active: self.loading_paused,
+                overflow: true,
+                group: String::new(),
+                tooltip: String::new(),
+            });
         }
         controls.extend(self.related_sources.iter().map(|source| Control {
-            action: LoadRelated, label: format!("Load {} · {}{}", source.label, source.status, if source.reason.is_empty() { String::new() } else { format!(" · {}",source.reason) }),
-            query: source.path.clone(), enabled: self.ready && source.status != "loading", active: false, overflow: true,
+            action: LoadRelated,
+            label: format!(
+                "Load {} · {}{}",
+                source.label,
+                source.status,
+                if source.reason.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {}", source.reason)
+                }
+            ),
+            group: String::new(),
+            tooltip: String::new(),
+            query: source.path.clone(),
+            enabled: self.ready && source.status != "loading",
+            active: false,
+            overflow: true,
         }));
         controls
     }

@@ -170,9 +170,9 @@ impl UnifiedCatalogIndex {
         receipt.bytes_written = written_files.values().sum::<u64>() + index.reference().size_bytes;
         next.index = Some(Arc::new(index));
         cancelled(stop)?;
-        
+        ;
         self.commit(old, next)?;
-        
+        ;
         Ok(receipt)
     }
 }

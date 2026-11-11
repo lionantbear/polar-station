@@ -10,6 +10,10 @@ mod codex_discovery;
 #[cfg(feature = "codex-control")]
 mod codex_endpoint;
 #[cfg(feature = "codex-control")]
+mod codex_file_references;
+#[cfg(feature = "codex-control")]
+mod codex_startup;
+#[cfg(feature = "codex-control")]
 pub(crate) mod codex_imessage_runtime;
 #[cfg(feature = "codex-control")]
 mod codex_imessage_setup;

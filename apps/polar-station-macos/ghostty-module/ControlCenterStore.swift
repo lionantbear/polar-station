@@ -1,3 +1,5 @@
+import AppKit
+import CPolarStationDesktopClient
 import Combine
 import Foundation
 import PolarTmuxHostClient
@@ -303,6 +305,51 @@ final class ControlCenterStore: ObservableObject {
             } catch {
                 companionPairingError =
                     error.localizedDescription
+            }
+        }
+    }
+
+    @Published var resourceFilePrefill:ResourceFileAccessV1?
+    var requestFileMapping:(()->Void)?
+    private let resourceFileFlow = SharedResourceFileOpen()
+    func openResourceFile(target:String,path:String,cwd:String?,terminalSessionID:String?=nil) {
+        fileOpenInput(["type":"open","request_id":requestID(),"text":path,"origin":["execution_target_id":target,"cwd":cwd as Any? ?? NSNull(),"terminal_session_id":terminalSessionID as Any? ?? NSNull()]])
+    }
+    func cancelResourceFile(){resourceFilePrefill=nil;fileOpenInput(["type":"cancel"])}
+    private func resolveResourceFile(){fileOpenInput(["type":"refresh","request_id":requestID()])}
+    private func fileOpenInput(_ value:[String:Any]) {
+        for effect in resourceFileFlow.dispatch(value) {
+            switch effect["type"] as? String {
+            case "resolve":
+                guard let id=effect["request_id"] as? String,let path=effect["path"] as? String,
+                      let origin=effect["origin"] as? [String:Any],let target=origin["execution_target_id"] as? String else{continue}
+                let command:ResourcesCommandV1
+                if let session=origin["terminal_session_id"] as? String {
+                    command = .resolveSessionFile(session:.init(executionTarget:target,tmuxSessionID:session),path:path,cwd:origin["cwd"] as? String)
+                } else { command = .resolveFile(target:target,path:path,cwd:origin["cwd"] as? String) }
+                Task {
+                    do {
+                        try await ensureBackendSession()
+                        let response=try await backendSession.requestResources(.init(requestID:id,expectedRevision:nil,command:command))
+                        switch response.result {
+                        case .fileAccess(let access):
+                            let data=try JSONEncoder().encode(access)
+                            fileOpenInput(["type":"resolved","request_id":id,"access":try JSONSerialization.jsonObject(with:data)])
+                        case .error(let error,_):fileOpenInput(["type":"failed","request_id":id,"message":error.message])
+                        default:fileOpenInput(["type":"failed","request_id":id,"message":"Unexpected file access response."])
+                        }
+                    }catch{fileOpenInput(["type":"failed","request_id":id,"message":error.localizedDescription])}
+                }
+            case "start_resource":if let id=effect["resource_id"] as? String{restartResource(id)}
+            case "create_mapping":
+                if let access=effect["access"],let data=try? JSONSerialization.data(withJSONObject:access),let prefill=try? JSONDecoder().decode(ResourceFileAccessV1.self,from:data){resourceFilePrefill=prefill;requestFileMapping?()}
+            case "open_local_file":
+                guard let path=effect["path"] as? String else{continue}
+                let url=URL(fileURLWithPath:(path as NSString).expandingTildeInPath)
+                if effect["strategy"] as? String == "reveal" {NSWorkspace.shared.activateFileViewerSelecting([url])}
+                else if !NSWorkspace.shared.open(url){fileOpenInput(["type":"viewer_failed","path":path])}
+            case "show_error":resourcesError=effect["message"] as? String;requestFileMapping?()
+            default:break
             }
         }
     }
@@ -1293,6 +1340,8 @@ final class ControlCenterStore: ObservableObject {
              let .commandAccepted(projection):
             resourcesProjection = projection
             resourcesError = nil
+            resolveResourceFile()
+        case .fileAccess:break
         case let .logTail(tail):
             resourceLogTail = tail
             resourcesError = nil
@@ -1436,5 +1485,19 @@ extension ControlCenterIntentOperationV1 {
     var isPaneActivation: Bool {
         if case .activatePane = self { return true }
         return false
+    }
+}
+
+/// UI-thread transport adapter. All pending/open semantics live in Resource Rust.
+private final class SharedResourceFileOpen {
+    private let handle=polar_station_resource_file_open_new()
+    deinit{polar_station_resource_file_open_free(handle)}
+    func dispatch(_ value:[String:Any])->[[String:Any]] {
+        guard let data=try? JSONSerialization.data(withJSONObject:value) else{return []}
+        let bytes=Array(data)
+        guard let output=bytes.withUnsafeBufferPointer({polar_station_resource_file_open_dispatch(handle,$0.baseAddress,$0.count)}) else{return []}
+        defer{polar_station_desktop_string_free(output)}
+        guard let data=String(cString:output).data(using:.utf8),let result=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any] else{return []}
+        return result["effects"] as? [[String:Any]] ?? []
     }
 }

@@ -21,10 +21,17 @@ import sys
 import tomllib
 from typing import Any
 import public_profile
+import source_cleanup
 
 SCRIPT = Path(__file__).resolve()
 DEFAULT_POLICY = SCRIPT.with_name("public_release_policy.json")
 PUBLIC_MANIFEST = "PUBLIC_SOURCE_MANIFEST.json"
+PRIVATE_SOURCE_PARTS = {"hear-crypto", "polar-hear-private", "polar-hear-archive", "hardware-crypto-private"}
+
+
+def prohibited_source(relative: str) -> bool:
+    return bool({part.lower() for part in Path(relative).parts} & PRIVATE_SOURCE_PARTS)
+
 PUBLIC_README = """# Polar Station
 
 Public source snapshot of Polar Station, the native macOS/Linux agent workstation.
@@ -160,6 +167,8 @@ def compute_cargo_closure(source: Path, seeds: list[str]) -> CargoClosure:
     package_paths: dict[str, str] = {}
     by_name: dict[str, str] = {}
     for candidate in root.get("workspace", {}).get("members", []):
+        if prohibited_source(candidate):
+            continue  # never open excluded hardware source manifests
         manifest_file = within(source, f"{candidate}/Cargo.toml")
         if not manifest_file.is_file():
             continue
@@ -203,6 +212,8 @@ def compute_cargo_closure(source: Path, seeds: list[str]) -> CargoClosure:
         target = (source / relative).resolve()
         if not target.is_relative_to(source):
             raise ExportError(f"local dependency escapes source root: {owner} → {relative}")
+        if prohibited_source(target.relative_to(source).as_posix()):
+            raise ExportError(f"proprietary local dependency reached public export: {relative}")
         if not (target / "Cargo.toml").exists():
             raise ExportError(f"{owner}: unresolved local dependency {dep_name} → {relative}")
         target_info = read_toml(target / "Cargo.toml")
@@ -328,6 +339,10 @@ def is_retired_linux_frontend(relative: str) -> bool:
                for prefix in RETIRED_LINUX_FRONTEND)
 
 
+def is_agent_instruction(relative: str) -> bool:
+    return Path(relative).name.lower() in {"agents.md", "claude.md"}
+
+
 def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) -> tuple[set[str], dict[str, str], list[str]]:
     ignored_dirs = {name.lower() for name in policy["ignored_directory_names"]}
     ignored_suffixes = tuple(policy["ignored_suffixes"])
@@ -337,6 +352,10 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
     missing: list[str] = []
 
     def add_link(path: Path) -> None:
+        if prohibited_source(path.relative_to(source).as_posix()):
+            raise ExportError("proprietary path reached public export: " + str(path))
+        if is_agent_instruction(path.name) or source_cleanup.independent_test(path.relative_to(source).as_posix()):
+            return
         if is_retired_linux_frontend(path.relative_to(source).as_posix()):
             return
         target = path.resolve()
@@ -346,9 +365,13 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
         links[rel] = os.readlink(path)
 
     def add_file(path: Path) -> None:
+        if is_agent_instruction(path.name) or source_cleanup.independent_test(path.relative_to(source).as_posix()):
+            return
         if is_retired_linux_frontend(path.relative_to(source).as_posix()):
             return
         relative = "/" + path.relative_to(source).as_posix() + "/"
+        if prohibited_source(relative):
+            raise ExportError("proprietary path reached public export: " + relative)
         if any(fragment in relative for fragment in blocked_fragments):
             raise ExportError(f"proprietary path reached public export: {relative}")
         if path.is_symlink():
@@ -359,6 +382,8 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
         paths.add(relative.strip("/"))
 
     def add_root(relative: str) -> None:
+        if prohibited_source(relative):
+            raise ExportError("proprietary source root reached public export: " + relative)
         if is_retired_linux_frontend(relative):
             return
         root = within(source, relative)
@@ -431,20 +456,53 @@ def selected_files(source: Path, policy: dict[str, Any], closure: CargoClosure) 
     return paths, links, sorted(set(missing))
 
 
+def export_assets(source: Path, policy: dict[str, Any]) -> tuple[dict[str, str], list[str]]:
+    """Map scoped mono-owned public materials without licensing the monorepo."""
+    assets: dict[str, str] = {}
+    missing = []
+    for target, relative in policy.get("export_assets", {}).items():
+        within(source, target)  # validate the output spelling, not its contents
+        if prohibited_source(relative) or prohibited_source(target):
+            raise ExportError("proprietary path reached public assets")
+        origin = within(source, relative)
+        if not origin.exists():
+            missing.append(relative)
+            continue
+        for item in sorted(origin.rglob("*")) if origin.is_dir() else [origin]:
+            if item.is_symlink():
+                raise ExportError("public assets cannot contain symlinks: " + str(item))
+            if not item.is_file():
+                continue
+            output = (Path(target) / item.relative_to(origin)).as_posix() if origin.is_dir() else target
+            within(source, output)
+            if is_agent_instruction(output):
+                raise ExportError("developer instructions are not public assets: " + output)
+            if output in assets:
+                raise ExportError("duplicate public asset destination: " + output)
+            assets[output] = item.relative_to(source).as_posix()
+    return assets, missing
+
+
 def plan(source: Path, policy: dict[str, Any]) -> dict[str, Any]:
     if policy.get("schema_version") != 1:
         raise ExportError("unsupported policy schema")
     closure = compute_cargo_closure(source, policy["cargo_seed_packages"])
     paths, links, missing = selected_files(source, policy, closure)
+    assets, missing_assets = export_assets(source, policy)
+    collisions = set(assets) & (paths | set(links) | {"Cargo.toml", "README.md", ".gitignore", PUBLIC_MANIFEST})
+    if collisions:
+        raise ExportError(f"public assets collide with source: {sorted(collisions)}")
+    missing.extend(missing_assets)
     return {
         "schema_version": 1,
         "product": "polar-station",
+        "export_assets": assets,
         "files": sorted(paths),
         "symlinks": dict(sorted(links.items())),
         "crate_paths": dict(sorted(closure.package_paths.items())),
         "workspace_dependency_count": len(closure.workspace_keys),
         "missing_inputs": missing,
-        "license_present": (source / "LICENSE").is_file(),
+        "license_present": "LICENSE" in assets or (source / "LICENSE").is_file(),
         "upstream_ghostty_lock": "apps/polar-station-macos/ghostty-overlay/upstream.lock.json" in paths,
         "source_path_count": len(paths),
         "_generated_cargo": reduced_manifest(closure),
@@ -459,30 +517,187 @@ def file_hash(path: Path) -> str:
     return digest.hexdigest()
 
 
-def normalize_cargo_lock(destination: Path) -> None:
-    """Prune a copied monorepo lock offline; never permit dependency upgrades."""
+
+def source_provenance(source: Path, description: dict[str, Any], policy: dict[str, Any],
+                      license_file: Path | None) -> dict[str, Any]:
+    """Identify actual selected working-tree bytes, not historical build evidence."""
+    entries = {}
+    names = set(description["files"]) | set(description["export_assets"].values()) | {"Cargo.toml"}
+    if license_file is None and not any(target == "LICENSE" for target in description["export_assets"]):
+        if (source / "LICENSE").is_file():
+            names.add("LICENSE")
+    for name in sorted(names):
+        path = within(source, name)
+        entries[name] = {"sha256": file_hash(path),
+                         "mode": "100755" if path.stat().st_mode & 0o111 else "100644"}
+    for name in description["symlinks"]:
+        entries[name] = {"target": os.readlink(source / name), "mode": "120000"}
+    fingerprint = {"inputs": entries, "policy": policy,
+                   "explicit_license_sha256": file_hash(license_file) if license_file else None}
+    digest = sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    head = None
+    dirty = None
+    repository = subprocess.run(["git", "-C", str(source), "rev-parse", "--show-toplevel"],
+                                capture_output=True, text=True, check=False)
+    if repository.returncode == 0 and Path(repository.stdout.strip()).resolve() == source.resolve():
+        revision = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"],
+                                  capture_output=True, text=True, check=False)
+        status = subprocess.run(["git", "-C", str(source), "status", "--porcelain=v1", "--untracked-files=normal"],
+                                capture_output=True, text=True, check=False)
+        if revision.returncode or status.returncode:
+            raise ExportError("cannot identify source Git working tree")
+        head = revision.stdout.strip()
+        dirty = bool(status.stdout)
+    return {"kind": "working_tree", "git_head": head, "git_dirty": dirty,
+            "inputs_sha256": digest, "input_count": len(entries)}
+
+
+def lock_records(raw: bytes) -> dict[tuple[str, str, str], dict[str, Any]]:
+    records = {}
+    for package in tomllib.loads(raw.decode())["package"]:
+        key = (package["name"], package["version"], package.get("source") or "")
+        if key in records or not all(isinstance(part, str) for part in key):
+            raise ExportError("duplicate or malformed lock package identity")
+        records[key] = package
+    return records
+
+
+def lock_edges(records: dict) -> dict:
+    by_name = {}
+    for key in records:
+        by_name.setdefault(key[0], []).append(key)
+    edges = {}
+    for key, package in records.items():
+        edges[key] = set()
+        for dependency in package.get("dependencies", []):
+            match = re.fullmatch(r"([^ ]+)(?: ([^ (]+))?(?: \((.*)\))?", dependency)
+            if match is None:
+                raise ExportError("malformed lock dependency: " + dependency)
+            name, version, source = match.groups()
+            matches = [item for item in by_name.get(name, [])
+                       if (not version or item[1] == version) and (not source or item[2] == source)]
+            if len(matches) != 1:
+                raise ExportError("ambiguous or missing lock dependency: " + dependency)
+            edges[key].add(matches[0])
+    return edges
+
+
+def metadata_graph(metadata: dict, records: dict) -> dict:
+    identities = {package["id"]: (package["name"], package["version"], package.get("source") or "")
+                  for package in metadata["packages"]}
+    if (len(identities) != len(metadata["packages"]) or len(identities) != len(records)
+            or set(identities.values()) != set(records)):
+        raise ExportError("locked metadata packages differ from normalized lock")
+    resolution = metadata.get("resolve")
+    if not isinstance(resolution, dict):
+        raise ExportError("locked metadata has no dependency resolution")
+    nodes = {node["id"]: node for node in resolution["nodes"]}
+    if len(nodes) != len(resolution["nodes"]) or set(nodes) != set(identities):
+        raise ExportError("locked metadata resolution has missing or duplicate packages")
+    expected = lock_edges(records)
+    graph = []
+    for identifier, node in nodes.items():
+        key = identities[identifier]
+        dependencies = {identities[item] for item in node["dependencies"]}
+        if dependencies != expected[key]:
+            raise ExportError("locked metadata dependency edges differ from normalized lock")
+        graph.append({"identity": key, "dependencies": sorted(dependencies),
+                      "features": sorted(node.get("features", []))})
+    # Do not hash absolute staging paths from Cargo's local package IDs.
+    return {"packages": sorted(graph, key=lambda item: item["identity"]),
+            "workspace_members": sorted(identities[item] for item in metadata["workspace_members"])}
+
+
+def normalize_cargo_lock(destination: Path) -> dict[str, Any]:
+    """Prune staged lock offline with the pinned toolchain; restore it on failure."""
     lock = destination / "Cargo.lock"
     original = lock.read_bytes()
-    def identities(raw):
-        packages = tomllib.loads(raw.decode())["package"]
-        return {(p["name"], p["version"], p.get("source", "")): p.get("checksum") for p in packages}
-    before = identities(original)
-    result = subprocess.run(["cargo", "metadata", "--offline", "--all-features",
-                             "--format-version=1", "--manifest-path", str(destination / "Cargo.toml")],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-    after = identities(lock.read_bytes())
-    if result.returncode or any(key not in before or before[key] != checksum for key, checksum in after.items()):
-        lock.write_bytes(original)
-        raise ExportError("Offline lock normalization failed or would change pinned package identities/checksums: " + result.stderr[-1000:])
+    accepted = False
+    preparation = ("Use the pinned Rust/Cargo toolchain from rust-toolchain.toml and the same CARGO_HOME cache. "
+                   "To prepare missing inputs, copy this rejected staging tree to a separate approved cache-preparation "
+                   "directory and run cargo metadata --all-features --format-version=1 there with network access. "
+                   "Do not adopt that copy's rewritten lock or run cargo update. Review any resolution changes, "
+                   "then retry export from the original Mono source into a NEW directory. See SOURCE_DISTRIBUTION.md.")
+    try:
+        pin = read_toml(destination / "rust-toolchain.toml")["toolchain"]["channel"]
+        if not isinstance(pin, str) or not re.fullmatch(r"\d+\.\d+\.\d+", pin):
+            raise ExportError("source requires an exact stable Rust/Cargo version")
+        environment = dict(os.environ, RUSTUP_AUTO_INSTALL="0")
 
+        def run(arguments):
+            completed = subprocess.run(arguments, cwd=destination, env=environment,
+                                       capture_output=True, text=True, check=False)
+            if completed.returncode:
+                raise ExportError(" ".join(arguments) + " failed: " + completed.stderr[-2000:].strip())
+            return completed.stdout
+
+        versions = {}
+        for tool in ("cargo", "rustc"):
+            output = run([tool, "--version", "--verbose"])
+            fields = dict(line.split(": ", 1) for line in output.splitlines() if ": " in line)
+            if fields.get("release") != pin:
+                raise ExportError(f"{tool} version {fields.get('release', 'unknown')} does not match pinned {pin}")
+            versions[tool] = {name: fields.get(name) for name in ("release", "commit-hash", "host")}
+        before = lock_records(original)
+        before_edges = lock_edges(before)
+        run(["cargo", "metadata", "--offline", "--all-features", "--format-version=1"])
+        normalized = lock.read_bytes()
+        after = lock_records(normalized)
+        if any(key not in before or before[key].get("checksum") != package.get("checksum")
+               for key, package in after.items()):
+            raise ExportError("normalization would add/change a pinned package identity or checksum")
+        if any(edges - before_edges[key] for key, edges in lock_edges(after).items()):
+            raise ExportError("normalization would add a resolved dependency edge")
+        locked = run(["cargo", "metadata", "--offline", "--locked", "--all-features", "--format-version=1"])
+        if lock.read_bytes() != normalized:
+            raise ExportError("locked metadata changed Cargo.lock")
+        graph = metadata_graph(json.loads(locked), after)
+        result = {"status": "passed", "toolchain": pin, "tools": versions,
+                  "method": "offline_metadata_then_locked_all_features_metadata",
+                  "before_sha256": sha256(original).hexdigest(),
+                  "after_sha256": sha256(normalized).hexdigest(),
+                  "packages_before": len(before), "packages_after": len(after),
+                  "packages_removed": len(before) - len(after),
+                  "new_identities_checksums_or_edges": False,
+                  "resolved_graph_sha256": sha256(json.dumps(graph, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+        accepted = True
+        return result
+    except (OSError, ValueError, KeyError, TypeError, ExportError) as error:
+        raise ExportError(f"Cargo lock normalization rejected; staged lock restored. {error}. {preparation}") from error
+    finally:
+        if not accepted:
+            lock.write_bytes(original)
+
+
+def bind_normalized_lock(destination: Path, report: dict[str, Any]) -> None:
+    """Bind checked final bytes only to the exported lock rule, never source policy."""
+    specification = destination / "automation/polar_station/public_test_cleanup.json"
+    if not specification.is_file():
+        return  # Controlled synthetic fixtures have no production cleanup policy.
+    data = read_json(specification)
+    if data.get("schema_version") == 2:
+        return  # Current-source cleanup does not replay lock bytes after normalization.
+    entries = [entry for entry in data["edits"] if entry["path"] == "Cargo.lock"]
+    if (len(entries) != 1 or entries[0]["after"] != report["before_sha256"]
+            or file_hash(destination / "Cargo.lock") != report["after_sha256"]
+            or report["status"] != "passed"):
+        raise ExportError("normalized lock cannot be bound to the reviewed exported cleanup rule")
+    entries[0]["normalized_after"] = {"input_sha256": report["before_sha256"],
+                                       "sha256": report["after_sha256"],
+                                       "toolchain": report["toolchain"],
+                                       "resolved_graph_sha256": report["resolved_graph_sha256"]}
+    specification.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 def export(source: Path, destination: Path, policy: dict[str, Any], *, license_file: Path | None,
-           normalize_lock: bool = False) -> dict[str, Any]:
+           normalize_lock: bool = True) -> dict[str, Any]:
     if destination.exists() or destination.is_symlink():
         raise ExportError(f"destination exists, refusing to overwrite: {destination}")
     if destination.resolve().is_relative_to(source.resolve()):
         raise ExportError("destination cannot be inside the input source tree")
     description = plan(source, policy)
+    if description["missing_inputs"]:
+        raise ExportError(f"missing required export inputs: {description['missing_inputs']}")
+    provenance = source_provenance(source, description, policy, license_file)
     destination.mkdir(parents=True, exist_ok=False)
 
     for relative in description["files"]:
@@ -490,6 +705,10 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
         dst = within(destination, relative)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst, follow_symlinks=False)
+    for target, relative in description["export_assets"].items():
+        dst = within(destination, target)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(within(source, relative), dst)
     for relative, link_target in description["symlinks"].items():
         dst = destination / relative
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -504,7 +723,7 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
         if not license_file.is_file():
             raise ExportError(f"requested license does not exist: {license_file}")
         shutil.copy2(license_file, destination / "LICENSE")
-    elif (source / "LICENSE").is_file():
+    elif not (destination / "LICENSE").exists() and (source / "LICENSE").is_file():
         shutil.copy2(source / "LICENSE", destination / "LICENSE")
 
     lock_rel = "apps/polar-station-macos/ghostty-overlay/upstream.lock.json"
@@ -554,17 +773,34 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
             "\n".join(notices), encoding="utf-8"
         )
 
-    public_profile.apply(destination)
+    cleanup_report = public_profile.apply(destination)
     assert_source_hygiene(destination)
+    normalization = None
     if normalize_lock:
-        normalize_cargo_lock(destination)
+        try:
+            normalization = normalize_cargo_lock(destination)
+            bind_normalized_lock(destination, normalization)
+        except ExportError as error:
+            (destination / "PUBLIC_EXPORT_FAILURE.json").write_text(json.dumps({
+                "status": "rejected_staging_not_snapshot", "stage": "cargo_lock_normalization",
+                "error": str(error)}, indent=2) + "\n", encoding="utf-8")
+            raise
     description["crate_paths"] = {name: path for name, path in description["crate_paths"].items()
                                   if (destination / path / "Cargo.toml").is_file()}
+
+    current_description = plan(source, policy)
+    current = source_provenance(source, current_description, policy, license_file)
+    if current_description["missing_inputs"] or current != provenance:
+        raise ExportError("source inputs changed during export; review and regenerate")
 
     record: dict[str, Any] = {
         "schema_version": 1,
         "product": "polar-station",
         "status": "source_export_preview_not_release",
+        "source_provenance": provenance,
+        "syntax_cleanup": cleanup_report,
+        "cargo_lock_normalization": "passed" if normalize_lock else "not_run",
+        "cargo_lock_provenance": normalization,
         "crate_count": len(description["crate_paths"]),
         "crate_paths": description["crate_paths"],
         "missing_inputs": description["missing_inputs"],
@@ -576,11 +812,13 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
         "companion_release": "unavailable",
         "symlinks": description["symlinks"],
         "files": {},
+        "file_modes": {},
     }
     for path in sorted(destination.rglob("*")):
         if path.is_file() and not path.is_symlink():
             rel = path.relative_to(destination).as_posix()
             record["files"][rel] = file_hash(path)
+            record["file_modes"][rel] = "100755" if path.stat().st_mode & 0o111 else "100644"
     (destination / PUBLIC_MANIFEST).write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -595,12 +833,17 @@ def export(source: Path, destination: Path, policy: dict[str, Any], *, license_f
 
 
 def assert_source_hygiene(destination: Path) -> None:
-    from source_hygiene import findings
-    extensions = {".rs", ".zig", ".swift", ".c", ".cpp", ".py", ".js", ".mjs", ".gd", ".patch"}
+    from source_hygiene import findings, path_findings
+    extensions = {".rs", ".zig", ".swift", ".c", ".cpp", ".py", ".js", ".mjs", ".gd", ".uid", ".patch"}
     for path in sorted(destination.rglob("*")):
-        if path.is_symlink() or not path.is_file() or path.suffix not in extensions:
+        if path.is_symlink() or not path.is_file():
             continue
         rel = path.relative_to(destination).as_posix()
+        reasons = path_findings(rel)
+        if reasons:
+            raise ExportError(f"development test content in {rel}: {', '.join(reasons)}")
+        if path.suffix not in extensions:
+            continue
         reasons = findings(rel, path.read_text(encoding="utf-8"))
         if reasons:
             raise ExportError(f"development test content in {rel}: {', '.join(reasons)}")
@@ -613,6 +856,10 @@ def verify(destination: Path) -> dict[str, Any]:
               if p.is_file() and not p.is_symlink()}
     links = {p.relative_to(destination).as_posix(): os.readlink(p)
              for p in destination.rglob("*") if p.is_symlink()}
+    if any(prohibited_source(rel) for rel in actual | set(links)):
+        raise ExportError("proprietary source path leaked into snapshot")
+    if any(is_agent_instruction(rel) for rel in actual | set(links)):
+        raise ExportError("developer agent instructions leaked into source")
     if any(is_retired_linux_frontend(rel) for rel in actual | set(links)):
         raise ExportError("retired Linux Python frontend leaked into source")
     if links != record.get("symlinks", {}):
@@ -628,6 +875,12 @@ def verify(destination: Path) -> dict[str, Any]:
     missing = set(expected) - actual
     changed = [rel for rel, digest in expected.items()
                if rel in actual and file_hash(destination / rel) != digest]
+    modes = record.get("file_modes")
+    if modes is not None:
+        if set(modes) != set(expected) or any(mode not in ("100644", "100755") for mode in modes.values()):
+            raise ExportError("invalid exported file mode inventory")
+        changed.extend(rel for rel, mode in modes.items() if rel in actual
+                       and ("100755" if (destination / rel).stat().st_mode & 0o111 else "100644") != mode)
     if unexpected or missing or changed:
         raise ExportError(
             f"snapshot integrity failure: extra={sorted(unexpected)} "
@@ -717,8 +970,15 @@ def compare_snapshots(previous: Path, current: Path) -> dict[str, Any]:
     """Preview the next public Git commit; never mutate either source tree."""
     verify(previous)
     verify(current)
-    previous_files: dict[str, str] = read_json(previous / PUBLIC_MANIFEST)["files"]
-    current_files: dict[str, str] = read_json(current / PUBLIC_MANIFEST)["files"]
+    def entries(root):
+        record = read_json(root / PUBLIC_MANIFEST)
+        files = {name: {"sha256": digest, "mode": "100755" if (root / name).stat().st_mode & 0o111 else "100644"}
+                 for name, digest in record["files"].items()}
+        files.update({name: {"target": target, "mode": "120000"}
+                      for name, target in record.get("symlinks", {}).items()})
+        return files
+    previous_files = entries(previous)
+    current_files = entries(current)
     before = set(previous_files)
     after = set(current_files)
     modified = sorted(path for path in before & after
@@ -728,6 +988,8 @@ def compare_snapshots(previous: Path, current: Path) -> dict[str, Any]:
         "added": sorted(after - before),
         "removed": sorted(before - after),
         "modified": modified,
+        "changes": [{"path": path, "before": previous_files.get(path), "after": current_files.get(path)}
+                    for path in sorted((before ^ after) | set(modified))],
         "totals": {"added": len(after - before), "removed": len(before - after),
                    "modified": len(modified)},
         "previous_manifest_sha256": file_hash(previous / PUBLIC_MANIFEST),
@@ -746,7 +1008,8 @@ def main(argv: list[str] | None = None) -> int:
         if command == "export":
             options.add_argument("--destination", type=Path, required=True)
             options.add_argument("--license-file", type=Path)
-            options.add_argument("--normalize-lock", action="store_true", help="Prune copied lock offline with Cargo; reject upgrades")
+            options.add_argument("--normalize-lock", action="store_true", default=True,
+                                 help="Compatibility option: every CLI export requires pinned offline Cargo normalization")
     for command in ("verify", "audit"):
         options = sub.add_parser(command)
         options.add_argument("--destination", type=Path, required=True)

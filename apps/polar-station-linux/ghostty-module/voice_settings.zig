@@ -45,10 +45,21 @@ pub const Panel = struct {
     account: *gtk.Label,
     details: *gtk.Label,
     transcription_mode: *gtk.DropDown,
-    shortcut_mode: *gtk.DropDown,
+    shortcut_mode: *gtk.Label,
     cleanup: *gtk.CheckButton,
+    output_mode:*gtk.DropDown,
+    retention_enabled:*gtk.CheckButton,
+    retention_days:*gtk.SpinButton,
+    cleanup_confirmation:@import("dictate_cleanup.zig").Confirmation=.{},
+    cleanup_preview:?std.json.Parsed(Value)=null,
+    output_choices:?std.json.Parsed(Value)=null,
     context: *gtk.CheckButton,
+    reference_hint: *gtk.Label,
     devices: *gtk.DropDown,
+    learning:?std.json.Parsed(Value)=null,
+    learning_enabled:?*gtk.CheckButton=null,
+    learning_rows:?*gtk.Box=null,
+    learning_updating:bool=false,
     terminology_status: *gtk.Label,
     terminology_root: *gtk.Box,
     terminology_button: *gtk.Button,
@@ -58,6 +69,9 @@ pub const Panel = struct {
     glossary: *gtk.TextView,
     meter: *gtk.LevelBar,
     usage: *gtk.Label,
+    next_cleanup:*gtk.Label,
+    cleanup_requested:bool=false,
+    import_issues:*gtk.Box,
     playback_controls: *gtk.MediaControls,
     player: ?*gtk.MediaFile = null,
     playback_generation: u64 = 0,
@@ -67,6 +81,9 @@ pub const Panel = struct {
     outgoing: *glib.AsyncQueue,
     thread: ?std.Thread = null,
     config: ?std.json.Parsed(Value) = null,
+    updating_mode: bool = false,
+    updating_output:bool=false,
+    mode_saving: bool = false,
     selected: ?std.json.Parsed(Value) = null,
     device_ids: std.ArrayListUnmanaged([:0]u8) = .empty,
     actions: std.ArrayListUnmanaged(*RowAction) = .empty,
@@ -99,7 +116,7 @@ pub const Panel = struct {
         root.append(status.as(gtk.Widget));
         const account = label("Account not checked");
         root.append(account.as(gtk.Widget));
-        self.* = .{ .shortcut_mode = gtk.DropDown.new(null, null), .transcription_mode = gtk.DropDown.new(null, null), .terminology_status = label("Edit terms, then Save terminology."), .terminology_root = gtk.Box.new(.vertical, 12), .terminology_button = gtk.Button.newWithLabel("Terminology — edit names and spellings…"), .root = root, .status = status, .account = account, .details = label("Select a recording to review saved ranges and text."), .cleanup = gtk.CheckButton.newWithLabel("Clean spelling, punctuation and filler words"), .context = gtk.CheckButton.newWithLabel("Use context for names and terminology"), .device_names = gtk.StringList.new(null), .devices = gtk.DropDown.new(null, null), .records = gtk.Box.new(.vertical, 8), .test_editor = gtk.TextView.new(), .glossary = gtk.TextView.new(), .meter = gtk.LevelBar.newForInterval(0, 1), .usage = label("Saved audio usage: checking…"), .playback_controls = gtk.MediaControls.new(null), .speech = c.polar_station_dictate_speech_new(), .incoming = glib.AsyncQueue.new(), .outgoing = glib.AsyncQueue.new() };
+        self.* = .{ .reference_hint=label(""), .next_cleanup=label("Checking retention schedule…"),.import_issues=gtk.Box.new(.vertical,6),.output_mode=gtk.DropDown.new(null,null),.retention_enabled=gtk.CheckButton.newWithLabel("Automatically clean up completed history and audio"),.retention_days=gtk.SpinButton.newWithRange(1,4294967295,1), .shortcut_mode = label(""), .transcription_mode = gtk.DropDown.new(null, null), .terminology_status = label("Edit terms, then Save terminology."), .terminology_root = gtk.Box.new(.vertical, 12), .terminology_button = gtk.Button.newWithLabel("Terminology — edit names and spellings…"), .root = root, .status = status, .account = account, .details = label("Select a recording to review saved ranges and text."), .cleanup = gtk.CheckButton.newWithLabel("Clean spelling, punctuation and filler words"), .context = gtk.CheckButton.newWithLabel(""), .device_names = gtk.StringList.new(null), .devices = gtk.DropDown.new(null, null), .records = gtk.Box.new(.vertical, 8), .test_editor = gtk.TextView.new(), .glossary = gtk.TextView.new(), .meter = gtk.LevelBar.newForInterval(0, 1), .usage = label("Saved audio usage: checking…"), .playback_controls = gtk.MediaControls.new(null), .speech = c.polar_station_dictate_speech_new(), .incoming = glib.AsyncQueue.new(), .outgoing = glib.AsyncQueue.new() };
         self.device_names.append("System default");
         const login = gtk.Box.new(.horizontal, 8);
         root.append(login.as(gtk.Widget));
@@ -107,21 +124,24 @@ pub const Panel = struct {
         button(login, "Cancel sign-in", cancelLogin, self);
         button(login, "Recheck", refresh, self);
         root.append(self.terminology_button.as(gtk.Widget));
-        root.append(label("Choose hold/release or press/press below. The desktop owns the actual key binding. Use the Dictate button for recordings up to 10 minutes.").as(gtk.Widget));
+        root.append(label("The desktop owns the actual key binding. Use the Dictate button for recordings up to 10 minutes.").as(gtk.Widget));
         root.append(label("Shortcut interaction").as(gtk.Widget));
         root.append(self.shortcut_mode.as(gtk.Widget));
-        button(root, "Save shortcut interaction", save, self);
         button(root, "Open system shortcut settings…", shortcut, self);
-        root.append(label("GNOME: this button opens Settings → Apps → Polar Station. Select Global Shortcuts, then Hold to Dictate. For reliable activation on GNOME use an ordinary combination such as Alt+Z. Polar Station installs its GNOME capture extension automatically. After first installation, sign out and back in once to activate it. Both interaction modes then use complete physical key events. Other desktops use their system shortcut editor.").as(gtk.Widget));
+        root.append(label("GNOME: this button opens Settings → Apps → Polar Station. Select Global Shortcuts, then Hold to Dictate. For reliable activation on GNOME use an ordinary combination such as Alt+Z. Polar Station installs its GNOME capture extension automatically. After first installation, sign out and back in once to activate it. Recording then uses complete physical key events. Other desktops use their system shortcut editor.").as(gtk.Widget));
         root.append(label("External inputs must support accessibility editing. On desktops without accessibility click events, unbound drafts stay saved: use Copy in Dictate drafts. Recording into the already focused external input uses the global shortcut.").as(gtk.Widget));
-        root.append(label("Microphone · choose System default or a fixed input. A missing fixed input stops capture.").as(gtk.Widget));
+        root.append(label("Microphone access is managed by your desktop audio service. Choose System default or a fixed input and run the local test. A missing fixed input stops capture.").as(gtk.Widget));
         try self.device_ids.append(a, try a.dupeZ(u8, ""));
         self.devices.setModel(self.device_names.as(gio.ListModel));
         root.append(self.devices.as(gtk.Widget));
         root.append(label("Transcription mode · changes apply to the next recording").as(gtk.Widget));
         root.append(self.transcription_mode.as(gtk.Widget));
-        root.append(self.cleanup.as(gtk.Widget));
+        _ = gobject.Object.signals.notify.connect(self.transcription_mode,*Panel,modeChanged,self,.{.detail="selected"});
+        root.append(label("Recording output · also used by all microphone buttons and the global shortcut").as(gtk.Widget));
+        root.append(self.output_mode.as(gtk.Widget));
+        _=gobject.Object.signals.notify.connect(self.output_mode,*Panel,outputChanged,self,.{.detail="selected"});
         root.append(self.context.as(gtk.Widget));
+        root.append(self.reference_hint.as(gtk.Widget));
         root.append(label("Adam · Luna · low. Original language and meaning are preserved. After 8 seconds the original stays available.").as(gtk.Widget));
         self.terminology_root.append(self.terminology_status.as(gtk.Widget));
         self.terminology_root.append(label("Terminology · one term per line: standard spelling | heard variant | another variant").as(gtk.Widget));
@@ -129,8 +149,18 @@ pub const Panel = struct {
         glossary_scroll.setMinContentHeight(100); glossary_scroll.setMaxContentHeight(180);
         glossary_scroll.setPolicy(.never, .automatic); self.glossary.setWrapMode(.word_char);
         glossary_scroll.setChild(self.glossary.as(gtk.Widget)); self.terminology_root.append(glossary_scroll.as(gtk.Widget));
-        self.terminology_root.append(label("Example: Polar Station | polarstation | 波拉站. Edit or remove lines, then save. No automatic learning or sync.").as(gtk.Widget));
+        self.terminology_root.append(label("Example: Polar Station | polarstation | 波拉站. Edit or remove lines, then save. Manual terms are independent; learned rules stay on this Host.").as(gtk.Widget));
         button(self.terminology_root, "Save terminology", save, self);
+        const learning_expand=gtk.Expander.new("Automatic learning");
+        const learning_box=gtk.Box.new(.vertical,8);learning_expand.setChild(learning_box.as(gtk.Widget));
+        const enabled=gtk.CheckButton.newWithLabel("Learn corrections after successful Send");self.learning_enabled=enabled;
+        _=gtk.CheckButton.signals.toggled.connect(enabled,*Panel,learningEnabled,self,.{});learning_box.append(enabled.as(gtk.Widget));
+        learning_box.append(label("Only PS draft corrections are learned; matching evidence in2 projects becomes global.").as(gtk.Widget));
+        const rows=gtk.Box.new(.vertical,8);self.learning_rows=rows;
+        const rules_scroll=gtk.ScrolledWindow.new();rules_scroll.setMaxContentHeight(160);rules_scroll.setPropagateNaturalHeight(1);rules_scroll.setChild(rows.as(gtk.Widget));learning_box.append(rules_scroll.as(gtk.Widget));
+        button(learning_box,"Refresh learned rules",learningRefresh,self);button(learning_box,"Clear learned rules",learningClear,self);
+        self.terminology_root.append(learning_expand.as(gtk.Widget));
+
         button(root, "Save Voice settings", save, self);
         const test_row = gtk.Box.new(.horizontal, 8);
         root.append(test_row.as(gtk.Widget));
@@ -145,8 +175,15 @@ pub const Panel = struct {
         root.append(self.test_editor.as(gtk.Widget));
         button(root, "Copy test text", copyTest, self);
         root.append(label("Test text stays here. Test recordings are marked Test and can be recovered below.").as(gtk.Widget));
-        root.append(label("Recordings · completed audio is kept 7 days; failed, interrupted, pinned and unconfirmed recordings are retained.").as(gtk.Widget));
+        root.append(label("History and storage · retention starts when a result is inserted, copied or explicitly accepted.").as(gtk.Widget));
+        root.append(self.retention_enabled.as(gtk.Widget));
+        root.append(label("Keep completed records for days").as(gtk.Widget));root.append(self.retention_days.as(gtk.Widget));
+        button(root,"Save retention rule",saveRetention,self);
+        button(root,"Clean up by rules…",previewCleanup,self);
+        root.append(label("Pending, unresolved, uncertain and pinned records are kept. Eligible audio and history text are deleted together.").as(gtk.Widget));
+        root.append(self.import_issues.as(gtk.Widget));
         root.append(self.usage.as(gtk.Widget));
+        root.append(self.next_cleanup.as(gtk.Widget));
         const pager = gtk.Box.new(.horizontal, 8);
         root.append(pager.as(gtk.Widget));
         button(pager, "Previous", previous, self);
@@ -155,7 +192,7 @@ pub const Panel = struct {
         root.append(self.records.as(gtk.Widget));
         root.append(self.details.as(gtk.Widget));
         self.details.setSelectable(1);
-        root.append(label("Diagnostics: built-in Opus/WebM encoder · 1-second durable saves · up to 30-second transcription segments · no shell PATH dependencies.").as(gtk.Widget));
+        root.append(label("Diagnostics: built-in Opus/WebM encoder · 1-second durable saves · long-form transcription segments · no shell PATH dependencies.").as(gtk.Widget));
         button(root, "Copy diagnostics", copyDiagnostics, self);
         self.thread = try std.Thread.spawn(.{}, worker, .{self});
         self.reload();
@@ -175,7 +212,8 @@ pub const Panel = struct {
         box.append(b.as(gtk.Widget));
     }
     pub fn destroy(self: *Panel) void {
-        self.stopped = true;
+        self.stopped = true;self.closeDialogs();
+        if(self.learning) |*value| value.deinit();
         self.cancelTests();
         if (self.listing) |audio| c.polar_station_dictate_audio_free(audio);
         self.incoming.push(self);
@@ -185,6 +223,8 @@ pub const Panel = struct {
         self.incoming.unref();
         self.outgoing.unref();
         c.polar_station_dictate_speech_free(self.speech);
+        if(self.cleanup_preview)|*v|v.deinit();
+        if(self.output_choices)|*v|v.deinit();
         if (self.config) |*v| v.deinit();
         if (self.selected) |*v| v.deinit();
         if (self.test_id) |v| a.free(v);
@@ -209,12 +249,42 @@ pub const Panel = struct {
         job.* = .{ .request = request, .playback_generation = self.playback_generation };
         self.incoming.push(job);
     }
+    fn renderLearning(self:*Panel,payload:Value) void {
+        self.learning_updating=true;defer self.learning_updating=false;
+        const preferences=field(payload,"preferences");
+        if(self.learning_enabled) |enabled| enabled.setActive(@intFromBool(!boolean(preferences,"disabled")));
+        const rows=self.learning_rows orelse return;
+        while(rows.as(gtk.Widget).getFirstChild()) |child| rows.remove(child);
+        const rules=field(preferences,"rules");if(rules!=.array)return;
+        for(rules.array.items,0..) |rule,index| {
+            const replacement=field(rule,"replacement");
+            const text=std.fmt.allocPrint(a,"{s} → {s} · {s}",.{string(replacement,"from"),string(replacement,"to"),string(rule,"reason")}) catch continue;defer a.free(text);
+            const row=gtk.Box.new(.horizontal,8);const title=label("");setText(title,text);title.as(gtk.Widget).setHexpand(1);row.append(title.as(gtk.Widget));
+            if(boolean(rule,"retired")){row.append(label("Retired").as(gtk.Widget));}
+            else {const disable=gtk.Button.newWithLabel("Disable");disable.as(gobject.Object).setData("rule-index",@ptrFromInt(index+1));_=gtk.Button.signals.clicked.connect(disable,*Panel,learningRetire,self,.{});row.append(disable.as(gtk.Widget));}
+            rows.append(row.as(gtk.Widget));
+        }
+    }
+    fn learningUpdate(self:*Panel,retire:?usize,clear:bool) void {
+        const state=if(self.learning) |value| field(value.value,"payload") else return;
+        const enabled=self.learning_enabled orelse return;
+        self.send(.{.op="refine_learning_update",.revision=number(field(state,"preferences"),"revision"),.enabled=enabled.getActive()!=0,.retire=retire,.clear=clear});
+    }
+    fn learningEnabled(_: *gtk.CheckButton,self:*Panel) callconv(.c) void {if(!self.learning_updating) self.learningUpdate(null,false);}
+    fn learningRefresh(_: *gtk.Button,self:*Panel) callconv(.c) void {self.send(.{.op="refine_learning"});}
+    fn learningClear(_: *gtk.Button,self:*Panel) callconv(.c) void {self.learningUpdate(null,true);}
+    fn learningRetire(button_:*gtk.Button,self:*Panel) callconv(.c) void {const index=button_.as(gobject.Object).getData("rule-index") orelse return;self.learningUpdate(@intFromPtr(index)-1,false);}
+
     fn reload(self: *Panel) void {
         self.send(.{ .op = "transcription_modes" });
         self.send(.{ .op = "shortcut_modes" });
         self.send(.{ .op = "voice_status" });
         self.send(.{ .op = "usage" });
+        self.send(.{.op="cleanup_preview"});
         self.send(.{ .op = "voice_settings" });
+        self.send(.{.op="import_issues",.offset=self.offset,.limit=25});
+        self.send(.{.op="voice_output_modes"});
+        self.send(.{.op="refine_learning"});
         self.send(.{ .op = "list", .offset = self.offset, .limit = 25 });
     }
     fn worker(self: *Panel) void {
@@ -255,6 +325,10 @@ pub const Panel = struct {
             }
             if (!boolean(response.value, "ok")) {
                 self.setStatus(string(response.value, "error"));
+                if(self.mode_saving and std.mem.indexOf(u8,job.request,"voice_transcription_mode_update") != null) {
+                    self.mode_saving=false;self.transcription_mode.as(gtk.Widget).setSensitive(1);
+                    if(self.config) |config| self.showMode(field(config.value,"payload"));
+                }
                 continue;
             }
             const payload = field(response.value, "payload");
@@ -284,17 +358,17 @@ pub const Panel = struct {
                 self.setStatus("Complete browser sign-in, then Recheck.");
             } else if (eq(op, "shortcut_modes")) {
                 const choices = field(payload, "choices");
-                if (choices == .array) {
-                    const names = gtk.StringList.new(null); defer names.unref();
-                    for (choices.array.items) |choice| {
-                        const text = a.dupeZ(u8, string(choice, "label")) catch continue; defer a.free(text);
-                        names.append(text);
-                    }
-                    self.shortcut_mode.setModel(names.as(gio.ListModel));
-                    if (self.config) |config| self.shortcut_mode.setSelected(if (eq(string(field(config.value, "payload"), "shortcut_mode"), "toggle")) 1 else 0);
+                if (choices == .array and choices.array.items.len > 0) {
+                    setText(self.shortcut_mode, string(choices.array.items[0], "label"));
                 }
             } else if (eq(op, "transcription_modes")) {
                 const choices = field(payload, "choices");
+                if (choices == .array and choices.array.items.len > 0) {
+                    const choice=choices.array.items[0];
+                    const title=a.dupeZ(u8,string(choice,"context_label")) catch continue;defer a.free(title);
+                    self.context.setLabel(title);
+                    setText(self.reference_hint,string(choice,"reference_hint"));
+                }
                 if (choices == .array) {
                     const names = gtk.StringList.new(null);
                     defer names.unref();
@@ -303,27 +377,62 @@ pub const Panel = struct {
                         defer a.free(text);
                         names.append(text);
                     }
-                    self.transcription_mode.setModel(names.as(gio.ListModel));
-                    if (self.config) |config| self.transcription_mode.setSelected(if (eq(string(field(config.value, "payload"), "transcription_mode"), "segmented")) 1 else 0);
+                    self.updating_mode=true;self.transcription_mode.setModel(names.as(gio.ListModel));self.updating_mode=false;
+                    if (self.config) |config| self.showMode(field(config.value,"payload"));
                 }
+            } else if(eq(op,"import_issues")) {
+                while(self.import_issues.as(gtk.Widget).getFirstChild())|child|self.import_issues.remove(child);
+                const items=field(payload,"items");if(items==.array and items.array.items.len>0){
+                    self.import_issues.append(label("Previous drafts needing review · originals preserved").as(gtk.Widget));
+                    for(items.array.items)|item|{const text=a.dupeZ(u8,string(item,"text")) catch continue;defer a.free(text);const view=label(text);view.setSelectable(1);self.import_issues.append(view.as(gtk.Widget));}
+                }
+            } else if(eq(op,"voice_output_modes")) {
+                if(self.output_choices)|*old|old.deinit();self.output_choices=std.json.parseFromSlice(Value,a,std.mem.span(job.result),.{.allocate=.alloc_always}) catch null;
+                const choices=field(payload,"choices");if(choices==.array){
+                    const names=gtk.StringList.new(null);defer names.unref();
+                    for(choices.array.items)|choice|{const z=a.dupeZ(u8,string(choice,"label")) catch continue;defer a.free(z);names.append(z);}
+                    self.updating_output=true;self.output_mode.setModel(names.as(gio.ListModel));self.updating_output=false;
+                    if(self.config)|config|self.showOutput(field(config.value,"payload"));
+                }
+            } else if(eq(op,"voice_retention_update")) {self.setStatus("Retention rule saved");self.send(.{.op="voice_settings"});
+            } else if(eq(op,"cleanup_preview")) {
+                if(self.cleanup_preview)|*old|old.deinit();self.cleanup_preview=std.json.parseFromSlice(Value,a,std.mem.span(job.result),.{.allocate=.alloc_always}) catch null;
+                const report=field(payload,"report");
+                const date=if(field(report,"next_at_ms")==.integer) glib.DateTime.newFromUnixLocal(@divTrunc(number(report,"next_at_ms"),1000)) else null;defer if(date)|v|v.unref();
+                const stamp=if(date)|v|v.format("%Y-%m-%d %H:%M") else null;defer if(stamp)|v|glib.free(v);
+                const info=std.fmt.allocPrint(a,"Next eligible cleanup: {s}",.{if(stamp)|v|std.mem.span(v)else "No completed records scheduled"}) catch continue;defer a.free(info);setText(self.next_cleanup,info);
+                if(self.cleanup_requested){self.cleanup_requested=false;self.cleanup_confirmation.show(self.parentWindow(),field(payload,"presentation"),self,cleanupAccepted);}
+            } else if(eq(op,"cleanup_apply")) {self.setStatus(string(field(payload,"presentation"),"result"));self.reload();
+            } else if (eq(op,"refine_learning") or eq(op,"refine_learning_update")) {
+                if(self.learning) |*value| value.deinit();
+                self.learning=std.json.parseFromSlice(Value,a,std.mem.span(job.result),.{.allocate=.alloc_always}) catch null;
+                self.renderLearning(payload);
             } else if (eq(op, "voice_status")) {
                 setText(self.account, if (boolean(payload, "signed_in")) string(payload, "account") else "Sign in to enable transcription. No CLI installation is needed.");
                 self.setStatus("Account checked. Microphone and transcription tests are separate.");
-            } else if (eq(op, "voice_settings") or eq(op, "voice_settings_update")) {
+            } else if (eq(op,"voice_transcription_mode_update")) {
+                if(self.config) |*v| v.deinit();
+                self.config=std.json.parseFromSlice(Value,a,std.mem.span(job.result),.{.allocate=.alloc_always}) catch null;
+                self.mode_saving=false;self.transcription_mode.as(gtk.Widget).setSensitive(1);self.showMode(payload);
+                self.setStatus("Transcription mode saved · applies to the next recording");
+                if(self.callback) |cb| cb(self.callback_context,false);
+            } else if (eq(op, "voice_settings") or eq(op, "voice_settings_update") or eq(op,"voice_output_mode_update")) {
+                if(self.mode_saving) continue;
+                if(self.config) |config| if(number(payload,"revision")<number(field(config.value,"payload"),"revision")) continue;
                 if (self.config) |*v| v.deinit();
                 self.config = std.json.parseFromSlice(Value, a, std.mem.span(job.result), .{ .allocate = .alloc_always }) catch null;
-                self.transcription_mode.setSelected(if (eq(string(payload, "transcription_mode"), "segmented")) 1 else 0);
-                self.shortcut_mode.setSelected(if (eq(string(payload, "shortcut_mode"), "toggle")) 1 else 0);
-                self.cleanup.setActive(@intFromBool(boolean(payload, "cleanup")));
+                self.showMode(payload);
+                self.cleanup.setActive(@intFromBool(boolean(payload, "cleanup")));self.showOutput(payload);
+                const retention=field(payload,"retention");self.retention_enabled.setActive(@intFromBool(boolean(retention,"enabled")));self.retention_days.setValue(@floatFromInt(number(retention,"days")));
                 self.context.setActive(@intFromBool(boolean(payload, "context")));
                 self.selectDevice(string(payload, "microphone"));
                 setEditorText(self.glossary, string(payload, "glossary"));
-                if (eq(op, "voice_settings_update")) {
+                if (eq(op, "voice_settings_update") or eq(op,"voice_output_mode_update")) {
                     self.setStatus("Voice settings saved");
                     if (self.callback) |cb| cb(self.callback_context, false);
                 }
             } else if (eq(op, "usage")) {
-                const value = std.fmt.allocPrint(a, "Saved audio on this computer: {d} bytes · {d} recordings", .{ number(field(payload, "usage"), "audio_bytes"), number(field(payload, "usage"), "recordings") }) catch continue;
+                const value = std.fmt.allocPrint(a, "Saved audio on this computer: {d} bytes · {d} history records", .{ number(field(payload, "usage"), "audio_bytes"), number(field(payload,"usage"),"history_items") }) catch continue;
                 defer a.free(value);
                 setText(self.usage, value);
             } else if (eq(op, "list")) {
@@ -452,13 +561,6 @@ pub const Panel = struct {
         defer text.deinit();
         const w = &text.writer;
         w.print("{s}\nSaved: {d}s · delivery: {s}\n{s}\n{s}\n", .{ string(record, "id"), @divTrunc(number(record, "saved_samples"), 16000), string(record, "delivery"), string(record, "error"), string(record, "cleanup_error") }) catch {};
-        if (number(record, "completed_at_ms") > 0 and !boolean(record, "pinned")) {
-            const date = glib.DateTime.newFromUnixLocal(@divTrunc(number(record, "completed_at_ms"), 1000) + 7 * 86400);
-            defer if (date) |v| v.unref();
-            const expiry = if (date) |v| v.format("%Y-%m-%d %H:%M") else null;
-            defer if (expiry) |v| glib.free(v);
-            if (expiry) |stamp| w.print("Audio expires {s}\n", .{stamp}) catch {};
-        }
         const segments = field(record, "segments");
         if (segments == .array) for (segments.array.items) |s| {
             w.print("{d}s: {s}\n{s}\n", .{ @divTrunc(number(s, "start_sample"), 16000), string(s, "state"), string(s, "original") }) catch {};
@@ -546,6 +648,7 @@ pub const Panel = struct {
         return gobject.ext.cast(gtk.Window, self.root.as(gtk.Widget).getRoot() orelse return null);
     }
     fn closeDialogs(self: *Panel) void {
+        self.cleanup_confirmation.close();
         if (self.delete_dialog) |dialog| {
             self.delete_dialog = null;
             dialog.as(gtk.Window).destroy();
@@ -642,14 +745,45 @@ pub const Panel = struct {
     fn shortcut(_: *gtk.Button, self: *Panel) callconv(.c) void {
         if (self.callback) |cb| cb(self.callback_context, true);
     }
+    fn showMode(self:*Panel,payload:Value) void {
+        self.updating_mode=true;defer self.updating_mode=false;
+        self.transcription_mode.setSelected(if(eq(string(payload,"transcription_mode"),"segmented")) 1 else 0);
+    }
+    fn modeChanged(dropdown:*gtk.DropDown,_:*gobject.ParamSpec,self:*Panel) callconv(.c) void {
+        if(self.updating_mode or self.mode_saving) return;
+        const config=if(self.config) |v| field(v.value,"payload") else return;
+        const mode:[]const u8=if(dropdown.getSelected()==1) "segmented" else "realtime";
+        if(eq(mode,string(config,"transcription_mode"))) return;
+        self.mode_saving=true;self.showMode(config);self.transcription_mode.as(gtk.Widget).setSensitive(0);
+        self.setStatus("Saving transcription mode…");
+        self.send(.{.op="voice_transcription_mode_update",.revision=number(config,"revision"),.mode=mode});
+    }
+    fn outputChanged(_: *gtk.DropDown,_:*gobject.ParamSpec,self:*Panel) callconv(.c) void {
+        if(self.updating_output)return;const mode=self.outputValue();if(mode.len==0)return;
+        self.send(.{.op="voice_output_mode_update",.mode=mode});
+    }
+    fn showOutput(self:*Panel,config:Value) void {
+        self.updating_output=true;defer self.updating_output=false;
+        const response=self.output_choices orelse return;const choices=field(field(response.value,"payload"),"choices");if(choices!=.array)return;
+        for(choices.array.items,0..) |choice,index| if(eq(string(choice,"mode"),string(config,"output_mode"))){self.output_mode.setSelected(@intCast(index));break;};
+    }
+    fn outputValue(self:*Panel) []const u8 {
+        const response=self.output_choices orelse return if(self.config)|config| string(field(config.value,"payload"),"output_mode") else "";
+        const choices=field(field(response.value,"payload"),"choices");const index=self.output_mode.getSelected();
+        return if(choices==.array and index<choices.array.items.len) string(choices.array.items[index],"mode") else "";
+    }
+    fn saveRetention(_: *gtk.Button,self:*Panel) callconv(.c) void {self.send(.{.op="voice_retention_update",.retention=.{.enabled=self.retention_enabled.getActive()!=0,.days=@as(u32,@intFromFloat(self.retention_days.getValue()))}});}
+    fn previewCleanup(_: *gtk.Button,self:*Panel) callconv(.c) void {self.cleanup_requested=true;self.send(.{.op="cleanup_preview"});}
+    fn cleanupAccepted(context:?*anyopaque) void {const self:*Panel=@ptrCast(@alignCast(context orelse return));const preview=self.cleanup_preview orelse return;self.send(.{.op="cleanup_apply",.confirmation=true,.plan=field(field(preview.value,"payload"),"plan")});}
     fn save(_: *gtk.Button, self: *Panel) callconv(.c) void {
+        if(self.mode_saving)return;
         const config = if (self.config) |v| field(v.value, "payload") else return;
         const index = self.devices.getSelected();
         const microphone: []const u8 = if (index < self.device_ids.items.len) self.device_ids.items[index] else string(config, "microphone");
         const buffer = self.glossary.getBuffer();
         var start: gtk.TextIter = undefined; var end: gtk.TextIter = undefined;
         buffer.getBounds(&start, &end); const glossary = buffer.getText(&start, &end, 0); defer glib.free(glossary);
-        self.send(.{ .op = "voice_settings_update", .settings = .{ .shortcut_mode = if (self.shortcut_mode.getSelected() == 1) @as([]const u8, "toggle") else "hold", .revision = number(config, "revision"), .transcription_mode = if (self.transcription_mode.getSelected() == 1) @as([]const u8, "segmented") else "realtime", .glossary = std.mem.span(glossary), .cleanup = self.cleanup.getActive() != 0, .context = self.context.getActive() != 0, .microphone = microphone, .shortcut_mac = string(config, "shortcut_mac"), .shortcut_linux = string(config, "shortcut_linux") } });
+        self.send(.{ .op = "voice_settings_update", .settings = .{ .shortcut_mode = "auto", .revision = number(config, "revision"), .transcription_mode = if (self.transcription_mode.getSelected() == 1) @as([]const u8, "segmented") else "realtime", .glossary = std.mem.span(glossary), .output_mode=self.outputValue(),.cleanup = !eq(self.outputValue(),"no_refine"), .retention=field(config,"retention"), .context = self.context.getActive() != 0, .microphone = microphone, .shortcut_mac = string(config, "shortcut_mac"), .shortcut_linux = string(config, "shortcut_linux") } });
     }
     fn localTest(_: *gtk.Button, self: *Panel) callconv(.c) void {
         self.startTest(false);

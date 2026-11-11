@@ -28,6 +28,7 @@ struct PolarStationNativeTab: Codable, Equatable, Sendable {
     var mainPaneID: String?
     var panes: [PolarStationNativePane]
     var visualPaneIDs: [String]
+    var splitRatios: [Double]? = nil
 
     /// Stable shortcut numbering follows canonical Pane order, not the
     /// Focus-only visual slot order that changes when MAIN is promoted.
@@ -68,6 +69,7 @@ struct PolarStationNativeTab: Codable, Equatable, Sendable {
         case mainPaneID = "main_pane_id"
         case panes
         case visualPaneIDs = "visual_pane_ids"
+        case splitRatios = "split_ratios"
     }
 }
 
@@ -504,6 +506,10 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
                   tabs[targetIndex].panes.count < 9,
                   (0 ... tabs[targetIndex].panes.count).contains(toIndex)
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            if tabs[sourceIndex].panes[paneIndex].content?.kind == .ideaTree,
+               tabs[targetIndex].panes.contains(where: { $0.content?.kind == .ideaTree }) {
+                throw PolarStationNativeWorkspaceError.invalidBinding
+            }
             let pane = tabs[sourceIndex].panes.remove(at: paneIndex)
             repairSelectionAfterRemoval(
                 removedPaneID: paneID,
@@ -522,6 +528,7 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         case let .toggleMode(id):
             guard let index = tabIndex(id)
             else { throw PolarStationNativeWorkspaceError.invalidStructure }
+            tabs[index].splitRatios = nil
             switch tabs[index].mode {
             case .monitor:
                 let mainPaneID = selectedPane(in: tabs[index])
@@ -577,11 +584,22 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
             guard let location = paneLocation(paneID), tabs[location.tab].id == selectedTabID,
                   tabs[location.tab].panes[location.pane].content != nil, content.isValid
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            if content.kind == .ideaTree,
+               tabs[location.tab].panes.contains(where: { $0.id != paneID && $0.content?.kind == .ideaTree }) {
+                throw PolarStationNativeWorkspaceError.invalidBinding
+            }
             tabs[location.tab].panes[location.pane].content = content
             selectedPaneID = paneID
         case let .openContent(tabID, paneID, content):
-            guard let index = tabIndex(tabID), !paneID.isEmpty, content.isValid,
-                  paneLocation(paneID) == nil, tabs[index].panes.count < 9
+            guard let index = tabIndex(tabID), !paneID.isEmpty, content.isValid
+            else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            if content.kind == .ideaTree,
+               let existing = tabs[index].panes.first(where: { $0.content?.kind == .ideaTree }) {
+                selectedTabID = tabID; selectedPaneID = existing.id
+                if tabs[index].mode == .focus { tabs[index].mainPaneID = existing.id }
+                break
+            }
+            guard paneLocation(paneID) == nil, tabs[index].panes.count < 9
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
             tabs[index].panes.append(PolarStationNativePane(id: paneID,
                 executionTargetID: nil, tmuxSessionID: nil, content: content))
@@ -801,6 +819,11 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         if let selectedPaneID {
             guard selectedTab?.panes.contains(where: { $0.id == selectedPaneID }) == true
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
+        }
+        for tab in tabs {
+            if let ratios=tab.splitRatios {
+                guard ratios.count<=8,ratios.allSatisfy({$0.isFinite && $0>0 && $0<1}) else {throw PolarStationNativeWorkspaceError.invalidStructure}
+            }
         }
         for tab in tabs where !tab.panes.isEmpty {
             let canonical = tab.panes.map(\.id)

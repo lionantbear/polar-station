@@ -1,10 +1,11 @@
-//! Target-scoped, read-only preparation for native Session editors.
+//! Target-scoped Session preparation and desktop-owned creation preferences.
 use crate::{CodexStateV1, ControlConfirmationV1, ProtocolValidationError, SessionIdentityV1};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SessionEditorRequestV1 {
+    SetCreationYolo { yolo: bool },
     HistoryDetail { execution_target_id: String, endpoint_id: String, thread_id: String },
     History {
         execution_target_id: String,
@@ -32,8 +33,21 @@ pub enum SessionEditorRequestV1 {
     },
 }
 impl SessionEditorRequestV1 {
+    pub fn is_read_only(&self) -> bool {
+        match self {
+            Self::SetCreationYolo { .. } => false,
+            Self::HistoryDetail { .. }
+            | Self::History { .. }
+            | Self::LaunchContext { .. }
+            | Self::BrowseDirectory { .. }
+            | Self::PreviewEndAgent { .. }
+            | Self::PreviewEnd { .. } => true,
+        }
+    }
+
     pub(crate) fn validate(&self) -> Result<(), ProtocolValidationError> {
         let target = match self {
+            Self::SetCreationYolo { .. } => return Ok(()),
             Self::HistoryDetail { execution_target_id, endpoint_id, thread_id } => {
                 crate::CodexCommandV1::ReadHistoryDetail { endpoint_id: endpoint_id.clone(), thread_id: thread_id.clone() }.validate()?;
                 execution_target_id
@@ -108,7 +122,9 @@ pub enum SessionEditorResultV1 {
     LaunchContext {
         directory: SessionDirectoryV1,
         notice: Option<String>,
+        yolo: bool,
     },
+    CreationYolo { yolo: bool },
     Directory {
         directory: SessionDirectoryV1,
     },
@@ -120,7 +136,7 @@ pub enum SessionEditorResultV1 {
 impl SessionEditorResultV1 {
     pub(crate) fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
-            Self::History { .. } | Self::HistoryDetail { .. } => Ok(()),
+            Self::History { .. } | Self::HistoryDetail { .. } | Self::CreationYolo { .. } => Ok(()),
             Self::LaunchContext { directory, .. } | Self::Directory { directory } => {
                 crate::validate_stable_identifier(
                     &directory.execution_target_id,

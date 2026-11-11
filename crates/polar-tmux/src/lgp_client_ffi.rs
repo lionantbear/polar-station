@@ -17,14 +17,18 @@ pub extern "C" fn polar_station_lgp_client_new()->*mut LgpClientHandle{
 /// `polar_station_desktop_string_free` allocator pairing.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_lgp_client_dispatch(handle:*mut LgpClientHandle,bytes:*const u8,length:usize)->*mut std::ffi::c_char{
+    dispatch_at(handle,bytes,length,None)
+}
+fn dispatch_at(handle:*mut LgpClientHandle,bytes:*const u8,length:usize,now:Option<u64>)->*mut std::ffi::c_char {
     let result=catch_unwind(AssertUnwindSafe(||->Result<serde_json::Value,String>{
         if handle.is_null()||bytes.is_null()||length==0||length>1024*1024{return Err("invalid LGP dispatch input".into());}
         let input:Input=serde_json::from_slice(unsafe{std::slice::from_raw_parts(bytes,length)}).map_err(|e|e.to_string())?;
         let mut engine=unsafe{&*handle}.state.lock().map_err(|_|"LGP state unavailable")?;
+        if let Some(now)=now {engine.advance_clock(now);}
         let effects=engine.dispatch(input)?;
-        serde_json::to_value(effects).map_err(|e|e.to_string())
+        Ok(serde_json::json!({"ok":true,"effects":effects,"next_deadline_ms":engine.next_deadline_ms()}))
     })).unwrap_or_else(|_|Err("LGP state panicked; reconnect required".into()));
-    let value=match result{Ok(effects)=>serde_json::json!({"ok":true,"effects":effects}),Err(error)=>serde_json::json!({"ok":false,"error":error})};
+    let value=match result{Ok(value)=>value,Err(error)=>serde_json::json!({"ok":false,"error":error})};
     serde_json::to_string(&value).ok().and_then(|s|CString::new(s).ok()).map(CString::into_raw).unwrap_or(std::ptr::null_mut())
 }
 /// # Safety
@@ -47,5 +51,13 @@ pub unsafe extern "C" fn polar_station_input_dispatch(handle:*mut LgpClientHandl
 /// The handle must be live, exclusively owned, and never freed twice.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_input_free(handle:*mut LgpClientHandle) { unsafe { polar_station_lgp_client_free(handle) } }
+
+/// Event-driven native host entrypoint. Same handle/buffer ownership as dispatch.
+/// # Safety
+/// The handle and input buffer must remain live and cannot race destruction.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_input_dispatch_at(handle:*mut LgpClientHandle,bytes:*const u8,length:usize,now_ms:u64)->*mut std::ffi::c_char {
+    dispatch_at(handle,bytes,length,Some(now_ms))
+}
 
 

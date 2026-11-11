@@ -352,7 +352,7 @@ impl UnifiedCatalogIndex {
         if compact.reference() == index.reference() {
             return Ok(false);
         }
-        
+        ;
         check()?;
         let mut next = (*old).clone();
         next.index = Some(Arc::new(compact));
@@ -429,7 +429,7 @@ mod conflict_diagnostics {
         });
         use std::io::Write;
         let _ = writeln!(std::io::stderr().lock(), "catalog_conflict {event}");
-        
+        ;
     }
     
 }

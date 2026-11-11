@@ -145,6 +145,32 @@
             (workspace?.layoutMapVisible ?? true, workspace?.inboxVisible ?? false)
         }
 
+        /// Called at native pointer-up; no frame polling or per-drag disk writes.
+        func saveSplitRatios() {
+            guard !isMutatingNativeTabs, let id=workspaceID, let workspace else { return }
+            var values:[String:[Double]]=[:]
+            func ratios(_ node:SplitTree<Ghostty.SurfaceView>.Node?) -> [Double] {
+                guard case let .split(split)=node else { return [] }
+                return [split.ratio]+ratios(split.left)+ratios(split.right)
+            }
+            for tab in workspace.tabs {
+                guard let controller=tabGroupCoordinator.controller(for:tab.id) else {continue}
+                let actual=ratios(controller.surfaceTree.root)
+                if !actual.isEmpty, actual.allSatisfy({$0.isFinite && $0>0 && $0<1}), actual != tab.splitRatios {values[tab.id]=actual}
+            }
+            guard !values.isEmpty else {return}
+            enqueueMutation?({ [self] in
+                guard var saved=catalog,let wi=saved.workspaces.firstIndex(where:{$0.id==id}),workspaceID==id else{return}
+                for ti in saved.workspaces[wi].tabs.indices {
+                    if let actual=values[saved.workspaces[wi].tabs[ti].id] {saved.workspaces[wi].tabs[ti].splitRatios=actual}
+                }
+                guard saved.revision<UInt64.max else {throw PolarStationNativeExecutorError.workspaceChanged}
+                saved.revision+=1
+                try await persistLifecycle(saved)
+                self.workspace=saved.workspaces[wi]
+            },false){[weak self] error in if error != nil {self?.persistenceFailed?("Pane proportions could not be saved.")}}
+        }
+
         func savePanelVisibility(layout: Bool, inbox: Bool) {
             let id = workspaceID
             enqueueMutation?({ [self] in
@@ -223,11 +249,18 @@
                 self?.restoreNativePresentation()
                 self?.requestTabMove?(controller)
             }
-            coordinator.nativeOrderChanged = { [weak self] order in
+            coordinator.nativeOrderChanged = { [weak self] order, ticket in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    do { try await adoptNativeTabOrder(order) }
-                    catch { persistenceFailed?("Tab order could not be saved.") }
+                    do {
+                        try await adoptNativeTabOrder(order)
+                        tabGroupCoordinator.acknowledgeNativeTabOrder(ticket: ticket)
+                    }
+                    catch {
+                        guard tabGroupCoordinator.rejectNativeTabOrder(ticket: ticket) else { return }
+                        restoreNativePresentation()
+                        persistenceFailed?("Tab order could not be saved.")
+                    }
                 }
             }
             return coordinator
@@ -367,6 +400,7 @@
             _ intent: NativeTabSelectionIngressState.Intent
         ) {
             tabGroupCoordinator.completeNativeTabSelection(intent)
+            reconcileIdeaPresentation()
         }
 
         var initialControllerIsAttached: Bool {
@@ -562,6 +596,14 @@
             }
         }
 
+        func selectedResourceFile()->(value:String,surface:Ghostty.SurfaceView)? {
+            guard let pane=quickCreateContext()?.source,let surface=surfaceCoordinator.surface(for:pane.id),let window=surface.window,let value=terminalSelection(paneID:pane.id,window:window) else{return nil}
+            return (value,surface)
+        }
+        func resourceFileSource(surface:Ghostty.SurfaceView)->(target:String,cwd:String?,session:String?)? {
+            guard let id=nativePaneID(surface),let pane=workspace?.tabs.flatMap(\.panes).first(where:{$0.id==id}),let target=pane.executionTargetID else{return nil}
+            return (target,surface.pwd,pane.tmuxSessionID)
+        }
         func quickCreateContext() -> (workspaceID: String, tabID: String, source: PolarStationNativePane?, paneCount: Int)? {
             guard let current = workspace,
                   let selected = tabGroupCoordinator.selectedManagedTabID(),
@@ -760,6 +802,7 @@
         func nativePaneID(_ surface: Ghostty.SurfaceView) -> String? {
             workspace?.tabs.flatMap(\.panes).first { surfaceCoordinator.surface(for: $0.id) === surface }?.id
         }
+        func nativeTabOrderChanged() { tabGroupCoordinator.nativeTabOrderChanged() }
         func nativeTabID(_ controller: TerminalController) -> String? { tabGroupCoordinator.tabID(for: controller) }
         func nativeActionDecision(_ action: String, tabID: String?) throws -> WorkspaceLifecycleDecision {
             guard let saved = catalog else { throw PolarStationNativeExecutorError.workspaceUnavailable }
@@ -1444,6 +1487,16 @@
             if numberBadgesVisible { setNumberBadgesVisible(true) }
         }
 
+        private let graphicsWindowScope = UUID().uuidString
+        private func reconcileIdeaPresentation(_ installed: PolarStationNativeWorkspace? = nil) {
+            guard let current = installed ?? workspace else { return }
+            let selected = tabGroupCoordinator.selectedManagedTabID() ?? current.selectedTabID
+            let tab = current.tabs.first { $0.id == selected }
+            // Both layouts retain the Tab panes; focus is not visibility.
+            let visible = Set(tab?.panes.map(\.id) ?? [])
+            surfaceCoordinator.setIdeaPresentation(scope: graphicsWindowScope, visiblePaneIDs: visible)
+        }
+
         @discardableResult
         func reconcileInputSelection(_ installed: PolarStationNativeWorkspace? = nil) {
             guard let workspace = installed ?? workspace, let paneID = workspace.terminalFocusPaneID,
@@ -1522,6 +1575,7 @@
             reconcileSurfaceGeometry()
             refreshNumberBadges()
             reconcileInputSelection(workspace)
+            reconcileIdeaPresentation(workspace)
             return installedAll && controllers.count == workspace.tabs.count
         }
 
@@ -1562,7 +1616,7 @@
                     mode: tab.mode,
                     mainPaneID: tab.mainPaneID
                 )
-                guard let tree = splitTree(layout: layout, surfaces: tabSurfaces)
+                guard let tree = splitTree(layout: layout, surfaces: tabSurfaces, ratios: tab.splitRatios ?? [])
                 else { return false }
                 replaceManagedSurfaceTree(
                     tree,
@@ -1587,7 +1641,8 @@
 
         private func splitTree(
             layout: PolarStationNativeLayout,
-            surfaces: [String: Ghostty.SurfaceView]
+            surfaces: [String: Ghostty.SurfaceView],
+            ratios:[Double]
         ) -> SplitTree<Ghostty.SurfaceView>? {
             let columns = layout.columns.compactMap { column -> WeightedNode? in
                 let rows = column.surfaceIDs.compactMap { id in
@@ -1605,7 +1660,14 @@
             guard let root = rightAssociated(columns, direction: .horizontal) else {
                 return nil
             }
-            return SplitTree(root: root, zoomed: nil)
+            var index=0
+            func apply(_ node:SplitTree<Ghostty.SurfaceView>.Node)->SplitTree<Ghostty.SurfaceView>.Node {
+                guard case let .split(split)=node else{return node}
+                let current=index;index+=1
+                let ratio=ratios.indices.contains(current) && ratios[current].isFinite && ratios[current]>0 && ratios[current]<1 ? ratios[current] : split.ratio
+                return .split(.init(direction:split.direction,ratio:ratio,left:apply(split.left),right:apply(split.right)))
+            }
+            return SplitTree(root: apply(root), zoomed: nil)
         }
 
         private struct WeightedNode {

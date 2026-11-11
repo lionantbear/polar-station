@@ -14,16 +14,24 @@ First-party AGPL-3.0 is owner-approved; existing upstream licenses remain.
 Complete dependency license evidence, native builds and installation checks
 remain publication gates. No unsigned binary is represented as notarized.
 
-Reviewed test-only Rust items and local testkit are removed using hash-guarded
-AST-derived patches. Production mixed conditions such as any(test, feature)
+Test-only Rust items are removed using current-source syn/cfg-expr syntax analysis.
+Zig test declarations use the pinned upstream AST. Dedicated test files are excluded
+by declared paths and conventions. Local testkit dependencies are edited structurally. Production mixed conditions such as any(test, feature)
 remain intact. Vendored upstream code is not rewritten merely to remove its
-inline tests. Both baseline and cleaned Linux default workspace cargo check
-passed. This does not substitute for macOS/native GUI or runtime validation.
+inline tests. The current cloud PolarInfra working tree is the sole source of
+product code; historical public snapshots are not merged back. Cargo, native GUI,
+runtime and installation checks must be run for each newly exported input identity.
+No historical Cargo or macOS result validates this working-tree export.
 
-Export with --normalize-lock after populating the approved Cargo dependency
-cache. This prunes the copied monorepo lock offline and rejects any new package
-identity or changed checksum. Cleanup refuses source drift; re-review patches
-for the next monorepo revision rather than bypassing the guard.
+Every CLI export normalizes the staged lock offline using the exact pinned
+Rust/Cargo versions already installed. The compatibility --normalize-lock flag
+is optional because this check is always on. Normalization rejects new package
+identities, changed checksums or added dependency edges, then verifies locked
+Cargo metadata against the normalized graph. Failed normalization records a
+rejection and cannot produce a valid source manifest. The private source lock
+is never changed. This is not a compile, test, native runtime or release result.
+Special public adaptations use exact local context and reject relevant structural
+changes. Ordinary production edits do not require per-file cleanup hash updates.
 
 ## Native source cleanup
 
@@ -34,8 +42,8 @@ rules, Host-backed control-center behavior, and user-facing diagnostic features
 (such as microphone/provider connection tests) are retained. Upstream legal and
 provenance files are retained separately from first-party test material.
 
-`public_native_cleanup.json` stores hashes and minimal edit ranges for these
-reviewed changes. It is a release transformation manifest, not a test suite.
+`public_native_cleanup.json` stores bounded contextual rules for nonstandard
+fixture hooks and public adaptations; standard test declarations are parsed dynamically. It is a release transformation manifest, not a test suite.
 Reapplying the cleanup is idempotent; changed source fails closed for review.
 Snapshot verification rejects first-party Zig test declarations and retired
 Linux Python frontend paths under either old or renamed source directories.

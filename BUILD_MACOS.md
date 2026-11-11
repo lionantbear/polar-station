@@ -1,53 +1,72 @@
 # macOS source build (Apple Silicon)
 
-This build entry has portability fixes and Linux static contract tests only.
-**A complete macOS compile, launch, signing, graphics, and DMG installation test
-has not yet passed for this exported source. Do not label it a tested release.**
+This source comes only from the current PolarInfra working tree. Its export-only
+builder adapters have Python/shell and command-construction regression evidence.
+**Cargo compilation, native compilation, launch, signing, graphics and clean-machine
+installation have not been validated for this exported input identity.**
+Historical public-source build reports do not validate this tree.
 
-Required inputs, installed by the builder (these scripts do not install tools):
+## Required local inputs
 
-- Apple Silicon Mac, Xcode with command-line developer tools selected.
-- Rust toolchain from `rust-toolchain.toml`, with `aarch64-apple-darwin` target.
-- Zig **0.15.2**, gettext `msgfmt`, Python 3, SCons **4.9.1**.
+The scripts do not install these dependencies:
+
+- Apple Silicon Mac, Xcode and selected command-line developer tools.
+- Rust toolchain from `rust-toolchain.toml`, including `aarch64-apple-darwin`.
+- Zig **0.15.2**, gettext `msgfmt`, Python 3 and SCons **4.9.1**.
 - Ghostty checkout at `332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`.
-- Godot checkout at `ed1daf0bf001b61586d9930840f2f1394092c079`,
-  and Godot editor **4.7.2**. These existing archive pins are preserved, not
-  substituted with whatever the package manager currently provides.
+- A Zig-compatible macOS SDK. The current script accepts
+  `POLAR_STATION_MACOS_SDK` or the existing
+  `/Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk`; it does not discover
+  a newer SDK automatically or claim compatibility with macOS 26/27 SDKs.
+- Godot checkout at `ed1daf0bf001b61586d9930840f2f1394092c079`, located at
+  `$POLAR_GRAPHICS_CACHE/godot`, and Godot editor **4.7.2**.
 - Graphviz installation prefix, including its libraries and plugins.
 
-Example using explicit local input paths:
+The copied monorepo lock keeps its pinned package identities and checksums.
+Two removed private-test dependency edges are hash-guarded export changes.
+Full Cargo lock normalization remains a separate check: populate the approved
+Cargo cache and use the exporter's `--normalize-lock` option offline. Do not
+resolve an arbitrary newer dependency set to make a build pass.
+
+## Build entrypoints
+
+Example with explicit local paths, after lock validation:
 
 ```sh
 export POLAR_STATION_GHOSTTY_CHECKOUT=/absolute/path/to/ghostty
-export POLAR_STATION_ZIG=/absolute/path/to/zig
-export POLAR_GRAPHICS_GODOT_CHECKOUT=/absolute/path/to/godot
-export POLAR_GRAPHICS_SCONS=/absolute/path/to/scons
+export POLAR_STATION_ZIG=/absolute/path/to/zig-0.15.2
+export POLAR_STATION_MACOS_SDK=/absolute/path/to/compatible/MacOSX15.sdk
+export POLAR_GRAPHICS_CACHE=/absolute/path/to/graphics-cache
+export POLAR_GRAPHICS_SCONS=/absolute/path/to/scons-4.9.1
 export POLAR_GRAPHICS_EDITOR=/absolute/path/to/Godot.app/Contents/MacOS/Godot
 export POLAR_GRAPHICS_GRAPHVIZ=/absolute/path/to/graphviz-prefix
+export POLAR_STATION_CODESIGN_IDENTITY=-
 bash automation/polar_station/build_macos_graphics.sh
 bash automation/polar_station/build_macos.sh --configuration Release
 ```
 
-The two upstream checkouts are cloned into disposable build directories. Patches
-are not applied to your original checkout. The source revision and Ghostty source
-archive digest are checked. Outputs are under `target/polar-station-macos/`.
-Rust builds use this export's `target/`, not an inherited `CARGO_TARGET_DIR`.
+Ghostty is built in a disposable clone of the pinned checkout. **The current
+macOS graphics script patches `platform/macos/libgodot_macos.mm` in the supplied
+Godot cache checkout in place.** Use a dedicated approved build input for that
+script; it is not a read-only upstream source operation.
 
-The SDK is discovered with `xcrun --sdk macosx --show-sdk-path`. Override it with
-`POLAR_STATION_MACOS_SDK` if the selected SDK is incompatible with pinned Zig.
-Discovery is not a compatibility guarantee; macOS 26/27 builds remain unverified.
+Rust outputs are constrained to this export's `target/`, regardless of an
+inherited `CARGO_TARGET_DIR`. App outputs are under
+`target/polar-station-macos/Release/`. Native receipts consume the Mono HEAD,
+working-tree input digest and actual exported-file fingerprint from
+`PUBLIC_SOURCE_MANIFEST.json`; a dirty export is never labeled a clean commit.
 
 ## Signing and distribution
 
-The default is **ad-hoc signing** (`POLAR_STATION_CODESIGN_IDENTITY=-`), with
-Xcode automatic signing disabled. No paid Apple account is needed for that mode.
-It is **not notarization or Developer ID signing**. A downloaded app may require
-explicit approval in System Settings > Privacy & Security. Do not disable
-Gatekeeper globally. TCC/automation permissions and their persistence need actual
-Mac testing; ad-hoc signing does not establish a trusted publisher identity.
+`POLAR_STATION_CODESIGN_IDENTITY=-` explicitly selects local ad-hoc signing.
+Without that choice, the current certificate-selection behavior remains.
+Xcode intermediate automatic signing is disabled; final signing is explicit.
+Ad-hoc signing is neither notarization nor a trusted publisher identity. A
+separate local signing choice does not authorize uploading or distribution.
+TCC/automation permissions and their persistence still need actual Mac tests.
+Do not disable Gatekeeper globally.
 
-To use an already configured signing identity, explicitly set
-`POLAR_STATION_CODESIGN_IDENTITY`. This script does not enroll in an Apple program,
-create credentials, or notarize anything. After the build succeeds, packaging an
-unnotarized DMG is a separate step with `package_macos_free.sh` if included.
-The native dependency license inventory and distribution gates must also pass.
+The scripts do not enroll in an Apple program, create credentials or notarize.
+Packaging with `package_macos_free.sh` is separate from compilation. Native
+licensing, exact binary provenance, installation and interactive behavior must
+be checked for the actual bytes before a release is claimed.

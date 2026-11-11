@@ -21,6 +21,10 @@ pub enum StationShortcutAction {
     OpenInquiry = 14,
     InsertIdeaNode = 15,
     EditIdeaInstruction = 16,
+    QuoteSelection = 17,
+    PreviousTab = 18,
+    NextTab = 19,
+    OpenFileReference = 20,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -68,6 +72,20 @@ pub const STATION_SHORTCUTS: &[StationShortcut] = &[
             125,
             0xff54,
         )
+    },
+    StationShortcut {
+        repeatable: true,
+        ..key(
+            StationShortcutAction::PreviousTab,
+            "←",
+            "Previous Tab",
+            123,
+            0xff51,
+        )
+    },
+    StationShortcut {
+        repeatable: true,
+        ..key(StationShortcutAction::NextTab, "→", "Next Tab", 124, 0xff53)
     },
     digit(1, 18),
     digit(2, 19),
@@ -120,11 +138,55 @@ pub const STATION_SHORTCUTS: &[StationShortcut] = &[
         7,
         b'X' as u32,
     ),
-    key(StationShortcutAction::OpenIdeaTree, "B", "Open Idea Tree in this Tab", 11, b'B' as u32),
-    key(StationShortcutAction::ResumeCodex, "L", "Resume Codex Session", 37, b'L' as u32),
-    key(StationShortcutAction::OpenInquiry, "Y", "Handle Inquiry", 16, b'Y' as u32),
-    key(StationShortcutAction::InsertIdeaNode, "I", "Insert node", 34, b'I' as u32),
-    key(StationShortcutAction::EditIdeaInstruction, "E", "Edit instruction", 14, b'E' as u32),
+    key(
+        StationShortcutAction::OpenIdeaTree,
+        "B",
+        "Open Idea Tree in this Tab",
+        11,
+        b'B' as u32,
+    ),
+    key(
+        StationShortcutAction::ResumeCodex,
+        "L",
+        "Resume Codex Session",
+        37,
+        b'L' as u32,
+    ),
+    key(
+        StationShortcutAction::OpenInquiry,
+        "Y",
+        "Handle Inquiry",
+        16,
+        b'Y' as u32,
+    ),
+    key(
+        StationShortcutAction::InsertIdeaNode,
+        "I",
+        "Insert node",
+        34,
+        b'I' as u32,
+    ),
+    key(
+        StationShortcutAction::EditIdeaInstruction,
+        "E",
+        "Edit instruction",
+        14,
+        b'E' as u32,
+    ),
+    key(
+        StationShortcutAction::QuoteSelection,
+        "G",
+        "Quote selection",
+        5,
+        b'G' as u32,
+    ),
+    key(
+        StationShortcutAction::OpenFileReference,
+        ".",
+        "Open selected file",
+        47,
+        b'>' as u32,
+    ),
 ];
 
 const fn key(
@@ -177,40 +239,141 @@ pub fn station_shortcut(platform: u32, native_key: u32) -> Option<&'static Stati
 
 
 
-
-/// Pure gesture policy. OS capture and intent execution are external.
+/// Pure automatic gesture policy. OS capture, monotonic clock and execution
+/// remain external. A quick release latches; a long release stops.
+pub const DICTATE_HOLD_THRESHOLD_MS: u64 = 350;
 #[derive(Default)]
 pub struct DictateGesture {
     down: bool,
-    release_stops: bool,
-    session_toggle: Option<bool>,
+    started_at_ms: Option<u64>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum GestureIntent { None = 0, Start = 1, Stop = 2 }
+pub enum GestureIntent {
+    None = 0,
+    Start = 1,
+    Stop = 2,
+    UseAvailable = 3,
+}
 #[derive(Clone, Copy, Debug)]
-pub enum ShortcutEvent { Press, Release, Activate, Cancel }
+pub enum ShortcutEvent {
+    Press,
+    Release,
+    Activate,
+    Cancel,
+}
 impl DictateGesture {
-    pub fn interpret(&mut self, event: ShortcutEvent, toggle: bool, recording: bool, can_start: bool) -> GestureIntent {
+    pub fn interpret(
+        &mut self,
+        event: ShortcutEvent,
+        now_ms: u64,
+        recording: bool,
+        can_start: bool,
+        can_use_available: bool,
+    ) -> GestureIntent {
         match event {
-            ShortcutEvent::Cancel => { self.down = false; self.release_stops = false; self.session_toggle = None; GestureIntent::None }
-            ShortcutEvent::Release => {
+            ShortcutEvent::Cancel => {
                 self.down = false;
-                if std::mem::take(&mut self.release_stops) { GestureIntent::Stop } else { GestureIntent::None }
+                self.started_at_ms = None;
+                GestureIntent::None
+            }
+            ShortcutEvent::Release => {
+                if !std::mem::take(&mut self.down) {
+                    return GestureIntent::None;
+                }
+                match self.started_at_ms.take() {
+                    Some(start) if now_ms.saturating_sub(start) >= DICTATE_HOLD_THRESHOLD_MS => {
+                        GestureIntent::Stop
+                    }
+                    _ => GestureIntent::None,
+                }
             }
             ShortcutEvent::Press | ShortcutEvent::Activate => {
-                // Activate is a discrete nonrepeat OS activation, not a raw key-down.
-                if matches!(event, ShortcutEvent::Press) && self.down { return GestureIntent::None; }
+                if matches!(event, ShortcutEvent::Press) && self.down {
+                    return GestureIntent::None;
+                }
                 self.down = matches!(event, ShortcutEvent::Press);
-                let toggle = if recording { self.session_toggle.unwrap_or(toggle) } else { toggle };
-                if toggle && recording { self.release_stops = false; return GestureIntent::Stop; }
-                if !recording && can_start {
-                    self.session_toggle = Some(toggle);
-                    self.release_stops = !toggle;
+                self.started_at_ms = None;
+                if can_use_available {
+                    return GestureIntent::UseAvailable;
+                }
+                if recording {
+                    return GestureIntent::Stop;
+                }
+                if can_start {
+                    if self.down {
+                        self.started_at_ms = Some(now_ms);
+                    }
                     GestureIntent::Start
-                } else { GestureIntent::None }
+                } else {
+                    GestureIntent::None
+                }
             }
         }
     }
+}
+
+/// Hint rows are a projection of the same catalog, never another shortcut map.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ShortcutHintContext {
+    pub panes: u32,
+    pub tabs: u32,
+    pub idea: bool,
+}
+pub fn shortcut_hints(context: ShortcutHintContext) -> impl Iterator<Item = StationShortcut> {
+    use StationShortcutAction::*;
+    [
+        NewCodex,
+        ResumeCodex,
+        NewShell,
+        PreviousPane,
+        PreviousTab,
+        NumberedPane,
+        ClosePane,
+        InsertIdeaNode,
+        EditIdeaInstruction,
+        QuoteSelection,
+        OpenIdeaTree,
+        ToggleMode,
+        TogglePanel,
+    ]
+    .into_iter()
+    .filter_map(move |action| {
+        let visible = match action {
+            PreviousPane | NumberedPane => context.panes > 1,
+            PreviousTab => context.tabs > 1,
+            ClosePane | ToggleMode => context.panes > 0,
+            InsertIdeaNode | EditIdeaInstruction => context.idea,
+            QuoteSelection => context.panes > 0 && !context.idea,
+            _ => true,
+        };
+        if !visible {
+            return None;
+        }
+        let mut entry = *STATION_SHORTCUTS.iter().find(|s| s.action == action)?;
+        entry.label = match action {
+            NewCodex => "New Codex",
+            ResumeCodex => "Resume Codex",
+            NewShell => "New Shell",
+            PreviousPane => "Switch Pane",
+            PreviousTab => "Switch Tab",
+            NumberedPane => "Choose Pane",
+            ClosePane => "Close Pane",
+            InsertIdeaNode => "Insert node",
+            EditIdeaInstruction => "Edit instruction",
+            QuoteSelection => "Quote selection",
+            OpenIdeaTree => "Idea Tree",
+            ToggleMode => "Layout mode",
+            TogglePanel => "Control Center",
+            _ => entry.label,
+        };
+        entry.key = match action {
+            PreviousPane => "↑ / ↓",
+            PreviousTab => "← / →",
+            NumberedPane => "1–9",
+            _ => entry.key,
+        };
+        Some(entry)
+    })
 }
 

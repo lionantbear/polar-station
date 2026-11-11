@@ -12,6 +12,10 @@ pub enum Input {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GenericInput {
+    ReferenceCollection { enabled:bool },
+    DictatedInput { lease:Lease, source:crate::learning::Refinement, text:String },
+    RefinedInput { lease:Lease, original:String, text:String, english:bool },
+    LearningStored { intent:String, success:bool },
     SelectTerminal {
         window_id: String,
         pane_id: String,
@@ -62,6 +66,7 @@ pub enum Effect {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GenericEffect {
+    LearnRefine { sample:crate::learning::LearningSample },
     InsertText {
         lease: Lease,
         text: String,
@@ -70,6 +75,6 @@ pub enum GenericEffect {
         request: Box<crate::terminal::SessionJob>,
     },
     InputBar {
-        view: GenericView,
+        view: Box<GenericView>,
     },
 }

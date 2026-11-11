@@ -134,14 +134,14 @@
     },
     {
       "id": "graphviz",
-      "license": "EPL-2.0 (current Graphviz); historical builds may use EPL-1.0",
-      "version": "unlocked Homebrew dependency; actual CI binary version required",
+      "license": "EPL-2.0 root license for observed 16.1.0; mixed-license source notices require review",
+      "version": "16.1.0 observed in native CI; Homebrew build input remains unlocked",
       "source": "https://graphviz.org/license/",
       "local_provenance": [
         "automation/polar_station/graphics_macos.py"
       ],
-      "bundled_license": null,
-      "notes": "Graphviz switched from EPL-1.0 to EPL-2.0 in March 2026; exact installed version matters. The Mac packager copies dot, Graphviz plugins and recursively linked Homebrew libraries. Generate a binary-level license inventory and license texts for every copied dependency."
+      "bundled_license": "licenses/native-source-texts/0becf16567beb77fa252b7664631dd177c8f9a1889e48995b45379c7130e5303.txt",
+      "notes": "Exact 16.1.0 archive checksum and root EPL-2.0 text are retained in licenses/native-source-evidence.json. Captured Homebrew metadata incorrectly says EPL-1.0 for this source archive. Additional third-party notices, generated-parser exceptions, copied dylibs and exact bottle composition remain unapproved; source-text presence does not satisfy binary distribution obligations."
     },
     {
       "id": "erofs-utils",

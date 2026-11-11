@@ -95,46 +95,8 @@ verify_source_unchanged() {
 
 polar_source_fingerprint() {
     fingerprint_root=$1
-    (
-        cd "$fingerprint_root"
-        # Guard this product's source inputs, not unrelated workspace projects.
-        set -- \
-            Cargo.toml Cargo.lock \
-            apps/polar-station-linux/gnome-extension \
-            apps/polar-station-linux/ghostty-module \
-            apps/polar-station-linux/ghostty-overlay \
-            apps/polar-tmux-shared/display apps/polar-tmux-shared/ghostty \
-            automation/polar_station/apply_display_overlay.py \
-            automation/polar_station/native_action_overlay.py \
-            automation/polar_station/gnome_shortcuts.py \
-            automation/polar_station/theme_resources.py \
-            automation/polar_station/graphics_resources.py \
-            apps/polar-graphics-native apps/polar-ideacave-godot \
-            crates/polar-graphics-godot crates/polar-graphics-package crates/polar-force-layout-core \
-            crates/polar-tmux crates/polar-tmux-core \
-            crates/polar-tmux-protocol crates/polar-tmux-resources \
-            crates/polar-tmux-types crates/polar-station-input crates/polar-station-lgp \
-            crates/polar-ideacave crates/polar-ideacave-presentation \
-            crates/polar-lgp-reader crates/polar-lgp-presentation crates/polar-edge-presentation \
-            crates/polar-tmux-workspace crates/polar-station-inbox crates/polar-station-session \
-            crates/polar-station-settings crates/polar-station-store-sqlite \
-            crates/polar-runtime-paths crates/polar-identity \
-            crates/polar-sqlite-runtime crates/polar-storage-migration \
-            automation/polar_station/build_linux_ghostty.sh \
-            automation/polar_station/build_rust_runtime.py \
-            automation/workers/hosts/linux_bwrap.py \
-            automation/workers/hosts/source_freshness.py \
-            automation/host_config.py automation/uuid_generation_checks.py \
-            itrees/polar-build.itree.json
-        git diff --binary --no-ext-diff HEAD -- "$@"
-        git ls-files --others --exclude-standard -- "$@" \
-            | LC_ALL=C sort \
-            | while IFS= read -r untracked_path; do
-                [ -n "$untracked_path" ] || continue
-                printf '%s\n' "$untracked_path"
-                sha256sum "$untracked_path"
-            done
-    ) | sha256sum | awk '{print $1}'
+    python3 "$fingerprint_root/automation/polar_station/public_source_identity.py" \
+        "$fingerprint_root" --fingerprint
 }
 
 materialize_staging_checkout() {
@@ -223,12 +185,6 @@ build_managed_ghostty() {
         echo "runtime-set receipt destination is not a regular file: $receipt" >&2
         exit 67
     fi
-    case "$checkout/" in
-        /home/chris/dev/reference/*)
-            echo "refusing to use a third-party reference checkout as the controlled source" >&2
-            exit 73
-            ;;
-    esac
     expected_commit=332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28
     source_head_before=$(git -C "$checkout" rev-parse HEAD)
     if [ "$source_head_before" != "$expected_commit" ]; then
@@ -238,7 +194,7 @@ build_managed_ghostty() {
     source_status_before=$(git -C "$checkout" status --porcelain=v1 --untracked-files=all)
     source_archive_before=$(git -C "$checkout" archive "$source_head_before" \
         | sha256sum | awk '{print $1}')
-    polar_source_commit=$(git -C "$repo_root" rev-parse HEAD)
+    polar_source_commit=$(python3 "$repo_root/automation/polar_station/public_source_identity.py" "$repo_root" --revision)
     polar_source_state_before=$(polar_source_fingerprint "$repo_root")
     graphics_bundle=${POLAR_STATION_GRAPHICS_BUNDLE:-}
     graphics_digest=
@@ -329,7 +285,7 @@ build_managed_ghostty() {
                 -Dpolar-station-client-lib-dir="$rust_client_lib_dir" \
                 -Demit-exe=true \
                 -Dapp-runtime=gtk \
-                -fsys=fontconfig -fsys=freetype -fsys=harfbuzz \
+                -fsys=fontconfig -fsys=harfbuzz \
                 -Dgtk-wayland=true \
                 -Dgtk-x11=false \
                 -Doptimize="$optimize" \

@@ -4,6 +4,7 @@
 /* GTK-thread only. Multiple view identities; one process engine and GL context. */
 GtkWidget *polar_graphics_gtk_create(const char *project, const char *scene, GError **error);
 GtkWidget *polar_graphics_gtk_create_view(const char *project, const char *scene, const char *identity, GError **error);
+GtkWidget *polar_graphics_gtk_create_pane(const char *project, const char *scene, const char *identity, GError **error);
 gboolean polar_graphics_gtk_shutdown(GError **error);
 typedef struct { uint64_t starts, mounts, frames, readbacks; GdkGLContext *context; } PolarGraphicsStats;
 PolarGraphicsStats polar_graphics_gtk_stats(void);

@@ -116,7 +116,9 @@ pub const LogTail = struct {
     truncated: bool,
 };
 
+pub const FileAccess=struct {state:[]const u8,resource_id:?[]const u8=null,local_path:?[]const u8=null,execution_target_id:?[]const u8=null,remote_directory:?[]const u8=null,source_path:?[]const u8=null};
 const Result = struct {
+    access:?FileAccess=null,
     type: []const u8,
     projection: ?Projection = null,
     tail: ?LogTail = null,
@@ -136,7 +138,7 @@ const Frame = struct {
     response: Response,
 };
 
-pub const ResponseKind = enum { projection, command_accepted, log_tail, @"error" };
+pub const ResponseKind = enum { projection, command_accepted, log_tail, file_access, @"error" };
 
 pub const Outcome = struct {
     request_id: []u8,
@@ -155,6 +157,7 @@ pub const Model = struct {
     allocator: std.mem.Allocator,
     current: ?std.json.Parsed(Frame) = null,
     last_log: ?std.json.Parsed(Frame) = null,
+    last_file:?std.json.Parsed(Frame)=null,
 
     pub fn init(allocator: std.mem.Allocator) Model {
         return .{ .allocator = allocator };
@@ -163,6 +166,7 @@ pub const Model = struct {
     pub fn deinit(self: *Model) void {
         if (self.current) |*current| current.deinit();
         if (self.last_log) |*current| current.deinit();
+        if(self.last_file) |*current| current.deinit();
         self.* = undefined;
     }
 
@@ -175,6 +179,7 @@ pub const Model = struct {
         return null;
     }
 
+    pub fn fileAccess(self:*const Model) ?FileAccess {return if(self.last_file) |value| value.value.response.result.access else null;}
     pub fn logTail(self: *const Model) ?*const LogTail {
         if (self.last_log) |*current| {
             if (current.value.response.result.tail) |*tail| return tail;
@@ -216,6 +221,8 @@ pub const Model = struct {
         if (parsed.value.response.result.projection != null) {
             if (self.current) |*current| current.deinit();
             self.current = parsed;
+        } else if(parsed.value.response.result.access!=null) {
+            if(self.last_file) |*value| value.deinit();self.last_file=parsed;
         } else if (parsed.value.response.result.tail != null) {
             if (self.last_log) |*current| current.deinit();
             self.last_log = parsed;
@@ -314,5 +321,14 @@ fn encodeMutation(
         },
     }, .{ .whitespace = .minified });
 }
+
+
+
+pub fn encodeResolveFile(allocator:std.mem.Allocator,id:[]const u8,target:[]const u8,path:[]const u8,cwd:?[]const u8,session:?[]const u8) ![]u8 {
+    if(session)|value|return encodeRead(allocator,id,.{ .type="resolve_file",.execution_target_id="",.source_session=.{.execution_target=target,.tmux_session_id=value},.path=path,.cwd=cwd});
+    return encodeRead(allocator,id,.{.type="resolve_file",.execution_target_id=target,.path=path,.cwd=cwd});
+}
+
+
 
 

@@ -11,6 +11,8 @@ pub const Action = union(enum) {
     workspace_mode_toggle,
     focus_previous,
     focus_next,
+    previous_tab,
+    next_tab,
     focus_pane_number: u8,
     new_shell,
     new_codex,
@@ -19,6 +21,8 @@ pub const Action = union(enum) {
     open_inquiry,
     insert_idea_node,
     edit_idea_instruction,
+    quote_selection,
+    open_file_reference,
     new_workspace,
     rename_workspace,
     refresh_sessions,
@@ -57,6 +61,9 @@ pub const ModifierState = struct {
     }
 };
 
+pub const HintContext = c.StationShortcutHintContext;
+pub fn hintCount(context:c.StationShortcutHintContext) usize {return c.polar_station_shortcut_hint_count(context);}
+pub fn hintEntry(context:c.StationShortcutHintContext,index:usize) c.StationShortcutView {return c.polar_station_shortcut_hint_at(context,index);}
 pub fn catalogCount() usize { return c.polar_station_shortcut_count(); }
 pub fn catalogEntry(index: usize) c.StationShortcutView { return c.polar_station_shortcut_at(index); }
 pub fn repeatable(keyval: c_uint, keycode: c_uint) bool {
@@ -78,6 +85,9 @@ pub fn resolve(keyval: c_uint, keycode: c_uint) ?Action {
         10 => .refresh_sessions, 11 => .close_focused_pane,
         12 => .open_idea_tree, 13 => .resume_codex, 14 => .open_inquiry,
         15 => .insert_idea_node, 16 => .edit_idea_instruction,
+        17 => .quote_selection,
+        18 => .previous_tab, 19 => .next_tab,
+        20 => .open_file_reference,
         else => null,
     };
 }

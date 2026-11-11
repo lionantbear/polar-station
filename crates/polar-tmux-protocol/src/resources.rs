@@ -92,19 +92,60 @@ impl ResourcesRequestEnvelopeV1 {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourcesCommandV1 {
     GetProjection,
-    GetLogTail { resource_id: String },
-    Apply { catalog: ResourceCatalog },
-    Restart { resource_id: String },
-    OpenMirror { resource_id: String },
+    ResolveFile {
+        execution_target_id: String,
+        path: String,
+        cwd: Option<String>,
+        /// Authoritative source session; never infer a harness cwd from the UI.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_session: Option<crate::SessionKeyV1>,
+    },
+    GetLogTail {
+        resource_id: String,
+    },
+    Apply {
+        catalog: ResourceCatalog,
+    },
+    Restart {
+        resource_id: String,
+    },
+    OpenMirror {
+        resource_id: String,
+    },
 }
 
 impl ResourcesCommandV1 {
     pub fn is_mutation(&self) -> bool {
-        !matches!(self, Self::GetProjection | Self::GetLogTail { .. })
+        !matches!(
+            self,
+            Self::GetProjection | Self::GetLogTail { .. } | Self::ResolveFile { .. }
+        )
     }
 
     fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
+            Self::ResolveFile {
+                execution_target_id,
+                path,
+                cwd,
+                source_session,
+            } => {
+                if let Some(session) = source_session {
+                    session.validate()?;
+                } else {
+                    validate_stable_identifier(execution_target_id, "execution target")?;
+                }
+                if path.is_empty()
+                    || path.len() > 16384
+                    || path.chars().any(char::is_control)
+                    || cwd
+                        .as_ref()
+                        .is_some_and(|v| v.len() > 16384 || v.chars().any(char::is_control))
+                {
+                    return Err(ProtocolValidationError::InvalidResourcesCommand);
+                }
+                Ok(())
+            }
             Self::GetProjection => Ok(()),
             Self::Apply { catalog } => {
                 if catalog.schema_version != RESOURCE_CATALOG_SCHEMA_VERSION {
@@ -144,6 +185,7 @@ impl ResourcesResponseEnvelopeV1 {
                 validate_projection(self.revision, projection)
             }
             ResourcesResultV1::LogTail { tail } => tail.validate(),
+            ResourcesResultV1::FileAccess { .. } => Ok(()),
             ResourcesResultV1::Error { error, projection } => {
                 error.validate_sanitized()?;
                 if let Some(projection) = projection {
@@ -158,6 +200,9 @@ impl ResourcesResponseEnvelopeV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourcesResultV1 {
+    FileAccess {
+        access: polar_tmux_resources::FileAccess,
+    },
     Projection {
         projection: ResourcesControlProjection,
     },
@@ -185,3 +230,5 @@ fn validate_projection(
     }
     Ok(())
 }
+
+

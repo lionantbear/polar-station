@@ -236,8 +236,8 @@ impl CodexControlService {
     }
 
     pub(crate) async fn read_original_thread(&self, owner: &str, endpoint: &str, thread: &str) -> Result<CodexHistoryThreadV1, ControlCenterErrorV1> {
-        match self.end_rpc("desktop-thread-read", owner, CodexCommandV1::ReadThread { endpoint_id:endpoint.into(), thread_id:thread.into() }).await? {
-            CodexResultV1::Thread { thread } => Ok(thread),
+        match self.end_rpc("desktop-thread-read", owner, CodexCommandV1::ReadThread { endpoint_id:endpoint.into(), thread_id:thread.into(), file_reference: None }).await? {
+            CodexResultV1::Thread { thread, .. } => Ok(thread),
             _ => Err(error("invalid_thread_response", "Cannot read the original conversation.")),
         }
     }
@@ -275,21 +275,129 @@ impl CodexControlService {
         }
     }
 
-    pub(crate) async fn terminal_end_state(&self, session: &polar_tmux_workspace::SessionKey) -> Result<Option<CodexStateV1>, ControlCenterErrorV1> {
-        let record = if let Some(lifecycle) = self.lifecycle.get() { lifecycle.record_for(session.execution_target_id.as_str(), session.tmux_session_id.as_str()).await } else { None };
+    async fn terminal_original(
+        &self,
+        session: &polar_tmux_workspace::SessionKey,
+    ) -> Result<Option<(String, String, String)>, ControlCenterErrorV1> {
+        let record = if let Some(lifecycle) = self.lifecycle.get() {
+            lifecycle
+                .record_for(
+                    session.execution_target_id.as_str(),
+                    session.tmux_session_id.as_str(),
+                )
+                .await
+        } else {
+            None
+        };
         let original = record.and_then(|r| match r.launch.process {
-            ProcessRestoreSpec::CodexAppServer { owner_host_id, endpoint_id, thread_id, .. }
-            | ProcessRestoreSpec::CodexForwardedCli { owner_host_id, endpoint_id, thread_id, .. } => Some((owner_host_id, endpoint_id, thread_id)),
+            ProcessRestoreSpec::CodexAppServer {
+                owner_host_id,
+                endpoint_id,
+                thread_id,
+                ..
+            }
+            | ProcessRestoreSpec::CodexForwardedCli {
+                owner_host_id,
+                endpoint_id,
+                thread_id,
+                ..
+            } => Some((owner_host_id, endpoint_id, thread_id)),
             _ => None,
         });
-        let original = match original {
-            Some(value) => Some(value),
-            None => self.states.read().await.values().find(|s| s.binding.session.as_ref().is_some_and(|key|
-                key.execution_target.as_str() == session.execution_target_id.as_str() && key.tmux_session_id == session.tmux_session_id.as_str()))
-                .map(|s| (s.binding.owner_host_id.clone(), s.binding.endpoint_id.clone(), s.binding.thread_id.clone())),
+        match original {
+            Some(value) => Ok(Some(value)),
+            None => {
+                let mut originals = self
+                .states
+                .read()
+                .await
+                .values()
+                .filter(|s| {
+                    s.binding.session.as_ref().is_some_and(|key| {
+                        key.execution_target.as_str() == session.execution_target_id.as_str()
+                            && key.tmux_session_id == session.tmux_session_id.as_str()
+                    })
+                })
+                .map(|s| {
+                    (
+                        s.binding.owner_host_id.clone(),
+                        s.binding.endpoint_id.clone(),
+                        s.binding.thread_id.clone(),
+                    )
+                }).collect::<std::collections::BTreeSet<_>>();
+                if originals.len()>1 {
+                    return Err(error("original_thread_ambiguous", "This terminal has multiple original Codex Threads; no source was chosen."));
+                }
+                Ok(originals.pop_first())
+            },
+        }
+    }
+
+    /// Read the actual harness session context without resuming or sending a turn.
+    pub(crate) async fn terminal_file_reference(
+        &self,
+        session: &polar_tmux_workspace::SessionKey,
+        path: &str,
+    ) -> Result<Option<(polar_tmux_resources::FileOrigin, String)>, ControlCenterErrorV1> {
+        let Some((owner, endpoint, thread)) = self.terminal_original(session).await? else {
+            return Ok(None);
         };
-        let Some((owner, endpoint, thread)) = original else { return Ok(None) };
-        self.original_end_state(&owner, &endpoint, &thread).await.map(Some)
+        let source = self.config.read().await.endpoints.iter()
+            .find(|e| e.id==endpoint && e.owner_host_id==owner).cloned()
+            .ok_or_else(|| error("session_target_unavailable", "The original session endpoint is unavailable."))?;
+        // A complete absolute target is authoritative even when the app-server
+        // is offline. Explicit ./ and ../ paths likewise keep their cwd meaning.
+        if std::path::Path::new(path).is_absolute() {
+            return Ok(Some((polar_tmux_resources::FileOrigin {
+                execution_target_id:source.execution_target_id,cwd:None,
+                terminal_session_id:Some(session.tmux_session_id.as_str().into()),
+            },path.into())));
+        }
+        let wants_lookup=!path.starts_with("./") && !path.starts_with("../");
+        // Old peers deny unknown command fields. Probe the additive read
+        // capability through their existing GetUi before sending a lookup.
+        let supported = wants_lookup && (owner==self.owner || matches!(
+            self.end_rpc("desktop-file-capability", &owner, CodexCommandV1::GetUi).await,
+            Ok(CodexResultV1::Ui { file_reference_lookup:true, .. })
+        ));
+        let read=self.end_rpc("desktop-file-reference", &owner, CodexCommandV1::ReadThread {
+            endpoint_id:endpoint.clone(),thread_id:thread,
+            file_reference:supported.then(||path.into()),
+        }).await;
+        let (cwd,path)=match read {
+            Ok(CodexResultV1::Thread { thread, resolved_file_reference }) => (Some(thread.cwd),resolved_file_reference.unwrap_or_else(||path.into())),
+            Err(failure) => return Err(failure),
+            _ => return Err(error("invalid_thread_response", "Cannot read the original conversation.")),
+        };
+        let cwd=cwd.filter(|v|std::path::Path::new(v).is_absolute());
+        if !std::path::Path::new(&path).is_absolute() && cwd.is_none() {
+            return Err(error(
+                "session_directory_unavailable",
+                "The Codex session working directory is unavailable.",
+            ));
+        }
+        // Resource targets belong to this Host's registry. Peer settings use
+        // the peer's target IDs (often "local"), not our SSH target aliases.
+        if !self.config.read().await.endpoints.contains(&source) {
+            return Err(error("session_target_changed", "The source endpoint changed while resolving the file; retry."));
+        }
+        Ok(Some((polar_tmux_resources::FileOrigin {
+            execution_target_id: source.execution_target_id,
+            cwd,
+            terminal_session_id: Some(session.tmux_session_id.as_str().into()),
+        },path)))
+    }
+    pub(crate) async fn terminal_end_state(
+        &self,
+        session: &polar_tmux_workspace::SessionKey,
+    ) -> Result<Option<CodexStateV1>, ControlCenterErrorV1> {
+        let original = self.terminal_original(session).await?;
+        let Some((owner, endpoint, thread)) = original else {
+            return Ok(None);
+        };
+        self.original_end_state(&owner, &endpoint, &thread)
+            .await
+            .map(Some)
     }
 
     pub(crate) async fn original_end_state(&self, owner: &str, endpoint: &str, thread: &str) -> Result<CodexStateV1, ControlCenterErrorV1> {

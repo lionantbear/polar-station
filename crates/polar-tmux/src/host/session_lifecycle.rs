@@ -197,6 +197,25 @@ impl TargetObservation {
 }
 
 impl SessionLifecycle {
+    /// Resolve the actual source Session directory through the existing target
+    /// client. Native OSC7 state is not authoritative across tmux attachment.
+    pub(crate) async fn source_directory(
+        &self,
+        client: &TmuxClient,
+        target: &str,
+        reference: &str,
+    ) -> Result<String> {
+        let generation = client.server_generation().await?;
+        let source = self.resolve(client, target, reference).await?;
+        let panes = client.list_panes(&source).await?;
+        let pane = panes.iter().find(|pane| pane.active && !pane.dead)
+            .context("source Session has no live active Pane")?;
+        anyhow::ensure!(std::path::Path::new(&pane.current_path).is_absolute(),
+            "source directory is unavailable");
+        anyhow::ensure!(client.server_generation().await? == generation, "source server changed");
+        Ok(pane.current_path.clone())
+    }
+
     pub(crate) async fn apply_operation(
         &self,
         operation: SessionOperation,
@@ -233,23 +252,8 @@ impl SessionLifecycle {
                     kind,
                     ..
                 } => {
-                    let generation = client.server_generation().await?;
                     let directory = if let Some(source) = source_session_id {
-                        let source = self.resolve(&client, target_id.as_str(), &source).await?;
-                        let panes = client.list_panes(&source).await?;
-                        let pane = panes
-                            .iter()
-                            .find(|pane| pane.active && !pane.dead)
-                            .context("source Session has no live active Pane")?;
-                        anyhow::ensure!(
-                            !pane.current_path.is_empty(),
-                            "source directory is unavailable"
-                        );
-                        anyhow::ensure!(
-                            client.server_generation().await? == generation,
-                            "source server changed"
-                        );
-                        Some(pane.current_path.clone())
+                        Some(self.source_directory(&client, target_id.as_str(), &source).await?)
                     } else {
                         anyhow::ensure!(
                             target_id == ExecutionTargetId::local(),

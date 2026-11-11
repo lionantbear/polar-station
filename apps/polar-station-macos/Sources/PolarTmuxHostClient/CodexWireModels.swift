@@ -140,6 +140,7 @@ public struct CodexChannelStatusV1: Decodable, Equatable, Sendable {
 }
 public enum CodexCommandV1: Encodable, Equatable, Sendable {
     case getUi, getSettings, getTelegramStatus, getBindings
+    case startLocalServer(endpoint:String)
     case updateSettings(revision: UInt64, settings: CodexControlSettingsV1)
     case listHistory(endpoint: String, cursor: String?, search: String?, archived: Bool, includeSubagents: Bool)
     case readHistoryDetail(endpoint: String, thread: String)
@@ -162,6 +163,7 @@ public enum CodexCommandV1: Encodable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .startLocalServer(let endpoint):try c.encode("start_local_server",forKey:.kind);try c.encode(endpoint,forKey:.endpoint_id)
         case .getUi: try c.encode("get_ui", forKey: .kind)
         case .getSettings: try c.encode("get_settings", forKey: .kind)
         case .getTelegramStatus: try c.encode("get_telegram_status", forKey: .kind)

@@ -22,6 +22,7 @@ var layouts: Dictionary = {}
 var active_index := 1
 var wheel_value := 1.0
 var wheel_width := 158.0
+var min_wheel_width:=125.0
 var transition: Tween
 var tree_pan := Vector2.ZERO
 var tree_zoom := 1.0
@@ -54,21 +55,7 @@ func _ready() -> void:
 		error = "Depth Forest requires the owning Pane's loaded preview model."
 		push_error(error)
 		return
-	model = prepared_model
-	navigation = prepared_navigation
-	for root in model.source_roots:
-		var ordinal := sources.size()
-		sources.append({"id":root,"title":str(model.records[root].title),"accent":ACCENTS[ordinal % ACCENTS.size()],"glyph":ordinal % 4})
-	if sources.is_empty():
-		error = "No loaded source roots."
-		return
-	var entries: Array=sources.map(func(source):return {"key":source.id,"title":source.title})
-	var short_titles: Dictionary=SourceWheel._display_labels(entries)
-	for source in sources:source.title=short_titles[source.id]
-	active_index = 0
-	for i in sources.size():
-		if model.records[sources[i].id].source == model.records[navigation.selected_id].source:active_index=i
-	wheel_value = active_index
+	if not _read_sources():return
 	_build_chrome()
 	_build_sources()
 	select_source(active_index,false)
@@ -77,6 +64,25 @@ func _ready() -> void:
 	initialized = true
 	_trace_state()
 	print("SPATIAL_WHEEL_READY sources=%d nodes=%d backend=%s display=%s" % [sources.size(),model.records.size(),layout.get("backend",""),DisplayServer.get_name()])
+
+func _read_sources()->bool:
+	sources.clear()
+	model = prepared_model
+	navigation = prepared_navigation
+	for root in model.source_roots:
+		var ordinal := sources.size()
+		sources.append({"id":root,"title":str(model.records[root].title),"accent":ACCENTS[ordinal % ACCENTS.size()],"glyph":ordinal % 4})
+	if sources.is_empty():
+		error = "No loaded source roots."
+		return false
+	var entries: Array=sources.map(func(source):return {"key":source.id,"title":source.title})
+	var short_titles: Dictionary=SourceWheel._display_labels(entries)
+	for source in sources:source.title=short_titles[source.id]
+	active_index = 0
+	for i in sources.size():
+		if model.records[sources[i].id].source == model.records[navigation.selected_id].source:active_index=i
+	wheel_value = active_index
+	return true
 
 func _label(value: String, font_size: int, color: Color) -> Label:
 	var label := Label.new()
@@ -398,7 +404,7 @@ func _input(event: InputEvent) -> void:
 	if not initialized: return
 	if event is InputEventMouseMotion:
 		if resizing_wheel:
-			wheel_width = clampf(wheel_width+event.relative.x,125,260)
+			wheel_width = clampf(wheel_width+event.relative.x,min_wheel_width,260)
 			_resize()
 			accept_event()
 		elif dragging_source>=0:

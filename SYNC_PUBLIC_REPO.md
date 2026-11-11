@@ -65,10 +65,19 @@ never runs repository hooks, checkout filters or submodules. Comparison and push
 are not atomic CAS; concurrent non-fast-forward changes are rejected by Git.
 If the branch or snapshot changed, replan rather than force the update.
 
-Publishing needs an existing non-interactive HTTPS authentication environment.
+Publishing accepts HTTPS or git-user SSH URLs on github.com. SSH uses the existing
+agent, strict host-key checking, batch mode, and no caller/repository SSH command overrides.
+Publishing needs an existing non-interactive authentication environment.
 The tool disables global/system Git configuration, does not set up credentials,
 and accepts no token argument. Authentication failure is a blocker, not success.
 This workflow is implemented and tested with local Git remotes; it does not
 install a schedule or itself grant permission for future unattended publication.
 After a confirmed publish, retain the exact published snapshot as the next
 baseline, including preserved repository-owned files and its resulting manifest.
+
+When a source-managed path was independently fixed after the recorded snapshot,
+review that precise diff and integrate the required behavior into PolarInfra
+first. `plan --reviewed-remote-changes identities.json` may then accept only the
+explicit path -> {mode, sha256} identities reviewed. The original previous
+snapshot is retained unchanged; the acceptance is bound into the plan and
+rechecked during apply. This is not a blanket remote-conflict override.

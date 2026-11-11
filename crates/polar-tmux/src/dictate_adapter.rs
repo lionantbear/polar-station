@@ -44,13 +44,16 @@ impl Host for DictateSpeech {
 }
 
 impl CapturePort for DictateSpeech {
+    #[allow(clippy::too_many_arguments)] // Preserve the existing capture port while adding trusted project context.
     fn begin(
         &self,
         id: &str,
         context: Option<String>,
+        reference: String,
+        project:Option<String>,
         cleanup: bool,
         is_test: bool,
     ) -> Result<(), String> {
-        DictateSpeech::begin(self, id, context, cleanup, is_test)
+        DictateSpeech::begin(self, id, context, reference, project, cleanup, is_test)
     }
 }

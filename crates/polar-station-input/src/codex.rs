@@ -27,12 +27,15 @@ impl InputEngine {
     pub(crate) fn has_codex_selection(&self, window: &str) -> bool {
         self.codex.selected.contains_key(window)
     }
+    pub(crate) fn update_codex_lease(&mut self, window:&str, lease:&crate::generic::Lease) {
+        if let Some((_, selected))=self.codex.selected.get_mut(window) {selected.lease=lease.clone();}
+    }
     pub(crate) fn forget_codex(&mut self, window: &str) {
         self.codex.selected.remove(window);
         self.codex.dirty.remove(window);
         self.codex.pending.retain(|_, (_, p)| !matches!(p, Pending::Bindings(s) if s.lease.window == window));
     }
-    fn refresh_codex(&mut self) -> Result<Vec<Effect>, String> {
+    pub(crate) fn refresh_codex(&mut self) -> Result<Vec<Effect>, String> {
         let selected = self.codex.selected.values().cloned().collect::<Vec<_>>();
         let mut effects = Vec::new();
         for (owner, mut selection) in selected {
@@ -99,7 +102,8 @@ impl InputEngine {
         };
         let mut selection = selection;
         selection.lease = view.lease.clone();
-        self.codex.selected.insert(selection.lease.window.clone(), (owner.clone(), selection.clone()));
+        let mut observed=selection.clone(); observed.submit_after_resolve=None;
+        self.codex.selected.insert(selection.lease.window.clone(), (owner.clone(), observed));
         Ok(vec![
             present(view),
             self.codex_request(
@@ -212,6 +216,7 @@ impl InputEngine {
                         return self.resolve_codex(selection, owner);
                     }
                 }
+                let mut conversation_context = None;
                 let destination = match result {
                     CodexResultV1::Bindings { bindings } => {
                         let mut matching = bindings.into_iter().filter(|s| {
@@ -231,26 +236,22 @@ impl InputEngine {
                             )
                         });
                         match (matching.next(), matching.next()) {
-                            (Some(state), None) if state.can_queue => {
+                            (Some(state), None) => {
+                                conversation_context = if self.reference_collection_enabled { recognition_context(state.metadata.preview.as_deref(), state.final_answer.as_deref()) } else { None };
+                                self.generic.project(&selection.lease.window,state.metadata.cwd.as_ref().map(|cwd|format!("/@host/{}/@target/{}{}",state.binding.owner_host_id,selection.target,cwd)));
                                 Destination::Codex(state.binding)
                             }
                             (None, _) => Destination::Unavailable("Original Codex thread is not bound".into()),
                             (Some(_), Some(_)) => Destination::Unavailable("Multiple original Codex bindings match this pane".into()),
-                            (Some(state), None) => Destination::Unavailable(format!("Codex connection is not ready ({:?})", state.connection)),
                         }
                     }
                     _ => Destination::Unavailable("Unable to resolve original Codex thread".into()),
                 };
-                let view = self.generic.observe(
-                    selection.lease.window.clone(), selection.lease.pane,
-                    selection.lease.draft_key, destination,
-                )?;
-                if let Some((_, selected)) = self.codex.selected.get_mut(&selection.lease.window) {
-                    selected.lease = view.lease.clone();
-                }
-                Ok(vec![present(view)])
+                self.generic.conversation_context(&selection.lease.window, conversation_context);
+                self.complete_input_resolution(selection,destination)
             }
             Pending::Send(intent) => {
+                if !self.generic.has_pending(&intent) {return Ok(vec![]);}
                 if let CodexResultV1::Receipt {
                     receipt: Some(receipt),
                 } = result
@@ -263,10 +264,12 @@ impl InputEngine {
                             self.generic.resolve(&intent, receipt.clear_input)?
                         }
                         CodexSubmissionStatusV1::Rejected => {
-                            self.generic.resolve(&intent, false)?
+                            self.generic.reject(&intent,format!("Send failed: {}. Draft retained.",receipt.error_code.as_deref().unwrap_or(&receipt.label)))?
                         }
-                        _ => {}
+                        _ => self.generic.submission_error(&intent,"Sending result is unconfirmed; Retry checks the original receipt without resending text".into()),
                     }
+                } else {
+                    self.generic.submission_error(&intent,"Sending result is unconfirmed; Retry checks the original receipt without resending text".into());
                 }
                 // Ambiguous/error outcomes retain the immutable intent for receipt lookup.
                 let mut out = self
@@ -275,13 +278,26 @@ impl InputEngine {
                     .into_iter()
                     .map(present)
                     .collect::<Vec<_>>();
-                out.extend(
-                    self.dispatch_content(polar_station_lgp::Input::ExportDrafts)?
-                        .into_iter()
-                        .map(|e| Effect::Content(Box::new(e))),
-                );
+                self.append_input_snapshot(&mut out);
                 Ok(out)
             }
         }
     }
 }
+
+/// Only already-observed text from the selected original thread; no history IO,
+/// tool output, system prompt or additional conversation store.
+fn recognition_context(preview: Option<&str>, final_answer: Option<&str>) -> Option<String> {
+    let bounded =
+        |text: &str, max: usize| text[..text.floor_char_boundary(max.min(text.len()))].to_owned();
+    let preview = bounded(preview.unwrap_or_default(), 2048);
+    let answer = bounded(final_answer.unwrap_or_default(), 6000);
+    if preview.trim().is_empty() && answer.trim().is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Thread preview:\n{preview}\n\nMost recent final answer:\n{answer}"
+    ))
+}
+
+

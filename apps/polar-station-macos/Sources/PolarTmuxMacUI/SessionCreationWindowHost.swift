@@ -16,7 +16,7 @@ struct SessionCreationWindowHost<Content: View>: NSViewRepresentable {
             return
         }
         owner.dismiss()
-        let window = NSWindow(contentViewController: NSHostingController(rootView: content(request)))
+        let window = SessionCreationWindow(contentViewController: NSHostingController(rootView: content(request)))
         window.title = request.bindPane == nil ? "Add Session" : "Bind Codex session"
         window.identifier = .init("polar-station-session-editor-" + request.id.uuidString)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -47,5 +47,17 @@ struct SessionCreationWindowHost<Content: View>: NSViewRepresentable {
         }
         func windowShouldClose(_ sender: NSWindow) -> Bool { !sender.isDocumentEdited }
         func windowWillClose(_ notification: Notification) { onClose?() }
+    }
+}
+
+/// Native responder fallback when a SwiftUI text field owns the editor.
+private final class SessionCreationWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) {
+        guard !isDocumentEdited, attachedSheet == nil else { return }
+        if let editor = firstResponder as? NSTextView, editor.hasMarkedText() {
+            super.cancelOperation(sender)
+            return
+        }
+        performClose(sender)
     }
 }

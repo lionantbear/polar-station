@@ -14,7 +14,7 @@ const SpatialView = preload("res://itree_spatial_view.gd")
 const PresentationTheme = preload("res://addons/polar_graphics/presentation_theme.gd")
 const DEFAULT_PREFERENCES := {"canvas_mode": "two_d", "navigation_animation": true,
 	"frame_endpoints": true, "path_feedback": true, "camera_inertia": true,
-	"node_elasticity": true, "reduce_motion": false, "framing_policy":"reading_priority", "connection_flow":true, "connection_labels":true}
+	"node_elasticity": true, "reduce_motion": false, "framing_policy":"reading_priority", "connection_flow":true}
 var preferences: Dictionary = DEFAULT_PREFERENCES.duplicate()
 
 var browser_id := "mind_map" # Initial assembly; restored/default browser is applied before ready.
@@ -23,8 +23,12 @@ var _instruction_classic_rect:=Rect2()
 var instruction_request_id := 0
 var theme_id := "default"
 var depth_browser
+static var _window_presenters:Dictionary={} # Weak workspace owners; scene lifetime stays in SceneTree.
+var _content_column:VBoxContainer
+var _classic_roots:Array[Node]=[]
 var _active_package_browser := ""
 var view_registry=preload("res://view_packages/registry.gd").new()
+var browsing_configuration
 var browser_views: Dictionary = {}
 var _variant_switching := false
 var model = ViewModel.new()
@@ -49,7 +53,10 @@ var source_loader
 
 var _source_presented_count := 0
 var _source_events: Node
-var _source_quiet: Timer
+var _source_quiet
+var _initializing:=true
+var _events=ClassDB.instantiate("PolarGraphicsEvents")
+var _semantic_event:int
 var source_refresh_count := 0
 var _source_reload_failed := false
 var file_dialog: FileDialog
@@ -64,8 +71,6 @@ func _save_view_state() -> void:
 	if not initialized: return
 	_remember_tree()
 	if depth_browser!=null:browser_views[_active_package_browser]=depth_browser.snapshot()
-	saved_view_state.set_value("view","browser_id",browser_id)
-	saved_view_state.set_value("view","theme_id",theme_id)
 	saved_view_state.set_value("view","browser_views",browser_views)
 	saved_view_state.set_value("view","browser_version",1)
 	saved_view_state.set_value("view","theme_version",1)
@@ -103,6 +108,7 @@ func _apply_preferences(animate_mode: bool = false) -> void:
 		tree_strip.motion_enabled=bool(preferences.navigation_animation) and not bool(preferences.reduce_motion)
 		if not tree_strip.motion_enabled:tree_strip.settle_motion()
 	for view in [canvas, tree_view, graph_view]:
+		if view==null:continue
 		view.motion_preferences = preferences.duplicate()
 		if bool(preferences.reduce_motion) or not bool(preferences.navigation_animation):
 			for tween in [view._camera_tween,view._mode_tween,view._layout_tween]:
@@ -118,6 +124,7 @@ func _apply_preferences(animate_mode: bool = false) -> void:
 		_interaction_active=false;_interaction_dragging=false
 		if force_bridge!=null:force_bridge.cancel()
 		_save_graph_constraints()
+	if canvas==null:return
 	canvas.tilted = preferences.canvas_mode == "layered"
 	if initialized:
 		_source_base_layout=_canvas_scope(tree_layout)
@@ -142,6 +149,7 @@ var graph_ready := false
 var graph_error := ""
 var initialized := false
 var _host_visible:=true
+var _pending_source_update:Array=[]
 var error := ""
 var layout_revision := 0
 var _navigation_timing: Dictionary = {}
@@ -243,6 +251,7 @@ func host_state() -> Dictionary:
 	result.browsers=view_registry.choices("browsers")
 	result.themes=view_registry.choices("themes")
 	result.view_packages=view_registry.package_choices()
+	if browsing_configuration!=null:result.browsing_configuration=browsing_configuration.current()
 	result.canvas_modes=view_registry.browsers.get(browser_id,{}).get("modes",[])
 	if browser_id!="mind_map" and depth_browser!=null:
 		result.canvas_mode="layered";result.tilted=true
@@ -306,9 +315,38 @@ func _publish_host_state() -> void:
 	if bool(get_meta("native_controls", false)): host_state_changed.emit(host_state())
 	call_deferred("_trace_view_state")
 
+func _browsing_configuration_changed()->void:
+	if not initialized:return
+	if _host_visible and depth_browser!=null and depth_browser.has_method("refresh_configuration"):
+		depth_browser.refresh_configuration()
+	_publish_host_state()
+
 func host_command(action: String, query: String = "") -> void:
-	if action=="select_browser":_switch_browser(query);return
-	if action=="select_theme":_apply_visual_theme(query);_save_view_state();_publish_host_state();return
+	if action=="load_browsing_configuration":browsing_configuration.select_file(query);return
+	if action=="use_default_browsing_configuration":browsing_configuration.use_default();return
+	if action=="open_browsing_configuration_source":
+		var path:String=str(browsing_configuration.current().path)
+		if not path.is_empty():
+			if bool(get_meta("native_controls",false)):host_open_source.emit(path)
+			else:OS.shell_open(path)
+		return
+	if action=="bind_window":
+		var previous:String=str(get_meta("window_id",""))
+		if previous==query:return
+		if _window_presenters.has(previous) and _window_presenters[previous].get_ref()==self:_window_presenters.erase(previous)
+		set_meta("window_id",query)
+		if initialized:
+			var owner=_window_presenters.get(query)
+			if owner!=null and owner.get_ref()!=null and owner.get_ref()!=self:
+				_save_view_state()
+				if depth_browser!=null:
+					view_registry.unbind_browser(depth_browser)
+					remove_child(depth_browser);depth_browser.queue_free();depth_browser=null;_active_package_browser=""
+				if _host_visible:_switch_browser(browser_id)
+			else:_register_window_presenter()
+		return
+	if action=="select_browser":_select_global_browser(query);return
+	if action=="select_theme":_select_global_theme(query);return
 	if action in ["install_package","export_package","uninstall_view_package"]:
 		if action=="uninstall_view_package":
 			if browser_id.begins_with(query+"/"):_switch_browser("depth_forest")
@@ -351,12 +389,12 @@ func host_command(action: String, query: String = "") -> void:
 		return
 	if not initialized: return
 	if action in ["browser_mind_map","browser_depth_forest"]:
-		_switch_browser("depth_forest" if action=="browser_depth_forest" else "mind_map")
+		_select_global_browser("depth_forest" if action=="browser_depth_forest" else "mind_map")
 		return
 	if action in ["theme_default","theme_christmas"]:
-		_apply_visual_theme("christmas" if action=="theme_christmas" else "default")
+		_select_global_theme("christmas" if action=="theme_christmas" else "default")
 		_save_view_state();_publish_host_state();return
-	if browser_id!="mind_map" and depth_browser.execute_action(action):
+	if browser_id!="mind_map" and depth_browser!=null and depth_browser.execute_action(action):
 		_publish_host_state();return
 	if action in ["canvas_two_d", "canvas_layered", "tilt"]:
 		preferences.canvas_mode = ("two_d" if preferences.canvas_mode == "layered" else "layered") if action == "tilt" else ("two_d" if action == "canvas_two_d" else "layered")
@@ -367,7 +405,7 @@ func host_command(action: String, query: String = "") -> void:
 	if action.begins_with("framing_"):
 		preferences.framing_policy={"framing_reading":"reading_priority","framing_both":"both_endpoints","framing_fixed":"fixed_zoom"}.get(action,"reading_priority")
 		_apply_preferences();_save_view_state();_publish_host_state();return
-	if action in ["navigation_animation", "frame_endpoints", "path_feedback", "camera_inertia", "node_elasticity", "reduce_motion","connection_flow","connection_labels"]:
+	if action in ["navigation_animation", "frame_endpoints", "path_feedback", "camera_inertia", "node_elasticity", "reduce_motion","connection_flow"]:
 		preferences[action] = not bool(preferences[action])
 		_apply_preferences()
 		_save_view_state()
@@ -392,8 +430,11 @@ func host_command(action: String, query: String = "") -> void:
 	_publish_host_state()
 
 func _ready() -> void:
+	browsing_configuration=preload("res://browsing_configuration.gd").shared(get_tree())
+	browsing_configuration.changed.connect(_browsing_configuration_changed)
 	view_registry.refresh()
 	view_registry.changed.connect(_view_catalog_changed)
+	view_registry.selection_changed.connect(_sync_global_presentation)
 	view_registry.reference_requested.connect(_request_related_reference)
 	TranslationServer.set_locale("en")
 	OS.low_processor_usage_mode = false if DisplayServer.get_name() == "gtk_surface" else OS.low_processor_usage_mode
@@ -403,19 +444,12 @@ func _ready() -> void:
 		get_window().content_scale_size = Vector2i.ZERO
 		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	browser_id=str(view_registry.current_selection().browser)
 	_build_ui()
-	for view in [canvas,tree_view,graph_view]:view.set_render_active(false)
+	for view in [canvas,tree_view,graph_view]:
+		if view!=null:view.set_render_active(false)
 	if not OS.get_environment("POLAR_STATION_TRACE_DIR").is_empty():
 		RenderingServer.frame_post_draw.connect(_record_navigation_frame)
-	_connect_view(canvas, "canvas")
-	_connect_view(tree_view, "tree")
-	_connect_view(graph_view, "graph")
-	tree_view.map_position_requested.connect(func(point):
-		canvas._move_camera(point, canvas.view_size, canvas.orbit_distance, false))
-	tree_view.map_pan_requested.connect(func(delta):
-		canvas._move_camera(canvas.target + delta, canvas.view_size, canvas.orbit_distance, false))
-	tree_view.overview_zoom_requested.connect(func(factor): canvas.zoom_at(factor, canvas.size * 0.5))
-	tree_view.overview_pan_requested.connect(func(delta): canvas.pan_by(delta))
 	resized.connect(_responsive)
 	toolbar.resized.connect(_responsive)
 	_responsive()
@@ -449,10 +483,11 @@ func _ready() -> void:
 		back_button.disabled = true
 		forward_button.disabled = true
 		locate_button.disabled = true
+		_initializing=false
 		_publish_host_state()
 		return
-	var initial_browser: String=str(saved_view_state.get_value("view","browser_id","depth_forest"))
-	var prepare_classic: bool = initial_browser=="mind_map" or not view_registry.browsers.has(initial_browser)
+	var initial_browser: String=str(view_registry.current_selection().browser)
+	var prepare_classic: bool = _host_visible and (initial_browser=="mind_map" or not view_registry.browsers.has(initial_browser))
 	navigation.initialize(model)
 	navigation.changed.connect(_on_navigation_changed)
 	_initialize_tree_navigation()
@@ -465,27 +500,30 @@ func _ready() -> void:
 	await get_tree().process_frame
 	# Frame the selected source tree at reading scale; the navigator keeps
 	# the complete forest. Unrelated roots must not shrink this first view.
-	var initial_root := str(tree_layout.items.get(navigation.selected_occurrence, {}).get("root_id", ""))
-	var initial_keys:Array=canvas.points.keys().filter(func(key):return str(canvas.records[key].get("source",""))==_active_source())
-	canvas.fit_keys(initial_keys, false, true)
-	tree_view.fit_all(false)
+	if canvas!=null:
+		var initial_root := str(tree_layout.items.get(navigation.selected_occurrence, {}).get("root_id", ""))
+		var initial_keys:Array=canvas.points.keys().filter(func(key):return str(canvas.records[key].get("source",""))==_active_source())
+		canvas.fit_keys(initial_keys, false, true)
+		tree_view.fit_all(false)
 	_variant_switching=true
 	if saved_view_state.has_section_key("view", "navigation"):
 		navigation.restore(saved_view_state.get_value("view", "navigation"))
 	_apply_preferences()
 	_restore_tree_camera()
 	_variant_switching=false
+	_initializing=false
 	initialized = error.is_empty()
 	browser_views=saved_view_state.get_value("view","browser_views",{})
-	var saved_browser: String=str(saved_view_state.get_value("view","browser_id","depth_forest"))
-	var saved_theme: String=str(saved_view_state.get_value("view","theme_id","default"))
+	var saved_browser: String=str(view_registry.current_selection().browser)
+	var saved_theme: String=str(view_registry.current_selection().theme)
 	var saved_reader: bool=bool(browser_views.get("depth_forest",{}).get("reader_open",false))
 	if saved_browser!="mind_map" and view_registry.browsers.has(saved_browser):
 		_switch_browser(saved_browser)
 		if depth_browser!=null and saved_reader:depth_browser.show_details()
 	elif saved_browser!="mind_map":status.text="Saved browser unavailable; showing Mind Map."
 	_apply_visual_theme(saved_theme)
-	for view in [canvas,tree_view,graph_view]:view.set_render_active(browser_id=="mind_map")
+	for view in [canvas,tree_view,graph_view]:
+		if view!=null:view.set_render_active(browser_id=="mind_map")
 	_publish_host_state()
 	_trace_view_state()
 	_start_source_events()
@@ -517,7 +555,7 @@ func _open_files(paths: PackedStringArray) -> void:
 		_publish_host_state()
 		return
 	if _source_quiet != null:
-		_source_quiet.stop();_source_quiet.queue_free();_source_quiet = null
+		_source_quiet.stop();_source_quiet = null
 	if _source_events != null:
 		remove_child(_source_events);_source_events.queue_free();_source_events = null
 	source_paths = paths
@@ -601,6 +639,24 @@ func _build_ui() -> void:
 	reader_button = _button(toolbar, "Read", _toggle_reader, "Read node content, source and relationships")
 	reader_button.toggle_mode = true
 	reader_button.button_pressed = false
+	status = _label("Loading…", 12, Color("8ba2b6"))
+	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	column.add_child(status)
+	search_popup = _panel()
+	search_popup.z_index = 100
+	search_popup.visible = false
+	add_child(search_popup)
+	search_results = ItemList.new()
+	search_results.custom_minimum_size = Vector2(540, 280)
+	search_results.item_activated.connect(_open_search_result)
+	search_popup.add_child(search_results)
+	_content_column=column
+	if browser_id=="mind_map" and _host_visible:_build_classic_ui()
+
+func _build_classic_ui()->void:
+	if canvas!=null:return
+	var previous_children:=get_children()
+	var column:=_content_column
 	body = HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 10)
@@ -742,17 +798,6 @@ func _build_ui() -> void:
 	relation_list.hide()
 	reader_column.add_child(relation_list)
 	reader_panel.minimum_size_changed.connect(func(): call_deferred("_fit_reader"))
-	status = _label("Loading…", 12, Color("8ba2b6"))
-	status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	column.add_child(status)
-	search_popup = _panel()
-	search_popup.z_index = 100
-	search_popup.visible = false
-	add_child(search_popup)
-	search_results = ItemList.new()
-	search_results.custom_minimum_size = Vector2(540, 280)
-	search_results.item_activated.connect(_open_search_result)
-	search_popup.add_child(search_results)
 	for index in 2:
 		var map_panel := PanelContainer.new()
 		var backing := StyleBoxFlat.new()
@@ -798,6 +843,18 @@ func _build_ui() -> void:
 	navigation_panel.hide()
 	navigation_panel.custom_minimum_size = Vector2.ZERO
 	graph_status.hide()
+	_classic_roots=[body]
+	for child in get_children():
+		if child not in previous_children:_classic_roots.append(child)
+	_connect_view(canvas, "canvas")
+	_connect_view(tree_view, "tree")
+	_connect_view(graph_view, "graph")
+	tree_view.map_position_requested.connect(func(point):
+		canvas._move_camera(point, canvas.view_size, canvas.orbit_distance, false))
+	tree_view.map_pan_requested.connect(func(delta):
+		canvas._move_camera(canvas.target + delta, canvas.view_size, canvas.orbit_distance, false))
+	tree_view.overview_zoom_requested.connect(func(factor): canvas.zoom_at(factor, canvas.size * 0.5))
+	tree_view.overview_pan_requested.connect(func(delta): canvas.pan_by(delta))
 
 
 func _connect_view(view, role: String) -> void:
@@ -862,6 +919,9 @@ func _sync_canvas_region() -> void:
 
 func _on_navigation_changed(intent: String) -> void:
 	if _variant_switching:return
+	if not _host_visible or (depth_browser==null and canvas==null):
+		_publish_host_state()
+		return
 	if browser_id!="mind_map" and depth_browser!=null:
 		depth_browser.call_deferred("sync_selection")
 		_publish_host_state()
@@ -938,7 +998,7 @@ func _rebuild_tree(materialize: bool = true) -> void:
 	_source_base_layout=_canvas_scope(tree_layout)
 	if overview_layout.is_empty():
 		overview_layout=TreeProjection.complete_overview(model)
-		tree_view.set_tree(overview_layout)
+	if tree_view.points.is_empty():tree_view.set_tree(overview_layout)
 	var geometry_started := Time.get_ticks_usec()
 	_refresh_relationship_projection()
 	for key in navigation.pinned_positions.get("canvas",{}):
@@ -1017,9 +1077,10 @@ func _refresh_semantic_routes() -> void:
 	if _overview_semantics_ready:tree_view.set_semantic_routes(_overview_semantics if _show_relations else [])
 	semantic_pending = {"serial":semantic_serial,"layout":canvas_layout.duplicate(true),"occurrence":navigation.selected_occurrence,"show":_show_relations,
 		"compute_overview":not _overview_semantics_ready and _show_relations,"overview":overview_layout.duplicate(true) if not _overview_semantics_ready and _show_relations else {}}
+	_advance_semantic_routes()
 
-func _poll_semantic_routes() -> void:
-	if semantic_thread != null and not semantic_thread.is_alive():
+func _semantic_completed()->void:
+	if semantic_thread != null:
 		var result: Dictionary = semantic_thread.wait_to_finish()
 		semantic_thread = null
 		if bool(result.get("overview_computed",false)):
@@ -1029,9 +1090,14 @@ func _poll_semantic_routes() -> void:
 			canvas.set_semantic_routes(result.routes)
 			if bool(preferences.path_feedback) and not _pending_browse_path.is_empty():canvas.show_browse_path(_pending_browse_path)
 			if not str(result.error).is_empty(): status.text = result.error
+	_advance_semantic_routes()
+
+func _advance_semantic_routes()->void:
 	if semantic_thread == null and not semantic_pending.is_empty():
 		var request := semantic_pending
 		semantic_pending = {}
+		if _semantic_event==0:_semantic_event=_events.subscribe(_semantic_completed)
+		var notify:Callable=_events.waker(_semantic_event)
 		semantic_thread = Thread.new()
 		semantic_thread.start(func():
 			var routes:Array=[]
@@ -1039,6 +1105,7 @@ func _poll_semantic_routes() -> void:
 				routes=TreeProjection.fixed_routes(request.layout,request.layout.get("temporary_edges",[])) if request.layout.has("temporary_edges") else TreeProjection.semantic_routes(model,request.layout,request.occurrence,true)
 			var overview:Array=[]
 			if request.compute_overview:overview=TreeProjection.fixed_routes(request.overview,request.overview.get("complete_semantic_edges",[]))
+			notify.call()
 			return {"serial":request.serial,"routes":routes,"error":request.layout.get("semantic_error",""),"overview_computed":request.compute_overview,"overview_routes":overview})
 
 func _refresh_reader() -> void:
@@ -1118,6 +1185,7 @@ func _node_drag(role:String,key:String,position_value:Vector3,phase:String)->voi
 		if _interaction_active:
 			var p:Vector3=position_value/GraphProjection.WORLD_SCALE
 			_interaction_command={"id":key,"position":[p.x,p.y,p.z]}
+			if not force_bridge.is_running():_layout_completed()
 	elif phase=="end":
 		_interaction_dragging=false
 		if not _interaction_active or _interaction_settled:
@@ -1184,16 +1252,16 @@ func _start_graph(fit: bool = true) -> void:
 		return
 	if force_bridge == null:
 		force_bridge = ClassDB.instantiate("PolarForceLayout")
+		force_bridge.on_completed(_layout_completed)
 	if not force_bridge.submit(serialized, 300, generation):
 		graph_error = "Could not start layout task"
 		graph_status.text = graph_error
 		return
 	graph_status.text = "3D force layout · Computing…"
 
-func _process(_delta: float) -> void:
+func _layout_completed() -> void:
 	if browser_id!="mind_map":return
 	if not _host_visible or not is_visible_in_tree():return
-	_poll_semantic_routes()
 	if _interaction_active and force_bridge!=null and not force_bridge.is_running():
 		# Consume a completed snapshot before requesting the next bounded batch.
 		var ready:=str(force_bridge.poll())
@@ -1343,7 +1411,7 @@ func _toggle_reader()->void:
 
 func _responsive() -> void:
 	if size.x < 96 or size.y < 96: return
-	if browser_id!="mind_map":
+	if browser_id!="mind_map" or canvas==null:
 		if depth_browser!=null:depth_browser.resize_view()
 		call_deferred("_publish_host_state")
 		return
@@ -1413,10 +1481,17 @@ func _fit_reader() -> void:
 
 func host_visibility_changed(visible_value:bool)->void:
 	_host_visible=visible_value
-	for view in [canvas,tree_view,graph_view]:view.set_render_active(visible_value and browser_id=="mind_map")
+	if visible_value:
+		_sync_global_presentation()
+		if not _pending_source_update.is_empty():
+			var update:=_pending_source_update;_pending_source_update=[]
+			_apply_source_candidate(update[0],update[1],update[2],update[3])
+	for view in [canvas,tree_view,graph_view]:
+		if view!=null:view.set_render_active(visible_value and browser_id=="mind_map")
 	if depth_browser!=null:depth_browser.set_active(visible_value and browser_id!="mind_map")
 	if not visible_value:
 		for view in [canvas,tree_view,graph_view]:
+			if view==null:continue
 			if view._drag_active:_node_drag(view.role,view._drag_key,view.points.get(view._drag_key,Vector3.ZERO),"cancel")
 		_interaction_active=false;_interaction_dragging=false
 		if force_bridge!=null:force_bridge.cancel()
@@ -1426,30 +1501,36 @@ func host_visibility_changed(visible_value:bool)->void:
 			_reader_progress=1.0 if _reader_target_open else 0.0
 			reader_panel.modulate.a=_reader_progress;reader_panel.visible=_reader_target_open
 		for view in [canvas,tree_view,graph_view]:
+			if view==null:continue
 			view._stop_tween()
 			if view._mode_tween!=null:view._mode_tween.kill()
 			if view._layout_tween!=null:view._layout_tween.kill()
 			if view._trail_tween!=null:view._trail_tween.kill()
 			view.clear_browse_path()
 			view.dragging=false;view.drag_button=0;view._drag_active=false
+		if has_meta("window_id"):
+			_release_classic_ui()
+			if depth_browser!=null and (not depth_browser.has_method("supports_context_rebinding") or not depth_browser.supports_context_rebinding()):
+				_save_view_state();view_registry.unbind_browser(depth_browser)
+				remove_child(depth_browser);depth_browser.queue_free();depth_browser=null;_active_package_browser=""
 	else:
 		_apply_preferences()
-		for view in [canvas,tree_view,graph_view]:view._resize()
+		for view in [canvas,tree_view,graph_view]:
+			if view!=null:view._resize()
 		if initialized and browser_id=="mind_map" and not graph_ready:_start_graph(false)
+	_trace_view_state()
 
 func needs_continuous_frames() -> bool:
 	if not _host_visible:return false
-	if source_refresh_count != _source_presented_count or (_source_quiet != null and not _source_quiet.is_stopped()):return true
-	if source_loader!=null and (source_loader._thread!=null or (not source_loader.paused and not source_loader._queue.is_empty())):return true
+	if _initializing or source_refresh_count != _source_presented_count:return true
 	if browser_id!="mind_map" and depth_browser!=null:return depth_browser.needs_continuous_frames()
 	if tree_strip!=null and (tree_strip.drag_active or tree_strip.is_animating()):return _host_visible
 	if not initialized or not _host_visible: return false
 	if (_interaction_active and not _interaction_settled) or (_reader_tween!=null and _reader_tween.is_running()):return true
-	if (not graph_ready and graph_error.is_empty()) or semantic_thread != null or not semantic_pending.is_empty(): return true
 	for view in [canvas, tree_view, graph_view]:
 		if not view.is_visible_in_tree():continue
 		if view.trail_frame_due():return true
-		if view._settle_frames > 0 or view._edge_dirty or view._selection_edge_dirty or view._label_dirty: return true
+		if view._edge_dirty or view._selection_edge_dirty or view._label_dirty: return true
 		for tween in [view._camera_tween,view._mode_tween,view._layout_tween,view._inertia_tween,view._trail_tween]:
 			if tween!=null and tween.is_running():return true
 		for controls:Array in view.card_controls.values():
@@ -1633,6 +1714,10 @@ func _input(event: InputEvent) -> void:
 	accept_event()
 
 func _exit_tree() -> void:
+	var window_id:String=str(get_meta("window_id",""))
+	if _window_presenters.has(window_id) and _window_presenters[window_id].get_ref()==self:_window_presenters.erase(window_id)
+	if _semantic_event:_events.unsubscribe(_semantic_event)
+	if _source_quiet!=null:_source_quiet.stop();_source_quiet=null
 	_save_view_state()
 	if semantic_thread != null:
 		semantic_thread.wait_to_finish()
@@ -1650,10 +1735,18 @@ func _record_navigation_frame() -> void:
 func _trace_view_state() -> void:
 	if not is_inside_tree(): return
 	var directory := OS.get_environment("POLAR_STATION_TRACE_DIR")
-	if directory.is_empty() or canvas == null or tree_view == null or graph_view == null: return
+	if directory.is_empty(): return
 	DirAccess.make_dir_recursive_absolute(directory)
 	var identity := str(get_meta("view_id", "standalone"))
-	var data := {"tree_navigation":{"active":active_tree,"order":tree_order,"entries":tree_entries,"width":tree_strip.size.x if tree_strip!=null else 0,"anchor":focus_anchor,"role_counts":_focus_layout.get("groups",{}),"all_neighbor_count":canvas_layout.get("distinct_count",0)},"view_id":identity,"size":[size.x,size.y],"views":{},"maps":[],"grips":[],"event_position":get_meta("trace_event_position", []),"host":host_state(),"native_controls":get_meta("native_controls", false),"file_dialog_visible":file_dialog.visible,"search_visible":search_popup.visible}
+	var data := {"engine_debug_build":OS.is_debug_build(),"tree_navigation":{"active":active_tree,"order":tree_order,"entries":tree_entries,"width":tree_strip.size.x if tree_strip!=null else 0,"anchor":focus_anchor,"role_counts":_focus_layout.get("groups",{}),"all_neighbor_count":canvas_layout.get("distinct_count",0)},"view_id":identity,"size":[size.x,size.y],"views":{},"maps":[],"grips":[],"event_position":get_meta("trace_event_position", []),"host":host_state(),"native_controls":get_meta("native_controls", false),"file_dialog_visible":file_dialog.visible,"search_visible":search_popup.visible}
+	data["presentation"]={"window_id":str(get_meta("window_id","")),"browser_instance":depth_browser.get_instance_id() if depth_browser!=null else 0,"visible":_host_visible}
+	if depth_browser!=null:data["browser"]=depth_browser.debug_state()
+	if canvas==null:
+		data["depth_pan"]=depth_browser.debug_state().get("pan",[]) if depth_browser!=null else []
+		data["selection"]={"id":navigation.selected_id,"occurrence":navigation.selected_occurrence}
+		data["motion"]={"continuous_frames":needs_continuous_frames()}
+		_write_trace(directory,identity,data)
+		return
 	for view in [canvas,tree_view,graph_view]:
 		data.views[view.role] = {"rect":[view.global_position.x,view.global_position.y,view.size.x,view.size.y],"camera":view.get_camera_state(),"node_count":view.points.size(),"edge_count":view.edge_paths.size()}
 	data.tree_navigation.entries=[]
@@ -1682,6 +1775,9 @@ func _trace_view_state() -> void:
 			"point": [point.x,point.y], "role":canvas.records[key].get("role",""),"temporary":canvas.records[key].get("temporary",false),"source":canvas.records[key].get("source",""),"label_visible": canvas.labels[key].visible, "controls": controls})
 	for panel in map_panels: data.maps.append([panel.position.x,panel.position.y,panel.size.x,panel.size.y])
 	for grip in map_grips: data.grips.append([grip.position.x,grip.position.y,grip.size.x,grip.size.y])
+	_write_trace(directory,identity,data)
+
+func _write_trace(directory:String,identity:String,data:Dictionary)->void:
 	var path:=directory.path_join("idea-view-"+identity.sha256_text()+".json")
 	var file:=FileAccess.open(path+".tmp",FileAccess.WRITE)
 	if file!=null:
@@ -1707,8 +1803,8 @@ func _initialize_tree_navigation()->void:
 	tree_views=saved_view_state.get_value("view","tree_views",{})
 	active_tree=str(saved_view_state.get_value("view","active_tree",tree_order[0] if not tree_order.is_empty() else ""))
 	if active_tree not in tree_order:active_tree=str(tree_order[0])
-	tree_strip.custom_minimum_size.x=clampf(float(saved_view_state.get_value("view","tree_width",120)),104,320)
-	tree_strip.set_sources(tree_entries,active_tree)
+	if tree_strip!=null:tree_strip.custom_minimum_size.x=clampf(float(saved_view_state.get_value("view","tree_width",120)),104,320)
+	if tree_strip!=null:tree_strip.set_sources(tree_entries,active_tree)
 	_switching_tree=true
 	navigation.select_node(_tree_node(tree_entries[tree_order.find(active_tree)],tree_views.get(active_tree,{})))
 	_switching_tree=false
@@ -1729,6 +1825,7 @@ func _remember_tree()->void:
 	tree_views[active_tree]=state
 
 func _restore_tree_camera(animate:bool=false)->void:
+	if canvas==null:return
 	var state:Dictionary=tree_views.get(active_tree,{})
 	if state.has("camera"):
 		var camera_state:Dictionary=state.camera.duplicate(true)
@@ -1786,7 +1883,7 @@ func _reorder_tree(key:String,before:String)->void:
 	for entry:Dictionary in tree_entries:entries[str(entry.key)]=entry
 	tree_entries=[]
 	for id in tree_order:tree_entries.append(entries[id])
-	tree_strip.set_sources(tree_entries,active_tree)
+	if tree_strip!=null:tree_strip.set_sources(tree_entries,active_tree)
 	_switching_tree=true;_source_base_layout=_canvas_scope(tree_layout);_refresh_selection()
 	var shift:Vector3=canvas.points.get(canvas.key_for_node(navigation.selected_id),old_point)-old_point
 	canvas._move_camera(canvas.target+shift,canvas.view_size,canvas.orbit_distance,false);_switching_tree=false;_remember_tree();_save_view_state()
@@ -1920,16 +2017,23 @@ func _place_focus_headers()->void:
 
 
 func _switch_browser(next: String) -> void:
-	if next==browser_id or not view_registry.browsers.has(next):return
-	var was_reading: bool=host_state().reader_open
+	if not view_registry.browsers.has(next):return
+	if not _host_visible:
+		browser_id=next
+		return
+	if next==browser_id and ((next=="mind_map" and canvas!=null) or (next!="mind_map" and depth_browser!=null)):return
+	var restoring_classic:bool=next=="mind_map" and browser_id==next and canvas==null
+	var was_reading: bool=_reader_target_open if restoring_classic else host_state().reader_open
+	var was_instruction:bool=_instruction_open if restoring_classic else false
 	_instruction_open=false;_instruction_classic_rect=Rect2()
 	_variant_switching=true
 	var candidate=depth_browser
 	if next!="mind_map" and next!=_active_package_browser:
-		candidate=view_registry.create_browser(next,model,navigation)
+		candidate=_borrow_window_browser(next)
+		if candidate==null:candidate=view_registry.create_browser(next,model,navigation,browser_views.get(next,{}))
 		if candidate==null:
 			_variant_switching=false;status.text=view_registry.error;_publish_host_state();return
-		add_child(candidate)
+		if candidate.get_parent()==null:add_child(candidate)
 		if not candidate.initialized:
 			candidate.queue_free();_variant_switching=false;status.text="Browser could not load; current view retained.";_publish_host_state();return
 		candidate.state_changed.connect(_publish_host_state)
@@ -1939,44 +2043,54 @@ func _switch_browser(next: String) -> void:
 
 	if browser_id=="mind_map":
 		_remember_tree()
-		if was_reading:_set_reader_open(false)
+		if was_reading and reader_panel!=null:_set_reader_open(false)
 		if force_bridge!=null:force_bridge.cancel()
-	else:
+	elif depth_browser!=null:
 		browser_views[_active_package_browser]=depth_browser.snapshot()
 		if depth_browser.browser_state().reader_open:depth_browser.execute_action("close_reader")
 	if next!="mind_map" and candidate!=depth_browser:
 		if depth_browser!=null:remove_child(depth_browser);depth_browser.queue_free()
 		depth_browser=candidate;_active_package_browser=next
+	if next=="mind_map":
+		if depth_browser!=null:
+			remove_child(depth_browser);depth_browser.queue_free();depth_browser=null;_active_package_browser=""
+		_build_classic_ui()
+	else:_release_classic_ui()
 	search_popup.z_index=50
 	browser_id=next
 	var classic: bool=next=="mind_map"
-	body.visible=classic
+	if body!=null:body.visible=classic
 	for panel in map_panels:panel.visible=classic
 	for grip in map_grips:grip.visible=classic
 	for controls in map_controls:controls.visible=classic
 	if _graph_legend!=null:_graph_legend.visible=classic
 	for view in [canvas,tree_view,graph_view]:
+		if view==null:continue
 		view.process_mode=Node.PROCESS_MODE_INHERIT if classic else Node.PROCESS_MODE_DISABLED
 		view.set_render_active(classic and _host_visible)
 	if depth_browser!=null:depth_browser.set_active(not classic and _host_visible)
 	_variant_switching=false
 	if classic:
+		_initialize_tree_navigation()
 		# Match the selected source without selecting its remembered node.
 		for entry in tree_entries:
 			if entry.source==model.records[navigation.selected_id].source:active_tree=str(entry.key);break
 		tree_strip.select(active_tree)
-		_rebuild_tree();_refresh_selection();_restore_tree_camera();_responsive()
+		_rebuild_tree();_apply_preferences();_refresh_selection();_restore_tree_camera();_responsive()
 		if not graph_ready:_start_graph(false)
 		canvas.reveal_readable(canvas.key_for_node(navigation.selected_id,navigation.selected_occurrence),"reading_priority")
 		if was_reading:_open_reader()
+		if was_instruction:_instruction_open=true;_responsive()
 	else:
 		depth_browser.sync_selection()
 		if was_reading:depth_browser.show_details()
 	_apply_visual_theme(theme_id)
+	_register_window_presenter()
 	_save_view_state();_publish_host_state()
 
 func _apply_visual_theme(value: String) -> void:
 	if not view_registry.themes.has(value):value="default"
+	if not view_registry.activate_entry(view_registry.themes[value]):return
 	if ResourceLoader.exists("res://itree_theme_adapter.gd"):
 		var adapter=load("res://itree_theme_adapter.gd")
 		if adapter.apply(self,value,str(view_registry.themes[value].entry)):theme_id=value
@@ -1993,9 +2107,7 @@ func _start_source_events() -> void:
 	if not ClassDB.class_exists("PolarFileEvents"):
 		status.text = "Automatic refresh unavailable: file event adapter is missing."
 		_publish_host_state();return
-	_source_quiet = Timer.new();_source_quiet.one_shot = true;_source_quiet.wait_time = .12
-	_source_quiet.timeout.connect(_reload_source_files)
-	add_child(_source_quiet)
+	_source_quiet = preload("res://addons/polar_graphics/deadline.gd").new(_reload_source_files,.12)
 	_source_events = ClassDB.instantiate("PolarFileEvents")
 	_source_events.files_changed.connect(func(): _source_quiet.start())
 	_source_events.watch_failed.connect(func(message):
@@ -2029,17 +2141,19 @@ func _reload_source_files() -> void:
 	_start_related_loading()
 
 func _apply_source_candidate(candidate, next_navigation, next_layout: Dictionary, migrated_ids: Dictionary) -> void:
+	if not _host_visible:
+		_pending_source_update=[candidate,next_navigation,next_layout,migrated_ids]
+		return
 	var first_load := not initialized
 	var cameras: Dictionary = {}
-	for role in ["canvas", "tree", "graph"]: cameras[role] = _view(role).get_camera_state()
+	for role in ["canvas", "tree", "graph"]:
+		if _view(role)!=null:cameras[role] = _view(role).get_camera_state()
 	var browser_state: Dictionary = depth_browser.snapshot() if depth_browser != null else {}
 	var selected_browser := browser_id
 	var reading: bool = host_state().reader_open
 	_save_view_state()
 	_variant_switching = true
 	if force_bridge != null: force_bridge.cancel()
-	if depth_browser != null:
-		remove_child(depth_browser);depth_browser.queue_free();depth_browser = null
 	if navigation.changed.is_connected(_on_navigation_changed): navigation.changed.disconnect(_on_navigation_changed)
 	model = candidate;navigation = next_navigation
 	error = "";initialized = true
@@ -2049,15 +2163,16 @@ func _apply_source_candidate(candidate, next_navigation, next_layout: Dictionary
 	navigation._commit_selection(selected_route)
 	prepared_layout = next_layout;overview_layout = {};focus_anchor = "";_focus_return = {};_focus_layout = {}
 	graph_ready = false;applied_generation = -1
-	browser_id = "mind_map"
+	browser_id = selected_browser
 	_variant_switching = false
 	_rebuild_tree(selected_browser=="mind_map")
 	if selected_browser=="mind_map":
 		_refresh_selection();_start_graph(first_load)
 	if first_load:
 		_apply_preferences()
-		canvas.fit_keys(canvas.points.keys().filter(func(key): return str(canvas.records[key].get("source",""))==_active_source()),false,true)
-		tree_view.fit_all(false)
+		if canvas!=null:
+			canvas.fit_keys(canvas.points.keys().filter(func(key): return str(canvas.records[key].get("source",""))==_active_source()),false,true)
+			tree_view.fit_all(false)
 	else:
 		for role in cameras: _view(role).restore_camera(cameras[role], false)
 	if selected_browser != "mind_map":
@@ -2069,11 +2184,14 @@ func _apply_source_candidate(candidate, next_navigation, next_layout: Dictionary
 			if migrated_ids.has(id): source_views[migrated_ids[id]] = browser_state.per_source_views[id]
 		browser_state["per_source_views"] = source_views
 		browser_views[selected_browser] = browser_state
-		_active_package_browser=""
-		_switch_browser(selected_browser)
+		if depth_browser!=null:
+			view_registry.update_browser(depth_browser,model,navigation,browser_state)
+			depth_browser.restore_view(browser_state)
+		else:_switch_browser(selected_browser)
 		if reading: depth_browser.show_details()
 	elif reading: _open_reader()
-	for view in [canvas,tree_view,graph_view]:view.set_render_active(_host_visible and browser_id=="mind_map")
+	for view in [canvas,tree_view,graph_view]:
+		if view!=null:view.set_render_active(_host_visible and browser_id=="mind_map")
 	_source_reload_failed = false
 	source_refresh_count += 1
 	status.text = "Updated from file."
@@ -2100,8 +2218,10 @@ func _related_model_ready(candidate,paths:PackedStringArray)->bool:
 	return true
 
 func _view_catalog_changed()->void:
-	if not view_registry.browsers.has(browser_id):_switch_browser("depth_forest")
-	if not view_registry.themes.has(theme_id):_apply_visual_theme("default")
+	var current:Dictionary=view_registry.current_selection()
+	var browser:String=str(current.browser) if view_registry.browsers.has(str(current.browser)) else "depth_forest"
+	var theme:String=str(current.theme) if view_registry.themes.has(str(current.theme)) else "default"
+	if browser!=str(current.browser) or theme!=str(current.theme):view_registry.select_presentation(browser,theme)
 	_publish_host_state()
 
 func _request_related_reference(reference:Dictionary)->void:
@@ -2109,3 +2229,62 @@ func _request_related_reference(reference:Dictionary)->void:
 		status.text="Choose the related source in View; no unique file hint is available."
 	else:status.text="Loading referenced tree…"
 	_publish_host_state()
+
+func _select_global_browser(value:String)->void:
+	var current:Dictionary=view_registry.current_selection()
+	if not view_registry.select_presentation(value,str(current.theme)):status.text="Browser unavailable; current view retained."
+
+func _select_global_theme(value:String)->void:
+	var current:Dictionary=view_registry.current_selection()
+	if not view_registry.select_presentation(str(current.browser),value):status.text="Theme unavailable; current appearance retained."
+
+func _sync_global_presentation()->void:
+	var current:Dictionary=view_registry.current_selection()
+	if not _host_visible:
+		if str(current.browser)!=browser_id or str(current.theme)!=theme_id:
+			_save_view_state();_release_classic_ui()
+			if depth_browser!=null:remove_child(depth_browser);depth_browser.queue_free();depth_browser=null;_active_package_browser=""
+		browser_id=str(current.browser);theme_id=str(current.theme)
+		_publish_host_state()
+		return
+	if initialized:_switch_browser(str(current.browser))
+	_apply_visual_theme(str(current.theme))
+	_publish_host_state()
+
+func _release_classic_ui()->void:
+	if canvas==null:return
+	_remember_tree()
+	if force_bridge!=null:force_bridge.cancel();force_bridge=null
+	if semantic_thread!=null:semantic_thread.wait_to_finish();semantic_thread=null
+	semantic_pending={};graph_ready=false
+	if _reader_tween!=null:_reader_tween.kill();_reader_tween=null
+	for node in _classic_roots:
+		if is_instance_valid(node):node.get_parent().remove_child(node);node.queue_free()
+	_classic_roots.clear()
+	if _graph_legend!=null:_graph_legend.queue_free();_graph_legend=null
+	for field in ["canvas","tree_view","graph_view","tree_strip","body","navigation_panel","nav_tabs","graph_status","canvas_panel","content_box","canvas_actions","breadcrumb","reader_panel","_reader_ghost","_reader_ghost_title","reader_close_button","_reader_source_button","reader_raw_button","reader_scroll","reader_title","reader_meta","reader_content","reader_source","reader_technical","relation_list","tilt_button","relation_button"]:set(field,null)
+	map_panels.clear();map_grips.clear();map_controls.clear();_focus_headers.clear()
+
+func _register_window_presenter()->void:
+	var window_id:String=str(get_meta("window_id",""))
+	if not window_id.is_empty() and (depth_browser!=null or canvas!=null):_window_presenters[window_id]=weakref(self)
+
+func _borrow_window_browser(next:String):
+	var window_id:String=str(get_meta("window_id",""))
+	if window_id.is_empty():return null
+	var previous=_window_presenters.get(window_id)
+	var owner=previous.get_ref() if previous!=null else null
+	if owner==null or owner==self:return null
+	if owner._host_visible:return null # Host must hide the previous Tab before switching.
+	if owner._active_package_browser!=next or owner.depth_browser==null:return null
+	var browser=owner.depth_browser
+	owner._save_view_state()
+	browser.set_active(false)
+	browser.state_changed.disconnect(owner._publish_host_state)
+	browser.instruction_requested.disconnect(owner._request_instruction)
+	owner.view_registry.unbind_browser(browser)
+	owner.depth_browser=null;owner._active_package_browser=""
+	owner._trace_view_state()
+	browser.reparent(self,false)
+	view_registry.bind_browser(browser,model,navigation,browser_views.get(next,{}))
+	return browser

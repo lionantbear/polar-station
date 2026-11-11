@@ -46,7 +46,7 @@ index 3758c325d..53c4b564c 100644
  		A53D0C8E2B53B0EA00305CE6 /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A5D495A1299BEC7E00DD1313 /* GhosttyKit.xcframework */; };
  		A53D0C952B53B4D800305CE6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5B30538299BEAAB0047F10C /* Assets.xcassets */; };
  		A546F1142D7B68D7003B11A0 /* locale in Resources */ = {isa = PBXBuildFile; fileRef = A546F1132D7B68D7003B11A0 /* locale */; };
-@@ -115,6 +117,20 @@
+@@ -115,6 +117,21 @@
  		81F82CB02E8281F5001EDFA7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
  			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
  			membershipExceptions = (
@@ -62,6 +62,7 @@ index 3758c325d..53c4b564c 100644
 +				PolarStation/PolarStationPaneSurfaceCoordinator.swift,
 +				PolarStation/PolarStationRuntime.swift,
 +				PolarStation/PolarStationShortcuts.swift,
++				PolarStation/StationDictateKeyCapture.swift,
 +				PolarStation/PolarStationStatusTemplate.png,
 +				"PolarStation/PolarStationStatusTemplate@2x.png",
  				App/macOS/AppDelegate.swift,

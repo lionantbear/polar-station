@@ -14,7 +14,7 @@ import CPolarStationDesktopClient
         public var directory = ""
         public var command = ""
         public var auto_restart = false
-        public var yolo = false
+        public var yolo = true
         public var open_local_cli = false
         public var original_id = ""
         public var search = ""
@@ -28,6 +28,9 @@ import CPolarStationDesktopClient
         public let end_loading: Bool
         public let end_completed: Bool
         public let draft: Draft
+        public let can_start_local_server:Bool
+        public let server_starting:Bool
+        public let server_start_label:String
         public let history: [CodexHistoryThreadV1]
         public let selected: [String]
         public let manual: Bool
@@ -54,10 +57,10 @@ import CPolarStationDesktopClient
         let owner_host_id: String?
         let title: String?
     }
-    // This is only a decode adapter for the existing read-only Host contract.
+    // This is only a decode adapter for the existing typed Host contract.
     private struct Request: Decodable {
         let type: String
-        let execution_target_id: String
+        let execution_target_id: String?
         let endpoint_id: String?
         let thread_id: String?
         let source_session_id: String?
@@ -67,14 +70,16 @@ import CPolarStationDesktopClient
         let search_term: String?
         let archived: Bool?
         let include_subagents: Bool?
+        let yolo: Bool?
         var wire: SessionEditorRequestV1? {
             switch type {
-            case "history": .history(target: execution_target_id, endpoint: endpoint_id ?? "", cursor: cursor,
+            case "set_creation_yolo": yolo.map { .setCreationYolo($0) }
+            case "history": .history(target: execution_target_id ?? "", endpoint: endpoint_id ?? "", cursor: cursor,
                 search: search_term, archived: archived ?? false, subagents: include_subagents ?? false)
-            case "history_detail": .historyDetail(target: execution_target_id, endpoint: endpoint_id ?? "", thread: thread_id ?? "")
-            case "launch_context": .launchContext(target: execution_target_id, sourceSession: source_session_id)
-            case "preview_end": .previewEnd(.init(executionTargetID: execution_target_id, tmuxSessionID: tmux_session_id ?? ""))
-            case "preview_end_agent": .previewEndAgent(target: execution_target_id, owner: owner_host_id ?? "", endpoint: endpoint_id ?? "", thread: thread_id ?? "")
+            case "history_detail": .historyDetail(target: execution_target_id ?? "", endpoint: endpoint_id ?? "", thread: thread_id ?? "")
+            case "launch_context": .launchContext(target: execution_target_id ?? "", sourceSession: source_session_id)
+            case "preview_end": .previewEnd(.init(executionTargetID: execution_target_id ?? "", tmuxSessionID: tmux_session_id ?? ""))
+            case "preview_end_agent": .previewEndAgent(target: execution_target_id ?? "", owner: owner_host_id ?? "", endpoint: endpoint_id ?? "", thread: thread_id ?? "")
             default: nil
             }
         }
@@ -99,6 +104,7 @@ import CPolarStationDesktopClient
         reader = read
         dispatch(["type":"open_end", "request":object(request)])
     }
+    public var startCodex:CodexRequestHandler?
     public func endpoints(_ endpoints: [CodexEndpointSettingsV1]) { dispatch(["type":"endpoints", "endpoints":object(endpoints)]) }
     public func edit(_ change: (inout Draft) -> Void) {
         guard var draft = state?.draft else { return }; change(&draft)
@@ -107,6 +113,7 @@ import CPolarStationDesktopClient
     public func select(_ id: String, checked: Bool? = nil) {
         dispatch(["type":"select", "id":id, "checked":checked as Any? ?? NSNull()])
     }
+    public func activate(_ id:String) { dispatch(["type":"activate","id":id]) }
     public func manual(_ id: String) { dispatch(["type":"manual", "id":id]) }
     public func action(_ type: String) { dispatch(["type":type]) }
     private func object<T: Encodable>(_ value: T) -> Any {
@@ -118,7 +125,8 @@ import CPolarStationDesktopClient
         switch result {
         case .history(let rows, let next): value = ["type":"history", "threads":object(rows), "next_cursor":next as Any? ?? NSNull()]
         case .historyDetail(let detail): value = ["type":"history_detail", "detail":object(detail)]
-        case .launchContext(let directory, let notice): value = ["type":"launch_context", "directory":object(directory), "notice":notice as Any? ?? NSNull()]
+        case .launchContext(let directory, let notice, let yolo): value = ["type":"launch_context", "directory":object(directory), "notice":notice as Any? ?? NSNull(), "yolo":yolo]
+        case .creationYolo(let yolo): value = ["type":"creation_yolo", "yolo":yolo]
         case .endPreview(let preview): value = ["type":"end_preview", "preview":object(preview)]
         default: break
         }
@@ -151,17 +159,31 @@ import CPolarStationDesktopClient
         state = output.view
         for effect in output.effects {
             switch effect.type {
+            case "start_local_server":
+                guard let endpoint=effect.endpoint_id,let owner=effect.owner_host_id else{continue}
+                let handler=startCodex
+                reads[effect.token]=Task{[weak self] in
+                    var error:String?
+                    do {
+                        guard let handler else{throw PolarTmuxLocalIPCError.connectionClosed}
+                        let response=try await handler(owner,.startLocalServer(endpoint:endpoint))
+                        if case .error(let code)=response.result{error=code}
+                    }catch let failure{error=failure.localizedDescription}
+                    self?.reads.removeValue(forKey:effect.token)
+                    self?.dispatch(["type":"server_started","token":effect.token,"error":error as Any? ?? NSNull()])
+                }
             case "cancel": reads.removeValue(forKey: effect.token)?.cancel()
-            case "read":
+            case "read", "save_preference":
                 guard let request = effect.request else { continue }
                 let read = reader
+                let retainedOwner = effect.type == "save_preference" ? self : nil
                 reads[effect.token] = Task { [weak self] in
                     do {
                         guard let read else { throw PolarTmuxLocalIPCError.connectionClosed }
                         guard let wire = request.wire else { throw PolarTmuxLocalIPCError.unexpectedFrame("Unknown editor read") }
                         let result = try await read(wire)
-                        self?.complete(effect.token, result: result, error: nil)
-                    } catch { self?.complete(effect.token, result: nil, error: error.localizedDescription) }
+                        (retainedOwner ?? self)?.complete(effect.token, result: result, error: nil)
+                    } catch { (retainedOwner ?? self)?.complete(effect.token, result: nil, error: error.localizedDescription) }
                 }
             case "picked":
                 guard let owner = effect.owner_host_id, let endpoint = effect.endpoint_id, let thread = effect.thread_id, let pick else { continue }

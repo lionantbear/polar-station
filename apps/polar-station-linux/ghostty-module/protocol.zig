@@ -212,7 +212,7 @@ pub fn encodeRegistration(
     return std.json.Stringify.valueAlloc(
         allocator,
         Registration{},
-        .{ .whitespace = .minified },
+        .{ .whitespace = .minified, .emit_null_optional_fields = false },
     );
 }
 

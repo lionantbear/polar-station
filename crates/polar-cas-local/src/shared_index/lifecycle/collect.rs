@@ -195,7 +195,7 @@ pub(super) fn collect(store: &LocalCas) -> Result<CollectionReceipt> {
                     }
                     continue;
                 }
-                
+                ;
                 store.open_shared_file(reference)?.ok_or(Error::NotFound)?;
                 checked.insert(key, reference.clone());
             }
@@ -257,7 +257,7 @@ pub(super) fn collect(store: &LocalCas) -> Result<CollectionReceipt> {
                 .open(".")?
                 .sync_all()?;
         }
-        
+        ;
     }
     gone.extend(remove.iter().map(|r| r.id.to_string()));
     registry.owned.retain(|id, _| !gone.contains(id));

@@ -105,7 +105,7 @@ impl<'a> Decoder<'a> {
         Ok(ObjectId::from_digest(algorithm, digest))
     }
     fn content(&mut self) -> Result<ContentRef> {
-        
+        ;
         Ok(ContentRef {
             id: self.object()?,
             size_bytes: self.number()?,

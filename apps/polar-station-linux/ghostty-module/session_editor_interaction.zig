@@ -13,7 +13,7 @@ pub const Draft = struct {
     directory: []const u8 = "",
     command: []const u8 = "",
     auto_restart: bool = false,
-    yolo: bool = false,
+    yolo: bool = true,
     open_local_cli: bool = false,
     original_id: []const u8 = "",
     search: []const u8 = "",
@@ -23,6 +23,7 @@ pub const Draft = struct {
 pub const Thread = struct { thread_id: []const u8, display_name: []const u8, cwd: []const u8, status: []const u8, updated_at: i64, preview: ?[]const u8 = null };
 pub const Detail = struct { thread: Thread, user_text: ?[]const u8 = null, assistant_text: ?[]const u8 = null };
 pub const View = struct {
+    can_start_local_server:bool=false,server_starting:bool=false,server_start_label:[]const u8="Start local Codex app server",
     end_preview: ?struct { confirmation: control.Confirmation } = null, end_loading: bool = false, end_completed: bool = false,
     draft: Draft, history: []const Thread, selected: []const []const u8, manual: bool,
     detail: ?Detail, history_loading: bool, detail_loading: bool, directory_loading: bool,

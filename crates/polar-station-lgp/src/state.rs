@@ -187,6 +187,13 @@ impl Engine {
     pub fn new()->Self{Self{idea_codex:Default::default(),inquiries:Default::default(),cache_policy:Default::default(),activity_selection:None,activity_rows:Vec::new(),id:polar_identity::generation::new_uuid_v7().to_string(),counter:0,generation:0,ready:false,now_ms:0,
         card_cache:Default::default(),threads:BTreeMap::new(),views:BTreeMap::new(),selected:BTreeMap::new(),drafts:BTreeMap::new(),ideas:BTreeMap::new(),
         pending:BTreeMap::new(),queued:VecDeque::new(),composer_cache:BTreeMap::new(),pages:BTreeMap::new(),navigation:BTreeMap::new(),catalogs:BTreeMap::new(),catalog_views:BTreeMap::new(),catalog_dirty:Vec::new(),target_titles:BTreeMap::new(),channel_titles:BTreeMap::new(),thread_titles:BTreeMap::new()}}
+    /// Host clocks advance on input; deadlines are derived from their owners.
+    pub fn advance_clock(&mut self, now_ms:u64) { self.now_ms=self.now_ms.max(now_ms); }
+    pub fn next_deadline_ms(&self)->Option<u64> {
+        self.pending.values().map(|pending|pending.deadline)
+            .chain(self.threads.values().filter(|thread|self.ready && thread.lease.is_some()).map(|thread|thread.renew_at))
+            .chain(self.inquiry_next_deadline_ms()).min()
+    }
     pub fn dispatch(&mut self,input:Input)->Result<Vec<Effect>,String>{
         let mut effects=Vec::new();
         match input {
@@ -1109,6 +1116,8 @@ fn apply_event(scope:&Scope,t:&mut ThreadState,sequence:u64,p:&Value)->Result<bo
         }},_=>return Err("unknown stream event".into()),
     }Ok(false)
 }
+
+
 
 
 

@@ -12,6 +12,8 @@ mod codex_control;
 mod connector;
 pub use connector::{ConnectorDeliveryRow, ConnectorInboundRow, ConnectorStreamRow};
 mod inbox;
+mod learning;
+pub use learning::SqliteLearningStore;
 pub use codex_control::{
     advance_codex_binding_revisions, CodexBindingRow, CodexCheckpointRow,
     CodexCompletionWithNotifications, CodexNotificationRow, CodexSubmissionRow, ImessageReceiptRow,
@@ -37,6 +39,7 @@ impl std::fmt::Debug for HostDatabase {
 #[derive(Clone, Copy, Debug)]
 pub enum HostDocument {
     Voice,
+    TranscreationPreferences,
     Settings,
     SessionRuntime,
     Resources,
@@ -48,6 +51,7 @@ pub enum HostDocument {
 impl HostDocument {
     fn key(self) -> &'static str {
         match self {
+            Self::TranscreationPreferences => "station.transcreation.preferences.v1",
             Self::Voice => "station.voice.v1",
             Self::Settings => "station.settings.v1",
             Self::SessionRuntime => "station.session_runtime.v1",
@@ -113,6 +117,7 @@ impl HostDatabase {
         let codex_inbox_sql = include_str!("codex_inbox.sql");
         let optional_session_sql = include_str!("codex_optional_session.sql");
         let connector_sql = include_str!("connector_streams.sql");
+        let direct_input_sql = include_str!("codex_direct_input.sql");
         let runtime =
             SqliteRuntime::open(
                 &self.path,
@@ -224,6 +229,19 @@ impl HostDatabase {
                         sha256: format!("{:x}", Sha256::digest(connector_sql.as_bytes())),
                         transaction_mode: TransactionMode::Required,
                     }, sql:connector_sql, post_apply:None,
+                },
+                SqliteMigration {
+                    descriptor: MigrationDescriptor {
+                        backend: StorageBackend::Sqlite,
+                        component: "station-host".into(),
+                        version: 9,
+                        name: "codex-immediate-input".into(),
+                        path: "crates/polar-station-store-sqlite/src/codex_direct_input.sql".into(),
+                        sha256: format!("{:x}", Sha256::digest(direct_input_sql.as_bytes())),
+                        transaction_mode: TransactionMode::Required,
+                    },
+                    sql: direct_input_sql,
+                    post_apply: None,
                 },
             ],
             )?;

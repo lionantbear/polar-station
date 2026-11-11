@@ -16,6 +16,8 @@
 #endif
 #include "core/io/resource_loader.h"
 #include "core/io/json.h"
+#include "core/object/message_queue.h"
+#include "core/object/class_db.h"
 #include "core/object/callable_mp.h"
 #include "servers/rendering/rendering_server.h"
 #include "servers/display/display_server_headless.h"
@@ -56,8 +58,12 @@ public:
     }
 };
 
+#include "native_rd.h"
+
 float GtkSurfaceDisplay::surface_scale_value = 1;
+static bool native_mobile = false;
 static GodotInstance *instance;
+static Ref<RefCounted> event_bridge;
 static float surface_scale = 1;
 using HostEvent = void (*)(const char *, void *);
 struct EmbeddedView { SubViewport *viewport = nullptr; bool visible = true; bool dirty = true; HostEvent callback = nullptr; void *context = nullptr; };
@@ -90,7 +96,10 @@ static GDExtensionBool init_extension(GDExtensionInterfaceGetProcAddress, GDExte
 }
 
 extern "C" LIBGODOT_API int polar_godot_start(int argc, char **argv, int width, int height, unsigned int fbo) {
-    if (instance || !fbo || width < 1 || height < 1) return 0;
+    if (instance || width < 1 || height < 1) return 0;
+    for (int i=0;i<argc;i++) if (String(argv[i]) == "native_rd") native_mobile=true;
+    if (native_mobile) register_native_rd();
+    else if (!fbo) return 0;
     DisplayServer::register_create_function("gtk_surface", GtkSurfaceDisplay::create, GtkSurfaceDisplay::drivers);
     GLES3::TextureStorage::system_fbo = fbo;
     instance = static_cast<GodotInstance *>(libgodot_create_godot_instance(argc, argv, init_extension));
@@ -105,6 +114,14 @@ extern "C" LIBGODOT_API int polar_godot_start(int argc, char **argv, int width, 
     ThemeDB::get_singleton()->get_default_theme()->set_default_font(font);
 #endif
     DisplayServer::get_singleton()->window_set_size(Size2i(width, height));
+    if (native_mobile) {
+        RenderingServer::get_singleton()->set_render_loop_enabled(false);
+        SceneTree::get_singleton()->get_root()->set_size(Size2i(2,2));
+        RID root = SceneTree::get_singleton()->get_root()->get_viewport_rid();
+        RenderingServer::get_singleton()->viewport_attach_to_screen(root, Rect2(), DisplayServerEnums::INVALID_WINDOW_ID);
+        RenderingServer::get_singleton()->viewport_set_update_mode(root, RSE::VIEWPORT_UPDATE_DISABLED);
+        return rd != nullptr;
+    }
     real_read_pixels = glad_glReadPixels;
     real_get_tex_image = glad_glGetTexImage;
     glad_glReadPixels = count_read_pixels;
@@ -136,8 +153,23 @@ extern "C" LIBGODOT_API void polar_godot_stop() {
     views.clear();
     input_view = nullptr;
     if (present_fbo) { glDeleteFramebuffers(1, &present_fbo); present_fbo = 0; }
+    event_bridge.unref();
     libgodot_destroy_godot_instance(instance);
     instance = nullptr;
+    if (native_mobile) stop_native_rd();
+}
+// Event processing is independent of drawing. GTK holds the engine context.
+extern "C" LIBGODOT_API int polar_godot_events_fd() {
+    if (!instance) return -1;
+    if (event_bridge.is_null() && ClassDB::class_exists("PolarGraphicsEvents"))
+        event_bridge = Ref<RefCounted>(Object::cast_to<RefCounted>(ClassDB::instantiate("PolarGraphicsEvents")));
+    return event_bridge.is_valid() ? int(event_bridge->call("wake_fd")) : -1;
+}
+extern "C" LIBGODOT_API int64_t polar_godot_dispatch_events() {
+    if (event_bridge.is_null()) return -1;
+    event_bridge->call("dispatch");
+    MessageQueue::get_singleton()->flush();
+    return int64_t(event_bridge->call("next_delay"));
 }
 extern "C" LIBGODOT_API uint64_t polar_godot_readbacks() { return readback_calls; }
 
@@ -180,12 +212,18 @@ extern "C" LIBGODOT_API void polar_godot_magnify(double x, double y, double fact
     event->set_shift_pressed(modifiers & 1); event->set_ctrl_pressed(modifiers & 4); event->set_alt_pressed(modifiers & 8);
     deliver_input(event);
 }
-extern "C" LIBGODOT_API void polar_godot_pan(double x, double y, double dx, double dy, unsigned int modifiers) {
+extern "C" LIBGODOT_API void polar_godot_pan_event(double x, double y, double dx, double dy, unsigned int modifiers, unsigned int phase) {
     if (!instance || !Math::is_finite(dx) || !Math::is_finite(dy)) return;
     Ref<InputEventPanGesture> event;
     event.instantiate(); event->set_position(Vector2(x,y)); event->set_delta(Vector2(dx,dy));
     event->set_shift_pressed(modifiers & 1); event->set_ctrl_pressed(modifiers & 4); event->set_alt_pressed(modifiers & 8);
+    event->set_meta("scroll_started", bool(phase & 1));
+    event->set_meta("scroll_ended", bool(phase & 2));
+    event->set_meta("scroll_momentum", bool(phase & 4));
     deliver_input(event);
+}
+extern "C" LIBGODOT_API void polar_godot_pan(double x, double y, double dx, double dy, unsigned int modifiers) {
+    polar_godot_pan_event(x, y, dx, dy, modifiers, 0);
 }
 extern "C" LIBGODOT_API void polar_godot_key(unsigned int unicode, unsigned int keyval, int pressed, unsigned int modifiers) {
     if (!instance) return;
@@ -233,7 +271,9 @@ extern "C" LIBGODOT_API void polar_godot_camera(double *yaw, double *distance) {
 // Pushed scene state; callback strings are borrowed only for the duration of the call.
 static void host_state_changed(Dictionary state, uint64_t id) {
     EmbeddedView *view = views.getptr(id);
-    if (!view || !view->callback) return;
+    if (!view) return;
+    view->dirty = true;
+    if (!view->callback) return;
     Dictionary event; event["kind"] = "state"; event["state"] = state;
     CharString json = JSON::stringify(event).utf8();
     view->callback(json.get_data(), view->context);
@@ -298,8 +338,8 @@ extern "C" LIBGODOT_API void polar_godot_view_configure(uint64_t id, int width, 
     EmbeddedView *view = views.getptr(id);
     if (!view || width < 1 || height < 1 || scale <= 0) return;
     Size2i size(width, height), logical(MAX(1, int(width / scale)), MAX(1, int(height / scale)));
-    // Unmap allocations may be zero or logical-sized. Retain the GPU target
-    // while hidden; the next visible render supplies authoritative pixels/DPI.
+    // Unmap allocations may be logical-sized. Only a visible configuration
+    // supplies authoritative pixels/DPI; retain its logical layout while hidden.
     if (visible && (view->viewport->get_size() != size || view->viewport->get_size_2d_override() != logical)) {
         view->viewport->set_size(size);
         view->viewport->set_size_2d_override(logical);
@@ -313,7 +353,17 @@ extern "C" LIBGODOT_API void polar_godot_view_configure(uint64_t id, int width, 
     }
     view->visible = visible;
     view->viewport->set_process_mode(visible ? Node::PROCESS_MODE_INHERIT : Node::PROCESS_MODE_DISABLED);
-    if (!visible) view->viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+    if (!visible) {
+        bool release_target = view->viewport->get_size() != Size2i(2,2);
+        view->viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+        // Godot releases the old render target on resize. Keep the scene and
+        // logical override intact; restore physical pixels before the next draw.
+        view->viewport->set_size(Size2i(2, 2));
+        // RD defers destruction until its in-flight frames complete. Drain once
+        // at this visibility boundary, without rendering or scheduling a timer.
+        if (native_mobile && release_target)
+            for (uint32_t i=0;i<=rd->get_frame_delay();i++) rd->swap_buffers(false);
+    }
 }
 extern "C" LIBGODOT_API int polar_godot_view_needs_frame(uint64_t id) {
     EmbeddedView *view = views.getptr(id);
@@ -327,8 +377,8 @@ extern "C" LIBGODOT_API void polar_godot_view_input(uint64_t id) {
     if (view) view->dirty = true;
 }
 extern "C" LIBGODOT_API int polar_godot_step(unsigned int fbo) {
-    if (!instance || !fbo) return 1;
-    GLES3::TextureStorage::system_fbo = fbo;
+    if (!instance || (!native_mobile && !fbo)) return 1;
+    if (!native_mobile) GLES3::TextureStorage::system_fbo = fbo;
     for (KeyValue<uint64_t, EmbeddedView> &entry : views) {
         if (polar_godot_view_needs_frame(entry.key)) {
             entry.value.viewport->set_update_mode(SubViewport::UPDATE_ONCE);
@@ -336,7 +386,9 @@ extern "C" LIBGODOT_API int polar_godot_step(unsigned int fbo) {
         }
     }
     Main::force_redraw();
-    return instance->iteration() ? 1 : 0;
+    bool done=instance->iteration();
+    if (native_mobile && !done) RenderingServer::get_singleton()->draw(false,1.0/60.0);
+    return done ? 1 : 0;
 }
 extern "C" LIBGODOT_API int polar_godot_view_present_context(uint64_t id, int width, int height, unsigned int destination, unsigned int read_fbo) {
     EmbeddedView *view = views.getptr(id);
@@ -380,3 +432,28 @@ extern "C" LIBGODOT_API void polar_godot_view_destroy(uint64_t id) {
     memdelete(view->viewport);
     views.erase(id);
 }
+
+// Generic native resource handles; host surfaces own their presentation lifetime.
+static RID native_view_texture(uint64_t id) {
+    EmbeddedView *view=views.getptr(id);
+    if (!view || !rd) return RID();
+    auto *server=RenderingServer::get_singleton();
+    return server->texture_get_rd_texture(server->viewport_get_texture(view->viewport->get_viewport_rid()));
+}
+extern "C" LIBGODOT_API uint64_t polar_godot_native_device() {return rd_resource(RenderingDevice::DRIVER_RESOURCE_LOGICAL_DEVICE);}
+extern "C" LIBGODOT_API uint64_t polar_godot_native_queue() {return rd_resource(RenderingDevice::DRIVER_RESOURCE_COMMAND_QUEUE);}
+extern "C" LIBGODOT_API uint64_t polar_godot_view_native_texture(uint64_t id) {
+    RID texture=native_view_texture(id);
+    return texture.is_valid() ? rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TEXTURE,texture,0) : 0;
+}
+#ifdef VULKAN_ENABLED
+extern "C" LIBGODOT_API void *polar_godot_export_create(uint64_t id,int width,int height,int *fd,uint64_t *size) {
+    RID source=native_view_texture(id);if(!source.is_valid())return nullptr;
+    auto *image=new NativeExport;
+    *fd=image->create(source,width,height,size);
+    if(*fd<0){delete image;return nullptr;}return image;
+}
+extern "C" LIBGODOT_API int polar_godot_export_semaphore(void *image,int ready) {return image ? static_cast<NativeExport*>(image)->semaphore_fd(ready) : -1;}
+extern "C" LIBGODOT_API int polar_godot_export_copy(void *image,uint64_t id) {RID source=native_view_texture(id);return image && source.is_valid() && static_cast<NativeExport*>(image)->copy(source);}
+extern "C" LIBGODOT_API void polar_godot_export_destroy(void *image) {delete static_cast<NativeExport*>(image);}
+#endif

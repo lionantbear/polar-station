@@ -78,11 +78,28 @@ pub fn audit_managed_coverage(
         ));
     }
     let (dir, prefix, legacy) = match scope {
-        ManagedCoverageScope::Namespace(ns) => (
-            open_directory(root, Path::new(ns.as_str()))?,
-            format!("{}/", ns.as_str()),
-            true,
-        ),
+        ManagedCoverageScope::Namespace(ns) => {
+            let prefix = format!("{}/", ns.as_str());
+            match open_directory(root, Path::new(ns.as_str())) {
+                Ok(dir) => (dir, prefix, true),
+                Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+                    // Lazy namespaces need not exist until their first payload.
+                    // Do not mistake a lost registered replica/source for this case.
+                    require_unplaced_namespace(inventory, location, limits.max_entries)?;
+                    return Ok(ManagedCoverageReport {
+                        catalog_snapshot: inventory.snapshot().database.id.clone(),
+                        location: location.clone(),
+                        scope: prefix,
+                        entries_examined: 0,
+                        files_examined: 0,
+                        registered_files: 0,
+                        unknown_entries: 0,
+                        issues: Vec::new(),
+                    });
+                }
+                Err(error) => return Err(error),
+            }
+        }
         ManagedCoverageScope::ExclusiveContentRoot => (root.try_clone()?, String::new(), false),
     };
     let mut audit = Audit {
@@ -108,6 +125,63 @@ pub fn audit_managed_coverage(
     };
     audit.visit(&dir, &prefix, "", 0)?;
     Ok(audit.report)
+}
+
+// This check uses the same frozen inventory as the backup planner. It neither
+// creates the namespace nor weakens the subsequent copy/integrity checks.
+fn require_unplaced_namespace(
+    inventory: &dyn BackupInventory,
+    location: &LocationId,
+    max_entries: u64,
+) -> Result<()> {
+    use polar_cas::backup_v2::{MAX_LOCATIONS, MAX_PAGE_SIZE};
+    if inventory
+        .locations(MAX_LOCATIONS)?
+        .iter()
+        .any(|entry| &entry.spec.id == location && entry.unbound_sources != 0)
+    {
+        return Err(Error::Invalid(
+            "absent namespace has unbound sources".into(),
+        ));
+    }
+    let mut after = None;
+    let mut examined = 0_u64;
+    loop {
+        let page = inventory.objects_page(after.as_ref(), MAX_PAGE_SIZE)?;
+        examined = examined
+            .checked_add(page.objects.len() as u64)
+            .ok_or(Error::TooLarge)?;
+        if examined > max_entries {
+            return Err(Error::TooLarge);
+        }
+        for object in &page.objects {
+            if inventory
+                .placements(&object.content, MAX_LOCATIONS)?
+                .iter()
+                .any(|placement| &placement.location == location)
+            {
+                return Err(Error::Invalid(
+                    "absent namespace has registered placements".into(),
+                ));
+            }
+        }
+        match page.next {
+            None => return Ok(()),
+            Some(next) => {
+                if page.objects.is_empty()
+                    || next.snapshot_id != inventory.snapshot().database.id
+                    || after
+                        .as_ref()
+                        .is_some_and(|old: &polar_cas::backup_v2::BackupCursor| {
+                            next.after_key <= old.after_key
+                        })
+                {
+                    return Err(Error::Invalid("invalid coverage inventory cursor".into()));
+                }
+                after = Some(next);
+            }
+        }
+    }
 }
 
 struct Audit<'a> {

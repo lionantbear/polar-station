@@ -2,7 +2,7 @@
 //! Voice stream lifecycle. Packet integrity/idempotency remains in VoiceRuntime.
 use crate::{
     VoiceError, VoiceOpusPacket, VoicePcm, VoiceStreamFormat, VoiceStreamingSession,
-    VoiceStreamingTranscriptionProvider, VoiceTranscriptionProvider,
+    VoiceStreamingTranscriptionProvider, VoiceTranscriptionProvider, TranscriptionReference, TranscriptionReferenceSupport,
 };
 use async_trait::async_trait;
 use ropus::{Channels, DecodeMode, Decoder};
@@ -16,6 +16,9 @@ pub struct VoiceOpusRecording {
     packets: Vec<Zeroizing<Vec<u8>>>,
 }
 impl VoiceOpusRecording {
+    pub(crate) fn from_packets(packets: Vec<Zeroizing<Vec<u8>>>) -> Self {
+        Self { packets }
+    }
     pub fn packets(&self) -> impl ExactSizeIterator<Item = &[u8]> {
         self.packets.iter().map(|packet| packet.as_slice())
     }
@@ -45,19 +48,27 @@ impl VoiceOpusRecording {
 pub struct BufferedTranscriptionProvider(pub Arc<dyn VoiceTranscriptionProvider>);
 struct BufferedSession {
     provider: Arc<dyn VoiceTranscriptionProvider>,
+    reference: TranscriptionReference,
     packets: Mutex<Option<BTreeMap<u32, Zeroizing<Vec<u8>>>>>,
 }
 #[async_trait]
 impl VoiceStreamingTranscriptionProvider for BufferedTranscriptionProvider {
+    fn reference_support(&self) -> TranscriptionReferenceSupport { self.0.reference_support() }
+
     async fn begin(
         &self,
         format: VoiceStreamFormat,
     ) -> Result<Arc<dyn VoiceStreamingSession>, VoiceError> {
+        self.begin_with_reference(format, TranscriptionReference::default()).await
+    }
+    async fn begin_with_reference(&self, format: VoiceStreamFormat, reference: TranscriptionReference) -> Result<Arc<dyn VoiceStreamingSession>, VoiceError> {
+        reference.require_support(self.reference_support())?;
         if format != VoiceStreamFormat::opus_16khz_mono() {
             return Err(VoiceError::InvalidStream);
         }
         Ok(Arc::new(BufferedSession {
             provider: self.0.clone(),
+            reference,
             packets: Mutex::new(Some(BTreeMap::new())),
         }))
     }
@@ -91,9 +102,9 @@ impl VoiceStreamingSession for BufferedSession {
             return Err(VoiceError::StreamIncomplete);
         }
         self.provider
-            .transcribe_opus(VoiceOpusRecording {
+            .transcribe_opus_with_reference(VoiceOpusRecording {
                 packets: packets.into_values().collect(),
-            })
+            }, self.reference.clone())
             .await
     }
     async fn abort(&self) -> Result<(), VoiceError> {

@@ -112,6 +112,24 @@ pub(crate) struct ResourceService {
     state_events: ApplicationStatePublisher,
 }
 
+#[cfg(feature = "codex-control")]
+pub(crate) struct SessionFileContext<'a> {
+    pub lifecycle: &'a super::session_lifecycle::SessionLifecycle,
+    pub targets: &'a TargetRegistry,
+    pub ssh: &'a SshConnectionManager,
+}
+
+#[cfg(feature = "codex-control")]
+impl SessionFileContext<'_> {
+    async fn directory(&self, target: &str, reference: &str) -> anyhow::Result<String> {
+        let target = self.targets.get(target).ok_or_else(|| anyhow::anyhow!("source target unavailable"))?;
+        let gate = target.operation_gate();
+        let _guard = gate.read().await;
+        let client = target.managed_client(self.ssh).await?;
+        self.lifecycle.source_directory(&client, target.descriptor().id.as_str(), reference).await
+    }
+}
+
 impl ResourceService {
     pub(crate) async fn open(
         database: HostDatabase,
@@ -173,23 +191,121 @@ impl ResourceService {
     }
 
     fn current_targets(&self) -> BTreeMap<String, ResourceTargetKind> {
-        self.target_registry.as_ref().map_or_else(|| self.targets.clone(), |registry| registry.descriptors().into_iter().map(|t| {
-            (t.id.as_str().into(), if t.kind == polar_tmux_protocol::ExecutionTargetKind::Ssh { ResourceTargetKind::Ssh } else { ResourceTargetKind::Local })
-        }).collect())
+        self.target_registry.as_ref().map_or_else(
+            || self.targets.clone(),
+            |registry| {
+                registry
+                    .descriptors()
+                    .into_iter()
+                    .map(|t| {
+                        (
+                            t.id.as_str().into(),
+                            if t.kind == polar_tmux_protocol::ExecutionTargetKind::Ssh {
+                                ResourceTargetKind::Ssh
+                            } else {
+                                ResourceTargetKind::Local
+                            },
+                        )
+                    })
+                    .collect()
+            },
+        )
     }
 
     pub(crate) async fn connection_references(&self, id: &str) -> Vec<String> {
         let catalog = self.catalog.lock().await;
-        catalog.file_mappings.iter().map(|v| (&v.execution_target_id, &v.name))
-            .chain(catalog.port_forwards.iter().map(|v| (&v.execution_target_id, &v.name)))
-            .chain(catalog.android_mirrors.iter().map(|v| (&v.execution_target_id, &v.name)))
-            .filter(|(target, _)| target.as_str() == id).map(|(_, name)| format!("Resource: {name}")).collect()
+        catalog
+            .file_mappings
+            .iter()
+            .map(|v| (&v.execution_target_id, &v.name))
+            .chain(
+                catalog
+                    .port_forwards
+                    .iter()
+                    .map(|v| (&v.execution_target_id, &v.name)),
+            )
+            .chain(
+                catalog
+                    .android_mirrors
+                    .iter()
+                    .map(|v| (&v.execution_target_id, &v.name)),
+            )
+            .filter(|(target, _)| target.as_str() == id)
+            .map(|(_, name)| format!("Resource: {name}"))
+            .collect()
     }
 
     pub(crate) async fn shutdown(&self) {
         if let Some(recovery) = &self.recovery {
             recovery.shutdown().await;
         }
+    }
+
+    #[cfg(feature = "codex-control")]
+    pub(crate) async fn dispatch_from_session(
+        &self,
+        mut request: ResourcesRequestEnvelopeV1,
+        codex: Option<&super::codex_control::CodexControlService>,
+        source: Option<SessionFileContext<'_>>,
+    ) -> ResourcesResponseEnvelopeV1 {
+        if let ResourcesCommandV1::ResolveFile {
+            source_session: Some(session),
+            path,
+            ..
+        } = &request.command
+        {
+            if let Err(_invalid) = request.validate() {
+                return self
+                    .error_response(
+                        request.request_id,
+                        "resource_request_invalid",
+                        "The source session reference is invalid.",
+                    )
+                    .await;
+            }
+            let Ok(session_id) =
+                polar_tmux_workspace::StableTmuxSessionId::new(session.tmux_session_id.clone())
+            else {
+                return self
+                    .error_response(
+                        request.request_id,
+                        "resource_request_invalid",
+                        "The source session is invalid.",
+                    )
+                    .await;
+            };
+            let key =
+                polar_tmux_workspace::SessionKey::new(session.execution_target.clone(), session_id);
+            let relative = !std::path::Path::new(path).is_absolute();
+            let harness_origin = if let Some(codex) = codex {
+                codex.terminal_file_reference(&key, path).await
+            } else { Ok(None) };
+            let (origin,resolved_path)=match harness_origin {
+                Ok(Some(result))=>result,
+                Ok(None)=> {
+                    let cwd = if relative {
+                        let directory = if let Some(context) = source {
+                            context.directory(session.execution_target.as_str(), &session.tmux_session_id).await.ok()
+                        } else { None };
+                        let Some(directory) = directory else {
+                            return self.error_response(request.request_id,"resource_session_origin_unavailable","The source Session directory is unavailable.").await;
+                        };
+                        Some(directory)
+                    } else { None };
+                    (polar_tmux_resources::FileOrigin{execution_target_id:session.execution_target.as_str().into(),cwd,terminal_session_id:Some(session.tmux_session_id.clone())},path.clone())
+                },
+                Err(error) if error.code=="file_reference_ambiguous" => return self.error_response(request.request_id,
+                    "resource_file_reference_ambiguous", "This fragment matches multiple files in the original Codex Thread. Select the complete path.").await,
+                Err(_)=>return self.error_response(request.request_id,"resource_session_origin_unavailable","The original harness session directory or source machine is unavailable; no terminal directory was substituted.").await,
+            };
+            request.command = ResourcesCommandV1::ResolveFile {
+                execution_target_id: origin.execution_target_id,
+                path: resolved_path,
+                cwd: origin.cwd,
+                source_session: None,
+            };
+        }
+        self.dispatch(request).await
     }
 
     pub(crate) async fn dispatch(
@@ -206,6 +322,63 @@ impl ResourceService {
                 .await;
         }
         match request.command.clone() {
+            ResourcesCommandV1::ResolveFile {
+                execution_target_id,
+                path,
+                cwd,
+                source_session,
+            } => {
+                if source_session.is_some() {
+                    return self
+                        .error_response(
+                            request.request_id,
+                            "resource_session_origin_unavailable",
+                            "The harness session context resolver is unavailable.",
+                        )
+                        .await;
+                }
+                if !self.current_targets().contains_key(&execution_target_id) {
+                    return self
+                        .error_response(
+                            request.request_id,
+                            "resource_target_missing",
+                            "The source execution target is unavailable.",
+                        )
+                        .await;
+                }
+                let catalog = self.catalog.lock().await;
+                let statuses = self.statuses.lock().await;
+                let result = polar_tmux_resources::resolve_file(
+                    &catalog,
+                    &statuses,
+                    &execution_target_id,
+                    &path,
+                    cwd.as_deref(),
+                );
+                match result {
+                    Ok(access) => ResourcesResponseEnvelopeV1 {
+                        protocol_version: PROTOCOL_VERSION,
+                        api: request.api,
+                        request_id: request.request_id,
+                        revision: catalog.revision,
+                        result: ResourcesResultV1::FileAccess { access },
+                    },
+                    Err(_) => ResourcesResponseEnvelopeV1 {
+                        protocol_version: PROTOCOL_VERSION,
+                        api: request.api,
+                        request_id: request.request_id,
+                        revision: catalog.revision,
+                        result: ResourcesResultV1::Error {
+                            error: ProtocolError::new(
+                                "resource_file_invalid",
+                                "The file path cannot be resolved through Resources.",
+                                false,
+                            ),
+                            projection: None,
+                        },
+                    },
+                }
+            }
             ResourcesCommandV1::GetProjection => {
                 let catalog = self.catalog.lock().await.clone();
                 ResourcesResponseEnvelopeV1 {
@@ -274,7 +447,8 @@ impl ResourceService {
                                 .await;
                         }
                         *catalog = next;
-                        *self.statuses.lock().await = pending_statuses(&catalog, &self.current_targets());
+                        *self.statuses.lock().await =
+                            pending_statuses(&catalog, &self.current_targets());
                         if let Some(recovery) = &self.recovery {
                             recovery.apply(catalog.clone());
                         }
@@ -616,3 +790,5 @@ fn pending_statuses(
     }
     statuses
 }
+
+

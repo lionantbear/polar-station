@@ -29,24 +29,6 @@ actual_archive=$(git -C "$source_dir" archive --format=tar HEAD | shasum -a 256 
 
 git -C "$source_dir" apply --check "$overlay_dir/ghostty-v1.3.1.patch"
 git -C "$source_dir" apply "$overlay_dir/ghostty-v1.3.1.patch"
-# Bind the pinned project patch to this export, not the private checkout layout.
-python3 - "$source_dir" "$repo_root" <<'PY_PACKAGE'
-from pathlib import Path
-import json
-import os
-import sys
-source, root = map(Path, sys.argv[1:])
-package = root / "apps/polar-station-macos"
-if not (package / "Package.swift").is_file():
-    raise SystemExit("Station Swift package is missing")
-project = source / "macos/Ghostty.xcodeproj/project.pbxproj"
-text = project.read_text()
-marker = "relativePath = ../../../polarinfrav1/apps/polar-station-macos;"
-if text.count(marker) != 1:
-    raise SystemExit("Unexpected pinned Station package reference")
-relative = os.path.relpath(package, source / "macos")
-project.write_text(text.replace(marker, "relativePath = " + json.dumps(relative) + ";"))
-PY_PACKAGE
 python3 "$repo_root/automation/polar_station/apply_display_overlay.py" \
     --source "$source_dir" --platform macos
 install -d -m 0755 "$source_dir/macos/Sources/PolarStation"
@@ -56,6 +38,9 @@ install -m 0644 \
 install -m 0644 \
     "$repo_root/apps/polar-station-macos/ghostty-module/PolarStationShortcuts.swift" \
     "$source_dir/macos/Sources/PolarStation/PolarStationShortcuts.swift"
+install -m 0644 \
+    "$repo_root/apps/polar-station-macos/ghostty-module/StationDictateKeyCapture.swift" \
+    "$source_dir/macos/Sources/PolarStation/StationDictateKeyCapture.swift"
 install -m 0644 \
     "$repo_root/apps/polar-station-macos/ghostty-module/PolarStationNativeExecutor.swift" \
     "$source_dir/macos/Sources/PolarStation/PolarStationNativeExecutor.swift"

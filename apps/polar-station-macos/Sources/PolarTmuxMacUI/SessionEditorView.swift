@@ -57,7 +57,7 @@ struct SessionEditorSheet: View {
     @State private var manualOpen = false
     @State private var manualDraft = ""
     @State private var previewExpanded = false
-    @State private var optionsOpen = false
+    @State private var optionsOpen = true
     @State private var historyFocusRequest = 0
 
     private func field<T>(_ key: WritableKeyPath<SessionEditorInteraction.Draft, T>) -> Binding<T> {
@@ -233,6 +233,7 @@ struct SessionEditorSheet: View {
             }
         }
         .onAppear {
+            optionsOpen = true
             if capturedDestination.isEmpty { capturedDestination = destination }
             nameFocused = request.initialMode != "resume" && request.resumeAgent == nil
             editor.submit = submit
@@ -247,6 +248,7 @@ struct SessionEditorSheet: View {
                 draft.mode = "resume"; draft.endpoint = agent.endpoint_id; draft.original_id = agent.thread_id
             }
             if binding { draft.target = localTargetID }
+            editor.startCodex=requestCodex
             editor.open(draft, endpoints: availableEndpoints, source: sourceSession, read: readSessionEditor)
         }
         .onDisappear { editor.action("close") }
@@ -283,6 +285,10 @@ struct SessionEditorSheet: View {
                         Text("Select app server").tag("")
                         ForEach(availableEndpoints.filter { $0.execution_target_id == selectedTargetID }, id: \.id) { Text($0.id).tag($0.id) }
                     }.labelsHidden().frame(minWidth: 120, maxWidth: 200).accessibilityLabel("App server")
+                    if editor.state?.can_start_local_server == true || editor.state?.server_starting == true {
+                        Button{editor.action("start_local_server")}label:{Image(systemName:editor.state?.server_starting == true ? "hourglass" : "power")}
+                            .help(editor.state?.server_start_label ?? "Start local Codex app server").accessibilityLabel(editor.state?.server_start_label ?? "Start local Codex app server").disabled(editor.state?.can_start_local_server != true)
+                    }
                     Button { manageOpen = true } label: { Image(systemName: "gearshape") }
                         .help("Manage app servers").accessibilityLabel("Manage…").disabled(connections == nil)
                 }
@@ -374,13 +380,19 @@ struct SessionEditorSheet: View {
                                         get: { selectedThreads.contains(row.id) },
                                         set: { selectHistory(row.id, checked: $0) }))
                                         .labelsHidden().toggleStyle(.checkbox)
-                                    Text(row.display_name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                                    Text(URL(fileURLWithPath: row.cwd).lastPathComponent)
-                                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: 90)
+                                    HStack(spacing: 8) {
+                                        Text(row.display_name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                                        Text(URL(fileURLWithPath: row.cwd).lastPathComponent)
+                                            .font(.caption).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: 90)
+                                    }.frame(height: 32).contentShape(Rectangle())
+                                        .gesture(TapGesture(count: 2).exclusively(before: TapGesture(count: 1)).onEnded { result in
+                                            switch result {
+                                            case .first: editor.activate(row.id)
+                                            case .second: editor.select(row.id); historyFocusRequest += 1
+                                            }
+                                        })
                                 }.padding(.horizontal, 8).frame(height: 32)
                                     .background(originalSessionID == row.id ? StationTheme.shared.accent.opacity(0.12) : Color.clear)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { editor.select(row.id); historyFocusRequest += 1 }
                                     .id(row.id)
                                     .help(row.display_name + "\n" + row.cwd)
                             }

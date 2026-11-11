@@ -37,8 +37,9 @@ const margins = @import("lgp_workspace.zig").margins;
 pub const InputBar = struct {
     dictate_button: *gtk.Button,
     dictate_menu: *gtk.MenuButton,
-    dictate_history: *gtk.Box,
+    dictate_history: *@import("dictate_history.zig").History,
     dictate_click: ?*gtk.GestureClick = null,
+    dictate_chord:@import("dictate_local_keys.zig").Chord=.{},
     dictate_keys: ?*gtk.EventControllerKey = null,
     owner: *Workspace,
     id: []u8,
@@ -48,9 +49,9 @@ pub const InputBar = struct {
     idea_row: *gtk.Box,
     idea_menu:*gtk.MenuButton,
     idea_files:*gtk.Box,
+    idea_configuration:*gtk.Box,
+    idea_configuration_menu:*gtk.MenuButton,
     idea_search_button:*gtk.MenuButton,
-    idea_expand:*gtk.MenuButton,
-    idea_editor_popup:*gtk.Popover,
     editor_overlay:*gtk.Overlay,
     idea_search: *gtk.Entry,
     idea_more: *gtk.MenuButton,
@@ -83,6 +84,8 @@ pub const InputBar = struct {
     toggle: *gtk.Button,
     target: *gtk.Button,
     status: *gtk.Label,
+    refine_mode_popup:?*gtk.Popover=null,
+    dictate_mode_popup:?*gtk.Popover=null,
     refine_button: *gtk.Button,
     edit_action_depth: usize = 0,
     status_button: *gtk.MenuButton,
@@ -131,12 +134,14 @@ pub const InputBar = struct {
         const idea_menu=gtk.MenuButton.new();idea_menu.setLabel("Idea");
         const idea_files=gtk.Box.new(.vertical,4);margins(idea_files.as(gtk.Widget));
         const idea_files_popup=gtk.Popover.new();idea_files_popup.setChild(idea_files.as(gtk.Widget));idea_menu.setPopover(idea_files_popup);
+        const idea_configuration=gtk.Box.new(.vertical,4);margins(idea_configuration.as(gtk.Widget));
+        const idea_configuration_popup=gtk.Popover.new();idea_configuration_popup.setChild(idea_configuration.as(gtk.Widget));
+        const idea_configuration_menu=gtk.MenuButton.new();idea_configuration_menu.setPopover(idea_configuration_popup);
+        idea_configuration_menu.as(gtk.Widget).setVisible(0);idea_files.append(idea_configuration_menu.as(gtk.Widget));
         idea_menu.as(gtk.Widget).setVisible(0);
         const idea_search_button=gtk.MenuButton.new();idea_search_button.setIconName("system-search-symbolic");
         idea_search_button.as(gtk.Widget).setTooltipText("Search nodes");
         const idea_search_popup=gtk.Popover.new();idea_search_button.setPopover(idea_search_popup);
-        const idea_expand=gtk.MenuButton.new();idea_expand.setLabel("↗");idea_expand.as(gtk.Widget).setTooltipText("Expand instruction");
-        const idea_editor_popup=gtk.Popover.new();idea_expand.setPopover(idea_editor_popup);
         const idea_search = gtk.Entry.new();
         idea_search.setPlaceholderText("Search nodes…");
         idea_search.as(gtk.Widget).setSizeRequest(260,-1);
@@ -188,6 +193,7 @@ pub const InputBar = struct {
         status.setMaxWidthChars(40);
         const status_button = gtk.MenuButton.new();
         status_button.setLabel("Choose a conversation");
+        status_button.as(gtk.Widget).setVisible(0);
         status_button.as(gtk.Widget).setTooltipText("Connection status");
         const status_popup = gtk.Popover.new();
         const status_box = gtk.Box.new(.vertical, 6);
@@ -235,7 +241,16 @@ pub const InputBar = struct {
         document.append(text.as(gtk.Widget));
         scroll.setChild(document.as(gtk.Widget));
         const overlay = gtk.Overlay.new();
-        overlay.setChild(scroll.as(gtk.Widget));
+        // A measured single-line slot owns row geometry; GTK's unmeasured
+        // overlay grows upward and keeps native picking outside the slot.
+        const editor_slot = gtk.Box.new(.vertical, 0);
+        editor_slot.as(gtk.Widget).setSizeRequest(-1,30);
+        overlay.setChild(editor_slot.as(gtk.Widget));
+        scroll.as(gtk.Widget).setValign(.end);
+        overlay.addOverlay(scroll.as(gtk.Widget));
+        overlay.setMeasureOverlay(scroll.as(gtk.Widget),0);
+        overlay.setClipOverlay(scroll.as(gtk.Widget),0);
+        _ = gtk.Overlay.signals.get_child_position.connect(overlay,*gtk.ScrolledWindow,footerEditorPosition,scroll,.{});
         overlay.as(gtk.Widget).setHexpand(1);
         overlay.as(gtk.Widget).setSizeRequest(120,-1);
         const hint = gtk.Label.new("Select a conversation");
@@ -257,13 +272,8 @@ pub const InputBar = struct {
         dictate_button.as(gtk.Widget).setFocusOnClick(0);
         dictate_button.as(gtk.Widget).setSizeRequest(30, -1);
         const dictate_menu = gtk.MenuButton.new(); dictate_menu.setIconName("pan-down-symbolic");
-        const dictate_popover = gtk.Popover.new(); dictate_popover.setPosition(.top);
-        const dictate_history = gtk.Box.new(.vertical, 6); margins(dictate_history.as(gtk.Widget));
-        const dictate_scroll = gtk.ScrolledWindow.new(); dictate_scroll.setPolicy(.never, .automatic);
-        dictate_scroll.setMaxContentHeight(320); dictate_scroll.setPropagateNaturalHeight(1);
-        dictate_scroll.as(gtk.Widget).setSizeRequest(360, -1);
-        dictate_scroll.setChild(dictate_history.as(gtk.Widget)); dictate_popover.setChild(dictate_scroll.as(gtk.Widget));
-        dictate_menu.setPopover(dictate_popover);
+        const dictate_history = try @import("dictate_history.zig").History.create(owner.dictate,text);
+        dictate_menu.setPopover(dictate_history.popup);
 
         const mode = gtk.MenuButton.new();
         mode.setIconName("pan-down-symbolic");
@@ -280,6 +290,8 @@ pub const InputBar = struct {
         mode_popup.setChild(modes.as(gtk.Widget));
         mode.setPopover(mode_popup);
         body.as(gtk.Widget).setHexpand(1);
+        body.as(gtk.Widget).setValign(.end);
+        idea_row.as(gtk.Widget).setValign(.end);
         const inquiry_entry=gtk.Button.newWithLabel("Inquiry");
         inquiry_entry.as(gtk.Widget).setVisible(0);
         const inquiry_popover=gtk.Popover.new();
@@ -288,13 +300,12 @@ pub const InputBar = struct {
         root.append(inquiry_entry.as(gtk.Widget));
         root.append(body.as(gtk.Widget));
         root.append(idea_attach.as(gtk.Widget));
-        root.append(idea_expand.as(gtk.Widget));
 
 
         root.append(status_button.as(gtk.Widget));
         root.append(retry.as(gtk.Widget));
         const quote = gtk.Button.newWithLabel("❞");
-        quote.as(gtk.Widget).setTooltipText("Quote selection");
+        quote.as(gtk.Widget).setTooltipText("Quote selection · Ctrl+Shift+G");
         quote.as(gtk.Widget).setFocusOnClick(0);
         quote.as(gtk.Widget).setVisible(0);
         root.append(quote.as(gtk.Widget));
@@ -310,7 +321,7 @@ pub const InputBar = struct {
         // for an empty editor. Keep the scrollbar and six-line growth limit.
         css.loadFromString(".station-input-bar { background-color: @window_bg_color; } .station-chat-target { outline: 2px solid @accent_color; outline-offset: -2px; } .station-chat-editor scrollbar.vertical slider { min-height: 16px; }");
         gtk.StyleContext.addProviderForDisplay(host.as(gtk.Widget).getDisplay(), css.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 5);
-        self.* = .{ .refine_button=refine, .dictate_button=dictate_button, .dictate_menu=dictate_menu, .dictate_history=dictate_history, .idea_document=document, .idea_refs=idea_refs,.idea_attach=idea_attach,.inquiry_entry=inquiry_entry,.inquiry_popover=inquiry_popover,.owner = owner, .id = owned_id, .host = host, .container = outer, .body = body, .idea_row = idea_row,.idea_menu=idea_menu,.idea_files=idea_files,.idea_search_button=idea_search_button,.idea_expand=idea_expand,.idea_editor_popup=idea_editor_popup,.editor_overlay=overlay, .idea_search = idea_search, .idea_more = idea_more, .idea_overflow = idea_overflow, .idea_view_scroll = idea_view_scroll, .idea_theme = idea_theme, .idea_themes = idea_themes, .more = more, .toggle = toggle, .target = target, .status = status, .status_button = status_button, .mode_button = mode, .tools = tools, .hint = hint, .text = text, .editor_scroll = scroll, .send_button = send, .older = older, .retry = retry, .quote = quote, .modified = modified, .css = css };
+        self.* = .{ .refine_button=refine, .dictate_button=dictate_button, .dictate_menu=dictate_menu, .dictate_history=dictate_history, .idea_document=document, .idea_refs=idea_refs,.idea_attach=idea_attach,.inquiry_entry=inquiry_entry,.inquiry_popover=inquiry_popover,.owner = owner, .id = owned_id, .host = host, .container = outer, .body = body, .idea_row = idea_row,.idea_menu=idea_menu,.idea_files=idea_files, .idea_configuration=idea_configuration, .idea_configuration_menu=idea_configuration_menu,.idea_search_button=idea_search_button,.editor_overlay=overlay, .idea_search = idea_search, .idea_more = idea_more, .idea_overflow = idea_overflow, .idea_view_scroll = idea_view_scroll, .idea_theme = idea_theme, .idea_themes = idea_themes, .more = more, .toggle = toggle, .target = target, .status = status, .status_button = status_button, .mode_button = mode, .tools = tools, .hint = hint, .text = text, .editor_scroll = scroll, .send_button = send, .older = older, .retry = retry, .quote = quote, .modified = modified, .css = css };
         // Keep all tree actions inside the one Idea menu.
         idea_files.append(idea_search_button.as(gtk.Widget));
         idea_files.append(idea_refs.as(gtk.Widget));
@@ -322,7 +333,6 @@ pub const InputBar = struct {
         overlay_host.addOverlay(outer.as(gtk.Widget));
         overlay_host.setMeasureOverlay(outer.as(gtk.Widget),0);
         _ = gtk.Entry.signals.activate.connect(idea_search, *InputBar, ideaSearchActivated, self, .{});
-        _ = gobject.Object.signals.notify.connect(idea_editor_popup.as(gobject.Object),*InputBar,ideaEditorVisibility,self,.{ .detail="visible" });
         _ = gobject.Object.signals.notify.connect(idea_popup.as(gobject.Object),*InputBar,ideaViewVisibility,self,.{ .detail="visible" });
         _ = gtk.Button.signals.clicked.connect(inquiry_entry,*InputBar,inquiryEntry,self,.{});
         const inquiry_keys=gtk.EventControllerKey.new();inquiry_keys.as(gtk.EventController).setPropagationPhase(.capture);
@@ -332,6 +342,12 @@ pub const InputBar = struct {
         self.setSendMode(owner.modified_send);
         _ = gtk.Button.signals.clicked.connect(dictate_button, *InputBar, dictateClicked, self, .{});
         _ = gtk.Button.signals.clicked.connect(refine, *InputBar, refineClicked, self, .{});
+        const refine_press=gtk.GestureLongPress.new();refine_press.as(gtk.EventController).setPropagationPhase(.capture);
+        _=gtk.GestureLongPress.signals.pressed.connect(refine_press,*InputBar,refineHeld,self,.{});
+        refine.as(gtk.Widget).addController(refine_press.as(gtk.EventController));
+        const dictate_press=gtk.GestureLongPress.new();dictate_press.as(gtk.EventController).setPropagationPhase(.capture);
+        _=gtk.GestureLongPress.signals.pressed.connect(dictate_press,*InputBar,dictateHeld,self,.{});
+        dictate_button.as(gtk.Widget).addController(dictate_press.as(gtk.EventController));
         _ = gtk.TextBuffer.signals.begin_user_action.connect(text.getBuffer(), *InputBar, editBegin, self, .{});
         _ = gtk.TextBuffer.signals.end_user_action.connect(text.getBuffer(), *InputBar, editEnd, self, .{});
         self.refreshDictate();
@@ -405,6 +421,8 @@ pub const InputBar = struct {
     pub fn destroy(self: *InputBar) void {
         if(self.dictate_active_signal!=0)gobject.signalHandlerDisconnect(self.host.as(gobject.Object),self.dictate_active_signal);
         if(self.dictate_map_signal!=0)gobject.signalHandlerDisconnect(self.dictate_button.as(gobject.Object),self.dictate_map_signal);
+        if(self.refine_mode_popup) |popup| popup.as(gtk.Widget).unparent();
+        if(self.dictate_mode_popup) |popup| popup.as(gtk.Widget).unparent();
         if(self.dictate_panel) |panel| panel.destroy();
         if(self.dictate_click)|controller|self.host.as(gtk.Widget).removeController(controller.as(gtk.EventController));
         if(self.dictate_keys)|controller|self.host.as(gtk.Widget).removeController(controller.as(gtk.EventController));
@@ -429,27 +447,41 @@ pub const InputBar = struct {
         self.owner.allocator.free(self.id);
         self.owner.allocator.destroy(self);
     }
+    fn footerEditorPosition(overlay: *gtk.Overlay, child: *gtk.Widget, allocation: *gdk.Rectangle, scroll: *gtk.ScrolledWindow) callconv(.c) c_int {
+        if (child != scroll.as(gtk.Widget)) return 0;
+        const width = overlay.as(gtk.Widget).getWidth();
+        var natural: c_int = 0;
+        child.measure(.vertical,width,null,&natural,null,null);
+        allocation.* = .{ .f_x=0, .f_y=overlay.as(gtk.Widget).getHeight()-natural, .f_width=width, .f_height=natural };
+        return 1;
+    }
     pub fn updateGeneric(self: *InputBar, view: Value) void {
         const lease = field(view, "lease") orelse return;
         const pane = string(lease, "pane") orelse return;
         const bytes = std.json.Stringify.valueAlloc(self.owner.allocator, .{
             .type="composer", .pane_id=pane, .text=string(view,"text") orelse "",
-            .draft_revision=number(lease,"draft_revision"), .generic_lease=lease,
+            .draft_revision=number(lease,"draft_revision"), .generic_lease=lease, .project=field(view,"project"),
             .status=string(view,"unavailable") orelse "Ready", .can_send=boolean(view,"can_send"),
         }, .{}) catch return;
         defer self.owner.allocator.free(bytes);
         var parsed = std.json.parseFromSlice(Value,self.owner.allocator,bytes,.{}) catch return;
         defer parsed.deinit();
         self.update(parsed.value);
-        const label = self.owner.allocator.dupeZ(u8,string(view,"target_label") orelse "Terminal input") catch return;
+        const send_label=string(view,"send_label") orelse "Send";
+        if(!std.mem.eql(u8,send_label,"Send")) {
+            const label_=self.owner.allocator.dupeZ(u8,send_label) catch return;
+            defer self.owner.allocator.free(label_);self.send_button.setLabel(label_);
+        } else self.setSendMode(self.owner.modified_send);
+        const label = self.owner.allocator.dupeZ(u8,string(view,"target_status") orelse string(view,"target_label") orelse "Terminal input") catch return;
         defer self.owner.allocator.free(label);
         self.target.setLabel(label);
         self.more.as(gtk.Widget).setVisible(0);
-        self.target.as(gtk.Widget).setTooltipText(label);
+        const explanation=self.owner.allocator.dupeZ(u8,string(view,"unavailable") orelse string(view,"target_label") orelse "Terminal input") catch return;
+        defer self.owner.allocator.free(explanation);self.target.as(gtk.Widget).setTooltipText(explanation);
         setLabel(self.owner.allocator, self.hint, "Input…");
         self.retry.setLabel("↻");
-        self.retry.as(gtk.Widget).setTooltipText("Check receipt or refresh target");
-        self.retry.as(gtk.Widget).setVisible(1);
+        self.retry.as(gtk.Widget).setTooltipText("Refresh sending status");
+        self.retry.as(gtk.Widget).setVisible(@intFromBool(boolean(view,"can_refresh")));
         self.target.as(gtk.Widget).setSensitive(0);
         self.toggle.as(gtk.Widget).setVisible(0);
         self.expanded=true;
@@ -507,6 +539,7 @@ pub const InputBar = struct {
             setLabel(self.owner.allocator, self.hint, string(effect, "placeholder") orelse "Idea Tree instruction");
             self.showStatus(string(effect, "status") orelse "");
             self.status_button.setLabel("●");
+        self.status_button.as(gtk.Widget).setVisible(0);
             self.send_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(effect,"can_send")));
             const target_label=self.owner.allocator.dupeZ(u8,string(effect,"target_label") orelse "Bind Codex…") catch return;
             defer self.owner.allocator.free(target_label);self.target.setLabel(if(self.host.as(gtk.Widget).getWidth()<640) "Codex" else target_label);
@@ -626,11 +659,12 @@ pub const InputBar = struct {
             _=box.as(gobject.Object).refSink();
             const heading=gtk.Box.new(.horizontal,4);
             const label_text=try std.fmt.allocPrintSentinel(a,"{s} · {s}",.{title,uuid},0);defer a.free(label_text);
-            const label=gtk.Label.new(label_text);label.setSelectable(1);label.setWrap(1);label.setXalign(0);label.as(gtk.Widget).setHexpand(1);
+            const label=gtk.Label.new(label_text);label.setSelectable(1);label.setXalign(0);label.as(gtk.Widget).setHexpand(1);
+            label.setEllipsize(.middle);label.setMaxWidthChars(1);label.as(gtk.Widget).setTooltipText(label_text);
             // A UUID is one unbroken token to Pango's default WORD wrapping.
             // Permit character wrapping so the native heading cannot enlarge
             // the scene-owned editor rectangle to its token's minimum width.
-            if(detail) {label.setWrapMode(.word_char);label.setMaxWidthChars(1);label.as(gtk.Widget).addCssClass("instruction-heading");}
+            if(detail) {label.setWrap(1);label.setLines(2);label.setWrapMode(.word_char);label.as(gtk.Widget).addCssClass("instruction-heading");}
             heading.append(label.as(gtk.Widget));box.append(heading.as(gtk.Widget));
             const editor=gtk.TextView.new();editor.setWrapMode(.word_char);editor.getBuffer().setEnableUndo(1);
             editor.setTopMargin(6);editor.setBottomMargin(6);editor.setLeftMargin(8);editor.setRightMargin(8);
@@ -850,7 +884,7 @@ pub const InputBar = struct {
             self.ideaInputButton(row,string(ref,"title") orelse "Locate",.{.type="idea_reference",.window_id=self.id,.operation="locate",.index=index});
             self.ideaInputButton(row,"×",.{.type="idea_reference",.window_id=self.id,.operation="remove",.index=index});
         }
-        if(boolean(effect,"can_check_receipt")) self.ideaInputButton(box,"Check receipt",.{.type="idea_check_receipt",.window_id=self.id});
+        if(boolean(effect,"can_check_receipt")) self.ideaInputButton(box,"Refresh sending status",.{.type="idea_check_receipt",.window_id=self.id});
         if(boolean(effect,"can_open_session")) self.ideaInputButton(box,"Show original session",.{.type="idea_show_session",.window_id=self.id});
         if(string(effect,"binding_id")!=null) self.ideaInputButton(box,"Unbind session",.{.type="idea_bind",.window_id=self.id,.binding_id=@as(?[]const u8,null)});
         const scroll=gtk.ScrolledWindow.new();scroll.setPolicy(.never,.automatic);scroll.setMaxContentHeight(320);scroll.setPropagateNaturalHeight(1);scroll.setChild(box.as(gtk.Widget));
@@ -862,7 +896,7 @@ pub const InputBar = struct {
         const view=string(metadata.value,"view_id") orelse return;
         if(self.owner.choose_idea_session) |choose| choose(self.owner.context,self.host,pane,view);
     }
-    const IdeaBinding = struct { composer: *InputBar, action: [:0]u8, query: [:0]u8, button: *gtk.Button };
+    const IdeaBinding = struct { composer: *InputBar, action: [:0]u8, query: [:0]u8, button: *gtk.Button, container:*gtk.Box };
     fn ideaPressed(_: *gtk.Button, binding: *IdeaBinding) callconv(.c) void {
         const self = binding.composer;
         self.idea_more.popdown();
@@ -873,29 +907,10 @@ pub const InputBar = struct {
     fn ideaViewVisibility(_: *gobject.Object, _: *gobject.ParamSpec, self: *InputBar) callconv(.c) void {
         self.idea_view_scroll.setMaxContentHeight(@max(160, @min(640, @divTrunc(self.host.as(gtk.Widget).getHeight() * 6, 10))));
     }
-    fn ideaEditorVisibility(_: *gobject.Object, _: *gobject.ParamSpec, self:*InputBar) callconv(.c) void {
-        if (self.idea_editor_popup.as(gtk.Widget).getVisible()!=0) {
-            if (self.editor_overlay.as(gtk.Widget).getParent()!=self.body.as(gtk.Widget)) return;
-            _ = self.editor_overlay.as(gobject.Object).ref();
-            self.body.remove(self.editor_overlay.as(gtk.Widget));
-            self.editor_scroll.setMinContentHeight(@max(60,@min(220,self.host.as(gtk.Widget).getHeight()-100)));self.editor_scroll.setMaxContentHeight(@max(60,@min(320,self.host.as(gtk.Widget).getHeight()-100)));
-            self.editor_overlay.as(gtk.Widget).setSizeRequest(@max(160,@min(640,self.host.as(gtk.Widget).getWidth()-32)),-1);
-            self.idea_editor_popup.setChild(self.editor_overlay.as(gtk.Widget));
-            self.editor_overlay.as(gobject.Object).unref();
-            _ = self.text.as(gtk.Widget).grabFocus();
-        } else if (self.idea_editor_popup.getChild()!=null) {
-            _ = self.editor_overlay.as(gobject.Object).ref();self.idea_editor_popup.setChild(null);
-            self.editor_scroll.setMinContentHeight(30);self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
-            self.editor_overlay.as(gtk.Widget).setSizeRequest(-1,-1);self.body.prepend(self.editor_overlay.as(gtk.Widget));
-            self.editor_overlay.as(gobject.Object).unref();
-            if (self.pane_id!=null) _ = self.text.as(gtk.Widget).grabFocus();
-        }
-    }
     fn ideaSearchActivated(entry: *gtk.Entry, self: *InputBar) callconv(.c) void {
         self.owner.input(.{ .type = "idea_action", .window_id = self.id, .action = "search", .query = std.mem.span(entry.as(gtk.Editable).getText()) });
     }
     fn setIdeaMode(self: *InputBar, value: bool) void {
-        if(self.is_idea != value) self.idea_editor_popup.popdown();
         if(self.is_idea and !value) self.clearNodeEditors();
         if(value) {self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_entry.as(gtk.Widget).setVisible(0);self.inquiry_active=false;self.text.setEditable(1);}
         if (value and self.focus_source != 0) { _ = glib.Source.remove(self.focus_source); self.focus_source = 0; }
@@ -906,12 +921,11 @@ pub const InputBar = struct {
         if (!value) self.text.as(gtk.Widget).setTooltipText(if (self.owner.modified_send) "Ctrl+Enter sends; Enter inserts newline" else "Enter sends; Shift+Enter inserts newline");
         if (!value) {self.idea_more.popdown();self.idea_theme.popdown();if (self.idea_search_button.getPopover()) |popup| popup.popdown();}
         self.idea_row.as(gtk.Widget).setVisible(@intFromBool(value));
-        for ([_]*gtk.Widget{self.idea_menu.as(gtk.Widget),self.idea_expand.as(gtk.Widget),self.idea_more.as(gtk.Widget),self.idea_theme.as(gtk.Widget)}) |widget| widget.setVisible(@intFromBool(value));
+        for ([_]*gtk.Widget{self.idea_menu.as(gtk.Widget),self.idea_more.as(gtk.Widget),self.idea_theme.as(gtk.Widget)}) |widget| widget.setVisible(@intFromBool(value));
         self.toggle.as(gtk.Widget).setVisible(0);
-        self.status_button.as(gtk.Widget).setVisible(@intFromBool(!value));
-        self.idea_expand.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
+        self.status_button.as(gtk.Widget).setVisible(0);
         self.idea_row.as(gtk.Widget).setVisible(0);
-        if(self.idea_editor_popup.as(gtk.Widget).getVisible()==0) self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
+        self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
         self.send_button.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
         self.target.as(gtk.Widget).setVisible(1);
         self.idea_refs.as(gtk.Widget).setVisible(@intFromBool(value));self.idea_attach.as(gtk.Widget).setVisible(@intFromBool(value));
@@ -921,8 +935,16 @@ pub const InputBar = struct {
     }
     fn updateIdeaControls(self: *InputBar, effect: Value) void {
         for (self.idea_bindings.items) |binding| binding.button.as(gtk.Widget).setVisible(0);
+        self.idea_configuration_menu.as(gtk.Widget).setVisible(0);
         for (array(field(effect, "controls"))) |control| {
             const action = string(control, "action") orelse continue;
+            const group = string(control,"group") orelse "";
+            if (group.len>0) {
+                if (self.owner.allocator.dupeZ(u8,group)) |label| {
+                    defer self.owner.allocator.free(label);self.idea_configuration_menu.setLabel(label);
+                } else |_| {}
+                self.idea_configuration_menu.as(gtk.Widget).setVisible(1);
+            }
             const query = string(control, "query") orelse "";
             var found: ?*IdeaBinding = null;
             for (self.idea_bindings.items) |binding| if (std.mem.eql(u8, binding.action, action) and std.mem.eql(u8, binding.query, query)) { found = binding; break; };
@@ -934,16 +956,20 @@ pub const InputBar = struct {
                 const argument = self.owner.allocator.dupeZ(u8, query) catch { self.owner.allocator.free(name); self.owner.allocator.destroy(binding); continue; };
                 const button = gtk.Button.newWithLabel(if(std.mem.eql(u8,action,"back")) "‹" else if(std.mem.eql(u8,action,"forward")) "›" else label);
                 button.as(gtk.Widget).setTooltipText(label);
-                binding.* = .{ .composer = self, .action = name, .query = argument, .button = button };
+                const container=if(group.len>0) self.idea_configuration else if(std.mem.eql(u8,action,"open_files")) self.idea_files else if (std.mem.startsWith(u8,action,"theme_") or std.mem.eql(u8,action,"select_theme")) self.idea_themes else self.idea_overflow;
+                binding.* = .{ .composer = self, .action = name, .query = argument, .button = button, .container=container };
                 self.idea_bindings.append(self.owner.allocator, binding) catch { self.owner.allocator.free(name); self.owner.allocator.free(argument); self.owner.allocator.destroy(binding); continue; };
-                (if(std.mem.eql(u8,action,"open_files")) self.idea_files else if ((std.mem.startsWith(u8, action, "theme_") or std.mem.eql(u8, action, "select_theme"))) self.idea_themes else self.idea_overflow).append(button.as(gtk.Widget));
+                if(std.mem.eql(u8,action,"open_files")) container.prepend(button.as(gtk.Widget)) else container.append(button.as(gtk.Widget));
                 _ = gtk.Button.signals.clicked.connect(button, *IdeaBinding, ideaPressed, binding, .{});
                 break :blk binding;
             };
             if (self.owner.allocator.dupeZ(u8, string(control, "label") orelse action)) |label| {
                 defer self.owner.allocator.free(label);
                 binding.button.setLabel(if (std.mem.eql(u8, action, "back")) "‹" else if (std.mem.eql(u8, action, "forward")) "›" else label);
-                binding.button.as(gtk.Widget).setTooltipText(label);
+                const tip=string(control,"tooltip") orelse "";
+                if (self.owner.allocator.dupeZ(u8, if(tip.len>0) tip else label)) |tooltip| {
+                    defer self.owner.allocator.free(tooltip);binding.button.as(gtk.Widget).setTooltipText(tooltip);
+                } else |_| {}
             } else |_| {}
             binding.button.as(gtk.Widget).setVisible(1);
             binding.button.as(gtk.Widget).setSensitive(@intFromBool(boolean(control, "enabled")));
@@ -956,8 +982,7 @@ pub const InputBar = struct {
             stale_index -= 1;
             const binding = self.idea_bindings.items[stale_index];
             if (binding.button.as(gtk.Widget).getVisible() != 0) continue;
-            const container = if (std.mem.eql(u8,binding.action,"open_files")) self.idea_files else if (std.mem.startsWith(u8,binding.action,"theme_") or std.mem.eql(u8,binding.action,"select_theme")) self.idea_themes else self.idea_overflow;
-            container.remove(binding.button.as(gtk.Widget));
+            binding.container.remove(binding.button.as(gtk.Widget));
             _ = self.idea_bindings.swapRemove(stale_index);
             self.owner.allocator.free(binding.action);self.owner.allocator.free(binding.query);self.owner.allocator.destroy(binding);
         }
@@ -975,6 +1000,7 @@ pub const InputBar = struct {
         defer self.owner.allocator.free(tooltip);
         self.status_button.as(gtk.Widget).setTooltipText(tooltip);
         self.status_button.setLabel("●");
+        self.status_button.as(gtk.Widget).setVisible(0);
         if (self.status_button.getChild()) |child| if (gobject.ext.cast(gtk.Label, child)) |label| {
             label.setMaxWidthChars(24); label.setEllipsize(.end);
         };
@@ -997,52 +1023,27 @@ pub const InputBar = struct {
         if (self.picker == null) self.picker = Picker.create(self) catch return;
         self.picker.?.present();
     }
-    fn dictateWindowActive(_: *gobject.Object,_: *gobject.ParamSpec,self:*InputBar) callconv(.c) void {if(self.dictate_panel)|panel|panel.refresh();self.owner.dictate.updateRecordingNotification();}
+    fn dictateWindowActive(_: *gobject.Object,_: *gobject.ParamSpec,self:*InputBar) callconv(.c) void {if(self.host.as(gtk.Window).isActive()==0 and self.dictate_chord.reset()==.release)self.owner.dictateLocalShortcut(false);if(self.dictate_panel)|panel|panel.refresh();self.owner.dictate.updateRecordingNotification();}
     fn dictateMapped(_: *gtk.Widget,self:*InputBar) callconv(.c) void {if(self.dictate_panel)|panel|panel.refresh();}
     pub fn refreshDictate(self:*InputBar) void {
         if(self.dictate_panel==null) self.dictate_panel=@import("dictate_panel.zig").Panel.create(self.owner.dictate,self.dictate_button.as(gtk.Widget)) catch null;
         if(self.dictate_panel) |panel| panel.refresh();
         const state = self.owner.dictate;
         const presentation = state.presentation();
+        const modes=dictate_module.field(state.view(),"refine_modes");
+        const english=if(self.pane_id) |id| dictate_module.boolean(modes,id) else false;
+        if(english)self.refine_button.setLabel("EN") else self.refine_button.setIconName("document-edit-symbolic");
+        self.refine_button.as(gtk.Widget).setTooltipText(if(english) "Refine + English — hold to choose mode" else "Refine — hold to choose mode");
         self.refine_button.as(gtk.Widget).setSensitive(@intFromBool(state.enabled() and std.mem.eql(u8,dictate_module.string(presentation,"action"),"start")));
         self.dictate_button.as(gtk.Widget).setSensitive(@intFromBool(state.enabled()));
-        self.dictate_button.setIconName(if (std.mem.eql(u8,dictate_module.string(presentation,"action"),"stop")) "media-playback-stop-symbolic" else "audio-input-microphone-symbolic");
-        const tooltip = std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s}",.{dictate_module.string(presentation,"button_label"),state.status()},0) catch return;
+        const microphone_state=dictate_module.string(state.view(),"microphone_state");
+        self.dictate_button.setIconName(if (std.mem.eql(u8,microphone_state,"recording")) "media-playback-stop-symbolic" else if(std.mem.eql(u8,microphone_state,"unavailable")) "microphone-sensitivity-muted-symbolic" else "audio-input-microphone-symbolic");
+        if(std.mem.eql(u8,microphone_state,"recording"))self.dictate_button.as(gtk.Widget).addCssClass("destructive-action") else self.dictate_button.as(gtk.Widget).removeCssClass("destructive-action");
+        const tooltip = std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s} · Hold to choose mode · {s}",.{dictate_module.string(presentation,"button_label"),dictate_module.string(state.view(),"output_mode_label"),state.status()},0) catch return;
         defer self.owner.allocator.free(tooltip); self.dictate_button.as(gtk.Widget).setTooltipText(tooltip);
         const history_title = self.owner.allocator.dupeZ(u8,dictate_module.string(presentation,"history_title")) catch return;
         defer self.owner.allocator.free(history_title); self.dictate_menu.as(gtk.Widget).setTooltipText(history_title);
-        while (self.dictate_history.as(gtk.Widget).getFirstChild()) |child| self.dictate_history.remove(child);
-        const status = self.owner.allocator.dupeZ(u8,state.status()) catch return; defer self.owner.allocator.free(status);
-        const label = gtk.Label.new(status); label.setWrap(1); label.setXalign(0); self.dictate_history.append(label.as(gtk.Widget));
-        if (dictate_module.string(presentation,"cancel_id").len > 0) {
-            const title = self.owner.allocator.dupeZ(u8,dictate_module.string(presentation,"cancel_label")) catch return; defer self.owner.allocator.free(title);
-            const cancel = gtk.Button.newWithLabel(title); self.dictate_history.append(cancel.as(gtk.Widget));
-            _ = gtk.Button.signals.clicked.connect(cancel,*InputBar,dictateCancel,self,.{});
-        }
-        const shortcut_status = std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s}",.{ dictate_module.string(presentation,"shortcut_hint"), dictate_module.string(presentation,"shortcut_status") },0) catch return;
-        defer self.owner.allocator.free(shortcut_status);
-        const shortcut_label = gtk.Label.new(shortcut_status); shortcut_label.setWrap(1); shortcut_label.setXalign(0); self.dictate_history.append(shortcut_label.as(gtk.Widget));
-        const history = dictate_module.field(state.view(),"history");
-        if (history == .array) for (history.array.items, 0..) |entry, index| {
-            const text = self.owner.allocator.dupeZ(u8,dictate_module.string(entry,"text")) catch continue; defer self.owner.allocator.free(text);
-            const content = gtk.Label.new(text); content.setWrap(1); content.setSelectable(1); content.setXalign(0);
-            self.dictate_history.append(content.as(gtk.Widget));
-            const entry_status = self.owner.allocator.dupeZ(u8,dictate_module.string(entry,"status")) catch continue; defer self.owner.allocator.free(entry_status);
-            const entry_label = gtk.Label.new(entry_status); entry_label.setWrap(1); entry_label.setXalign(0); self.dictate_history.append(entry_label.as(gtk.Widget));
-            const row = gtk.Box.new(.horizontal,6); self.dictate_history.append(row.as(gtk.Widget));
-            const review_title=self.owner.allocator.dupeZ(u8,dictate_module.string(presentation,"review_label")) catch continue;defer self.owner.allocator.free(review_title);
-            const review=gtk.Button.newWithLabel(review_title);row.append(review.as(gtk.Widget));
-            review.as(gobject.Object).setData("dictate-history-row",@ptrFromInt(index+1));
-            _=gtk.Button.signals.clicked.connect(review,*InputBar,dictateReviewResult,self,.{});
-            for ([_][]const u8{"copy_label","original_label","dismiss_label"},0..) |key, action| {
-                if (action != 2 and !dictate_module.boolean(entry,if(action==0) "can_copy" else "can_copy_original")) continue;
-                const title = self.owner.allocator.dupeZ(u8,dictate_module.string(presentation,key)) catch continue; defer self.owner.allocator.free(title);
-                const button = gtk.Button.newWithLabel(title); row.append(button.as(gtk.Widget));
-                button.as(gobject.Object).setData("dictate-history-index",@ptrFromInt(index*3+action+1));
-                button.as(gtk.Widget).setSensitive(@intFromBool(dictate_module.boolean(entry,if(action==2) "can_dismiss" else if(action==0) "can_copy" else "can_copy_original")));
-                _=gtk.Button.signals.clicked.connect(button,*InputBar,dictateHistoryAction,self,.{});
-            }
-        };
+        if (self.dictate_history.popup.as(gtk.Widget).getVisible()!=0) self.dictate_history.refresh();
     }
     pub fn dictateClicked(_: *gtk.Button,self:*InputBar) callconv(.c) void {
         const state=self.owner.dictate;
@@ -1059,7 +1060,9 @@ pub const InputBar = struct {
                 }
             };
         }
-        _=self.text.as(gtk.Widget).grabFocus();state.toggle(self.text);
+        const reference=if(self.pane_id) |pane| (if(self.owner.terminal_selection) |read| read(self.owner.context,self.owner.allocator,self.host,pane) else null) else null;
+        defer if(reference) |text| self.owner.allocator.free(text);
+        _=self.text.as(gtk.Widget).grabFocus();state.toggleQuoted(self.text,reference orelse "");
     }
     const DictateNode = struct {
         owner:*Workspace,
@@ -1113,21 +1116,6 @@ pub const InputBar = struct {
         while(end>0 and !std.unicode.utf8ValidateSlice(context[0..end]))end-=1;
         return .{.port=.{.context=target,.insert=DictateNode.insert,.release=DictateNode.release},.context=context[0..end]};
     }
-    fn dictateCancel(_: *gtk.Button,self:*InputBar) callconv(.c) void { self.owner.dictate.cancel(); }
-    fn dictateReviewResult(button:*gtk.Button,self:*InputBar) callconv(.c) void {
-        const index=@intFromPtr(button.as(gobject.Object).getData("dictate-history-row") orelse return)-1;
-        const history=dictate_module.field(self.owner.dictate.view(),"history");if(history!=.array or index>=history.array.items.len)return;
-        self.owner.dictate.input(.{.type="show_panel",.operation_id=dictate_module.string(history.array.items[index],"operation_id")});
-        self.dictate_menu.popdown();
-    }
-    fn dictateHistoryAction(button:*gtk.Button,self:*InputBar) callconv(.c) void {
-        const value=@intFromPtr(button.as(gobject.Object).getData("dictate-history-index") orelse return)-1;
-        const history=dictate_module.field(self.owner.dictate.view(),"history");if(history!=.array or value/3>=history.array.items.len)return;
-        const entry=history.array.items[value/3];
-        if(value%3==2){self.owner.dictate.input(.{.type="dismiss",.operation_id=dictate_module.string(entry,"operation_id")});return;}
-        const text=self.owner.allocator.dupeZ(u8,dictate_module.string(entry,if(value%3==0) "text" else "raw")) catch return;defer self.owner.allocator.free(text);
-        button.as(gtk.Widget).getClipboard().setText(text);
-    }
     fn mountDictateFocus(self:*InputBar) void {
         const click=gtk.GestureClick.new();self.dictate_click=click;
         click.as(gtk.EventController).setPropagationPhase(.capture);
@@ -1145,20 +1133,76 @@ pub const InputBar = struct {
         const hit=self.host.as(gtk.Widget).pick(x,y,.{}) orelse return;
         if(hit==editor.as(gtk.Widget) or hit.isAncestor(editor.as(gtk.Widget))!=0)self.owner.dictate.focus(editor);
     }
-    fn dictateKeyPressed(_: *gtk.EventControllerKey,key:c_uint,_:c_uint,_:gdk.ModifierType,self:*InputBar) callconv(.c) c_int {
+    fn localDictateKey(key:c_uint) @import("dictate_local_keys.zig").Key {
+        return switch(key) {
+            gdk.KEY_Control_L,gdk.KEY_Control_R=>.control,
+            gdk.KEY_Super_L,gdk.KEY_Super_R=>.super,
+            gdk.KEY_Shift_L,gdk.KEY_Shift_R,gdk.KEY_Alt_L,gdk.KEY_Alt_R=>.other_modifier,
+            else=>.other,
+        };
+    }
+    fn dictateKeyPressed(_: *gtk.EventControllerKey,key:c_uint,_:c_uint,mods:gdk.ModifierType,self:*InputBar) callconv(.c) c_int {
+        const edge=self.dictate_chord.press(localDictateKey(key),mods.control_mask,mods.super_mask,mods.shift_mask or mods.alt_mask);
+        if(edge==.press){self.owner.dictateLocalShortcut(true);return 1;}
+        if(edge==.cancel){
+            if(self.owner.dictate.shortcut_owner==2)self.owner.dictate.cancel();
+            self.owner.dictateLocalShortcut(false);
+        }
         if(key==gdk.KEY_Escape and dictate_module.string(self.owner.dictate.presentation(),"cancel_id").len>0){self.owner.dictate.cancel();return 1;}return 0;
     }
     fn dictateKeyReleased(_: *gtk.EventControllerKey,key:c_uint,_:c_uint,_:gdk.ModifierType,self:*InputBar) callconv(.c) void {
+        if(self.dictate_chord.release(localDictateKey(key))==.release)self.owner.dictateLocalShortcut(false);
         if(key!=gdk.KEY_Tab and key!=gdk.KEY_ISO_Left_Tab)return;
         const focus=self.host.as(gtk.Window).getFocus() orelse return;
         if(gobject.ext.cast(gtk.TextView,focus))|editor|self.owner.dictate.focus(editor);
     }
     fn generalFocused(_: *gtk.EventControllerFocus,self:*InputBar) callconv(.c) void {self.last_editor=self.text;}
+    fn dictateHeld(gesture:*gtk.GestureLongPress,_:f64,_:f64,self:*InputBar) callconv(.c) void {
+        _=gesture.as(gtk.Gesture).setState(.claimed);
+        if(self.dictate_mode_popup)|old|{old.as(gtk.Widget).unparent();self.dictate_mode_popup=null;}
+        const view=self.owner.dictate.view();const choices=dictate_module.field(view,"output_modes");if(choices!=.array)return;
+        const popup=gtk.Popover.new();popup.as(gtk.Widget).setParent(self.dictate_button.as(gtk.Widget));
+        const box=gtk.Box.new(.vertical,4);
+        for(choices.array.items,0..) |choice,index| {
+            const title=std.fmt.allocPrintSentinel(self.owner.allocator,"{s}{s}",.{if(std.mem.eql(u8,dictate_module.string(view,"output_mode"),dictate_module.string(choice,"mode"))) "✓ " else "",dictate_module.string(choice,"label")},0) catch continue;
+            defer self.owner.allocator.free(title);
+            const button=gtk.Button.newWithLabel(title);button.as(gobject.Object).setData("dictate-output-choice",@ptrFromInt(index+1));
+            _=gtk.Button.signals.clicked.connect(button,*InputBar,dictateModeSelected,self,.{});box.append(button.as(gtk.Widget));
+        }
+        popup.setChild(box.as(gtk.Widget));self.dictate_mode_popup=popup;popup.popup();
+    }
+    fn dictateModeSelected(button:*gtk.Button,self:*InputBar) callconv(.c) void {
+        const ptr=button.as(gobject.Object).getData("dictate-output-choice") orelse return;const index=@intFromPtr(ptr)-1;
+        const choices=dictate_module.field(self.owner.dictate.view(),"output_modes");if(choices!=.array or index>=choices.array.items.len)return;
+        self.owner.dictate.input(.{.type="set_output_mode",.mode=dictate_module.string(choices.array.items[index],"mode")});
+        if(self.dictate_mode_popup)|popup|popup.popdown();
+    }
+    fn refineHeld(gesture:*gtk.GestureLongPress,_:f64,_:f64,self:*InputBar) callconv(.c) void {
+        if(self.pane_id==null)return;
+        _=gesture.as(gtk.Gesture).setState(.claimed);
+        if(self.refine_mode_popup==null){
+            const popup=gtk.Popover.new();popup.as(gtk.Widget).setParent(self.refine_button.as(gtk.Widget));
+            const box=gtk.Box.new(.vertical,4);
+            for([_][:0]const u8{"Refine","Refine + English"},0..) |title,index| {
+                const button=gtk.Button.newWithLabel(title);button.as(gobject.Object).setData("english-mode",if(index==1) @ptrFromInt(1) else null);
+                _=gtk.Button.signals.clicked.connect(button,*InputBar,refineModeSelected,self,.{});box.append(button.as(gtk.Widget));
+            }
+            popup.setChild(box.as(gtk.Widget));self.refine_mode_popup=popup;
+        }
+        self.refine_mode_popup.?.popup();
+    }
+    fn refineModeSelected(button:*gtk.Button,self:*InputBar) callconv(.c) void {
+        const context=self.pane_id orelse return;
+        self.owner.dictate.input(.{.type="set_refine_mode",.context_id=context,.english=button.as(gobject.Object).getData("english-mode")!=null});
+        if(self.refine_mode_popup) |popup| popup.popdown();
+    }
     fn refineClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
         if (self.composing or self.pane_id == null) return;
         const editor = if (self.is_idea) self.last_editor orelse self.text else self.text;
         _ = editor.as(gtk.Widget).grabFocus();
-        self.owner.dictate.refine(editor);
+        const lease=if(self.metadata) |meta| field(meta.value,"generic_lease") else null;
+        const project=if(self.metadata) |meta| field(meta.value,"project") else null;
+        self.owner.dictate.refine(editor,self.pane_id orelse "",lease,project);
     }
     fn editBegin(_: *gtk.TextBuffer, self: *InputBar) callconv(.c) void { self.edit_action_depth += 1; }
     fn editEnd(buffer: *gtk.TextBuffer, self: *InputBar) callconv(.c) void {
@@ -1182,7 +1226,7 @@ pub const InputBar = struct {
         } else {
             self.owner.input(.{ .type = "draft", .window_id = self.id, .text = std.mem.span(text) });
         }
-        if (!self.inquiry_active and self.idea_editor_popup.as(gtk.Widget).getVisible() == 0)
+        if (!self.inquiry_active)
             self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
         self.owner.saveSoon();
     }
@@ -1205,8 +1249,7 @@ pub const InputBar = struct {
     fn keyPressed(keys: *gtk.EventControllerKey, key: c_uint, _: c_uint, mods: gdk.ModifierType, self: *InputBar) callconv(.c) c_int {
         if(self.inquiry_active and key==gdk.KEY_Escape and !self.composing) {self.inquiryCommand("later",null);return 1;}
         if(key==gdk.KEY_Escape and !self.composing) {
-            if(self.idea_editor_popup.as(gtk.Widget).getVisible()!=0) self.idea_editor_popup.popdown()
-            else if(self.host.getActiveSurface()) |surface| { _ = surface.as(gtk.Widget).grabFocus(); }
+            if(self.host.getActiveSurface()) |surface| { _ = surface.as(gtk.Widget).grabFocus(); }
             return 1;
         }
         if (key != gdk.KEY_Return and key != gdk.KEY_KP_Enter) return 0;
@@ -1274,6 +1317,7 @@ pub const InputBar = struct {
             _ = self.editor_overlay.as(gobject.Object).ref();parent.remove(self.editor_overlay.as(gtk.Widget));
             self.body.prepend(self.editor_overlay.as(gtk.Widget));self.editor_overlay.as(gobject.Object).unref();
             self.editor_scroll.setMinContentHeight(30);self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
+            self.editor_overlay.setMeasureOverlay(self.editor_scroll.as(gtk.Widget),0);
             self.inquiry_editor_parent=null;
         }
     }
@@ -1341,7 +1385,7 @@ pub const InputBar = struct {
             if(boolean(value,"editable")) {
                 _ = self.editor_overlay.as(gobject.Object).ref();self.body.remove(self.editor_overlay.as(gtk.Widget));
                 root.append(self.editor_overlay.as(gtk.Widget));self.editor_overlay.as(gobject.Object).unref();
-                self.editor_scroll.setMinContentHeight(96);self.editor_scroll.setMaxContentHeight(144);self.inquiry_editor_parent=root;
+                self.editor_scroll.setMinContentHeight(96);self.editor_scroll.setMaxContentHeight(144);self.editor_overlay.setMeasureOverlay(self.editor_scroll.as(gtk.Widget),1);self.inquiry_editor_parent=root;
             } else {
                 const task=self.inquiryLabel(string(value,"task_preview") orelse "",false);task.setSelectable(1);root.append(task.as(gtk.Widget));
             }
@@ -1470,7 +1514,7 @@ pub const InputBar = struct {
         self.tools.popdown();
         self.owner.input(.{ .type = "older", .pane_id = self.pane_id orelse return });
     }
-    fn quoteClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
+    pub fn quoteClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
         if(self.composing) return;
         const meta = if(self.metadata) |m| m.value else return;
         const lease = field(meta,"generic_lease") orelse return;

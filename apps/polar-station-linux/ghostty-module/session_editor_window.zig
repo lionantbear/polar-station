@@ -9,6 +9,7 @@ const auxiliary = @import("auxiliary_window.zig");
 const preferences = @import("control_center/width_preferences.zig");
 
 pub const State = struct {
+    start_server:?*gtk.Button=null,
     history_mode: ?bool = null,
     detail_cards: ?*gtk.Box = null,
     detail_path: ?*gtk.Label = null,
@@ -124,6 +125,10 @@ pub fn create(comptime C: type, self: *C) void {
     const endpoint = gtk.DropDown.new(null, null);
     endpoint.as(gtk.Widget).setHexpand(1);
     appserver_row.append(endpoint.as(gtk.Widget));
+    const start_server=gtk.Button.newFromIconName("system-shutdown-symbolic");start_server.as(gtk.Widget).setVisible(0);
+    self.editor.start_server=start_server;appserver_row.append(start_server.as(gtk.Widget));
+    _=gtk.Button.signals.clicked.connect(start_server,*C,C.startLocalCodexClicked,self,.{});
+
     const status = label("");
     status.setEllipsize(.end);
     status.setMaxWidthChars(1);
@@ -292,6 +297,7 @@ pub fn create(comptime C: type, self: *C) void {
     manual.setChild(manual_content.as(gtk.Widget));
     body.append(manual.as(gtk.Widget));
     const advanced = gtk.Expander.new("More options");
+    advanced.setExpanded(1);
     const advanced_body = gtk.Box.new(.vertical, 8);
     margins(advanced_body.as(gtk.Widget), 8);
     const yolo = gtk.CheckButton.newWithLabel("YOLO · Skip approvals and sandbox");
@@ -413,7 +419,7 @@ pub fn create(comptime C: type, self: *C) void {
     _ = gtk.Editable.signals.changed.connect(search.as(gtk.Editable), *C, C.historySearchChanged, self, .{});
     _ = gtk.Entry.signals.activate.connect(search, *C, C.historySearchActivated, self, .{});
     inline for (.{ archived, subagents }) |value| _ = gtk.CheckButton.signals.toggled.connect(value, *C, C.historyFilterChanged, self, .{});
-    _ = gtk.CheckButton.signals.toggled.connect(local_cli, *C, C.sessionCreateLocalCLIChanged, self, .{});
+    inline for (.{ local_cli, yolo, auto_restart }) |value| _ = gtk.CheckButton.signals.toggled.connect(value, *C, C.sessionCreateLocalCLIChanged, self, .{});
     _ = gtk.Adjustment.signals.value_changed.connect(history_scroll.getVadjustment(), *C, C.historyViewportChanged, self, .{});
     _ = gtk.Adjustment.signals.changed.connect(history_scroll.getVadjustment(), *C, C.historyViewportChanged, self, .{});
     _ = gtk.ListBox.signals.row_selected.connect(rows, *C, C.historyRowSelected, self, .{});

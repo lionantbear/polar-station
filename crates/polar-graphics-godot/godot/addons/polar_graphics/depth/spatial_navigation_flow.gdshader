@@ -1,8 +1,14 @@
 shader_type spatial;
+stencil_mode read, compare_not_equal, 1;
 render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
 uniform bool animate_flow = true;
 uniform bool semantic_route = true;
 uniform vec4 canvas_region = vec4(0.0,0.0,1.0,1.0);
+void vertex() {
+    float distance = INSTANCE_CUSTOM.r + UV.x * INSTANCE_CUSTOM.g;
+    UV = vec2(distance, UV.y * 2.0 - 1.0);
+    UV2 = vec2(distance / max(INSTANCE_CUSTOM.b, 0.001), 0.0);
+}
 void fragment() {
     if (SCREEN_UV.x < canvas_region.x || SCREEN_UV.y < canvas_region.y || SCREEN_UV.x > canvas_region.z || SCREEN_UV.y > canvas_region.w) discard;
     float phase = fract(UV.x / 5.0 - (animate_flow ? TIME * 0.65 : 0.0));

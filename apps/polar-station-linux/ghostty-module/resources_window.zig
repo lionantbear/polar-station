@@ -16,6 +16,7 @@ pub const Action = union(enum) {
     open_mirror: []const u8,
     get_log: []const u8,
     reload,
+    cancel_file_open,
 };
 
 pub const ActionFn = *const fn (?*anyopaque, Action) void;
@@ -132,6 +133,14 @@ pub const Window = struct {
         auxiliary.present(self.app, self.window.?);
     }
 
+    pub fn prefillFile(self:*Window,target:[]const u8,remote:[]const u8) void {
+        self.ensureWindow();
+        const id=newId(self.allocator) catch return;defer self.allocator.free(id);
+        const local=std.fmt.allocPrint(self.allocator,"~/Polar/remote/{s}",.{id}) catch return;defer self.allocator.free(local);
+        const row=self.createFileRow(.{.id=id,.name="File Mapping",.enabled=true,.execution_target_id=target,.remote_path=remote,.local_path=local},null) catch return;
+        var selected=self.navigation_rows.items.len!=0;self.addNavigation(self.file_section.?,&row.common,&selected) catch return;self.selectDetail(row.common.id);
+        auxiliary.present(self.app,self.window.?);
+    }
     pub fn setBackendAvailable(self: *Window, available: bool) void {
         self.backend_available = available;
         if (self.window == null) return;
@@ -217,6 +226,7 @@ pub const Window = struct {
         if (self.window != null) return;
         const window = auxiliary.create(self.app);
         window.as(gtk.Window).setTitle("Global Resources");
+        _ = gtk.Window.signals.close_request.connect(window.as(gtk.Window), *Window, closeRequested, self, .{});
         window.as(gtk.Window).setIconName("com.polarealm.PolarStation");
         window.as(gtk.Window).setDefaultSize(1000, 700);
         window.as(gtk.Window).setHideOnClose(1);
@@ -719,7 +729,12 @@ pub const Window = struct {
         self.action_fn(self.action_context, .reload);
     }
     fn doneClicked(_: *gtk.Button, self: *Window) callconv(.c) void {
+        self.action_fn(self.action_context,.cancel_file_open);
         self.window.?.as(gtk.Widget).setVisible(0);
+    }
+    fn closeRequested(_: *gtk.Window, self: *Window) callconv(.c) c_int {
+        self.action_fn(self.action_context, .cancel_file_open);
+        return 0;
     }
     fn applyClicked(_: *gtk.Button, self: *Window) callconv(.c) void {
         self.submitApply();
@@ -858,17 +873,19 @@ fn setAndroidActionAvailability(
     );
 }
 
-fn fileRevealClicked(_: *gtk.Button, row: *FileRow) callconv(.c) void {
-    const expanded = expandHome(row.owner.allocator, row.applied_local_path) catch return;
-    defer row.owner.allocator.free(expanded);
-    const owned = row.owner.allocator.dupeZ(u8, expanded) catch return;
-    defer row.owner.allocator.free(owned);
-    const file = gio.File.newForPath(owned);
-    defer @as(*gobject.Object, @ptrCast(@alignCast(file))).unref();
-    const uri = file.getUri();
-    defer glib.free(uri);
-    _ = gio.AppInfo.launchDefaultForUri(uri, null, null);
+pub fn revealLocalFile(allocator:std.mem.Allocator,path:[]const u8) bool {
+    const expanded=expandHome(allocator,path) catch return false;defer allocator.free(expanded);
+    const parent=std.fs.path.dirname(expanded) orelse return false;
+    return openLocalPath(allocator,parent);
 }
+pub fn openLocalPath(allocator:std.mem.Allocator,path:[]const u8) bool {
+    const expanded=expandHome(allocator,path) catch return false;defer allocator.free(expanded);
+    const owned=allocator.dupeZ(u8,expanded) catch return false;defer allocator.free(owned);
+    const file=gio.File.newForPath(owned);defer @as(*gobject.Object,@ptrCast(@alignCast(file))).unref();
+    const uri=file.getUri();defer glib.free(uri);
+    return gio.AppInfo.launchDefaultForUri(uri,null,null)!=0;
+}
+fn fileRevealClicked(_: *gtk.Button,row:*FileRow) callconv(.c) void {if(!openLocalPath(row.owner.allocator,row.applied_local_path))row.owner.showError("The system viewer could not open this file.");}
 
 fn fileRestartClicked(_: *gtk.Button, row: *FileRow) callconv(.c) void {
     row.owner.action_fn(row.owner.action_context, .{ .restart = row.common.id });

@@ -24,3 +24,18 @@ pub use reconciliation::{
     ResourceUpdate,
 };
 pub use validation::validate_catalog;
+
+mod file_access;
+pub use file_access::{image_path, resolve_file, resolve_reference_path, FileAccess};
+
+mod file_reference;
+pub use file_reference::{
+    file_link_rules, parse_file_reference, select_opener, FileLocation, FileReference,
+    FileTypeRule, OpenStrategy,
+};
+
+mod file_open;
+pub use file_open::{FileOpenEffect, FileOpenFlow, FileOpenInput, FileOrigin};
+
+mod reference_source;
+pub use reference_source::{complete_source_file_reference, source_file_references, source_file_search_terms};

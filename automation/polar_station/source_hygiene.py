@@ -10,6 +10,18 @@ from pathlib import PurePosixPath
 import re
 
 
+def path_findings(relative: str) -> list[str]:
+    """Known first-party test paths, including binary fixtures and UID sidecars."""
+    path = PurePosixPath(relative)
+    if not relative.startswith(('apps/', 'crates/', 'automation/')):
+        return []
+    if any(part in {'vendor', 'upstream', 'licenses'} for part in path.parts):
+        return []
+    if 'test-fixtures' in path.parts or path.name.endswith(('_selftest.gd', '_selftest.gd.uid')):
+        return ['private test path']
+    return []
+
+
 def findings(relative: str, source: str) -> list[str]:
     path = PurePosixPath(relative)
     if not relative.startswith(('apps/', 'crates/', 'automation/')):
@@ -18,6 +30,8 @@ def findings(relative: str, source: str) -> list[str]:
         return []
     suffix = path.suffix
     results = []
+    if path.name.endswith(('_selftest.gd', '_selftest.gd.uid')):
+        results.append('first-party headless scene test runner or sidecar')
     if suffix == '.patch':
         # Context may contain original upstream tests. Only newly added lines
         # are first-party patch content, and only declarations are rejected.
@@ -36,7 +50,7 @@ def findings(relative: str, source: str) -> list[str]:
     patterns = {
         '.rs': (r'^\s*#\[\s*(?:test|[\w:]+::test)\s*\]',
                 r'^\s*#\[\s*cfg\(\s*test\s*\)\s*\]',
-                r'^\s*#\[\s*cfg\(\s*all\(\s*test\s*[,)]'),
+                r'^\s*#\[\s*cfg\(\s*all\(\s*(?:(?:\w+\s*=\s*"[^"]*"|\w+)\s*,\s*)*test\s*[,)]'),
         '.zig': (r'^\s*test(?:\s+"[^"\n]*")?\s*\{',),
         '.swift': (r'^\s*(?:@testable\s+)?import\s+(?:XCTest|Testing)\b',
                    r'^\s*@Test(?:\b|\()'),

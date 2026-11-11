@@ -1,12 +1,16 @@
 //! Durable audio acknowledgements and owner isolation using the shared SQLite runtime.
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use async_trait::async_trait;
 use polar_dictate::{AudioBlock, CaptureState, Change, DictateStore, Recording, SaveReceipt};
 use polar_sqlite_runtime::{SqliteDurability, SqliteMigration, SqliteRuntime, SqliteRuntimeConfig};
 use polar_storage_migration::{MigrationDescriptor, StorageBackend, TransactionMode};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
+mod history;
+const DELETED_IMPORTS_SCHEMA: &str = include_str!("../migrations/004_deleted_imports.sql");
+const LEGACY_RETENTION_SCHEMA: &str = include_str!("../migrations/003_legacy_retention.sql");
+const HISTORY_SCHEMA: &str = include_str!("../migrations/002_history.sql");
 const SCHEMA: &str = include_str!("../migrations/001_recordings.sql");
 #[derive(Clone)]
 pub struct SqliteDictateStore {
@@ -27,19 +31,60 @@ impl SqliteDictateStore {
                 reader_workers: 1,
                 ..Default::default()
             },
-            vec![SqliteMigration {
-                descriptor: MigrationDescriptor {
-                    backend: StorageBackend::Sqlite,
-                    component: "polar-dictate".into(),
-                    version: 1,
-                    name: "recordings".into(),
-                    path: "polar-dictate/001_recordings.sql".into(),
-                    sha256: format!("{:x}", Sha256::digest(SCHEMA)),
-                    transaction_mode: TransactionMode::Required,
+            vec![
+                SqliteMigration {
+                    descriptor: MigrationDescriptor {
+                        backend: StorageBackend::Sqlite,
+                        component: "polar-dictate".into(),
+                        version: 1,
+                        name: "recordings".into(),
+                        path: "polar-dictate/001_recordings.sql".into(),
+                        sha256: format!("{:x}", Sha256::digest(SCHEMA)),
+                        transaction_mode: TransactionMode::Required,
+                    },
+                    sql: SCHEMA,
+                    post_apply: None,
                 },
-                sql: SCHEMA,
-                post_apply: None,
-            }],
+                SqliteMigration {
+                    descriptor: MigrationDescriptor {
+                        backend: StorageBackend::Sqlite,
+                        component: "polar-dictate".into(),
+                        version: 2,
+                        name: "history".into(),
+                        path: "polar-dictate/002_history.sql".into(),
+                        sha256: format!("{:x}", Sha256::digest(HISTORY_SCHEMA)),
+                        transaction_mode: TransactionMode::Required,
+                    },
+                    sql: HISTORY_SCHEMA,
+                    post_apply: Some(history::backfill),
+                },
+                SqliteMigration {
+                    descriptor: MigrationDescriptor {
+                        backend: StorageBackend::Sqlite,
+                        component: "polar-dictate".into(),
+                        version: 3,
+                        name: "legacy-retention".into(),
+                        path: "polar-dictate/003_legacy_retention.sql".into(),
+                        sha256: format!("{:x}", Sha256::digest(LEGACY_RETENTION_SCHEMA)),
+                        transaction_mode: TransactionMode::Required,
+                    },
+                    sql: LEGACY_RETENTION_SCHEMA,
+                    post_apply: None,
+                },
+                SqliteMigration {
+                    descriptor: MigrationDescriptor {
+                        backend: StorageBackend::Sqlite,
+                        component: "polar-dictate".into(),
+                        version: 4,
+                        name: "deleted-imports".into(),
+                        path: "polar-dictate/004_deleted_imports.sql".into(),
+                        sha256: format!("{:x}", Sha256::digest(DELETED_IMPORTS_SCHEMA)),
+                        transaction_mode: TransactionMode::Required,
+                    },
+                    sql: DELETED_IMPORTS_SCHEMA,
+                    post_apply: None,
+                },
+            ],
         )?;
         Ok(Self { db, owner })
     }
@@ -71,10 +116,12 @@ fn update(db: &Connection, owner: &str, record: &Recording) -> Result<()> {
         )? == 1,
         "dictate.recording_missing"
     );
+    history::index_record(db, owner, record)?;
     Ok(())
 }
 fn all(db: &Connection, owner: &str) -> Result<Vec<Recording>> {
-    let mut statement = db.prepare("SELECT payload FROM dictate_recording WHERE owner=?1")?;
+    let mut statement =
+        db.prepare("SELECT payload FROM dictate_recording WHERE owner=?1 AND recoverable=1")?;
     let values = statement
         .query_map([owner], |r| r.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -92,9 +139,14 @@ impl DictateStore for SqliteDictateStore {
             recording.created_at_ms,
             recording.is_test,
         )?;
+        fresh.set_reference(recording.reference.clone())?;
+        fresh.set_project(recording.project.clone())?;
         // These are trusted Host configuration snapshots, not frontend state.
         fresh.transcription_mode = recording.transcription_mode;
-        let settings = polar_dictate::VoiceSettings { glossary: recording.glossary.clone(), ..Default::default() };
+        let settings = polar_dictate::VoiceSettings {
+            glossary: recording.glossary.clone(),
+            ..Default::default()
+        };
         settings.validate()?;
         fresh.glossary = recording.glossary.clone();
         if recording.revision == 2 {
@@ -103,6 +155,7 @@ impl DictateStore for SqliteDictateStore {
                 context: recording.context.clone(),
             })?;
         }
+        fresh.output_mode = recording.output_mode;
         ensure!(
             serde_json::to_value(&fresh)? == serde_json::to_value(&recording)?,
             "dictate.invalid_initial_record"
@@ -113,12 +166,16 @@ impl DictateStore for SqliteDictateStore {
                 params![owner, recording.id], |r| r.get::<_, String>(0)).optional()? {
                 let existing: Recording = serde_json::from_str(&payload)?;
                 ensure!(existing.created_at_ms == recording.created_at_ms && existing.is_test == recording.is_test
-                    && existing.context_digest == recording.context_digest,
+                    && existing.context_digest == recording.context_digest && existing.reference == recording.reference
+                    && existing.project == recording.project,
                     "dictate.recording_id_conflict");
                 return Ok(existing);
             }
+            let text_exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM dictate_text_edit WHERE owner=?1 AND id=?2)",params![owner,recording.id],|r|r.get(0))?;
+            ensure!(!text_exists,"dictate.recording_id_conflict");
             tx.execute("INSERT INTO dictate_recording(owner,id,created_ms,capturing,payload) VALUES(?1,?2,?3,1,?4)",
                 params![owner, recording.id, i64::try_from(recording.created_at_ms)?, serde_json::to_string(&recording)?])?;
+            history::index_record(tx,&owner,&recording)?;
             Ok(recording)
         })().map_err(sql_error)).await?)
     }
@@ -131,11 +188,13 @@ impl DictateStore for SqliteDictateStore {
     }
     async fn usage(&self) -> Result<polar_dictate::StorageUsage> {
         let owner = self.owner.clone();
-        let (recordings,audio_bytes)=self.db.read(move |db| {
-            db.query_row("SELECT COUNT(*),COALESCE(SUM(CASE WHEN json_extract(payload,'$.audio_expired')=0 THEN json_extract(payload,'$.saved_samples')*2 ELSE 0 END),0) FROM dictate_recording WHERE owner=?1", [owner], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?)))
+        let (recordings,text_edits,audio_bytes,history_items)=self.db.read(move |db|{
+            db.query_row("SELECT (SELECT COUNT(*) FROM dictate_recording WHERE owner=?1),(SELECT COUNT(*) FROM dictate_text_edit WHERE owner=?1),(SELECT COALESCE(SUM(audio_bytes),0) FROM dictate_recording WHERE owner=?1),((SELECT COUNT(*) FROM dictate_recording WHERE owner=?1 AND visible=1)+(SELECT COUNT(*) FROM dictate_text_edit WHERE owner=?1))",[owner],|row|Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,i64>(3)?)))
         }).await?;
         Ok(polar_dictate::StorageUsage {
             recordings: u64::try_from(recordings)?,
+            text_edits: u64::try_from(text_edits)?,
+            history_items: u64::try_from(history_items)?,
             audio_bytes: u64::try_from(audio_bytes)?,
         })
     }
@@ -222,6 +281,9 @@ impl DictateStore for SqliteDictateStore {
         self.db
             .transaction(move |tx| {
                 (|| -> Result<_> {
+                    if history::delete_text(tx, &owner, &id)? {
+                        return Ok(());
+                    }
                     let record = get(tx, &owner, &id)?;
                     ensure!(
                         record.capture != CaptureState::Recording
@@ -233,6 +295,7 @@ impl DictateStore for SqliteDictateStore {
                                 .any(|s| s.state == polar_dictate::SegmentState::Running),
                         "dictate.stop_before_delete"
                     );
+                    history::mark_deleted(tx, &owner, &id)?;
                     tx.execute(
                         "DELETE FROM dictate_audio_block WHERE owner=?1 AND recording_id=?2",
                         params![owner, id],
@@ -267,6 +330,7 @@ impl DictateStore for SqliteDictateStore {
                             count += 1;
                         }
                     }
+                    count += history::recover_texts(tx, &owner)?;
                     Ok(count)
                 })()
                 .map_err(sql_error)
@@ -274,17 +338,74 @@ impl DictateStore for SqliteDictateStore {
             .await?)
     }
     async fn expire(&self, now_ms: u64) -> Result<usize> {
+        Ok(self
+            .cleanup_history(now_ms, polar_dictate::RetentionPolicy::default(), true)
+            .await?
+            .deleted as usize)
+    }
+    async fn text_create(
+        &self,
+        r: polar_dictate::TextEditRecord,
+    ) -> Result<polar_dictate::TextEditRecord> {
+        self.create_text(r).await
+    }
+    async fn text_finish(
+        &self,
+        id: &str,
+        result: Result<String, String>,
+    ) -> Result<polar_dictate::TextEditRecord> {
+        self.finish_text(id, result).await
+    }
+    async fn item(&self, id: &str) -> Result<polar_dictate::HistoryItem> {
+        self.get_item(id).await
+    }
+    async fn item_change(
+        &self,
+        id: &str,
+        change: polar_dictate::ItemChange,
+    ) -> Result<polar_dictate::HistoryItem> {
+        self.change_item(id, change).await
+    }
+    async fn history(
+        &self,
+        cursor: Option<polar_dictate::HistoryCursor>,
+        limit: u32,
+    ) -> Result<polar_dictate::HistoryPage> {
+        self.history_page(cursor, limit).await
+    }
+    async fn cleanup(
+        &self,
+        now_ms: u64,
+        policy: polar_dictate::RetentionPolicy,
+        apply: bool,
+    ) -> Result<polar_dictate::CleanupReport> {
+        self.cleanup_history(now_ms, policy, apply).await
+    }
+    async fn import_legacy(
+        &self,
+        entries: Vec<polar_dictate::LegacyInput>,
+    ) -> Result<polar_dictate::ImportReport> {
+        self.import_inputs(entries).await
+    }
+    async fn finish_legacy_import(&self) -> Result<()> {
+        self.release_legacy_barrier().await
+    }
+    async fn import_issues(
+        &self,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Vec<polar_dictate::LegacyInput>> {
         let owner = self.owner.clone();
-        Ok(self.db.transaction(move |tx| (|| -> Result<_> {
-            let mut count = 0;
-            for mut record in all(tx,&owner)? {
-                if record.audio_can_expire(now_ms) {
-                    record.apply(Change::ExpireAudio { now_ms })?;
-                    tx.execute("DELETE FROM dictate_audio_block WHERE owner=?1 AND recording_id=?2",params![owner,record.id])?;
-                    update(tx,&owner,&record)?; count += 1;
-                }
-            }
-            Ok(count)
-        })().map_err(sql_error)).await?)
+        let payloads=self.db.read(move |db|{
+            let mut stmt=db.prepare("SELECT payload FROM dictate_legacy_import WHERE owner=?1 AND conflict=1 ORDER BY id,digest LIMIT ?2 OFFSET ?3")?;
+            let rows=stmt.query_map(params![owner,limit.clamp(1,100),offset],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>();rows
+        }).await?;
+        Ok(payloads
+            .iter()
+            .map(|s| serde_json::from_str(s))
+            .collect::<Result<_, _>>()?)
+    }
+    async fn pending(&self) -> Result<Vec<Recording>> {
+        self.pending_records().await
     }
 }

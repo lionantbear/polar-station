@@ -171,7 +171,7 @@ struct Partition {
 
 impl Partition {
     fn read_records(&self) -> Result<Vec<ValueRecord>> {
-        
+        ;
         decode_records(facts_slice(&self.reference, &self.facts)?)
     }
 }
@@ -194,7 +194,7 @@ fn pin_facts(store: &LocalCas, reference: &PartitionRef) -> Result<Arc<memmap2::
 }
 fn verify_facts(reference: &PartitionRef, bytes: &[u8]) -> Result<()> {
     let facts = facts_slice(reference, bytes)?;
-    
+    ;
     if ObjectId::for_bytes(facts) != reference.facts.id {
         return Err(Error::Integrity);
     }
@@ -631,7 +631,7 @@ impl ValueSnapshot {
                     }
                 }
             }
-            
+            ;
             if !dirty {
                 continue;
             }
@@ -713,7 +713,7 @@ impl ValueSnapshot {
         #[cfg(any(test, feature = "query-metrics"))]
         write_metrics::record("open_pin", started.elapsed(), 0, 0);
         drop(_acquisition);
-        
+        ;
         #[cfg(any(test, feature = "query-metrics"))]
         let started = std::time::Instant::now();
         let root = if local_native {

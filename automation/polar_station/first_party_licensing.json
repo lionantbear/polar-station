@@ -44,7 +44,7 @@
     "polar-storage-migration",
     "polar-storage-testkit",
     "polar-telegram",
-    "polar-text-edit",
+    "polar-transcreation",
     "polar-tmux",
     "polar-tmux-core",
     "polar-tmux-protocol",
@@ -58,5 +58,13 @@
     "polar-vault-store-sqlite",
     "polar-voice",
     "polar-voice-provider-codex"
-  ]
+  ],
+  "package_provenance": {
+    "polar-transcreation": {
+      "renamed_from": "polar-text-edit",
+      "rename_commit": "23795493647f0bc9505943763069b24301a44006",
+      "historical_reviewed_source_head": "616e664b46b31103bb8fd27bf0601761bb601309",
+      "basis": "Carry forward existing owner-approved first-party license for renamed package; dependencies retain their individual licenses."
+    }
+  }
 }

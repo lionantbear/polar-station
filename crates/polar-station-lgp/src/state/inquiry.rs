@@ -377,6 +377,9 @@ impl Engine {
     pub(super) fn inquiry_view_current(&self, key:&Key, token:Option<&str>) -> bool {
         !self.inquiries.dismissed.contains(&key.disposition()) && token.is_none_or(|token| self.inquiries.items.get(key).and_then(|i|i.routing.as_ref()).and_then(|r|r.dispatch.as_ref()).is_some_and(|d|d.token==token))
     }
+    pub(super) fn inquiry_next_deadline_ms(&self)->Option<u64> {
+        self.inquiries.items.values().filter_map(|item|item.routing.as_ref()?.dispatch.as_ref()?.native_deadline_ms).min()
+    }
     pub(super) fn inquiry_expire_native(&mut self, now:u64) {
         let expired=self.inquiries.items.iter().filter_map(|(key,item)|item.routing.as_ref()?.dispatch.as_ref()?.native_deadline_ms.filter(|deadline|*deadline<=now).map(|_|key.clone())).collect::<Vec<_>>();
         for key in expired {self.inquiry_failed(&key,"The target terminal did not become ready. Task not sent.");}

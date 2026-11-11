@@ -1,6 +1,5 @@
-#!/bin/bash
-set -euo pipefail
-trap 'rc=$?; printf "Station build failed at line %s (exit %s)\n" "$LINENO" "$rc" >&2; exit "$rc"' ERR
+#!/bin/sh
+set -eu
 
 usage() {
     echo "usage: build_macos.sh [--configuration Debug|Release] [--ghostty-checkout PATH]" >&2
@@ -34,19 +33,17 @@ toolchain_wrappers="$repo_root/automation/polar_station/toolchain_wrappers"
 expected_commit=332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28
 toolchain_root=${POLAR_STATION_TOOLCHAIN_ROOT:-"$HOME/.cache/polar-tmux/toolchains"}
 pinned_zig="$toolchain_root/zig-aarch64-macos-0.15.2/zig"
-compatible_macos_sdk=$(/usr/bin/xcrun --sdk macosx --show-sdk-path)
+compatible_macos_sdk=/Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk
 build_source=
 output_root="$repo_root/target/polar-station-macos/$configuration"
 output_app="$output_root/Polar Station.app"
-CARGO_TARGET_DIR="$repo_root/target"
-export CARGO_TARGET_DIR
 
 [ -d "$ghostty_checkout/.git" ] || [ -f "$ghostty_checkout/.git" ] || {
-    echo "Pinned Ghostty checkout is missing: $ghostty_checkout" >&2
+    echo "Controlled Ghostty checkout is missing: $ghostty_checkout" >&2
     exit 66
 }
 [ "$(git -C "$ghostty_checkout" rev-parse HEAD)" = "$expected_commit" ] || {
-    echo "Ghostty checkout is not pinned to v1.3.1." >&2
+    echo "Controlled Ghostty checkout is not pinned to v1.3.1." >&2
     exit 67
 }
 
@@ -91,12 +88,12 @@ if [ -z "$macos_sdk" ] && [ -d "$compatible_macos_sdk" ]; then
     macos_sdk=$compatible_macos_sdk
 fi
 [ -n "$macos_sdk" ] && [ -d "$macos_sdk" ] || {
-    echo "Polar Station requires an installed macOS SDK or POLAR_STATION_MACOS_SDK. SDK compatibility must be validated by the build." >&2
+    echo "Polar Station requires a Zig-compatible macOS 15 SDK at $compatible_macos_sdk or POLAR_STATION_MACOS_SDK." >&2
     exit 71
 }
 SDKROOT="$macos_sdk"
 POLAR_STATION_MACOS_SDK="$macos_sdk"
-MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-13.0}
+MACOSX_DEPLOYMENT_TARGET=13.0
 PATH="$toolchain_wrappers:$PATH"
 export PATH SDKROOT POLAR_STATION_MACOS_SDK MACOSX_DEPLOYMENT_TARGET
 optimize=Debug
@@ -114,9 +111,8 @@ rustup target list --installed | grep -Fxq "$rust_target" || {
     echo "Polar Station requires installed Rust target $rust_target." >&2
     exit 78
 }
-mkdir -p "$repo_root/target/build-evidence"
-cargo build --message-format=json-render-diagnostics --locked $host_flags --manifest-path "$repo_root/Cargo.toml" \
-    --target "$rust_target" -p polar-tmux --bin polar-tmux --lib | tee "$repo_root/target/build-evidence/cargo-host.jsonl"
+cargo build --locked $host_flags --manifest-path "$repo_root/Cargo.toml" --target-dir "$repo_root/target" \
+    --target "$rust_target" -p polar-tmux --bin polar-tmux --lib
 client_dir="$repo_root/target/polar-station-client/current"
 mkdir -p "$client_dir"
 cp "$repo_root/target/$rust_target/$host_profile/libpolar_tmux.a" \
@@ -125,28 +121,16 @@ POLAR_STATION_CLIENT_LIB_DIR="$client_dir"
 export POLAR_STATION_CLIENT_LIB_DIR
 (
     cd "$build_source"
-    "$zig" build -Demit-macos-app=false -Dxcframework-target=native -Doptimize="$optimize"
+    "$zig" build -Dpolar-tmux=true -Demit-macos-app=false -Dxcframework-target=native -Doptimize="$optimize"
     # The pinned build.nu has no architecture override. Use the same project,
     # scheme and output contract directly, without modifying upstream sources.
     /usr/bin/env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
-        DEVELOPER_DIR="${DEVELOPER_DIR:-$(/usr/bin/xcode-select -p)}" \
         /usr/bin/xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
         -configuration "$configuration" "SYMROOT=$build_source/macos/build" \
         ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
         ENABLE_CODE_COVERAGE=NO CLANG_ENABLE_CODE_COVERAGE=NO \
-        CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build
+        CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 )
-
-# Retain actual modified build source before the disposable clone is removed.
-# Local files only: caller separately controls any later distribution.
-if [ -n "${POLAR_STATION_NATIVE_SOURCE_EVIDENCE:-}" ]; then
-    mkdir -p "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE"
-    python3 "$repo_root/automation/polar_station/capture_native_source.py" \
-        --tree "$build_source" --component ghostty \
-        --source-commit "$(git -C "$repo_root" rev-parse HEAD)" \
-        --build-script "$repo_root/automation/polar_station/build_macos.sh" \
-        --output "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE/ghostty-built-source.tar.gz"
-fi
 
 app="$build_source/macos/build/$configuration/Polar Station.app"
 [ -d "$app" ] || {
@@ -164,23 +148,12 @@ else
 fi
 # Version the exact desktop/Host pair inside the signed artifact; rollback
 # consumes this bundle's helper rather than rebuilding from a checkout.
-source_commit=${POLAR_STATION_SOURCE_COMMIT:-}
-if [ -z "$source_commit" ] && [ -e "$repo_root/.git" ]; then
-    source_commit=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)
-fi
-if [ -z "$source_commit" ]; then
-    # Exported tarballs have no private Git history. Identify the export manifest.
-    [ -f "$repo_root/PUBLIC_SOURCE_MANIFEST.json" ] || {
-        echo "Set POLAR_STATION_SOURCE_COMMIT for a source tree without Git or export manifest." >&2
-        exit 81
-    }
-    source_commit="export-$(shasum -a 256 "$repo_root/PUBLIC_SOURCE_MANIFEST.json" | awk '{print $1}')"
-fi
-case "$source_commit" in
-    *[!A-Za-z0-9._-]*|'') echo "Invalid source identity" >&2; exit 81 ;;
-esac
+source_commit=$(python3 "$repo_root/automation/polar_station/public_source_identity.py" "$repo_root" --revision)
+source_fingerprint=$(python3 "$repo_root/automation/polar_station/public_source_identity.py" "$repo_root" --fingerprint)
 /usr/libexec/PlistBuddy -c 'Delete :PolarStationSourceCommit' "$info" >/dev/null 2>&1 || true
 /usr/libexec/PlistBuddy -c "Add :PolarStationSourceCommit string $source_commit" "$info"
+/usr/libexec/PlistBuddy -c 'Delete :PolarStationSourceStateSHA256' "$info" >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Add :PolarStationSourceStateSHA256 string $source_fingerprint" "$info"
 /usr/libexec/PlistBuddy -c 'Delete :PolarStationDesktopContract' "$info" >/dev/null 2>&1 || true
 /usr/libexec/PlistBuddy -c 'Add :PolarStationDesktopContract integer 1' "$info"
 icon_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist")
@@ -207,21 +180,29 @@ chmod 0755 "$helpers/polar-tmux"
 
 graphics=${POLAR_STATION_GRAPHICS_BUNDLE:-"$repo_root/target/polar-station-macos/graphics"}
 [ -f "$graphics/libgodot.dylib" ] || {
-    echo "Run bash automation/polar_station/build_macos_graphics.sh before building Station." >&2
+    echo "Run just polar-station-macos-graphics-build before building Station." >&2
     exit 80
 }
 python3 "$repo_root/automation/polar_station/graphics_resources.py" "$graphics" \
     --expected "$(python3 "$repo_root/automation/polar_station/graphics_resources.py" "$graphics")" \
     --destination "$app/Contents/Resources/graphics"
 
-# Ad-hoc signing is the free default: it is not Developer ID signing or
-# notarization. Gatekeeper approval may still be needed on downloaded artifacts.
-identity=${POLAR_STATION_CODESIGN_IDENTITY:--}
-if [ "$identity" != - ]; then
-    /usr/bin/security find-identity -v -p codesigning | grep -F -- "$identity" >/dev/null || {
-        echo "Requested signing identity is unavailable: $identity" >&2
+# Ad-hoc signing is explicit local-development opt-in, not trusted distribution.
+requested_identity=${POLAR_STATION_CODESIGN_IDENTITY:-}
+if [ "$requested_identity" = - ]; then
+    identity=-
+else
+    identity_inventory=$(/usr/bin/security find-identity -v -p codesigning)
+    if [ -n "$requested_identity" ]; then
+        identity_line=$(printf '%s\n' "$identity_inventory" | /usr/bin/awk -v requested="$requested_identity" 'index($0, requested) { print; exit }')
+    else
+        identity_line=$(printf '%s\n' "$identity_inventory" | /usr/bin/awk '/"Apple Development:/ { print; exit }')
+    fi
+    [ -n "$identity_line" ] || {
+        echo "No requested signing identity is available. For local development, explicitly set POLAR_STATION_CODESIGN_IDENTITY=-." >&2
         exit 70
     }
+    identity=$(printf '%s\n' "$identity_line" | /usr/bin/awk '{print $2}')
 fi
 /usr/bin/codesign --force --identifier com.polarealm.polar-station.host \
     --options runtime --entitlements "$repo_root/automation/polar_station/host-macos.entitlements" \
@@ -234,8 +215,6 @@ find "$app/Contents/Resources/graphics" -type f -print0 | while IFS= read -r -d 
 done
 /usr/bin/codesign --force --deep --options runtime \
     --preserve-metadata=identifier,entitlements --sign "$identity" "$app"
-# Free ad-hoc trial bundles have no Team ID for library validation. Apply the
-# exception only to their main executable; never to Developer ID builds.
 if [ "$identity" = - ]; then
     python3 "$repo_root/automation/polar_station/sign_trial_main.py" "$app"
 fi
@@ -243,14 +222,7 @@ fi
 # Deep bundle signing must preserve the independently signed Host entitlement.
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)
 printf '%s' "$host_entitlements" | python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
-# An ad-hoc designated requirement may be only a cdhash. Check the actual
-# signed Identifier field instead of expecting it in the requirement expression.
-host_signature=$(/usr/bin/codesign --display --verbose=2 "$helpers/polar-tmux" 2>&1)
-printf '%s\n' "$host_signature" | /usr/bin/grep -Fx 'Identifier=com.polarealm.polar-station.host' >/dev/null || {
-    printf '%s\n' "$host_signature" >&2
-    echo 'Signed Host identifier mismatch.' >&2
-    exit 81
-}
+/usr/bin/codesign -d -r- "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -q 'com.polarealm.polar-station.host'
 
 mkdir -p "$output_root"
 if [ -e "$output_app" ]; then

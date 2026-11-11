@@ -28,7 +28,7 @@ use crate::tool_bridge::{
 use anyhow::Context;
 use async_trait::async_trait;
 use base64::Engine;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{FutureExt, SinkExt, StreamExt};
 use polar_inhouse_contract::{
     InhouseAgentRunner, InhouseAgentTurnOutcome, InhouseAgentTurnOutput, InhouseBackendBusyError,
     InhouseBackendCapabilityNegotiation, InhouseBackendTurnRequest, InhouseCanonicalThreadMessage,
@@ -1215,6 +1215,13 @@ pub trait AdamProviderConnector: Send + Sync {
         Ok(None)
     }
 
+    async fn prepare_execution(
+        &self,
+        _context: &AdamTurnContext,
+    ) -> Result<polar_inhouse_contract::InhousePreparationOutcome, AdamBackendError> {
+        Ok(polar_inhouse_contract::InhousePreparationOutcome::Unsupported)
+    }
+
     async fn run_turn(
         &self,
         request: AdamProviderRequest,
@@ -1497,10 +1504,14 @@ impl AdamAgentRunner {
 }
 
 fn canonical_responses_input(messages: &[InhouseCanonicalThreadMessage]) -> Value {
-    json!(messages.iter().map(|message| json!({"role": message.role, "content": message.text})).collect::<Vec<_>>())
+    json!(messages
+        .iter()
+        .map(|message| json!({"role": message.role, "content": message.text}))
+        .collect::<Vec<_>>())
 }
 
-type OpenAiSocket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+type OpenAiSocket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 struct OpenAiConversationCheckpoint {
     session_id: String,
@@ -1520,6 +1531,49 @@ struct OpenAiConnector {
 }
 
 impl OpenAiConnector {
+    fn socket_available(entry: &mut ReusableOpenAiSocket) -> bool {
+        loop {
+            match entry.socket.next().now_or_never() {
+                None => return true,
+                Some(Some(Ok(Message::Ping(_) | Message::Pong(_)))) => {}
+                _ => return false,
+            }
+        }
+    }
+    fn authorization_key(credential: &AdamOAuthCredential, context: &AdamTurnContext) -> String {
+        format!(
+            "{:x}",
+            Sha256::digest(format!(
+                "{}:{}:{:?}",
+                credential.authorization_header(),
+                context.owner_id,
+                credential.account_id
+            ))
+        )
+    }
+    fn connection_request(
+        &self,
+        credential: &AdamOAuthCredential,
+        context: &AdamTurnContext,
+    ) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, AdamBackendError> {
+        let websocket_url = openai_responses_websocket_url(&self.config.openai_base_url)
+            .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
+        let client_request_id = format!("{}:{}", context.thread_id, context.request_message_id);
+        let headers = build_openai_headers(&self.config, credential, context, &client_request_id);
+        let mut websocket_request = websocket_url
+            .into_client_request()
+            .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
+        for (name, value) in headers {
+            websocket_request.headers_mut().insert(
+                HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|err| AdamBackendError::Transport(err.to_string()))?,
+                HeaderValue::from_str(&value)
+                    .map_err(|err| AdamBackendError::Transport(err.to_string()))?,
+            );
+        }
+
+        Ok(websocket_request)
+    }
     fn new(
         config: OpenAiConfig,
         credential_resolver: Arc<dyn AdamOAuthCredentialResolver>,
@@ -1534,52 +1588,89 @@ impl OpenAiConnector {
 
 #[async_trait]
 impl AdamProviderConnector for OpenAiConnector {
+    async fn prepare_execution(
+        &self,
+        context: &AdamTurnContext,
+    ) -> Result<polar_inhouse_contract::InhousePreparationOutcome, AdamBackendError> {
+        use polar_inhouse_contract::InhousePreparationOutcome;
+        let Ok(mut slot) = self.socket.try_lock() else {
+            return Ok(InhousePreparationOutcome::Busy);
+        };
+        let credential = self
+            .credential_resolver
+            .resolve_adam_oauth_credential(&self.config)
+            .await?;
+        let authorization_key = Self::authorization_key(&credential, context);
+        if slot.as_mut().is_some_and(|entry| {
+            entry.authorization_key == authorization_key && Self::socket_available(entry)
+        }) {
+            return Ok(InhousePreparationOutcome::Prepared);
+        }
+        let request = self.connection_request(&credential, context)?;
+        let started = std::time::Instant::now();
+        let (socket, _) = tokio::time::timeout(
+            Duration::from_secs(self.config.websocket_timeout_secs),
+            tokio_tungstenite::connect_async(request),
+        )
+        .await
+        .map_err(|_| AdamBackendError::Transport("Adam preparation timed out".into()))?
+        .map_err(openai_websocket_connect_error)?;
+        *slot = Some(ReusableOpenAiSocket {
+            authorization_key,
+            socket,
+            checkpoint: None,
+        });
+        tracing::info!(target:"polar_adam::latency",operation_id=context.request_message_id,event="adam.execution_prepared",work_us=started.elapsed().as_micros() as u64);
+        Ok(InhousePreparationOutcome::Prepared)
+    }
+
     async fn run_turn(
         &self,
         request: AdamProviderRequest,
         sink: &mut dyn AdamProviderEventSink,
     ) -> Result<AdamProviderTurnEnd, AdamBackendError> {
+        let timing = std::time::Instant::now();
+        let operation_id = &request.turn_context.request_message_id;
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.connector_enter");
         let credential = self
             .credential_resolver
             .resolve_adam_oauth_credential(&self.config)
             .await?;
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.auth_ready",work_us=timing.elapsed().as_micros() as u64);
         let timeout = Duration::from_secs(self.config.websocket_timeout_secs);
-        let websocket_url = openai_responses_websocket_url(&self.config.openai_base_url)
-            .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
-        let client_request_id = format!(
-            "{}:{}",
-            request.turn_context.thread_id, request.turn_context.request_message_id
-        );
-        let headers = build_openai_headers(
-            &self.config,
-            &credential,
-            &request.turn_context,
-            &client_request_id,
-        );
-        let mut websocket_request = websocket_url
-            .into_client_request()
-            .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
-        for (name, value) in headers {
-            websocket_request.headers_mut().insert(
-                HeaderName::from_bytes(name.as_bytes())
-                    .map_err(|err| AdamBackendError::Transport(err.to_string()))?,
-                HeaderValue::from_str(&value)
-                    .map_err(|err| AdamBackendError::Transport(err.to_string()))?,
-            );
-        }
+        let websocket_request = self.connection_request(&credential, &request.turn_context)?;
 
         // Take the socket out while a turn is running. Cancellation or any error
         // drops it, so a later request cannot read a cancelled response's events.
-        let authorization_key = format!("{:x}", Sha256::digest(format!("{}:{}:{:?}",
-            credential.authorization_header(), request.turn_context.owner_id, credential.account_id)));
+        let authorization_key = Self::authorization_key(&credential, &request.turn_context);
+        let lock_started = std::time::Instant::now();
         let mut reusable = self.socket.lock().await;
-        let (mut socket, checkpoint) = match reusable.take().filter(|entry| entry.authorization_key == authorization_key && request.tools.is_empty()) {
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.socket_lock_acquired",work_us=timing.elapsed().as_micros() as u64,wait_us=lock_started.elapsed().as_micros() as u64);
+        let cached = reusable.take().filter(|entry| {
+            entry.authorization_key == authorization_key && request.tools.is_empty()
+        });
+        // Inspect already-available idle events before submitting a turn.
+        let cached =
+            cached.and_then(|mut entry| Self::socket_available(&mut entry).then_some(entry));
+        let reused = cached.is_some();
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.socket_checked",work_us=timing.elapsed().as_micros() as u64,reused);
+        let connect_started = std::time::Instant::now();
+        let (mut socket, checkpoint) = match cached {
             Some(entry) => (entry.socket, entry.checkpoint),
-            None => (tokio::time::timeout(timeout, tokio_tungstenite::connect_async(websocket_request))
-                .await
-                .map_err(|_| AdamBackendError::Transport("Adam OpenAI WebSocket connect timed out".into()))?
-                .map_err(openai_websocket_connect_error)?.0, None),
+            None => (
+                tokio::time::timeout(timeout, tokio_tungstenite::connect_async(websocket_request))
+                    .await
+                    .map_err(|_| {
+                        AdamBackendError::Transport(
+                            "Adam OpenAI WebSocket connect timed out".into(),
+                        )
+                    })?
+                    .map_err(openai_websocket_connect_error)?
+                    .0,
+                None,
+            ),
         };
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.socket_ready",work_us=timing.elapsed().as_micros() as u64,wait_us=connect_started.elapsed().as_micros() as u64,reused);
         let mut body = build_openai_response_create_message(
             &self.config,
             &request.turn_context,
@@ -1588,36 +1679,61 @@ impl AdamProviderConnector for OpenAiConnector {
             request.tools.clone(),
             request.responses_items.clone(),
         );
-        let prefix_hash = stable_hash_json(&json!({"instructions": request.instructions, "model": self.config.model,
-            "reasoning": self.config.reasoning_effort, "parallel_tools": self.config.parallel_tool_calls}));
+        let prefix_hash = stable_hash_json(
+            &json!({"instructions": request.instructions, "model": self.config.model,
+            "reasoning": self.config.reasoning_effort, "parallel_tools": self.config.parallel_tool_calls}),
+        );
         let tools_hash = stable_hash_json(&json!(request.tools));
-        let full_input = request.canonical_messages.as_ref().map(|messages| canonical_responses_input(messages));
+        let full_input = request
+            .canonical_messages
+            .as_ref()
+            .map(|messages| canonical_responses_input(messages));
         let mut continued = false;
         if let Some(full_input) = &full_input {
             body["input"] = full_input.clone();
             if let (Some(checkpoint), Some(messages)) = (&checkpoint, &request.canonical_messages) {
-                if checkpoint.session_id == request.session_id && messages.len() > checkpoint.messages.len()
-                    && messages[..checkpoint.messages.len()] == checkpoint.messages {
-                    let input_hash = stable_hash_json(&json!(&messages[..checkpoint.messages.len()]));
-                    let decision = crate::openai::decide_openai_previous_response_id(Some(&checkpoint.continuity),
+                if checkpoint.session_id == request.session_id
+                    && messages.len() > checkpoint.messages.len()
+                    && messages[..checkpoint.messages.len()] == checkpoint.messages
+                {
+                    let input_hash =
+                        stable_hash_json(&json!(&messages[..checkpoint.messages.len()]));
+                    let decision = crate::openai::decide_openai_previous_response_id(
+                        Some(&checkpoint.continuity),
                         &crate::openai::OpenAiContinuityRequest {
-                            context_compaction_epoch: 0, source_digest: &input_hash,
-                            renderer_version: "canonical-responses-v1", model: &self.config.model,
-                            tool_schema_hash: &tools_hash, exact_prefix_hash: &prefix_hash, input_hash: &input_hash,
-                        });
-                    if let crate::openai::OpenAiPreviousResponseDecision::Reuse { previous_response_id } = decision {
+                            context_compaction_epoch: 0,
+                            source_digest: &input_hash,
+                            renderer_version: "canonical-responses-v1",
+                            model: &self.config.model,
+                            tool_schema_hash: &tools_hash,
+                            exact_prefix_hash: &prefix_hash,
+                            input_hash: &input_hash,
+                        },
+                    );
+                    if let crate::openai::OpenAiPreviousResponseDecision::Reuse {
+                        previous_response_id,
+                    } = decision
+                    {
                         body["previous_response_id"] = json!(previous_response_id);
-                        body["input"] = canonical_responses_input(&messages[checkpoint.messages.len()..]);
+                        body["input"] =
+                            canonical_responses_input(&messages[checkpoint.messages.len()..]);
                         continued = true;
                     }
                 }
             }
         }
+        let serialized = body.to_string();
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.request_built",work_us=timing.elapsed().as_micros() as u64,bytes=serialized.len() as u64,continued);
         socket
-            .send(Message::Text(body.to_string().into()))
+            .send(Message::Text(serialized.into()))
             .await
             .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
 
+        tracing::info!(target:"polar_adam::latency",operation_id,event="adam.request_sent",work_us=timing.elapsed().as_micros() as u64);
+        let mut first_event = false;
+        let mut first_text_us = None;
+        let mut last_text_us = 0_u64;
+        let mut delta_count = 0_u64;
         let mut emitted_answer_delta = false;
         let mut response_text = String::new();
         let mut output_items = Vec::new();
@@ -1638,9 +1754,22 @@ impl AdamProviderConnector for OpenAiConnector {
             let Some(value) = websocket_message_json(message)? else {
                 continue;
             };
+            if !first_event {
+                first_event = true;
+                tracing::info!(target:"polar_adam::latency",operation_id,event="adam.first_event",work_us=timing.elapsed().as_micros() as u64);
+            }
+            if value.get("type").and_then(Value::as_str) == Some("response.created") {
+                tracing::info!(target:"polar_adam::latency",operation_id,event="adam.response_created",work_us=timing.elapsed().as_micros() as u64);
+            }
             match parse_openai_event(&value) {
                 OpenAiResponsesEvent::TextDelta { text } => {
                     if !text.is_empty() {
+                        last_text_us = timing.elapsed().as_micros() as u64;
+                        if first_text_us.is_none() {
+                            first_text_us = Some(last_text_us);
+                            tracing::info!(target:"polar_adam::latency",operation_id,event="adam.first_text",work_us=last_text_us);
+                        }
+                        delta_count += 1;
                         emitted_answer_delta = true;
                         response_text.push_str(&text);
                         sink.emit(AdamProviderEvent::AnswerDelta(text)).await?;
@@ -1684,29 +1813,59 @@ impl AdamProviderConnector for OpenAiConnector {
                     for call in function_calls {
                         sink.emit(AdamProviderEvent::ToolCall(call)).await?;
                     }
+                    let token = |pointer: &str| {
+                        usage
+                            .as_ref()
+                            .and_then(|u| u.pointer(pointer))
+                            .and_then(Value::as_u64)
+                    };
+                    tracing::info!(target:"polar_adam::latency",operation_id,event="adam.response_completed",work_us=timing.elapsed().as_micros() as u64,
+                        first_text_us=first_text_us.unwrap_or(0),last_text_us,delta_count,bytes=response_text.len() as u64,
+                        usage_reported=usage.is_some(),input_tokens=token("/input_tokens").unwrap_or(0),output_tokens=token("/output_tokens").unwrap_or(0),
+                        cache_reported=token("/input_tokens_details/cached_tokens").is_some(),cached_tokens=token("/input_tokens_details/cached_tokens").unwrap_or(0),
+                        reasoning_reported=token("/output_tokens_details/reasoning_tokens").is_some(),reasoning_tokens=token("/output_tokens_details/reasoning_tokens").unwrap_or(0));
                     let cache_evidence = openai_cache_evidence_from_usage(
                         usage.as_ref(),
                         "openai_responses_ws",
                         "openai_responses_ws",
                     );
-                    let checkpoint = request.canonical_messages.clone().zip(response_id.clone()).map(|(mut messages, previous_response_id)| {
-                        messages.push(InhouseCanonicalThreadMessage {
-                            message_id: format!("{}:result", request.turn_context.request_message_id),
-                            role: "assistant".into(), text: response_text.clone(),
-                        });
-                        let input_hash = stable_hash_json(&json!(&messages));
-                        OpenAiConversationCheckpoint { session_id: request.session_id.clone(), messages,
-                            continuity: crate::openai::OpenAiContinuitySnapshot {
-                                previous_response_id, context_compaction_epoch: 0, source_digest: input_hash.clone(),
-                                renderer_version: "canonical-responses-v1".into(), model: self.config.model.clone(),
-                                tool_schema_hash: tools_hash, exact_prefix_hash: prefix_hash, input_hash,
+                    let checkpoint = request
+                        .canonical_messages
+                        .clone()
+                        .zip(response_id.clone())
+                        .map(|(mut messages, previous_response_id)| {
+                            messages.push(InhouseCanonicalThreadMessage {
+                                message_id: format!(
+                                    "{}:result",
+                                    request.turn_context.request_message_id
+                                ),
+                                role: "assistant".into(),
+                                text: response_text.clone(),
+                            });
+                            let input_hash = stable_hash_json(&json!(&messages));
+                            OpenAiConversationCheckpoint {
+                                session_id: request.session_id.clone(),
+                                messages,
+                                continuity: crate::openai::OpenAiContinuitySnapshot {
+                                    previous_response_id,
+                                    context_compaction_epoch: 0,
+                                    source_digest: input_hash.clone(),
+                                    renderer_version: "canonical-responses-v1".into(),
+                                    model: self.config.model.clone(),
+                                    tool_schema_hash: tools_hash,
+                                    exact_prefix_hash: prefix_hash,
+                                    input_hash,
+                                },
                             }
-                        }
-                    });
+                        });
                     // This optimization is for tool-free editing. Preserve the
                     // existing tool-loop transport lifecycle and replay contract.
                     if request.tools.is_empty() {
-                        *reusable = Some(ReusableOpenAiSocket { authorization_key, socket, checkpoint });
+                        *reusable = Some(ReusableOpenAiSocket {
+                            authorization_key,
+                            socket,
+                            checkpoint,
+                        });
                     }
                     return Ok(AdamProviderTurnEnd {
                         provider_response_id: response_id,
@@ -1718,14 +1877,22 @@ impl AdamProviderConnector for OpenAiConnector {
                     });
                 }
                 OpenAiResponsesEvent::Failed { message } => {
-                    if continued && !emitted_answer_delta && (message.contains("previous_response_not_found")
-                        || value.pointer("/error/code").and_then(Value::as_str) == Some("previous_response_not_found")) {
+                    if continued
+                        && !emitted_answer_delta
+                        && (message.contains("previous_response_not_found")
+                            || value.pointer("/error/code").and_then(Value::as_str)
+                                == Some("previous_response_not_found"))
+                    {
                         // The provider explicitly rejected the missing parent before
                         // generation. Re-render once; never replay an ambiguous turn.
-                        body.as_object_mut().expect("response object").remove("previous_response_id");
+                        body.as_object_mut()
+                            .expect("response object")
+                            .remove("previous_response_id");
                         body["input"] = full_input.clone().expect("canonical continuation");
                         continued = false;
-                        socket.send(Message::Text(body.to_string().into())).await
+                        socket
+                            .send(Message::Text(body.to_string().into()))
+                            .await
                             .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
                         continue;
                     }
@@ -1825,9 +1992,13 @@ fn websocket_message_json(message: Message) -> Result<Option<Value>, AdamBackend
                 .map(Some)
                 .map_err(|err| AdamBackendError::Parse(err.to_string()))
         }
-        Message::Close(_) => Err(AdamBackendError::Transport(
-            "Adam OpenAI WebSocket closed by provider".to_string(),
-        )),
+        Message::Close(frame) => Err(AdamBackendError::Transport(format!(
+            "Adam OpenAI WebSocket closed by provider (code {})",
+            frame.map_or_else(
+                || "unavailable".into(),
+                |frame| u16::from(frame.code).to_string()
+            ),
+        ))),
         Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(None),
     }
 }
@@ -1863,6 +2034,24 @@ fn openai_message_is_busy(message: &str) -> bool {
 
 #[async_trait]
 impl InhouseAgentRunner for AdamAgentRunner {
+    async fn prepare_execution(
+        &mut self,
+        turn_ref: &polar_inhouse_contract::InhouseBackendTurnRef,
+    ) -> anyhow::Result<polar_inhouse_contract::InhousePreparationOutcome> {
+        let context = AdamTurnContext {
+            owner_id: turn_ref.owner_id.clone(),
+            thread_id: turn_ref.thread_id.clone(),
+            inhouse_polar_id: turn_ref.inhouse_polar_id.clone(),
+            backend_profile_id: turn_ref.backend_profile_id.clone(),
+            request_message_id: turn_ref.request_message_id.clone(),
+        };
+        self.connector()
+            .map_err(AdamBackendError::into_anyhow)?
+            .prepare_execution(&context)
+            .await
+            .map_err(AdamBackendError::into_anyhow)
+    }
+
     async fn inspect_session(
         &mut self,
         session_id: &str,
@@ -1992,6 +2181,7 @@ impl InhouseAgentRunner for AdamAgentRunner {
         turn_control: Option<Arc<InhouseTurnControl>>,
         dynamic_tool_handler: Option<Arc<dyn InhouseDynamicToolHandler>>,
     ) -> anyhow::Result<InhouseAgentTurnOutcome> {
+        let runner_timing = std::time::Instant::now();
         ensure_adam_capability_negotiation(&turn_options)?;
         let request = turn_options.backend_turn_request.as_ref().ok_or_else(|| {
             anyhow::anyhow!(
@@ -2167,8 +2357,10 @@ impl InhouseAgentRunner for AdamAgentRunner {
                 &prepared.instructions,
             );
             let provider_request = AdamProviderRequest {
-                canonical_messages: (turn_options.conversation_encoding == polar_inhouse_contract::InhouseConversationEncoding::CanonicalMessages
-                    && tools.is_empty()).then(|| turn_options.canonical_thread_messages.clone()),
+                canonical_messages: (turn_options.conversation_encoding
+                    == polar_inhouse_contract::InhouseConversationEncoding::CanonicalMessages
+                    && tools.is_empty())
+                .then(|| turn_options.canonical_thread_messages.clone()),
                 session_id: session_id.clone(),
                 turn_context: context.clone(),
                 instructions: prepared.instructions.clone(),
@@ -2213,6 +2405,7 @@ impl InhouseAgentRunner for AdamAgentRunner {
                     })
                     .await?;
             }
+            tracing::info!(target:"polar_adam::latency",operation_id=context.request_message_id,event="adam.runner_prepared",work_us=runner_timing.elapsed().as_micros() as u64,ordinal=iteration as u64);
             let provider_result = {
                 let provider_future = connector.run_turn(provider_request, &mut accumulator);
                 tokio::pin!(provider_future);
@@ -2550,8 +2743,11 @@ impl InhouseAgentRunner for AdamAgentRunner {
                     .await?;
                 }
                 settle_failed_tool_engine_allocation(
-                    self.engine_manager.as_ref(), engine_allocation.as_ref(), engine_reservation_guard.as_mut(),
-                ).await;
+                    self.engine_manager.as_ref(),
+                    engine_allocation.as_ref(),
+                    engine_reservation_guard.as_mut(),
+                )
+                .await;
                 return Err(AdamBackendError::ToolLoopLimit {
                     max_tool_iterations: self.config.backend.max_tool_iterations,
                 }
@@ -2629,10 +2825,9 @@ impl InhouseAgentRunner for AdamAgentRunner {
                     continue;
                 }
                 if let Some(sink) = &event_sink {
-                    with_adam_event_sink(sink, |handler| {
-                        Ok(handler.on_tool_started(&normalized))
-                    })
-                    .map_err(AdamBackendError::into_anyhow)?.await?;
+                    with_adam_event_sink(sink, |handler| Ok(handler.on_tool_started(&normalized)))
+                        .map_err(AdamBackendError::into_anyhow)?
+                        .await?;
                 }
                 let result = execute_adam_tool_call(handler.as_ref(), &normalized).await?;
                 let causal_tool_call_ref = intent
@@ -2697,10 +2892,9 @@ impl InhouseAgentRunner for AdamAgentRunner {
                         .await?;
                 }
                 if let Some(sink) = &event_sink {
-                    with_adam_event_sink(sink, |handler| {
-                        Ok(handler.on_tool_finished(&result))
-                    })
-                    .map_err(AdamBackendError::into_anyhow)?.await?;
+                    with_adam_event_sink(sink, |handler| Ok(handler.on_tool_finished(&result)))
+                        .map_err(AdamBackendError::into_anyhow)?
+                        .await?;
                 }
                 if !result.ok && !result.argument_correction_allowed {
                     let tool_error_kind = result

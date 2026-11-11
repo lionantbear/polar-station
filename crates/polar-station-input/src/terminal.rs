@@ -22,6 +22,7 @@ pub(crate) struct Selection {
     pub(crate) session: String,
     pub(crate) managed_reference: Option<String>,
     pub(crate) original_agent_id: Option<String>,
+    pub(crate) submit_after_resolve: Option<(u64,bool)>,
 }
 enum Pending {
     Selection(Selection),
@@ -40,7 +41,7 @@ fn id() -> String {
     polar_identity::generation::new_uuid_v7().to_string()
 }
 pub(crate) fn present(view: crate::generic::GenericView) -> Effect {
-    Effect::Generic(GenericEffect::InputBar { view })
+    Effect::Generic(GenericEffect::InputBar { view:Box::new(view) })
 }
 fn request(job: SessionJob) -> Effect {
     Effect::Generic(GenericEffect::SessionRequest {
@@ -101,6 +102,7 @@ impl InputEngine {
             session,
             managed_reference: None,
             original_agent_id: None,
+            submit_after_resolve: None,
         };
         self.terminal.pending.retain(
             |_, pending| !matches!(pending,Pending::Selection(old) if old.lease.window==window),
@@ -190,15 +192,10 @@ impl InputEngine {
                         Destination::Unavailable("Original Session is unavailable".into())
                     }
                 };
-                let view = self.generic.observe(
-                    selection.lease.window,
-                    selection.lease.pane,
-                    selection.lease.draft_key,
-                    destination,
-                )?;
-                Ok(vec![present(view)])
+                self.complete_input_resolution(selection,destination)
             }
             Pending::Send { intent, reference } => {
+                if !self.generic.has_pending(&intent) {return Ok(vec![]);}
                 let mut refresh = Vec::new();
                 if error.is_none() {
                     let receipt: Receipt =
@@ -224,9 +221,9 @@ impl InputEngine {
                     match receipt.state {
                         DeliveryStatus::Delivered => self.generic.resolve(&intent, true)?,
                         DeliveryStatus::FailedBeforeWrite => {
-                            self.generic.resolve(&intent, false)?
+                            self.generic.reject(&intent,format!("Send failed before write: {}. Draft retained.",receipt.error.as_deref().unwrap_or("target rejected input")))?
                         }
-                        _ if rejected_once => self.generic.resolve(&intent, false)?,
+                        _ if rejected_once => self.generic.reject(&intent,"Input target changed before write; draft retained. Send again to re-resolve the original target.".into())?,
                         _ => self.generic.submission_error(&intent, receipt.error.unwrap_or_else(|| "Receipt unavailable".into())),
                     }
                 } else if let Some(error) = error {
@@ -244,11 +241,7 @@ impl InputEngine {
                         out.extend(self.refresh_input(view.lease)?);
                     }
                 }
-                out.extend(
-                    self.dispatch_content(polar_station_lgp::Input::ExportDrafts)?
-                        .into_iter()
-                        .map(|e| Effect::Content(Box::new(e))),
-                );
+                self.append_input_snapshot(&mut out);
                 Ok(out)
             }
         }
@@ -303,11 +296,49 @@ impl InputEngine {
         )
     }
 
+    pub(crate) fn append_input_snapshot(&mut self,out:&mut Vec<Effect>) {
+        match self.dispatch_content(polar_station_lgp::Input::ExportDrafts) {
+            Ok(effects)=>out.extend(effects.into_iter().map(|e|Effect::Content(Box::new(e)))),
+            Err(error)=>out.push(Effect::Content(Box::new(polar_station_lgp::Effect::Error{message:format!("Could not save updated send state: {error}. Keep a copy of your draft before closing.")}))),
+        }
+    }
+
+    pub(crate) fn complete_input_resolution(&mut self, selection:Selection, destination:Destination) -> Result<Vec<Effect>,String> {
+        let error=if let Destination::Unavailable(reason)=&destination {Some(reason.clone())} else {None};
+        let view=self.generic.observe(selection.lease.window.clone(),selection.lease.pane.clone(),selection.lease.draft_key.clone(),destination)?;
+        self.update_codex_lease(&selection.lease.window,&view.lease);
+        if let Some((revision,press_enter))=selection.submit_after_resolve {
+            let error=if view.lease.draft_revision!=revision {Some("Draft changed while resolving the target; draft retained. Send again.".into())} else {error};
+            if let Some(message)=error {
+                return Ok(vec![present(view),Effect::Content(Box::new(polar_station_lgp::Effect::Error{message}))]);
+            }
+            return match self.submit_terminal(view.lease.clone(),press_enter) {
+                Ok(effects)=>Ok(effects),
+                Err(message)=>Ok(vec![present(self.generic.view(&view.lease.window).unwrap_or(view)),Effect::Content(Box::new(polar_station_lgp::Effect::Error{message}))]),
+            };
+        }
+        Ok(vec![present(view)])
+    }
+
     pub(crate) fn submit_terminal(
         &mut self,
         lease: Lease,
         press_enter: bool,
     ) -> Result<Vec<Effect>, String> {
+        if self.generic.pending_submission(&lease)?.is_some() {
+            return self.refresh_input(lease); // Query the original intent; never stage another write.
+        }
+        if self.generic.needs_resolution(&lease)? {
+            let out=self.refresh_input(lease.clone())?;
+            for pending in self.terminal.pending.values_mut() {
+                if let Pending::Selection(selection)=pending {
+                    if selection.lease.window==lease.window && selection.lease.pane==lease.pane {
+                        selection.submit_after_resolve=Some((lease.draft_revision,press_enter));
+                    }
+                }
+            }
+            return Ok(out);
+        }
         let selection = self
             .terminal
             .selected
@@ -318,6 +349,7 @@ impl InputEngine {
         }
         let intent = id();
         self.generic.stage(&lease, intent.clone(), press_enter)?;
+        self.generic.watch_pending(&intent,self.now_ms);
         let effects = match self.dispatch_content(polar_station_lgp::Input::ExportDrafts) {
             Ok(effects) => effects,
             Err(error) => {
@@ -358,7 +390,7 @@ impl InputEngine {
                 continue;
             };
             if !success {
-                self.generic.resolve(&intent, false)?;
+                self.generic.reject(&intent,"Could not save the submission; nothing was sent. Draft retained.".into())?;
                 restored_retry = true;
                 continue;
             }
@@ -386,11 +418,15 @@ impl InputEngine {
                         owner_host_id,
                         command,
                     } => {
-                        out.push(self.codex_request(
-                            owner_host_id,
-                            command,
-                            crate::codex::Pending::Send(intent),
-                        )?);
+                        match self.codex_request(owner_host_id,command,crate::codex::Pending::Send(intent.clone())) {
+                            Ok(effect)=>out.push(effect),
+                            Err(message)=>{
+                                // Request construction/admission failed before any native I/O effect.
+                                self.generic.reject(&intent,format!("Send was not dispatched: {message}. Draft retained."))?;
+                                restored_retry=true;
+                                out.push(Effect::Content(Box::new(polar_station_lgp::Effect::Error{message})));
+                            }
+                        }
                     }
                 }
             }

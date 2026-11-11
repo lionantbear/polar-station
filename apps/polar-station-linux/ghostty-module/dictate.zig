@@ -2,6 +2,7 @@
 //! scheduling and main-loop delivery; no timer polls state or audio.
 const std = @import("std");
 const gtk = @import("gtk");
+const gdk = @import("gdk");
 const gio = @import("gio");
 const external = @import("dictate_external.zig");
 const glib = @import("glib");
@@ -49,10 +50,19 @@ pub const Controller = struct {
         insert: *const fn (*anyopaque, []const u8) Delivery,
         release: *const fn (*anyopaque) void,
     };
+    // Physical edge ownership only; recording policy remains in DictateGesture.
+    shortcut_recording_source:u8=0,
+    shortcut_owner:u8=0, // 0 none, 1 global, 2 local
     result_panel: ?*@import("dictate_panel.zig").Panel = null,
     panel_hide_source:c_uint=0,
     panel_hide_id:?[]u8=null,
-    insert_current: ?*const fn (?*anyopaque, []const u8) Delivery = null,
+    refine_lease:?std.json.Parsed(Value)=null,
+    refine_english:bool=false,
+    learning_stored:?*const fn(?*anyopaque,[]const u8,bool) void=null,
+    refined:?*const fn(?*anyopaque,Value,[]const u8,[]const u8,bool) void=null,
+    insert_current: ?*const fn (?*anyopaque, Value) Delivery = null,
+    current_project:?*const fn(?*anyopaque) ?[]const u8=null,
+    current_conversation: ?*const fn (?*anyopaque) ?[]const u8 = null,
     custom: ?NativeTarget = null,
     external_editors: ?*external.Watcher = null,
     editor_scope: ?*anyopaque = null,
@@ -73,7 +83,6 @@ pub const Controller = struct {
     capture_id: ?[]u8 = null,
     submitted_id: ?[]u8 = null,
     gesture: ?*c.StationShortcutGesture = null,
-    shortcut_toggle: bool = false,
     held_id: ?[]u8 = null,
     capture_clock: ?std.time.Timer = null,
     editor: ?*gtk.TextView = null,
@@ -86,7 +95,7 @@ pub const Controller = struct {
     settings_context: ?*anyopaque = null,
     show_settings: ?*const fn (?*anyopaque) void = null,
     shown_setup: ?[]u8 = null,
-    const Job = struct { input: []u8, pcm: ?[]u8 = null, result: [*c]u8 = null, opening: bool = false, service: bool = false, configuration: bool = false };
+    const Job = struct { input: []u8, pcm: ?[]u8 = null, result: [*c]u8 = null, opening: bool = false, service: bool = false, configuration: bool = false, learning:bool=false };
 
     pub fn create() !*Controller {
         const self = try a.create(Controller);
@@ -137,6 +146,7 @@ pub const Controller = struct {
         }
         self.enqueue(.{ .type = "open", .path = path, .host_managed = true }, true);
         self.reloadVoiceSettings();
+        self.refreshHistory();
         self.external_editors = external.Watcher.create(self, externalFocused);
         return self;
     }
@@ -144,6 +154,7 @@ pub const Controller = struct {
         if (self.external_editors) |watcher| watcher.destroy();
         self.external_editors = null;
         c.polar_station_dictate_speech_set_progress(self.speech, null, null);
+        c.polar_station_dictate_speech_set_history(self.speech, null, null);
         if (gio.Application.getDefault()) |app| {
             app.withdrawNotification("station-dictate-recording");
             app.as(gio.ActionMap).removeAction("station-dictate-stop");
@@ -178,11 +189,25 @@ pub const Controller = struct {
         c.polar_station_dictate_speech_free(self.speech);
         a.destroy(self);
     }
+    pub fn refreshHistory(self: *Controller) void {
+        c.polar_station_dictate_speech_set_history(self.speech, historyChanged, self);
+        self.input(.{.type="history_open"});
+    }
+    pub fn historyAction(self:*Controller,kind:[]const u8,id:[]const u8) void {
+        if(same(kind,"history_insert") or same(kind,"history_retry"))self.cancelled=false;
+        self.input(.{.type=kind,.operation_id=id});
+    }
+    fn historyChanged(context: ?*anyopaque, bytes: [*c]const u8, length: usize) callconv(.c) void {
+        const self:*Controller=@ptrCast(@alignCast(context orelse return));
+        if(bytes==null)return;
+        var parsed=std.json.parseFromSlice(Value,a,bytes[0..length],.{}) catch return;
+        defer parsed.deinit();self.input(parsed.value);
+    }
     fn savedProgress(context: ?*anyopaque, id: [*c]const u8, length: usize, saved: u64, preview: [*c]const u8, preview_length: usize) callconv(.c) void {
         const self: *Controller = @ptrCast(@alignCast(context orelse return));
         if (id == null) return;
         if (preview != null and preview_length > 0) {
-            self.input(.{ .type = "transcript_preview", .operation_id = id[0..length], .text = preview[0..preview_length] });
+            self.input(.{ .type = "transcript_preview", .operation_id = id[0..length], .text = preview[0..preview_length], .saved_samples = saved });
         } else self.input(.{ .type = "audio_saved", .operation_id = id[0..length], .saved_samples = saved });
     }
     fn notificationStop(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Controller) callconv(.c) void {
@@ -194,6 +219,10 @@ pub const Controller = struct {
     fn notificationOriginal(_: *gio.SimpleAction, _: ?*glib.Variant, self: *Controller) callconv(.c) void {
         self.useOriginal();
     }
+    pub fn useAvailable(self: *Controller) void {
+        const id = string(self.presentation(), "use_available_id");
+        if (id.len > 0) self.input(.{ .type = "use_available", .operation_id = id });
+    }
     pub fn useOriginal(self: *Controller) void {
         const id = string(self.presentation(), "use_original_id");
         if (id.len > 0) self.input(.{ .type = "use_original", .operation_id = id });
@@ -202,6 +231,7 @@ pub const Controller = struct {
     pub fn panelAction(self:*Controller,kind:[]const u8) void {
         if(same(kind,"stop")){self.finish();return;}
         if(same(kind,"cancel")){self.cancel();return;}
+        if(same(kind,"use_available")){self.useAvailable();return;}
         if(same(kind,"use_original")){self.useOriginal();return;}
         const id=string(self.panelValue(),"operation_id");if(id.len==0)return;
         if(same(kind,"insert_draft") or same(kind,"retry_saved")) self.cancelled=false;
@@ -259,6 +289,13 @@ pub const Controller = struct {
     pub fn view(self: *Controller) Value {
         return if (self.response) |r| r.value else .null;
     }
+    fn conversationContext(self: *Controller) ?[]const u8 {
+        if(!self.collectsContext()) return null;
+        return if(self.current_conversation) |read| read(self.context) else null;
+    }
+    pub fn collectsContext(self: *Controller) bool {
+        return boolean(field(self.view(), "reference_policy"), "surrounding");
+    }
     pub fn presentation(self: *Controller) Value {
         return field(self.view(), "presentation");
     }
@@ -267,6 +304,10 @@ pub const Controller = struct {
     }
     pub fn status(self: *Controller) []const u8 {
         return self.error_text orelse string(self.presentation(), "status");
+    }
+    pub fn storeLearning(self:*Controller,sample:Value) void {
+        const bytes=std.json.Stringify.valueAlloc(a,.{.op="learn_refine",.sample=sample},.{}) catch return;
+        const job=a.create(Job) catch {a.free(bytes);return;};job.*=.{.input=bytes,.service=true,.learning=true};self.speech_incoming.push(job);
     }
     pub fn input(self: *Controller, value: anytype) void {
         self.enqueue(value, false);
@@ -307,11 +348,16 @@ pub const Controller = struct {
             defer freeJob(job);
             if (job.result == null) continue;
             var parsed = std.json.parseFromSlice(Value, a, std.mem.span(job.result), .{ .allocate = .alloc_always }) catch continue;
+            if(job.learning){
+                defer parsed.deinit();
+                var request=std.json.parseFromSlice(Value,a,job.input,.{}) catch continue;defer request.deinit();
+                if(self.learning_stored) |notify| notify(self.context,string(field(request.value,"sample"),"intent"),boolean(parsed.value,"ok") and boolean(field(parsed.value,"payload"),"stored"));
+                continue;
+            }
             if (job.configuration) {
                 defer parsed.deinit();
                 if (boolean(parsed.value, "ok")) {
-                    self.shortcut_toggle = same(string(field(parsed.value, "payload"), "shortcut_mode"), "toggle");
-                    self.input(.{ .type = "shortcut_mode", .toggle = self.shortcut_toggle });
+                    self.input(.{.type="refresh_settings"});
                     const mic = string(field(parsed.value, "payload"), "microphone");
                     if (self.microphone) |old| a.free(old);
                     self.microphone = a.dupeZ(u8, mic) catch null;
@@ -332,6 +378,7 @@ pub const Controller = struct {
                 if (self.error_text) |v| a.free(v);
                 self.error_text = a.dupe(u8, string(parsed.value, "error")) catch null;
                 parsed.deinit();
+                if(self.submitted_id) |id| a.free(id);self.submitted_id=null;
                 if (self.changed) |f| f(self.context);
                 continue;
             }
@@ -349,7 +396,7 @@ pub const Controller = struct {
                 if (entries == .array) for (entries.array.items) |entry| {
                     if (!same(string(entry, "operation_id"), id)) continue;
                     const phase = string(entry, "phase");
-                    for ([_][]const u8{ "pending", "delivered", "unknown", "review", "cancelled", "failed" }) |terminal| {
+                    for ([_][]const u8{ "pending", "delivered", "copied", "unknown", "review", "cancelled", "failed" }) |terminal| {
                         if (same(phase, terminal)) {
                             a.free(id);
                             self.submitted_id = null;
@@ -378,6 +425,7 @@ pub const Controller = struct {
         return 0;
     }
     fn clearTarget(self: *Controller) void {
+        if(self.refine_lease) |*lease| lease.deinit();self.refine_lease=null;
         if (self.custom) |target| target.release(target.context);
         self.custom = null;
         if (self.editor) |v| v.as(gobject.Object).unref();
@@ -399,9 +447,9 @@ pub const Controller = struct {
         self.range = selection(editor.getBuffer());
     }
     pub fn startNode(self: *Controller, target: NativeTarget, context: []const u8) void {
-        self.startNative(target, context, "idea_node");
+        self.startNative(target, context, "idea_node", "");
     }
-    fn startNative(self: *Controller, target: NativeTarget, context: []const u8, kind: []const u8) void {
+    fn startNative(self: *Controller, target: NativeTarget, context: []const u8, kind: []const u8, reference:[]const u8) void {
         if (same(string(self.presentation(), "action"), "retry_open")) { target.release(target.context); self.input(.{ .type = "retry_open" }); return; }
         if (!self.enabled()) {
             target.release(target.context);
@@ -420,7 +468,7 @@ pub const Controller = struct {
             return;
         };
         self.submitted_id = a.dupe(u8, id) catch return;
-        self.input(.{ .type = "start", .operation_id = id, .targets = .{.{ .kind = kind, .identity = id, .revision = id, .context = context }} });
+        self.input(.{ .type = "start_context", .conversation_context=self.conversationContext(), .project=if(self.current_project) |project| project(self.context) else null, .operation_id = id, .reference=reference, .targets = .{.{ .kind = kind, .identity = id, .revision = id, .context = if(self.collectsContext()) context else "" }} });
     }
     fn releaseExternal(raw: *anyopaque) void {
         const target: *external.Snapshot = @ptrCast(@alignCast(raw));
@@ -440,13 +488,13 @@ pub const Controller = struct {
         defer target.destroy();
         return switch(target.insert(text)){.applied=>.applied,.unchanged=>.unchanged,.unknown=>.unknown};
     }
-    pub fn insertEditorCurrent(editor:*gtk.TextView,text:[]const u8) Delivery {
+    pub fn insertEditorCurrent(editor:*gtk.TextView,text:[]const u8,preserve_selection:bool) Delivery {
         if(editor.getEditable()==0 or editor.as(gtk.Widget).getMapped()==0 or editor.as(gobject.Object).getData("station-dictate-panel")!=null) return .no_target;
         const buffer=editor.getBuffer();
         const old=bufferText(buffer);defer glib.free(old);
         const selected=selection(buffer);
         var left:gtk.TextIter=undefined;var right:gtk.TextIter=undefined;var first:gtk.TextIter=undefined;var last:gtk.TextIter=undefined;
-        buffer.getBounds(&first,&last);buffer.getIterAtOffset(&left,@min(selected[0],selected[1]));buffer.getIterAtOffset(&right,@max(selected[0],selected[1]));
+        buffer.getBounds(&first,&last);buffer.getIterAtOffset(&left,if(preserve_selection) @max(selected[0],selected[1]) else @min(selected[0],selected[1]));buffer.getIterAtOffset(&right,@max(selected[0],selected[1]));
         const prefix=buffer.getText(&first,&left,1);defer glib.free(prefix);
         const suffix=buffer.getText(&right,&last,1);defer glib.free(suffix);
         const expected=std.fmt.allocPrint(a,"{s}{s}{s}",.{std.mem.span(prefix),text,std.mem.span(suffix)}) catch return .unchanged;defer a.free(expected);
@@ -456,11 +504,13 @@ pub const Controller = struct {
         return if(same(std.mem.span(actual),expected)) .applied else .unknown;
     }
     pub fn toggleExternal(self: *Controller) void {
+        const reference=if(self.external_editors) |watcher| watcher.selectedText() else null;
+        defer if(reference) |text| a.free(text);
         if (self.external_editors) |watcher| if (watcher.capture()) |snapshot| {
-            self.startNative(.{ .context = snapshot, .insert = insertExternal, .release = releaseExternal }, snapshot.context(), "editor");
+            self.startNative(.{ .context = snapshot, .insert = insertExternal, .release = releaseExternal }, if(self.collectsContext()) snapshot.context() else "", "editor", reference orelse "");
             return;
         };
-        self.toggle(null);
+        self.toggleQuoted(null,reference orelse "");
     }
     fn externalFocused(raw: *anyopaque) void {
         const self: *Controller = @ptrCast(@alignCast(raw));
@@ -495,7 +545,7 @@ pub const Controller = struct {
         self.cancelled = false;
         self.input(.{ .type = "focus", .target = .{ .kind = "editor", .identity = id, .revision = id, .context = snapshot.context() } });
     }
-    pub fn refine(self: *Controller, editor: *gtk.TextView) void {
+    pub fn refine(self: *Controller, editor: *gtk.TextView, context_id:[]const u8, lease:?Value, project:?Value) void {
         if (!self.enabled() or !same(string(self.presentation(), "action"), "start") or editor.getEditable() == 0) return;
         const content = bufferText(editor.getBuffer()); defer glib.free(content);
         if (std.mem.trim(u8,std.mem.span(content)," \t\r\n").len == 0) return;
@@ -505,11 +555,27 @@ pub const Controller = struct {
         editor.getBuffer().getBounds(&start,&end);
         editor.getBuffer().selectRange(&end,&start);
         self.captureTarget(editor,id) catch return;
+        if(lease) |value| {
+            const bytes=std.json.Stringify.valueAlloc(a,value,.{}) catch return;defer a.free(bytes);
+            self.refine_lease=std.json.parseFromSlice(Value,a,bytes,.{.allocate=.alloc_always}) catch null;
+        }
+        const selected=field(field(self.view(),"refine_modes"),context_id);
+        self.refine_english=selected==.bool and selected.bool;
         self.cancelled = false;
         self.submitted_id = a.dupe(u8,id) catch return;
-        self.input(.{.type="refine_text",.operation_id=id,.target=.{.kind="editor",.identity=id,.revision=id,.context=""},.text=self.original.?});
+        self.input(.{.type="refine_context",.context_id=context_id,.project=project,.operation_id=id,.target=.{.kind="editor",.identity=id,.revision=id,.context=""},.text=self.original.?});
     }
     pub fn toggle(self: *Controller, editor: ?*gtk.TextView) void {
+        const reference=if(editor) |view_| selectedText(view_) else null;
+        defer if(reference) |text| glib.free(text);
+        self.toggleQuoted(editor,if(reference) |text| std.mem.span(text) else "");
+    }
+    pub fn selectedText(editor:*gtk.TextView) ?[*:0]u8 {
+        var first:gtk.TextIter=undefined;var last:gtk.TextIter=undefined;
+        if(editor.getBuffer().getSelectionBounds(&first,&last)==0)return null;
+        return editor.getBuffer().getText(&first,&last,1);
+    }
+    pub fn toggleQuoted(self: *Controller, editor: ?*gtk.TextView, reference:[]const u8) void {
         if (same(string(self.presentation(), "action"), "retry_open")) { self.input(.{ .type = "retry_open" }); return; }
         if (same(string(self.presentation(), "action"), "stop")) {
             self.finish();
@@ -522,19 +588,21 @@ pub const Controller = struct {
         if (editor) |view_| {
             if (view_.getEditable() != 0) {
                 self.captureTarget(view_, id) catch return;
-                var end = @min(self.original.?.len, 8192);
+                var end = if(self.collectsContext()) @min(self.original.?.len, 8192) else 0;
                 while (end > 0 and !std.unicode.utf8ValidateSlice(self.original.?[0..end])) end -= 1;
                 self.submitted_id = a.dupe(u8, id) catch return;
-                self.input(.{ .type = "start", .operation_id = id, .targets = .{.{ .kind = "editor", .identity = id, .revision = id, .context = self.original.?[0..end] }} });
+                self.input(.{ .type = "start_context", .conversation_context=self.conversationContext(), .project=if(self.current_project) |project| project(self.context) else null, .operation_id = id, .reference=reference, .targets = .{.{ .kind = "editor", .identity = id, .revision = id, .context = self.original.?[0..end] }} });
                 return;
             }
         }
         self.clearTarget();
         self.submitted_id = a.dupe(u8, id) catch return;
-        self.input(.{ .type = "start", .operation_id = id, .targets = .{} });
+        self.input(.{ .type = "start_context", .conversation_context=self.conversationContext(), .project=if(self.current_project) |project| project(self.context) else null, .operation_id = id, .reference=reference, .targets = .{} });
     }
     /// The caller snapshots the actual target using the existing button path.
     pub fn shortcutLost(self: *Controller) void {
+        if(self.shortcut_owner==2 or (self.shortcut_recording_source==2 and self.submitted_id!=null))return;
+        self.shortcut_owner=0;
         _ = c.polar_station_shortcut_gesture_event(self.gesture, 4, false, false, false);
         self.cancel();
         self.releaseHold();
@@ -542,7 +610,7 @@ pub const Controller = struct {
     pub fn shortcutIntent(self: *Controller, pressed: bool, discrete: bool) u32 {
         // Portal Activated is a discrete activation; GTK capture supplies edges separately.
         return c.polar_station_shortcut_gesture_event(self.gesture, if (pressed) (if (discrete) @as(u32, 3) else 1) else 2,
-            self.shortcut_toggle, self.submitted_id != null and !same(string(self.presentation(), "action"), "wait"), (self.enabled() and same(string(self.presentation(), "action"), "start")) or same(string(self.presentation(), "action"), "retry_open"));
+            self.submitted_id != null and !same(string(self.presentation(), "action"), "wait"), (self.enabled() and same(string(self.presentation(), "action"), "start")) or same(string(self.presentation(), "action"), "retry_open"), string(self.presentation(),"use_available_id").len>0);
     }
     pub fn bindHold(self: *Controller) void {
         if (self.held_id) |id| a.free(id);
@@ -639,7 +707,7 @@ pub const Controller = struct {
                 self.reloadVoiceSettings();
                 return;
             }
-            const begin = std.json.Stringify.valueAlloc(a, .{ .op = "capture_begin", .id = id, .context = field(effect, "context") }, .{}) catch return;
+            const begin = std.json.Stringify.valueAlloc(a, .{ .op = "capture_begin", .id = id, .context = field(effect, "context"), .project=field(effect,"project"), .reference = string(effect, "reference") }, .{}) catch return;
             defer a.free(begin);
             const reply = c.polar_station_dictate_service_request(self.speech, begin.ptr, begin.len);
             if (reply == null) {
@@ -663,10 +731,33 @@ pub const Controller = struct {
                 c.polar_station_dictate_speech_cancel(self.speech, id.ptr, id.len);
                 self.stopAudio();
             }
+        } else if (same(kind, "copy")) {
+            if (boolean(effect,"stop_capture")) {
+                if (self.audio) |audio| c.polar_station_dictate_audio_stop(audio);
+                self.stopAudio();
+            }
+            c.polar_station_dictate_speech_cancel(self.speech,id.ptr,id.len);
+            const text=a.dupeZ(u8,string(effect,"text")) catch {
+                self.input(.{.type="clipboard",.operation_id=id,.copied=false});return;
+            };
+            defer a.free(text);
+            var copied=false;
+            if(gdk.Display.getDefault()) |display| {
+                const clipboard=display.getClipboard();clipboard.setText(text);
+                copied=clipboard.getContent()!=null;
+            }
+            self.input(.{.type="clipboard",.operation_id=id,.copied=copied});
         } else if (same(kind, "cancel")) {
             self.cancelled = true;
             self.stopAudio();
             c.polar_station_dictate_speech_cancel(self.speech, id.ptr, id.len);
+        } else if (same(kind, "finish_capture")) {
+            const audio = self.audio orelse return;
+            c.polar_station_dictate_audio_stop(audio);
+            // Close PCM input; shared Recording events drive the result.
+            const ended=c.polar_station_dictate_speech_finish(self.speech,id.ptr,id.len);
+            self.stopAudio();
+            if(!ended) self.input(.{.type="failed",.operation_id=id,.@"error"="Audio input could not finish; saved audio retained."});
         } else if (same(kind, "transcribe")) {
             const audio = self.audio orelse return;
             c.polar_station_dictate_audio_stop(audio);
@@ -691,7 +782,7 @@ pub const Controller = struct {
             }
             if (job.service or job.pcm != null) self.speech_incoming.push(job) else self.incoming.push(job);
         } else if (same(kind, "rewrite")) {
-            const request = std.json.Stringify.valueAlloc(a, .{ .op = if (boolean(effect,"saved_recording")) "rewrite_result" else "refine_text", .id = id, .context = string(effect, "context"), .raw = string(effect,"raw") }, .{}) catch return;
+            const request = std.json.Stringify.valueAlloc(a, .{ .op = if (boolean(effect,"saved_recording")) "rewrite_result" else "refine_text", .id = id, .context = string(effect, "context"), .raw = string(effect,"raw"), .english=boolean(effect,"english"), .project=if(string(effect,"project").len>0) string(effect,"project") else @as(?[]const u8,null), .scope=if(string(effect,"scope").len>0) string(effect,"scope") else @as(?[]const u8,null) }, .{}) catch return;
             const job = a.create(Job) catch {
                 a.free(request);
                 return;
@@ -703,7 +794,7 @@ pub const Controller = struct {
             const job=a.create(Job) catch {a.free(bytes);return;};
             job.*=.{.input=bytes,.service=true};self.speech_incoming.push(job);
         } else if (same(kind, "insert_current")) {
-            const outcome:Delivery=if(self.cancelled) .unchanged else if(self.insert_current) |insert| insert(self.context,string(effect,"text")) else .no_target;
+            const outcome:Delivery=if(self.cancelled) .unchanged else if(self.insert_current) |insert| insert(self.context,effect) else .no_target;
             self.input(.{.type="delivery",.operation_id=id,.outcome=@tagName(outcome)});
             self.clearTarget();
         } else if (same(kind, "insert")) {
@@ -741,6 +832,7 @@ pub const Controller = struct {
                     outcome = if (same(std.mem.span(inserted), expected)) .applied else .unknown;
                 }
             };
+            if(outcome==.applied) if(self.refine_lease) |lease| if(self.refined) |notify| notify(self.context,lease.value,self.original orelse "",string(effect,"text"),self.refine_english);
             self.input(.{ .type = "delivery", .operation_id = id, .outcome = @tagName(outcome) });
             self.clearTarget();
         }

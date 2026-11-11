@@ -10,14 +10,33 @@ pub struct SettingsRepository {
 
 impl SettingsRepository {
     pub fn load_voice(&self) -> Result<polar_dictate::VoiceSettings, RepositoryError> {
-        self.load_module(HostDocument::Voice)
+        let mut value: polar_dictate::VoiceSettings = self.load_module(HostDocument::Voice)?;
+        value.set_output_mode(value.mode());
+        Ok(value)
     }
     pub fn update_voice(
         &self,
         expected_revision: u64,
-        value: polar_dictate::VoiceSettings,
+        mut value: polar_dictate::VoiceSettings,
     ) -> Result<polar_dictate::VoiceSettings, UpdateError> {
+        value.set_output_mode(value.mode());
         self.update_module(HostDocument::Voice, expected_revision, value)
+    }
+
+    /// Change only the selected mode; concurrent edits retain the existing revision guard.
+    pub fn update_voice_mode(
+        &self,
+        expected_revision: u64,
+        mode: polar_dictate::TranscriptionMode,
+    ) -> Result<polar_dictate::VoiceSettings, UpdateError> {
+        let mut value = self.load_voice()?;
+        if value.revision != expected_revision {
+            return Err(UpdateError::RevisionConflict {
+                current_revision: value.revision,
+            });
+        }
+        value.transcription_mode = mode;
+        self.update_voice(expected_revision, value)
     }
 
     pub fn load_message_connectors(
@@ -119,6 +138,9 @@ impl SettingsRepository {
     pub fn from_database(database: HostDatabase) -> Self {
         Self { database }
     }
+    pub fn shared_database(&self) -> HostDatabase {
+        self.database.clone()
+    }
     pub fn path(&self) -> &Path {
         self.database.path()
     }
@@ -133,6 +155,23 @@ impl SettingsRepository {
         self.database
             .runtime()?
             .read_blocking(|connection| Ok(load(connection)))?
+    }
+
+    /// Desktop-wide scalar preference: update inside the existing transaction
+    /// without replacing sections edited by another window.
+    pub fn set_new_codex_yolo(&self, yolo: bool) -> Result<bool, RepositoryError> {
+        self.database.runtime()?.write_blocking(move |connection| Ok((|| {
+            let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut settings = load(&transaction)?.unwrap_or_default();
+            if settings.session_creation.yolo != yolo {
+                settings.session_creation.yolo = yolo;
+                settings.revision = settings.revision.checked_add(1)
+                    .ok_or(RepositoryError::RevisionExhausted)?;
+                save(&transaction, &settings)?;
+            }
+            transaction.commit()?;
+            Ok(yolo)
+        })()))?
     }
 
     pub fn update_section(

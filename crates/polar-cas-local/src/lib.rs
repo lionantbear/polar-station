@@ -284,7 +284,7 @@ impl LocalCas {
     }
 
     fn sync_directory(&self, path: &Path) -> Result<()> {
-        
+        ;
         
         self.dir.open(path)?.into_std().sync_all()?;
         Ok(())

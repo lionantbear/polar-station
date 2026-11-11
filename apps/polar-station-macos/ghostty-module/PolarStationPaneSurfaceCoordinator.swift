@@ -163,6 +163,15 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         )
     }
 
+    func setIdeaPresentation(scope: String, visiblePaneIDs: Set<String>) {
+        for (id, pane) in displayPanes where !visiblePaneIDs.contains(id) {
+            pane.display.setIdeaPresentation(scope: scope, visible: false)
+        }
+        for (id, pane) in displayPanes where visiblePaneIDs.contains(id) {
+            pane.display.setIdeaPresentation(scope: scope, visible: true)
+        }
+    }
+
     func surface(for paneID: String) -> Ghostty.SurfaceView? {
         residentPanes[paneID]?.surface ?? displayPanes[paneID]?.display.view
     }

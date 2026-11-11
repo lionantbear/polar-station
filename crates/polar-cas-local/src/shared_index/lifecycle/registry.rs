@@ -147,7 +147,7 @@ impl Registry {
         
         file.write_all(&bytes)?;
         file.sync_all()?;
-        
+        ;
         self.dir
             .rename("retention.pending", &self.dir, "retention.bin")?;
         self.dir.open(".")?.sync_all()?;

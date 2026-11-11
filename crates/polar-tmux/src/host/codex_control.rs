@@ -203,6 +203,7 @@ impl CodexControlService {
         // Reads remain usable while a mutation waits for its RPC response.
         match &command {
             CodexCommandV1::GetUi => return Ok(CodexResultV1::Ui {
+                file_reference_lookup: true,
                 labels: [
                     ("contract_version", "2"),
                     ("title", "Codex control and notifications"),
@@ -253,14 +254,17 @@ impl CodexControlService {
                     settings: self.config.read().await.clone(),
                 })
             }
-            CodexCommandV1::ReadThread { endpoint_id, thread_id }
+            CodexCommandV1::ReadThread { endpoint_id, thread_id, .. }
             | CodexCommandV1::ReadHistoryDetail { endpoint_id, thread_id } => {
                 let client = self.endpoint(endpoint_id).await?;
                 let value = client.request("thread/read", json!({"threadId":thread_id,"includeTurns":false})).await.map_err(RpcFailure::code)?;
                 if value["thread"]["id"].as_str() != Some(thread_id.as_str()) { return Err("thread_mismatch"); }
                 let thread = super::codex_session::history_thread(&value["thread"]);
-                if matches!(command, CodexCommandV1::ReadThread { .. }) {
-                    return Ok(CodexResultV1::Thread { thread });
+                if let CodexCommandV1::ReadThread { file_reference, .. } = &command {
+                    let resolved_file_reference = if let Some(fragment) = file_reference {
+                        super::codex_file_references::lookup(&client, &value["thread"], fragment).await?
+                    } else { None };
+                    return Ok(CodexResultV1::Thread { thread, resolved_file_reference });
                 }
                 let turns = client.request("thread/turns/list", json!({"threadId":thread_id,"limit":1,"sortDirection":"desc","itemsView":"summary"})).await.map_err(RpcFailure::code)?;
                 return Ok(CodexResultV1::HistoryDetail { detail: super::codex_session::history_detail(thread, &turns["data"][0]) });
@@ -341,6 +345,7 @@ impl CodexControlService {
         let _recovery = self.publisher.recovery_after_mutation();
         let _operation = self.operations.lock().await;
         let result = match command {
+            CodexCommandV1::StartLocalServer{endpoint_id}=>self.start_local_server(&endpoint_id,may_configure).await,
             CodexCommandV1::ConnectImessageSender {
                 expected_revision,
                 ssh_target_id,

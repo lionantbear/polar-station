@@ -1,5 +1,3 @@
-> Public source export: first-party oracle scripts, generated golden data, and their npm harness are excluded. References below document the original upstream verification method; upstream source, license, and provenance records remain intact.
-
 # Force layout source provenance and adaptation boundary
 
 This directory is a **development-only oracle**, not a JavaScript runtime shipped

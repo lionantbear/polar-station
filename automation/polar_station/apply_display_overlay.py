@@ -386,6 +386,11 @@ void ghostty_surface_free(ghostty_surface_t);''')
     # may see it. Forward the hit-tested event at its actual owner first.
     add(swift, "            guard hitTest(location) == self else { return event }", '''            guard hitTest(location) == self else { return event }
             #if POLAR_STATION
+            // An expanded native composer overlays the fixed terminal viewport.
+            // Respect the actual window hit owner before taking terminal focus.
+            guard let stationContentView = window.contentView,
+                  stationContentView.hitTest(stationContentView.convert(event.locationInWindow, from: nil)) === self
+            else { return event }
             NotificationCenter.default.post(
                 name: .init("PolarStationSurfacePointerDown"), object: self,
                 userInfo: ["event": event])
@@ -625,7 +630,7 @@ pub fn stationDisplayOnly(self: *const Self) bool {
         add(window, before, before + "\n                .station_surface = overrides.station_surface,")
     app = "src/apprt/gtk/class/application.zig"
     add(app, '                .init("polar-settings", actionPolarSettings, null),',
-        '                .init("polar-settings", actionPolarSettings, null),\n                .init("polar-lgp", actionPolarLgp, null),\n                .init("polar-idea-tree", actionPolarIdeaTree, null),\n                .init("polar-resume-codex", actionPolarResumeCodex, null),')
+        '                .init("polar-settings", actionPolarSettings, null),\n                .init("polar-open-image", actionPolarOpenImage, null),\n                .init("polar-lgp", actionPolarLgp, null),\n                .init("polar-idea-tree", actionPolarIdeaTree, null),\n                .init("polar-resume-codex", actionPolarResumeCodex, null),')
     before = """    fn actionPolarSettings(
         _: *gio.SimpleAction,
         _: ?*glib.Variant,
@@ -651,7 +656,7 @@ pub fn stationDisplayOnly(self: *const Self) bool {
         polar_tmux.dispatchShortcut(self, .resume_codex);
     }""")
     add(window, '            station_menu.append("Settings…", "app.polar-settings");',
-        '            station_menu.append("Settings…", "app.polar-settings");\n            station_menu.append("Open Polar Conversation…", "app.polar-lgp");\n            var idea_label: [160]u8 = undefined;\n            station_menu.append(polar_tmux.shortcutMenuLabel(12, &idea_label), "app.polar-idea-tree");\n            var resume_label: [160]u8 = undefined;\n            station_menu.append(polar_tmux.shortcutMenuLabel(13, &resume_label), "app.polar-resume-codex");')
+        '            station_menu.append("Settings…", "app.polar-settings");\n            station_menu.append("Open Selected File", "app.polar-open-image");\n            station_menu.append("Open Polar Conversation…", "app.polar-lgp");\n            var idea_label: [160]u8 = undefined;\n            station_menu.append(polar_tmux.shortcutMenuLabel(12, &idea_label), "app.polar-idea-tree");\n            var resume_label: [160]u8 = undefined;\n            station_menu.append(polar_tmux.shortcutMenuLabel(13, &resume_label), "app.polar-resume-codex");')
     return out
 
 

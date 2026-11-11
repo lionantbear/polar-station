@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 polar-dictate.workspace = true
+polar-transcreation.workspace = true
 polar-identity.workspace = true
 polar-station-settings.workspace = true
 polar-tmux-protocol.workspace = true

@@ -5,10 +5,9 @@
 //! report `delivery: unchanged` without touching the editor. Never replay saved
 //! effects; restore the snapshot through this ABI instead.
 use crate::dictate_speech::DictateSpeech;
-use polar_tmux_workspace::dictate::{Input, application::MAX_INPUT};
-use serde_json::{Value, json};
-use std::ffi::{CString, c_char};
-
+use polar_tmux_workspace::dictate::{application::MAX_INPUT, Input};
+use serde_json::{json, Value};
+use std::ffi::{c_char, CString};
 
 /// Static product shortcut declaration, shared by both native registrations.
 #[repr(C)]
@@ -33,12 +32,16 @@ pub extern "C" fn polar_station_dictate_shortcut() -> StationDictateShortcut {
 }
 
 pub struct DictateHandle {
-    application: polar_tmux_workspace::dictate::application::Application<crate::dictate_adapter::StationDictateIo>,
+    application: polar_tmux_workspace::dictate::application::Application<
+        crate::dictate_adapter::StationDictateIo,
+    >,
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_dictate_new() -> *mut DictateHandle {
     Box::into_raw(Box::new(DictateHandle {
-        application: polar_tmux_workspace::dictate::application::Application::new(crate::dictate_adapter::StationDictateIo::default()),
+        application: polar_tmux_workspace::dictate::application::Application::new(
+            crate::dictate_adapter::StationDictateIo::default(),
+        ),
     }))
 }
 /// # Safety
@@ -50,22 +53,29 @@ pub unsafe extern "C" fn polar_station_dictate_dispatch(
     bytes: *const u8,
     length: usize,
 ) -> *mut c_char {
-    let result: Result<Value, String> = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if handle.is_null() || bytes.is_null() || length == 0 || length > MAX_INPUT {
-            return Err("Invalid Dictate input".into());
-        }
-        let value: Value = serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, length) })
-            .map_err(|e| e.to_string())?;
-        // Observe native receipts only; no transcript, context or audio is logged.
-        if let (Some(stage @ ("capture_ready" | "stop" | "transcribed" | "rewritten" | "delivery")), Some(id)) =
-            (value["type"].as_str(), value["operation_id"].as_str()) {
-            tracing::info!(target: "polar_dictate::latency", operation_id=id, event=stage,
+    let result: Result<Value, String> =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if handle.is_null() || bytes.is_null() || length == 0 || length > MAX_INPUT {
+                return Err("Invalid Dictate input".into());
+            }
+            let value: Value =
+                serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, length) })
+                    .map_err(|e| e.to_string())?;
+            // Observe native receipts only; no transcript, context or audio is logged.
+            if let (
+                Some(stage @ ("capture_ready" | "stop" | "transcribed" | "rewritten" | "delivery")),
+                Some(id),
+            ) = (value["type"].as_str(), value["operation_id"].as_str())
+            {
+                tracing::info!(target: "polar_dictate::latency", operation_id=id, event=stage,
                 outcome=value["outcome"].as_str().unwrap_or(""), "Dictate native stage");
-        }
-        let application = &mut unsafe { &mut *handle }.application;
-        Ok(application.dispatch(value).unwrap_or_else(|error| application.failure_response(error)))
-    }))
-    .unwrap_or_else(|_| Err("Dictate state failed".into()));
+            }
+            let application = &mut unsafe { &mut *handle }.application;
+            Ok(application
+                .dispatch(value)
+                .unwrap_or_else(|error| application.failure_response(error)))
+        }))
+        .unwrap_or_else(|_| Err("Dictate state failed".into()));
     let value = result.unwrap_or_else(|error| json!({"ok":false,"error":error}));
     serde_json::to_string(&value)
         .ok()
@@ -197,6 +207,35 @@ pub unsafe extern "C" fn polar_station_dictate_speech_set_progress(
     }
 }
 
+/// # Safety
+/// The borrowed callback context remains live until unregister returns.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_dictate_speech_set_history(
+    handle: *const DictateSpeech,
+    callback: Option<crate::dictate_speech::HistoryCallback>,
+    context: *mut std::ffi::c_void,
+) {
+    if !handle.is_null() {
+        unsafe { &*handle }.set_history(callback, context as usize);
+    }
+}
+
+/// Close the bounded native audio input, without network I/O or waiting for ASR.
+/// # Safety
+/// Handle and ID bytes stay valid; free must not race this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_dictate_speech_finish(
+    handle: *const DictateSpeech,
+    id: *const u8,
+    length: usize,
+) -> bool {
+    if handle.is_null() || id.is_null() || length == 0 || length > 128 {
+        return false;
+    }
+    std::str::from_utf8(unsafe { std::slice::from_raw_parts(id, length) })
+        .is_ok_and(|id| unsafe { &*handle }.finish(id))
+}
+
 /// Shared Voice settings and capture command adapter. Blocking service requests
 /// run on a native background worker; capture_begin only schedules the writer.
 /// # Safety
@@ -207,12 +246,18 @@ pub unsafe extern "C" fn polar_station_dictate_service_request(
     bytes: *const u8,
     length: usize,
 ) -> *mut c_char {
-    let result=std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Value,String> {
-        if handle.is_null() || bytes.is_null() || length==0 || length>512*1024 {return Err("Invalid Voice request".into());}
-        let value:Value=serde_json::from_slice(unsafe {std::slice::from_raw_parts(bytes,length)}).map_err(|_|"Invalid Voice request")?;
-        let service=unsafe {&*handle};
-        polar_tmux_workspace::dictate::application::service_request(service, value)
-    })).unwrap_or_else(|_|Err("Voice client failed".into()));
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Value, String> {
+            if handle.is_null() || bytes.is_null() || length == 0 || length > 512 * 1024 {
+                return Err("Invalid Voice request".into());
+            }
+            let value: Value =
+                serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, length) })
+                    .map_err(|_| "Invalid Voice request")?;
+            let service = unsafe { &*handle };
+            polar_tmux_workspace::dictate::application::service_request(service, value)
+        }))
+        .unwrap_or_else(|_| Err("Voice client failed".into()));
     let value = result.unwrap_or_else(|error| json!({"ok":false,"error":error}));
     serde_json::to_string(&value)
         .ok()

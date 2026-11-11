@@ -187,9 +187,9 @@ impl CodexControlService {
             "{:x}",
             Sha256::digest(serde_json::to_vec(&command).map_err(|_| "invalid_request")?)
         );
-        let (intent_id, kind) = match &command {
-            CodexCommandV1::SubmitThreadText { intent_id, .. }
-            | CodexCommandV1::QueueText { intent_id, .. } => (intent_id.clone(), "queue"),
+        let (intent_id, mut kind) = match &command {
+            CodexCommandV1::SubmitThreadText { intent_id, .. } => (intent_id.clone(), "start"),
+            CodexCommandV1::QueueText { intent_id, .. } => (intent_id.clone(), "queue"),
             CodexCommandV1::Steer { intent_id, .. } => (intent_id.clone(), "steer"),
             CodexCommandV1::Interrupt { intent_id, .. } => (intent_id.clone(), "interrupt"),
             _ => return Err("invalid_request"),
@@ -206,6 +206,11 @@ impl CodexControlService {
             }
             if row.status != "received" {
                 return self.receipt(principal, &intent_id);
+            }
+            // A pre-upgrade intent retains its originally staged queue semantics.
+            // Accepted/unknown intents already returned above and can never resend.
+            if kind == "start" && row.operation_kind == "queue" {
+                kind = "queue";
             }
             if row.expires_at_ms <= now_ms() || row.input_text.is_none() && kind != "interrupt" {
                 self.ledger
@@ -351,6 +356,12 @@ impl CodexControlService {
             .map(|text| json!([{"type":"text","text":text,"text_elements":[]}]))
             .unwrap_or(Value::Null);
         let (method, params) = match kind {
+            // Codex atomically chooses start or steer; do not poll activity or
+            // duplicate its active/idle decision in Station.
+            "start" => (
+                "turn/start",
+                json!({"threadId":thread,"input":input,"clientUserMessageId":intent_id}),
+            ),
             "queue" => (
                 "thread/queue/add",
                 json!({"threadId":thread,"input":input,"clientUserMessageId":intent_id}),
@@ -398,6 +409,14 @@ impl CodexControlService {
         }
         let result = client.request(method, params).await;
         let (status, queue_id, turn_id, error_code) = match result {
+            Ok(value) if kind == "start" => match value
+                .pointer("/turn/id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+            {
+                Some(id) => ("accepted", None, Some(id.into()), None),
+                None => ("unknown", None, None, Some("invalid_codex_response")),
+            },
             Ok(value) if kind == "queue" => match value
                 .pointer("/queuedSubmission/id")
                 .and_then(Value::as_str)
@@ -448,6 +467,7 @@ fn receipt_from_row(row: &CodexSubmissionRow) -> ControlResult<CodexSubmissionRe
         turn_id: row.turn_id.clone(),
         error_code: row.error_code.clone(),
         label: match (row.status.as_str(), row.operation_kind.as_str()) {
+            ("accepted", "start") => "Input accepted by Codex",
             ("accepted", "queue") => "Accepted and queued",
             ("accepted", "steer") => "Input accepted by the original task",
             ("accepted", "interrupt") => "Interrupt requested for the original task",
@@ -459,6 +479,6 @@ fn receipt_from_row(row: &CodexSubmissionRow) -> ControlResult<CodexSubmissionRe
         }
         .into(),
         clear_input: row.status == "accepted"
-            && matches!(row.operation_kind.as_str(), "queue" | "steer"),
+            && matches!(row.operation_kind.as_str(), "start" | "queue" | "steer"),
     })
 }

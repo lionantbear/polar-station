@@ -21,7 +21,7 @@ pub fn create(allocator: std.mem.Allocator, view_id: []const u8) !*gtk.Widget {
         defer allocator.free(path);
         var loaded = try std.DynLib.open(path);
         errdefer loaded.close();
-        create_fn = loaded.lookup(Create, "polar_graphics_gtk_create_view") orelse return error.GraphicsEntryMissing;
+        create_fn = loaded.lookup(Create, "polar_graphics_gtk_create_pane") orelse return error.GraphicsEntryMissing;
         library = loaded;
     }
     const project = try std.fs.path.joinZ(allocator, &.{ root, "project" });

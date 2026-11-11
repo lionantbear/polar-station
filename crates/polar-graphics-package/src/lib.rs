@@ -1,5 +1,6 @@
 //! Local trusted graphics packages. Archive integrity reuses polar-package-tree.
 //! No executable sandbox or plugin-tool runtime is provided by this crate.
+pub mod view_selection;
 use anyhow::{bail, Context, Result};
 use polar_package_tree::{extract_zip_file, validate_directory, ArchiveLimits, FileDigest};
 use serde::{Deserialize, Serialize};

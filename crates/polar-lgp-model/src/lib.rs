@@ -1,4 +1,5 @@
 pub mod cas_files;
+pub mod cas_operations;
 mod inline_attachment;
 pub use inline_attachment::InlineMessageAttachment;
 mod channel;

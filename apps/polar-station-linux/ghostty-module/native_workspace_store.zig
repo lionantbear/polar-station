@@ -17,6 +17,7 @@ const PersistedPane = struct {
 };
 
 const PersistedTab = struct {
+    split_ratios: []const f32 = &.{},
     id: []const u8,
     title: []const u8,
     display_mode: renderpkg.DisplayMode,
@@ -237,6 +238,7 @@ fn persistedWorkspace(
         }
         tabs[tab_index] = .{
             .id = tab.id,
+            .split_ratios = tab.split_ratios,
             .title = tab.title,
             .display_mode = tab.display_mode,
             .main_pane_id = tab.focused_pane_id,
@@ -361,6 +363,7 @@ fn nativeWorkspace(
         const visual = try cloneStrings(alloc, tab.visual_pane_ids);
         tabs[tab_index] = .{
             .id = try alloc.dupe(u8, tab.id),
+            .split_ratios = try alloc.dupe(f32, tab.split_ratios),
             .title = try alloc.dupe(u8, tab.title),
             .display_mode = tab.display_mode,
             .focused_pane_id = if (tab.main_pane_id) |id|
@@ -445,6 +448,7 @@ fn deepCloneFromDecoded(
         }
         tabs[tab_index] = .{
             .id = try allocator.dupe(u8, tab.id),
+            .split_ratios = try allocator.dupe(f32, tab.split_ratios),
             .title = try allocator.dupe(u8, tab.title),
             .display_mode = tab.display_mode,
             .focused_pane_id = if (tab.focused_pane_id) |id|
@@ -494,6 +498,8 @@ fn validateSnapshot(snapshot: renderpkg.Snapshot) !void {
     }
     var selected_found = false;
     for (snapshot.tabs, 0..) |tab, tab_index| {
+        if (tab.split_ratios.len > 8) return error.InvalidWorkspace;
+        for(tab.split_ratios) |ratio| if(!std.math.isFinite(ratio) or ratio<=0 or ratio>=1) return error.InvalidWorkspace;
         if (tab.id.len == 0 or tab.title.len == 0 or tab.panes.len > 9 or
             tab.visual_pane_ids.len != tab.panes.len)
         {

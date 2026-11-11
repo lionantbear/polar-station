@@ -7,6 +7,7 @@ import AudioToolbox
 import CoreAudio
 import CPolarStationDesktopClient
 import PolarTmuxHostClient
+import PolarTmuxMacUI
 
 /// Native microphone mechanics only. The shared Rust engine owns target,
 /// lifecycle and duration policy; callbacks carry the captured operation ID.
@@ -28,7 +29,7 @@ final class PolarStationDictateAudio {
             DispatchQueue.main.async {
                 guard let self, self.operation == id else { return }
                 guard allowed else {
-                    failed(id, "Allow Polar Station to use the microphone in System Settings.")
+                    failed(id, MicrophonePermissionPresentation(status: AVCaptureDevice.authorizationStatus(for: .audio)).explanation)
                     return
                 }
                 do {
@@ -243,6 +244,7 @@ final class PolarStationVoiceTools {
             },limit:{[weak self] _ in self?.finishTest()},failed:{[weak self] id,error in
                 self?.audio.cancel();key.withUnsafeBufferPointer {polar_station_dictate_speech_cancel(self?.worker.handle,$0.baseAddress,$0.count)}
                 self?.operation=nil;reply(["error":error,"test_status":"Microphone/storage failed; saved Test audio retained"])
+                MicrophonePermissionPresentation.showCaptureFailureIfNeeded()
             })
         case "seek_playback":
             if let time=input["seconds"] as? Double,let player {player.currentTime=max(0,min(time,player.duration))}

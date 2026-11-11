@@ -1,6 +1,8 @@
 //! Shared Idea Tree read models and navigation. Hosts supply domain-verified
 //! graphs; this crate performs no I/O, CAS admission, rendering or version selection.
 pub mod controls;
+pub mod browsing_configuration;
+pub mod perspectives;
 use polar_ideacave::{
     composition::{IdeaGraph, OccurrencePath},
     NodeRef, Reference, Result,

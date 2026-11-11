@@ -72,12 +72,18 @@ impl DictateClient {
         }
     }
     /// One authenticated event connection; no timer, polling or mutation replay.
-    pub async fn observe(&self, id: &str, mut callback: impl FnMut(Value) -> Result<()> + Send) -> Result<()> {
+    pub async fn observe(&self, id: &str, callback: impl FnMut(Value) -> Result<()> + Send) -> Result<()> {
+        self.observe_request(serde_json::json!({"op":"subscribe","id":id}), callback).await
+    }
+    pub async fn observe_history(&self, callback: impl FnMut(Value) -> Result<()> + Send) -> Result<()> {
+        self.observe_request(serde_json::json!({"op":"subscribe_history"}), callback).await
+    }
+    async fn observe_request(&self, payload: Value, mut callback: impl FnMut(Value) -> Result<()> + Send) -> Result<()> {
         let mut stream = self.connect().await?;
         let request_id = crate::host_identity::random_uuid_v4();
         let frame = LocalClientFrame::ExtensionRequest { request: LocalExtensionRequestV1 {
             extension: crate::dictate_host::EXTENSION.into(), version:1, request_id:request_id.clone(),
-            timeout_ms:30_000, payload:serde_json::json!({"op":"subscribe","id":id}),
+            timeout_ms:30_000, payload,
         }};
         frame.validate()?;
         crate::local_ipc::write_json_frame(&mut stream,&frame).await?;

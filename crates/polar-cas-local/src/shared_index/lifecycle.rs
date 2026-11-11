@@ -65,7 +65,7 @@ impl LocalCas {
     /// Maintenance only. Unknown roots retain their original lifetime; active
     /// readers and preparations take precedence over this best-effort attempt.
     pub fn collect_index_artifacts(&self) -> Result<CollectionReceipt> {
-        
+        ;
         if !matches!(self.key_layout, polar_cas::ObjectKeyLayout::SharedContent) {
             return Err(Error::UnsupportedCapability);
         }

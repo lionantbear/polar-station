@@ -47,29 +47,19 @@
     "automation/polar_station/source_hygiene.py",
     "automation/polar_station/public_sync.py",
     "automation/polar_station/collect_macos_build_evidence.py",
-    "automation/polar_station/capture_native_source.py",
-    "automation/polar_station/capture_trial_inputs.py",
-    "automation/polar_station/retain_private_draft.py",
-    "automation/polar_station/review_trial_draft.py",
-    "automation/polar_station/trial-draft-review-plan.json"
+    "automation/polar_station/record_macos_signing.py",
+    "automation/polar_station/write_macos_release_gate.py",
+    "automation/polar_station/public_build_cleanup.json",
+    "automation/polar_station/public_source_identity.py",
+    "automation/polar_station/source_cleanup.py",
+    "automation/polar_station/source_structural.py",
+    "automation/polar_station/source-tools-requirements.txt",
+    "automation/polar_station/source_manifest.py",
+    "automation/polar_station/sign_trial_main.py"
   ],
   "root_inputs": [
     "Cargo.lock",
-    "rust-toolchain.toml",
-    "licenses/pinned",
-    "licenses/pinned-evidence.json",
-    "BUILD_MACOS.md",
-    "docs/release/PUBLIC_PROFILE.md",
-    "docs/release/ASSET_PROVENANCE.json",
-    "licenses/cargo-evidence.json",
-    "licenses/cargo-texts",
-    "docs/release/BUILD_VALIDATION.json",
-    "licenses/mpl-source-inventory.json",
-    "licenses/third-party-policy.json",
-    "licenses/cargo-archive-integrity.json",
-    "SOURCE_DISTRIBUTION.md",
-    "SYNC_PUBLIC_REPO.md",
-    "docs/releases/macos-trial-b043-source-and-relink.md"
+    "rust-toolchain.toml"
   ],
   "ignored_directory_names": [
     ".git",
@@ -81,7 +71,8 @@
     "benchmarks",
     "evidence",
     "history",
-    "handoff"
+    "handoff",
+    "test-fixtures"
   ],
   "ignored_suffixes": [
     ".pyc",
@@ -101,5 +92,23 @@
     "apps/polar-station-macos/Resources/PolarStation.icns",
     "apps/polar-station-macos/Resources/PolarStationStatusTemplate.png",
     "apps/polar-station-macos/Resources/PolarStationStatusTemplate@2x.png"
-  ]
+  ],
+  "export_assets": {
+    "licenses/pinned": "automation/polar_station/public_assets/licenses/pinned",
+    "licenses/pinned-evidence.json": "automation/polar_station/public_assets/licenses/pinned-evidence.json",
+    "BUILD_MACOS.md": "automation/polar_station/public_assets/BUILD_MACOS.md",
+    "docs/release/PUBLIC_PROFILE.md": "automation/polar_station/public_assets/docs/release/PUBLIC_PROFILE.md",
+    "docs/release/ASSET_PROVENANCE.json": "automation/polar_station/public_assets/docs/release/ASSET_PROVENANCE.json",
+    "licenses/cargo-evidence.json": "automation/polar_station/public_assets/licenses/cargo-evidence.json",
+    "licenses/cargo-texts": "automation/polar_station/public_assets/licenses/cargo-texts",
+    "licenses/mpl-source-inventory.json": "automation/polar_station/public_assets/licenses/mpl-source-inventory.json",
+    "licenses/third-party-policy.json": "automation/polar_station/public_assets/licenses/third-party-policy.json",
+    "licenses/cargo-archive-integrity.json": "automation/polar_station/public_assets/licenses/cargo-archive-integrity.json",
+    "SOURCE_DISTRIBUTION.md": "automation/polar_station/public_assets/SOURCE_DISTRIBUTION.md",
+    "SYNC_PUBLIC_REPO.md": "automation/polar_station/public_assets/SYNC_PUBLIC_REPO.md",
+    "licenses/native-source-evidence.json": "automation/polar_station/public_assets/licenses/native-source-evidence.json",
+    "licenses/native-source-texts": "automation/polar_station/public_assets/licenses/native-source-texts",
+    "docs/release/NATIVE_BINARY_AUDIT.md": "automation/polar_station/public_assets/docs/release/NATIVE_BINARY_AUDIT.md",
+    "LICENSE": "automation/polar_station/public_assets/LICENSE"
+  }
 }

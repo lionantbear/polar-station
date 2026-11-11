@@ -8,7 +8,7 @@ use polar_tmux_protocol::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SessionEditorDraft {
     pub bind_only: bool,
@@ -27,6 +27,17 @@ pub struct SessionEditorDraft {
     pub archived: bool,
     pub subagents: bool,
     pub rename: Option<SessionIdentityV1>,
+}
+impl Default for SessionEditorDraft {
+    fn default() -> Self {
+        Self {
+            bind_only: false, target: String::new(), endpoint: String::new(),
+            session_type: String::new(), mode: String::new(), name: String::new(),
+            directory: String::new(), command: String::new(), auto_restart: false,
+            yolo: true, open_local_cli: false, original_id: String::new(),
+            search: String::new(), archived: false, subagents: false, rename: None,
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -50,6 +61,7 @@ pub enum SessionEditorInput {
         id: String,
         checked: Option<bool>,
     },
+    Activate { id: String },
     Previous,
     Next,
     ToggleSelected,
@@ -58,6 +70,8 @@ pub enum SessionEditorInput {
     },
     More,
     RetryHistory,
+    StartLocalServer,
+    ServerStarted { token:u64,error:Option<String> },
     RetryDetail,
     Complete {
         token: u64,
@@ -75,6 +89,8 @@ pub enum SessionEditorInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEditorEffect {
+    SavePreference { token: u64, request: SessionEditorRequestV1 },
+    StartLocalServer { token:u64,owner_host_id:String,endpoint_id:String },
     Picked { token: u64, owner_host_id: String, endpoint_id: String, thread_id: String, title: String },
     Read {
         token: u64,
@@ -90,6 +106,9 @@ pub enum SessionEditorEffect {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEditorView {
+    pub can_start_local_server:bool,
+    pub server_starting:bool,
+    pub server_start_label:String,
     pub end_preview: Option<SessionEndPreviewV1>,
     pub end_loading: bool,
     pub end_completed: bool,
@@ -137,12 +156,16 @@ pub struct SessionEditorEngine {
     history_read: Option<Read>,
     detail_read: Option<Read>,
     directory_read: Option<Read>,
+    yolo_edited: bool,
+    desired_yolo: Option<bool>,
+    yolo_write: Option<(u64, bool)>,
+    yolo_save_error: Option<String>,
     epoch: u64,
     detail_epoch: u64,
     next_token: u64,
     pending: Option<u64>,
     open: bool,
-}
+    server_start:Option<(u64,String)>,}
 impl SessionEditorEngine {
     fn token(&mut self) -> u64 {
         self.next_token = self
@@ -307,6 +330,9 @@ impl SessionEditorEngine {
         let resume = matches!(self.draft.session_type.as_str(), "codex" | "claude")
             && self.draft.mode == "resume";
         SessionEditorView {
+            can_start_local_server:self.open&&self.draft.session_type=="codex"&&self.endpoint().is_some_and(|e|e.control_mode==CodexControlModeV1::Local)&&self.server_start.is_none()&&self.pending.is_none(),
+            server_starting:self.server_start.is_some(),
+            server_start_label:(if self.server_start.is_some(){"Starting Codex…"}else{"Start local Codex app server"}).into(),
             end_preview: self.end_preview.clone(),
             end_loading: self.end_read.is_some(),
             end_completed: self.end_completed,
@@ -320,12 +346,13 @@ impl SessionEditorEngine {
             directory_loading: self.directory_read.is_some(),
             history_error: self.history_error.clone(),
             detail_error: self.detail_error.clone(),
-            message: self.message.clone(),
+            message: self.yolo_save_error.clone().or_else(|| self.message.clone()),
             can_more: self.browsing()
                 && self.cursor.is_some()
                 && self.history_read.is_none()
                 && self.history_error.is_none(),
             can_submit: self.open
+                && self.server_start.is_none()
                 && self.pending.is_none()
                 && (resume || self.directory_read.is_none())
                 && (self.operation().is_some() || self.picked().is_some()),
@@ -431,6 +458,13 @@ impl SessionEditorEngine {
         });
         vec![SessionEditorEffect::Read { token, request }]
     }
+    fn save_yolo(&mut self) -> Vec<SessionEditorEffect> {
+        let Some(yolo) = self.desired_yolo.filter(|_| self.yolo_write.is_none()) else { return vec![]; };
+        let token = self.token();
+        self.yolo_write = Some((token, yolo));
+        self.yolo_save_error = None;
+        vec![SessionEditorEffect::SavePreference { token, request: SessionEditorRequestV1::SetCreationYolo { yolo } }]
+    }
     pub fn dispatch(&mut self, input: SessionEditorInput) -> Vec<SessionEditorEffect> {
         match input {
             SessionEditorInput::OpenEnd { request }
@@ -474,6 +508,8 @@ impl SessionEditorEngine {
                 let mut effects = self.dispatch(SessionEditorInput::Close);
                 self.open = true;
                 self.draft = draft;
+                self.yolo_edited = self.desired_yolo.is_some();
+                if let Some(yolo) = self.desired_yolo { self.draft.yolo = yolo; }
                 self.endpoints = endpoints;
                 self.source = source;
                 self.normalize();
@@ -485,6 +521,7 @@ impl SessionEditorEngine {
                 effects
             }
             SessionEditorInput::Close => {
+                self.server_start=None;
                 self.open = false;
                 self.end_target = None;
                 self.end_preview = None;
@@ -508,7 +545,6 @@ impl SessionEditorEngine {
                 let target_changed = old.target != self.draft.target;
                 if target_changed {
                     self.draft.directory.clear();
-                    self.draft.yolo = false;
                     self.draft.open_local_cli = false;
                     self.draft.endpoint.clear();
                 }
@@ -521,6 +557,11 @@ impl SessionEditorEngine {
                     || old.archived != self.draft.archived
                     || old.subagents != self.draft.subagents;
                 let mut effects = vec![];
+                if old.yolo != self.draft.yolo && !self.draft.bind_only && self.draft.rename.is_none() {
+                    self.yolo_edited = true;
+                    self.desired_yolo = Some(self.draft.yolo);
+                    effects.extend(self.save_yolo());
+                }
                 if scope_changed {
                     self.reset_history();
                     if old.target != self.draft.target || old.endpoint != self.draft.endpoint {
@@ -574,6 +615,11 @@ impl SessionEditorEngine {
                     checked: Some(checked),
                 })
             }
+            SessionEditorInput::Activate { id }
+                if self.browsing() && self.pending.is_none() && self.history.iter().any(|t|t.thread_id==id) => {
+                    self.manual=false;self.selected.clear();self.draft.original_id=id;
+                    self.dispatch(SessionEditorInput::Submit)
+                }
             SessionEditorInput::Select { id, checked }
                 if self.pending.is_none() && self.history.iter().any(|t| t.thread_id == id) =>
             {
@@ -599,6 +645,17 @@ impl SessionEditorEngine {
                 self.detail_request()
             }
             SessionEditorInput::More if self.history_error.is_none() => self.history_request(true),
+            SessionEditorInput::StartLocalServer if self.view().can_start_local_server=>{
+                let endpoint=self.endpoint().unwrap().clone();let token=self.token();
+                self.server_start=Some((token,endpoint.id.clone()));self.message=Some("Starting local Codex app server…".into());
+                vec![SessionEditorEffect::StartLocalServer{token,owner_host_id:endpoint.owner_host_id,endpoint_id:endpoint.id}]
+            }
+            SessionEditorInput::ServerStarted{token,error} if self.server_start.as_ref().is_some_and(|s|s.0==token)=>{
+                let (_,endpoint)=self.server_start.take().unwrap();
+                if !self.open||self.draft.endpoint!=endpoint{return vec![]}
+                self.message=error.map(|e|format!("Could not start Codex: {e}. Retry when ready."));
+                if self.message.is_none(){self.history_error=None;self.history_request(false)}else{vec![]}
+            }
             SessionEditorInput::RetryHistory => self.history_request(!self.history.is_empty()),
             SessionEditorInput::RetryDetail => self.detail_request(),
             SessionEditorInput::Submit if self.view().can_submit => {
@@ -644,6 +701,23 @@ impl SessionEditorEngine {
         result: Option<SessionEditorResultV1>,
         error: Option<String>,
     ) -> Vec<SessionEditorEffect> {
+        if let Some((_, written)) = self.yolo_write.filter(|(id, _)| *id == token) {
+            self.yolo_write = None;
+            match (result, error) {
+                (Some(SessionEditorResultV1::CreationYolo { yolo }), None) if yolo == written => {
+                    self.yolo_save_error = None;
+                    if self.desired_yolo == Some(written) { self.desired_yolo = None; }
+                    return self.save_yolo();
+                }
+                (_, error) => {
+                    self.yolo_save_error = Some(error.unwrap_or_else(|| "YOLO preference could not be saved. Change it again to retry.".into()));
+                    if self.desired_yolo.is_some_and(|desired| desired != written) {
+                        return self.save_yolo();
+                    }
+                    return vec![];
+                }
+            }
+        }
         if self.end_read.as_ref().is_some_and(|r| r.token == token) {
             self.end_read = None;
             match (result, error) {
@@ -732,9 +806,10 @@ impl SessionEditorEngine {
                 return vec![];
             }
             match (result, error) {
-                (Some(SessionEditorResultV1::LaunchContext { directory, notice }), None)
+                (Some(SessionEditorResultV1::LaunchContext { directory, notice, yolo }), None)
                     if directory.execution_target_id == self.draft.target =>
                 {
+                    if !self.yolo_edited { self.draft.yolo = yolo; }
                     if self.draft.directory.is_empty() {
                         self.draft.directory = directory.path.clone();
                         if self.message.is_none() {

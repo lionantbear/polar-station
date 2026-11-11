@@ -6,6 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+polar-transcreation.workspace = true
 rusqlite.workspace = true
 polar-sqlite-runtime.workspace = true
 polar-storage-migration.workspace = true

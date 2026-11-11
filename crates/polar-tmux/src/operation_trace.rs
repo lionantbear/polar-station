@@ -20,6 +20,9 @@ use tracing::{
 use tracing_subscriber::{layer::Context, prelude::*, registry::LookupSpan, Layer};
 
 const TARGET: &str = "polar_station_operation";
+fn traced_target(target: &str) -> bool {
+    matches!(target, TARGET | "polar_dictate::latency" | "polar_adam::latency")
+}
 const QUEUE_CAPACITY: usize = 4096;
 const EVENT_LIMIT: u64 = 65_536;
 const RETENTION_FILES: usize = 3;
@@ -384,6 +387,20 @@ impl FieldVisitor {
                 | "stop_wait_us"
                 | "wait_us"
                 | "work_us"
+                | "reused"
+                | "continued"
+                | "input_tokens"
+                | "output_tokens"
+                | "cached_tokens"
+                | "reasoning_tokens"
+                | "usage_reported"
+                | "cache_reported"
+                | "reasoning_reported"
+                | "first_text_us"
+                | "last_text_us"
+                | "delta_count"
+                | "duration_ms"
+                | "status"
         ) {
             self.0.insert(field.name().into(), value);
         }
@@ -414,7 +431,7 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        if attrs.metadata().target() != TARGET {
+        if !traced_target(attrs.metadata().target()) {
             return;
         }
         let Some(span) = ctx.span(id) else {
@@ -473,7 +490,7 @@ where
         }
     }
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
-        if event.metadata().target() != TARGET {
+        if !traced_target(event.metadata().target()) {
             return;
         }
         let mut fields = FieldVisitor::default();
@@ -544,7 +561,7 @@ pub fn init() {
             )
             .with(
                 layer.with_filter(tracing_subscriber::filter::filter_fn(|meta| {
-                    matches!(meta.target(), TARGET | "polar_dictate::latency")
+                    traced_target(meta.target())
                 })),
             )
             .try_init();

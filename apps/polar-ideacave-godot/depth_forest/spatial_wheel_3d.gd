@@ -12,23 +12,21 @@ var inspected_reference:=""
 var _mode_control_pan:=Vector2.ZERO
 var _mode_control_zoom:=1.0
 var wheel_marks: Control
-var touch_quiet: Timer
-var touch_latched:=false
-var touch_direction:=0.0
+var touch_quiet
+var _touch_owner:=""
 var depth_target:=1.0
 var touch_previewing:=false
 var touch_start_depth:=1.0
 var touch_start_pan:=Vector2.ZERO
 var touch_start_zoom:=1.0
-const TOUCH_DEPTH_UNITS:=6.0
+const TOUCH_DEPTH_UNITS:=18.0
 
 func _ready() -> void:
 	# The approved Retina experiment used 232 backing pixels (116 points).
 	# Keep that reading footprint at every display scale, not only on Mac.
 	wheel_width=116.0
-	touch_quiet=Timer.new();touch_quiet.one_shot=true;touch_quiet.wait_time=.18
-	touch_quiet.timeout.connect(_finish_touch_depth)
-	add_child(touch_quiet)
+	min_wheel_width=116.0
+	touch_quiet=preload("res://addons/polar_graphics/deadline.gd").new(_finish_touch_depth,.18)
 	if OS.get_name()=="macOS":
 		# macOS 26's reserved PingFangUI system fallback is not loadable by
 		# this Godot/FreeType build. Load the installed CJK face directly,
@@ -50,8 +48,9 @@ func _build_chrome() -> void:
 	forest.reduced_motion=OS.get_environment("POLAR_LAB_REDUCE_MOTION")=="1"
 	add_child(forest)
 	forest.forest_selected.connect(_select_node)
+	forest.reference_read_requested.connect(func(id):_select_node(id);show_details())
 	forest.endpoint_requested.connect(_locate_endpoint)
-	forest.forest_activated.connect(func(id):_select_node(id);show_details())
+	forest.forest_activated.connect(_activate_node)
 	wheel_marks=Control.new();wheel_marks.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	wheel_marks.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	wheel_marks.draw.connect(_draw_wheel_marks);add_child(wheel_marks)
@@ -88,7 +87,7 @@ func _build_chrome() -> void:
 func _settle_source_transition() -> void:
 	if touch_previewing or (transition and transition.is_valid() and transition.is_running()):
 		if transition and transition.is_valid():transition.kill()
-		touch_previewing=false;touch_quiet.stop();pan_accumulator=0;touch_direction=0;touch_latched=false
+		touch_previewing=false;touch_quiet.stop();pan_accumulator=0;_touch_owner=""
 		wheel_value=depth_target;forest.selector_depth=wheel_value
 		var memory: Dictionary=per_source_views.get(str(sources[active_index].id),{})
 		tree_pan=memory.get("pan",tree_pan);tree_zoom=float(memory.get("zoom",tree_zoom))
@@ -138,21 +137,8 @@ func _build_sources() -> void:
 		button.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
 		add_child(button)
 		button.pressed.connect(func():select_source(sources.find(source)))
-		button.mouse_entered.connect(func():
-			forest.source_plaques[str(source.id)].pose(true,false,Vector2.ZERO,forest.reduced_motion)
-			source_tooltip.text=str(forest.record_for(source.id).title)
-			source_tooltip.position=button.position+Vector2(button.size.x+18,8);source_tooltip.show()
-			forest._settle_frames=12)
-		button.mouse_exited.connect(func():
-			forest.source_plaques[str(source.id)].pose(false,false,Vector2.ZERO,forest.reduced_motion)
-			source_tooltip.hide();forest._settle_frames=12)
-		var grip:=Button.new();grip.text="⠿";grip.size=Vector2(20,30)
-		grip.position=Vector2(140,22)
-		for state in ["normal","hover","pressed","focus"]:grip.add_theme_stylebox_override(state,StyleBoxEmpty.new())
-		grip.modulate.a=0;grip.tooltip_text="Depth reorder is pending M2";grip.disabled=true
-		button.add_child(grip)
-		button.mouse_entered.connect(func():grip.modulate.a=1)
-		button.mouse_exited.connect(func():grip.modulate.a=0)
+		button.mouse_entered.connect(func():forest.source_plaques[str(source.id)].pose(true,false,Vector2.ZERO,forest.reduced_motion))
+		button.mouse_exited.connect(func():forest.source_plaques[str(source.id)].pose(false,false,Vector2.ZERO,forest.reduced_motion))
 		plaques.append(button)
 	_place_sources()
 
@@ -175,7 +161,7 @@ func _place_sources() -> void:
 	if wheel_marks:wheel_marks.queue_redraw()
 	_trace_state()
 
-func select_source(index: int, animate: bool=true, requested_depth: float=NAN, duration: float=.62, preserve_selection:bool=false) -> void:
+func select_source(index: int, animate: bool=true, requested_depth: float=NAN, duration: float=.62, preserve_selection:bool=false, refresh_selection:bool=true) -> void:
 	if sources.is_empty():return
 	forest.clear_navigation_trace()
 	var goal_depth:=requested_depth
@@ -206,7 +192,7 @@ func select_source(index: int, animate: bool=true, requested_depth: float=NAN, d
 			_place_sources(),0.0,1.0,duration)
 		transition.finished.connect(_trace_state)
 	else:wheel_value=goal_depth;forest.selector_depth=goal_depth;tree_pan=goal_pan;tree_zoom=goal_zoom
-	_rebuild_tree()
+	if refresh_selection:_rebuild_tree()
 	_place_sources()
 	print("SPATIAL_WHEEL_SELECT index=%d forest_persistent=true" % index)
 
@@ -223,7 +209,6 @@ func wheel_step(delta: int, factor: float=1.0) -> void:
 
 func _rebuild_tree() -> void:
 	if not _forest_built:return
-	forest.set_selection(navigation.selected_id)
 	_refresh_selection()
 
 func _refresh_selection() -> void:
@@ -244,7 +229,7 @@ func _place_tree() -> void:
 		forest.target+=Vector3(-delta.x,delta.y,0)*.012
 		forest.orbit_distance/=maxf(.001,tree_zoom/_mode_control_zoom)
 		_mode_control_pan=tree_pan;_mode_control_zoom=tree_zoom
-		forest._update_camera();forest._place_wheel();forest._invalidate_routes()
+		forest._update_camera();forest._place_wheel()
 	else:
 		forest.forest_pan=tree_pan;forest.forest_zoom=tree_zoom
 		forest.apply_camera()
@@ -255,6 +240,7 @@ func _place_tree() -> void:
 	_trace_state()
 
 func _resize() -> void:
+	if forest==null or forest.camera==null or not forest.camera.is_inside_tree():return
 	var preserve_relation: bool=forest!=null and _forest_built and forest.relation_mode
 	var preserve_overview: bool=forest!=null and _forest_built and forest.overview_mode
 	super._resize()
@@ -271,17 +257,21 @@ func _select_node(key: String) -> void:
 	var previous_detail: String=detail_sheet.focus_id if detail_sheet and detail_sheet.active else ""
 	forest.clear_navigation_trace()
 	if bool(forest.record_for(key).external):_locate_endpoint(key);return
+	if not detail_sheet.active and forest.source_by_node.get(key)!=str(sources[active_index].id):
+		_locate_endpoint(key);return
 	_activate_node_source(key)
 	if not inspected_reference.is_empty():reader.hide()
 	inspected_reference="";forest.focus_callout.hide()
 	navigation.select_node(key)
 	sources[active_index]["selection"]=key
-	forest.set_selection(key)
 	_refresh_selection()
 	if not previous_detail.is_empty() and previous_detail!=key:forest.show_navigation_trace(previous_detail,key)
 
 func _locate_endpoint(id: String) -> void:
 	if not forest.points.has(id):return
+	_settle_source_transition()
+	var previous:String=navigation.selected_id
+	var before:Dictionary=_bridge_camera_pose()
 	forest.clear_navigation_trace()
 	inspected_reference="";reader.hide();forest.focus_callout.hide()
 	var focused:=get_viewport().gui_get_focus_owner()
@@ -297,25 +287,61 @@ func _locate_endpoint(id: String) -> void:
 		forest._place_wheel();_sync_source_controls();_trace_state();return
 	var root_id: String=forest.source_by_node.get(id,"")
 	for i in sources.size():
-		if str(sources[i].id)==root_id:select_source(i,false);break
-	navigation.locate_node(id);forest.set_selection(id)
+		if str(sources[i].id)==root_id:
+			if i!=active_index:select_source(i,false,NAN,.62,true,false)
+			break
+	navigation.locate_node(id)
 	var anchor: Vector3=forest.source_offsets[root_id]+Vector3(1.3,0,0)
 	var desired: Vector3=forest.points[id]+Vector3(1.3,0,0)
 	tree_pan=Vector2((anchor.x-desired.x)/.012,(desired.y-anchor.y)/.012);tree_zoom=1.0
 	_place_tree();_refresh_selection()
+	forest.show_navigation_trace(previous,id)
+	_animate_bridge_navigation(previous,before)
+
+func _bridge_camera_pose()->Dictionary:
+	return {"target":forest.target,"size":forest.view_size,"direction":forest.view_direction,"depth":wheel_value}
+
+func _animate_bridge_navigation(previous:String,before:Dictionary)->void:
+	# Review-only override: assess the new camera effect separately from lines.
+	if OS.get_environment("POLAR_BRIDGE_CAMERA_REVIEW")=="0":return
+	if detail_sheet.active or forest.reduced_motion or not bool(forest.motion_preferences.get("navigation_animation",true)):return
+	var bridge:Dictionary=forest.bridge_between(previous,navigation.selected_id)
+	if bridge.is_empty():return
+	var curve:Curve3D=bridge.curve
+	var length:=curve.get_baked_length()
+	var start:=curve.sample_baked(length if bridge.reverse else 0.0)
+	var end:=curve.sample_baked(0.0 if bridge.reverse else length)
+	var after:Dictionary=_bridge_camera_pose()
+	per_source_views[str(sources[active_index].id)]={"pan":tree_pan,"zoom":tree_zoom,"selection":navigation.selected_id}
+	if transition and transition.is_valid():transition.kill()
+	transition=create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	transition.tween_method(func(value:float):
+		var point:=curve.sample_baked(length*(1.0-value if bridge.reverse else value))
+		forest.target=point+(Vector3(before.target)-start).lerp(Vector3(after.target)-end,value)
+		forest.view_size=lerpf(before.size,after.size,value)
+		forest.view_direction=Vector3(before.direction).slerp(after.direction,value)
+		wheel_value=lerpf(before.depth,after.depth,value);forest.depth_value=wheel_value;forest.selector_depth=wheel_value
+		forest._update_camera();forest._place_wheel();_sync_source_controls(),0.0,1.0,.38)
+	transition.finished.connect(func():wheel_value=depth_target;forest.selector_depth=wheel_value;_place_sources())
 
 func show_details() -> void:
 	_settle_source_transition()
 	var id: String=inspected_reference if not inspected_reference.is_empty() else navigation.selected_id
 	detail_sheet.present(id);_trace_state()
 
+func _activate_node(id:String)->void:
+	_select_node(id);show_details()
+
 func _close_details() -> void:
 	detail_sheet.close();_trace_state()
 
+func displayed_selection()->String:return navigation.selected_id
+
 func _input(event: InputEvent) -> void:
 	if not initialized or not is_visible_in_tree():return
+	if event is InputEventMouseMotion:forest.port_pointer_moved(event.position)
 	var owner := get_viewport().gui_get_focus_owner()
-	if owner is LineEdit or owner is TextEdit or (owner!=null and not is_ancestor_of(owner)):return
+	if owner is LineEdit or owner is TextEdit or (owner!=null and owner!=self and not is_ancestor_of(owner)):return
 	if detail_sheet and detail_sheet.handle_pointer(event):
 		get_viewport().set_input_as_handled();_trace_state();return
 	if detail_sheet and detail_sheet.active:
@@ -327,11 +353,15 @@ func _input(event: InputEvent) -> void:
 		_handle_touch_pan(event);get_viewport().set_input_as_handled();return
 	var focused:=get_viewport().gui_get_focus_owner()
 	if event is InputEventKey and event.pressed and event.keycode in [KEY_ENTER,KEY_KP_ENTER,KEY_ESCAPE] and reader.visible:
-		if not event.echo:_close_details()
+		if not event.echo:
+			if event.keycode==KEY_ESCAPE:_close_details()
+			elif has_signal("instruction_requested"):emit_signal("instruction_requested")
 		get_viewport().set_input_as_handled();_trace_state();return
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER,KEY_SPACE] and focused is Button and (forest.relation_overlay.is_ancestor_of(focused) or focused in forest.boundary_labels):
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER,KEY_SPACE] and focused is Button and (forest.port_popup.is_ancestor_of(focused) or forest.port_handles.values().any(func(handle):return handle.hit==focused)):
 		focused.pressed.emit();get_viewport().set_input_as_handled();return
 	if event is InputEventKey and event.pressed and event.keycode==KEY_ESCAPE:
+		if forest.port_popup.visible:
+			forest._hide_port_popup();get_viewport().set_input_as_handled();return
 		forest.clear_navigation_trace()
 	if event is InputEventKey and event.pressed and event.alt_pressed and event.keycode in [KEY_UP,KEY_DOWN]:
 		if not (focused is LineEdit or focused is TextEdit):
@@ -346,47 +376,57 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey:_trace_state()
 
 func _handle_touch_pan(event: InputEventPanGesture) -> void:
-	if event.position.x>=wheel_width+65 and not event.alt_pressed:
-		_settle_source_transition()
-		pan_accumulator=0;touch_latched=false;touch_direction=0;touch_quiet.stop()
-		tree_pan+=preload("res://addons/polar_graphics/gesture_motion.gd").content_pixels(event.delta);_place_tree();return
-	var amount:=event.delta.y
-	if absf(amount)<.025:return
+	if bool(event.get_meta("scroll_started",false)):_finish_touch_depth()
+	var owner:="canvas" if event.position.x>=wheel_width+65 and not event.alt_pressed else "depth"
+	if not _touch_owner.is_empty():owner=_touch_owner
+	if owner=="depth" and (bool(event.get_meta("scroll_momentum",false)) or bool(event.get_meta("scroll_ended",false))):
+		if touch_previewing:_finish_touch_depth()
+		# Retain the existing owner through the native momentum tail, until its
+		# quiet boundary or the next native begin. No velocity model or polling.
+		_touch_owner="depth";touch_quiet.start();return
+	if _touch_owner.is_empty():
+		if owner=="canvas":_settle_source_transition()
+		else:
+			if not touch_previewing and not (transition and transition.is_valid() and transition.is_running()):
+				per_source_views[str(sources[active_index].id)]={"pan":tree_pan,"zoom":tree_zoom,"selection":navigation.selected_id}
+			touch_start_depth=wheel_value;touch_start_pan=tree_pan;touch_start_zoom=tree_zoom
+			if transition and transition.is_valid():transition.kill()
+			touch_previewing=true
+		_touch_owner=owner
 	touch_quiet.start()
-	var direction:=signf(amount)
-	if touch_direction!=0 and direction!=touch_direction:
-		pan_accumulator=0;touch_latched=false
-	touch_direction=direction
-	if touch_latched:return
-	if is_zero_approx(pan_accumulator):
-		# Capture the actually displayed pose, including an interrupted Tween.
-		if not touch_previewing and not (transition and transition.is_valid() and transition.is_running()):
-			per_source_views[str(sources[active_index].id)]={"pan":tree_pan,"zoom":tree_zoom,"selection":navigation.selected_id}
-		touch_start_depth=wheel_value;touch_start_pan=tree_pan;touch_start_zoom=tree_zoom
-		if transition and transition.is_valid():transition.kill()
+	if _touch_owner=="canvas":
+		tree_pan+=preload("res://addons/polar_graphics/gesture_motion.gd").content_pixels(event.delta);_place_tree();return
+	pan_accumulator+=event.delta.y
+	var preview:=touch_start_depth+pan_accumulator/TOUCH_DEPTH_UNITS
+	var nearest:=roundf(preview)
+	if wrapi(roundi(preview),0,sources.size())!=active_index:
+		# Commit identities only when crossing the next layer centre; keep
+		# the fractional pose under the fingers instead of starting a Tween.
+		select_source(wrapi(roundi(preview),0,sources.size()),false,nearest)
 		touch_previewing=true
-	pan_accumulator+=amount
-	if not forest.reduced_motion:
-		var target_index:=wrapi(active_index+int(direction),0,sources.size())
-		var memory: Dictionary=per_source_views.get(str(sources[target_index].id),{"pan":Vector2.ZERO,"zoom":1.0})
-		var fraction:=minf(absf(pan_accumulator)/TOUCH_DEPTH_UNITS,1.0)*.85
-		wheel_value=lerpf(touch_start_depth,depth_target+direction,fraction)
-		forest.selector_depth=wheel_value
-		tree_pan=touch_start_pan.lerp(memory.pan,fraction);tree_zoom=lerpf(touch_start_zoom,float(memory.zoom),fraction)
-		_place_sources()
-	if absf(pan_accumulator)>=TOUCH_DEPTH_UNITS:
-		pan_accumulator=0;touch_latched=true;step_source(int(direction))
+	depth_target=nearest
+	wheel_value=nearest if forest.reduced_motion else preview
+	forest.selector_depth=wheel_value
+	var low:=int(floor(preview));var fraction:=preview-floorf(preview)
+	var a:Dictionary=per_source_views.get(str(sources[wrapi(low,0,sources.size())].id),{"pan":Vector2.ZERO,"zoom":1.0})
+	var b:Dictionary=per_source_views.get(str(sources[wrapi(low+1,0,sources.size())].id),{"pan":Vector2.ZERO,"zoom":1.0})
+	tree_pan=Vector2(a.pan).lerp(b.pan,fraction);tree_zoom=lerpf(float(a.zoom),float(b.zoom),fraction)
+	_place_sources()
 
 func _finish_touch_depth() -> void:
-	var incomplete:=not touch_latched and touch_previewing
-	pan_accumulator=0;touch_latched=false;touch_direction=0
-	if incomplete:select_source(active_index,true,depth_target,.22)
+	var settle:=_touch_owner=="depth" and touch_previewing
+	_touch_owner="";pan_accumulator=0;touch_quiet.stop()
+	if settle:select_source(active_index,true,depth_target,.22)
+
+func _navigation_parents(_id:String)->Array:
+	return detail_sheet.band_ids.parents.filter(func(candidate):return candidate in detail_sheet.roles.parents) if detail_sheet.active else model.parents.get(_id,[])
 
 func _keyboard_node(keycode: Key) -> void:
 	_settle_source_transition()
 	var id: String=navigation.selected_id
+	var before:Dictionary=_bridge_camera_pose()
 	var direction:String={KEY_SPACE:"toggle",KEY_LEFT:"left",KEY_RIGHT:"right",KEY_UP:"up",KEY_DOWN:"down"}.get(keycode,"")
-	var parents:Array=detail_sheet.band_ids.parents.filter(func(candidate):return candidate in detail_sheet.roles.parents) if detail_sheet.active else []
+	var parents:Array=_navigation_parents(id)
 	var peers:Array=detail_sheet.band_ids.level if detail_sheet.active else forest.visual_level(id)
 	if not navigation.navigate_visible(direction,peers,parents,forest.visual_children(id)):return
 	if direction=="toggle":return
@@ -400,15 +440,19 @@ func _keyboard_node(keycode: Key) -> void:
 		forest.overview_mode=false;forest.relation_mode=false
 		forest.relation_overlay.hide();overview_button.text="Forest overview"
 		_place_tree()
-	if not detail_sheet.active:tree_pan+=forest.ensure_reading_visible([navigation.selected_id,id])
+	if not detail_sheet.active:
+		var same_layer:bool=forest.source_by_node.get(id)==forest.source_by_node.get(navigation.selected_id)
+		tree_pan+=forest.ensure_reading_visible([navigation.selected_id,id] if same_layer else [navigation.selected_id])
 	_place_tree()
 	forest.show_navigation_trace(id,navigation.selected_id)
+	_animate_bridge_navigation(id,before)
 
 func _activate_node_source(id: String) -> void:
 	var source: String=forest.source_by_node.get(id,"")
 	for index in sources.size():
 		if str(sources[index].id)==source:
-			if index!=active_index:select_source(index,false,NAN,.62,true)
+			# The caller submits the final node selection after changing sources.
+			if index!=active_index:select_source(index,false,NAN,.62,true,false)
 			return
 
 func _zoom_at(point: Vector2, factor: float) -> void:

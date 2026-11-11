@@ -8,6 +8,7 @@ var material: ShaderMaterial
 var legend: Label
 var world_points: Dictionary={}
 var sources: Dictionary={}
+var _motion_state = null
 
 func configure(points: Dictionary,source_by_node: Dictionary) -> void:
 	world_points=points;sources=source_by_node
@@ -39,9 +40,12 @@ func refresh(camera: Camera3D,viewport_size: Vector2,active_source: String,readi
 		if sources.get(id,"")==active_source:
 			heat=.55
 			if camera.is_position_in_frustum(world_points[id]) and reading_region.has_point(camera.unproject_position(world_points[id])):heat=1.0;hot_count+=1
-		heat_levels[id]=heat
-		var point: Vector2=atlas_points[id]
-		stars.multimesh.set_instance_custom_data(i,Color(point.x,point.y,float(i)/maxi(1,star_ids.size()),heat))
-	material.set_shader_parameter("animate_stars",not reduced_motion)
+		if heat_levels.get(id,-1.0)!=heat:
+			heat_levels[id]=heat
+			var point: Vector2=atlas_points[id]
+			stars.multimesh.set_instance_custom_data(i,Color(point.x,point.y,float(i)/maxi(1,star_ids.size()),heat))
+	if _motion_state != reduced_motion:
+		_motion_state = reduced_motion
+		material.set_shader_parameter("animate_stars",not reduced_motion)
 	legend.text="Star atlas · %d nodes   Blue: all · Amber: tree · Gold: %d in view"%[star_ids.size(),hot_count]
 	legend.position=Vector2(maxf(700,viewport_size.x-620),viewport_size.y-32)

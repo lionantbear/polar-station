@@ -178,7 +178,7 @@ impl UnifiedCatalogIndex {
             record.validate()?;
         }
         let storage = self.storage.as_ref().ok_or(Error::UnsupportedCapability)?;
-        
+        ;
         let _publication = self.publication_guard()?;
         check_cancelled()?;
         let old = self.current()?;
