@@ -234,6 +234,11 @@ find "$app/Contents/Resources/graphics" -type f -print0 | while IFS= read -r -d 
 done
 /usr/bin/codesign --force --deep --options runtime \
     --preserve-metadata=identifier,entitlements --sign "$identity" "$app"
+# Free ad-hoc trial bundles have no Team ID for library validation. Apply the
+# exception only to their main executable; never to Developer ID builds.
+if [ "$identity" = - ]; then
+    python3 "$repo_root/automation/polar_station/sign_trial_main.py" "$app"
+fi
 /usr/bin/codesign --verify --deep --strict "$app"
 # Deep bundle signing must preserve the independently signed Host entitlement.
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)

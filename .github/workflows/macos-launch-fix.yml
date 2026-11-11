@@ -1,0 +1,87 @@
+name: Correct and validate ad-hoc trial launch
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/macos-launch-fix.yml']
+permissions:
+  contents: read
+concurrency:
+  group: macos-launch-fix
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          sparse-checkout: automation/polar_station
+      - name: Download exact reviewed public trial
+        run: |
+          curl --fail --location --retry 3 'https://github.com/lionantbear/polar-station/releases/download/macos-arm64-trial-42806506227-1/Polar-Station-macOS-arm64-TRIAL-UNNOTARIZED.dmg' -o "$RUNNER_TEMP/original.dmg"
+          echo "ffd0a002afa1ac88cb2fc5374554fa773f37d80dc997871b73450c3e230c4173  $RUNNER_TEMP/original.dmg" | shasum -a 256 -c -
+      - name: Correct signing and test installed final DMG without publish credentials
+        run: |
+          test -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}"
+          python3 automation/polar_station/package_launch_fix.py --original "$RUNNER_TEMP/original.dmg" --work "$RUNNER_TEMP/launch-fix"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-trial
+          path: |
+            ${{ runner.temp }}/launch-fix/public/*
+            ${{ runner.temp }}/launch-fix/validation.json
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: launch-evidence
+          path: ${{ runner.temp }}/launch-fix/launch-evidence/
+          if-no-files-found: ignore
+          retention-days: 30
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: validated-trial
+          path: candidate
+      - name: Verify tested digest and prepare public notes
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib,os
+          root=pathlib.Path('candidate'); report=json.loads((root/'validation.json').read_text()); public=root/'public'
+          name='Polar-Station-macOS-arm64-TRIAL-UNNOTARIZED.dmg'
+          assert {x.name for x in public.iterdir()}=={name,'SHA256SUMS'}
+          digest=hashlib.sha256((public/name).read_bytes()).hexdigest()
+          assert report['passed'] is True and report['terminal_launch']['terminal_child_executed'] is True
+          assert report['source_commit']==os.environ['GITHUB_SHA'] and digest==report['final_dmg_sha256']
+          assert (public/'SHA256SUMS').read_text()==digest+'  '+name+'\n'
+          pathlib.Path('notes.md').write_text('Ad-hoc macOS arm64 trial: corrected main-app library validation for bundled Sparkle.\n\nRe-signs and repackages the immutable reviewed trial, not a full source recompilation. Nested libraries, helper, resources and notices remain unchanged. Formal build signing logic is also fixed.\n\nThe exact final DMG passed signature-policy and terminal-command execution checks on a native macOS CI runner before publication. This is not clean-VM, Gatekeeper, visual UI, TCC or updater acceptance. Not Developer ID signed or notarized.\n\nSecurity: only this ad-hoc main app allows non-Team-ID libraries; this reduces process library-injection protection. No system security settings changed.\n\nOriginal release retained: https://github.com/lionantbear/polar-station/releases/tag/macos-arm64-trial-42806506227-1\n\nSHA256: '+digest+'\n')
+          PY
+      - name: Publish new two-asset prerelease without altering old releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="macos-arm64-trial-launch-fix-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" --target "$GITHUB_SHA" --draft --prerelease --title 'macOS arm64 trial: launch signing correction' --notes-file notes.md candidate/public/Polar-Station-macOS-arm64-TRIAL-UNNOTARIZED.dmg candidate/public/SHA256SUMS
+          gh release view "$tag" --json assets,isDraft --jq '{draft:.isDraft,assets:[.assets[].name]}' > release-state.json
+          python3 - <<'PY'
+          import json
+          value=json.load(open('release-state.json'))
+          assert value['draft'] is True and sorted(value['assets'])==['Polar-Station-macOS-arm64-TRIAL-UNNOTARIZED.dmg','SHA256SUMS']
+          PY
+          mkdir downloaded
+          gh release download "$tag" --dir downloaded
+          (cd downloaded && sha256sum -c SHA256SUMS)
+          cmp candidate/public/SHA256SUMS downloaded/SHA256SUMS
+          gh release edit "$tag" --draft=false --prerelease --latest=false
+          gh release view "$tag" --json url,isDraft,assets
