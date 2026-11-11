@@ -1,0 +1,26 @@
+name: Inspect current private trial retention status
+on:
+  workflow_dispatch:
+  push:
+    branches: [release/macos-current-source-20261111]
+    paths: ['.github/workflows/macos-current-trial-status.yml']
+permissions: {}
+jobs:
+  inspect:
+    if: github.repository == 'lionantbear/polar-station'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # GitHub requires draft-capable authorization even for this GET-only query.
+      contents: write
+      actions: read
+    steps:
+      - name: Read only exact run and draft metadata; execute no retained content
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/lionantbear/polar-station/actions/runs/43084976157 \
+            --jq '{id,head_sha,status,conclusion,run_attempt}'
+          gh api repos/lionantbear/polar-station/releases/tags/macos-arm64-trial-build-43084976157-1 \
+            --jq '{id,tag_name,target_commitish,draft,prerelease,assets:[.assets[]|{id,name,size,state,digest}]}'
