@@ -2106,7 +2106,7 @@
     ".github/workflows/macos-launch-fix.yml": "6cfb48085a5b1837164969db5e48954a138b8c587a3f34940579adeb45094538",
     ".github/workflows/macos-trial-publish.yml": "b91b5fad1758bbba3ac28a6978ed47cfa5a5c577a299c37c16e15696153b2e3f",
     ".github/workflows/macos-trial-review.yml": "2027032fa2a8207059fe1918b02feb8be4f4719fff21c11f23f81228d4308615",
-    ".github/workflows/macos-trial.yml": "2f80eb34392f657a434aca9369de2f67bb15eebab59cae0251493fa1ac861908",
+    ".github/workflows/macos-trial.yml": "58d4caa4e6a510b568d3cace90fca07e39006080c204c0b94903ce0779837607",
     ".github/workflows/native-macos.yml": "bf9789fbbf2f79d832fa234ae2474de90abdfd250c32db043fc96699b907f558",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "17ddd47e8025e645f5e455911030dd694ba6b7f58f60bd905caea1216916d95e",
