@@ -26,6 +26,15 @@ jobs:
         run: |
           test -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}"
           python3 automation/polar_station/package_launch_fix.py --original "$RUNNER_TEMP/original.dmg" --work "$RUNNER_TEMP/launch-fix"
+      - name: Print retained launch evidence
+        if: always()
+        run: |
+          for name in result.json app.stderr app.stdout; do
+            if [ -f "$RUNNER_TEMP/launch-fix/launch-evidence/$name" ]; then
+              echo "=== $name ==="
+              cat "$RUNNER_TEMP/launch-fix/launch-evidence/$name"
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: validated-trial

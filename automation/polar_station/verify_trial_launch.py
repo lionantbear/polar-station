@@ -42,8 +42,10 @@ def validate_signature(signature, entitlements):
 
 def command(executable, sentinel, token):
     # Positional arguments avoid interpreting paths/token as shell code.
+    # Ghostty/macOS deliberately retains exits faster than 250ms as abnormal,
+    # even with code 0; give the real terminal command one second of runtime.
     return [str(executable), "--shell-integration=none", "--quit-after-last-window-closed=true", "-e", "/bin/sh", "-c",
-            'umask 077; printf "%s" "$2" > "$1"; exit 0',
+            'umask 077; printf "%s" "$2" > "$1"; /bin/sleep 1; exit 0',
             "polar-trial-smoke", str(sentinel), token]
 
 
