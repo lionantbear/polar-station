@@ -68,7 +68,8 @@
     "licenses/third-party-policy.json",
     "licenses/cargo-archive-integrity.json",
     "SOURCE_DISTRIBUTION.md",
-    "SYNC_PUBLIC_REPO.md"
+    "SYNC_PUBLIC_REPO.md",
+    "docs/releases/macos-trial-b043-source-and-relink.md"
   ],
   "ignored_directory_names": [
     ".git",
