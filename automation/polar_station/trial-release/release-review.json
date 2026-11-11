@@ -1,0 +1,72 @@
+{
+  "attestations": {
+    "actual_capture_and_source_identity": true,
+    "cargo_and_zig_notices": true,
+    "complete_corresponding_source_and_build_inputs": true,
+    "lgpl_runtime_copyright_condition": true,
+    "license_compatibility_and_required_change_notices": true,
+    "native_versions_recipes_patches_resources": true,
+    "no_private_logs_or_secrets_in_public_assets": true,
+    "original_native_launch_evidence_matches_exact_dmg": true,
+    "public_source_access_and_final_documents": true,
+    "verified_upstream_source_patch_and_rebuild_access": true
+  },
+  "gap_dispositions": [
+    {
+      "evidence": {
+        "sha256": "385c048cd3ebc250fd0578a324fd2e0d1e9845e2ad1900ecdac176dc118df560"
+      },
+      "gap": "Cargo",
+      "resolution": "All 1,103 compiled package identities, declared license data and resolution graph match; original component grants remain preserved."
+    },
+    {
+      "evidence": {
+        "sha256": "766bb9fa11041cb352d33fa61ac5715965e3628dc0111d57655888e0c1896af8"
+      },
+      "gap": "Native integration and Homebrew",
+      "resolution": "Pinned public native sources plus public overlays/build scripts reproduce reviewed integration changes. Six packaged Homebrew versions, source checksums, recipes, patches and resources are identified."
+    },
+    {
+      "evidence": {
+        "sha256": "0888354c85044e6a0b3a9bf52de3db1246725916dfefd6d6f2cc9b06dfaf9404"
+      },
+      "gap": "Source access and LGPL",
+      "resolution": "Complete public source/relink directions are prepared. Relevant upstream LGPL later-version grants permit the stated LGPLv3 route. Source archives are not required as extra release attachments."
+    },
+    {
+      "evidence": {
+        "sha256": "afb5c29798635f1f7cd8499afcd490c20110e2a50c5b5079b94fb9f8f93140d2"
+      },
+      "gap": "Notice-only projection",
+      "resolution": "Five code/config/template texts and 334 unrelated Homebrew-only texts excluded. Complete required legal terms, copyright notices and exceptions are retained; component map has no raw capture paths."
+    },
+    {
+      "evidence": {
+        "sha256": "73c9ab7ef889dc625de947c77f0dbe29b83948c5dc78c1c437d27b7195aa03a3"
+      },
+      "gap": "Original runtime copyright condition",
+      "resolution": "The captured Xcode project sets NSHumanReadableCopyright empty in all six configurations. Final DMG runtime verification must confirm empty/absent; a nonempty value requires specific LGPLv3 section 4(c) review."
+    },
+    {
+      "evidence": {
+        "bytes": 13255,
+        "sha256": "0888354c85044e6a0b3a9bf52de3db1246725916dfefd6d6f2cc9b06dfaf9404",
+        "url": "https://github.com/lionantbear/polar-station/blob/a9f9623c046a1e4819544743be4331884117be1f/docs/releases/macos-trial-b043-source-and-relink.md"
+      },
+      "gap": "Published source/relink directions binding",
+      "resolution": "Exact public repository document read and byte-verified."
+    }
+  ],
+  "inspection_report_sha256": "9cc963844ea5cd16383be8f96991d6619802df59acad67f5db33944b13add294",
+  "notice_tree_sha256": "e1186c58d1d82658aaf05d3cc293e7f9271763b3ddafb9a9e52d642ee72ce6cb",
+  "plan_sha256": "1a93a8c728d48b98acb9c7ec5b23ed1449d701c694a5073b62be2399f19374bb",
+  "program_sha256": "6d68f2421bc04c4f003212ded2ee76c5a59838387308699ce4ba41fcad013ef5",
+  "reviewed_at": "2026-11-11T02:42:20Z",
+  "reviewer": "Polar Station source and notice review",
+  "run_attempt": 1,
+  "run_id": 42806506227,
+  "source_access_sha256": "98717969819f8f42e57d7b6f52b650065e1452a0b7f816fe97575158cca5ad88",
+  "source_commit": "b04362836a5f70fba9fa8f60dc7ac817f46f2e5b",
+  "status": "approved-for-this-trial",
+  "unresolved": []
+}

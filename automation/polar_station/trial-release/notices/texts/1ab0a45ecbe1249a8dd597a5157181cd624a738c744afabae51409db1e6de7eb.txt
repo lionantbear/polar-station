@@ -1,0 +1,16 @@
+gdextension-api 0.3.3 — upstream copyright and license notices
+
+/*
+ * Copyright (c) godot-rust; Bromeon and contributors.
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+
+/* The above copyright notice and this permission notice shall be         */

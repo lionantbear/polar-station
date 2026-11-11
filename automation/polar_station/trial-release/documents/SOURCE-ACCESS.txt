@@ -1,0 +1,10 @@
+Polar Station source, licenses and modification rights
+
+Application source: https://github.com/lionantbear/polar-station/tree/b04362836a5f70fba9fa8f60dc7ac817f46f2e5b
+Detailed source and full-app rebuild/relink directions: https://github.com/lionantbear/polar-station/blob/a9f9623c046a1e4819544743be4331884117be1f/docs/releases/macos-trial-b043-source-and-relink.md
+
+This application uses GNU gettext 0.24 statically and gettext 1.0 libintl, GLib/gmodule/gthread 2.90.1, GTS 0.7.6 and libltdl 2.6.2 through its Graphviz bundle. Their LGPL-covered parts are conveyed using LGPLv3 under their upstream version-2/2.1-or-later grants. Original copyright notices, other per-file grants and libltdl special exceptions remain applicable. Full LGPLv3 and GPLv3 terms are in THIRD-PARTY-NOTICES/terms/. Original notices and the component-to-text index are in THIRD-PARTY-NOTICES/COMPONENTS.txt.
+
+You may modify these libraries, rebuild and relink this application, and reverse engineer the combined work for debugging your modifications. The linked source directions explain the complete-source route, including static gettext replacement and ad-hoc signing without publisher keys. No additional Polar Station restriction is imposed on these activities.
+
+Source is available at the pinned first-party/upstream links in the directions, not by a future written offer. Upstream components retain their stated licenses.

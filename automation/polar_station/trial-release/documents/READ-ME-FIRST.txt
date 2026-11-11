@@ -1,0 +1,7 @@
+Polar Station — Apple Silicon Mac trial
+
+Drag Polar Station.app to Applications, then open it. The app is ad-hoc signed and not notarized. If macOS requires approval, use its normal Open Anyway controls; do not disable system security.
+
+The original app passed a limited 15-second macOS 26 launch check. This does not establish all GUI, permission, older-system or upgrade scenarios.
+
+LICENSE-AGPL-3.0.txt contains the first-party terms. THIRD-PARTY-NOTICES contains full third-party notices and a component index. SOURCE-ACCESS.txt gives exact source and modification/relink directions. The release has only the DMG and SHA256SUMS.
