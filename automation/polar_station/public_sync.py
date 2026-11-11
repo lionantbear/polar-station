@@ -264,6 +264,8 @@ def make_plan(repository, previous, new, branch='main', protect=None, reviewed_r
             changes.append({'path': p, 'action': 'add' if before is None else 'delete' if after is None else 'modify', 'before': before, 'after': after})
     doc = dict(new_doc)
     doc['files'] = {p: e['sha256'] for p, e in sorted(final.items()) if e['mode'] != '120000'}
+    if 'file_modes' in doc:
+        doc['file_modes'] = {p: e['mode'] for p, e in sorted(final.items()) if e['mode'] != '120000'}
     links = {}
     for p, e in final.items():
         if e['mode'] == '120000':
