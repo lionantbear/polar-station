@@ -2103,7 +2103,8 @@
     "vendor/grammers-tl-gen/src/structs.rs": "100644",
     ".github/workflows/macos-current-trial-status.yml": "100644",
     "automation/polar_station/trial-draft-review-plan-current.json": "100644",
-    ".github/workflows/macos-current-trial-review.yml": "100644"
+    ".github/workflows/macos-current-trial-review.yml": "100644",
+    "docs/releases/macos-trial-488ca31-source-and-relink.md": "100644"
   },
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
@@ -2114,7 +2115,7 @@
     ".github/workflows/native-macos.yml": "bf9789fbbf2f79d832fa234ae2474de90abdfd250c32db043fc96699b907f558",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "17ddd47e8025e645f5e455911030dd694ba6b7f58f60bd905caea1216916d95e",
-    "CI.md": "d5ce27c3f9c24e14d8f5a9c1d1b9aa3b53b49e3aa40219c3d4854a829884875b",
+    "CI.md": "c30882a8221785e98122fbc00900bb98d03588017b8942853ca49e4f9015fbba",
     "Cargo.lock": "1c290985fdd314c2b908a234ab4fca4bd5e41096cc1dea08d7661140e79affb7",
     "Cargo.toml": "cdd969f63567ca7d3f1e25d2908fc8fc2a0dd742356b3b6086017388ab2e43ca",
     "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
@@ -4123,7 +4124,8 @@
     "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86",
     ".github/workflows/macos-current-trial-status.yml": "e22e4b4cb6ad9807c993da24a6f30957e1aa9a37f7114a34d158d13a6150276c",
     "automation/polar_station/trial-draft-review-plan-current.json": "72c3b7b20b30620e55cc378c4a93498800535aa3f10ca716a32304c90977a608",
-    ".github/workflows/macos-current-trial-review.yml": "a88d5f6173228592f2de1f13a6d255fff470907c9c3dcc66ee3e6bb98759537b"
+    ".github/workflows/macos-current-trial-review.yml": "a88d5f6173228592f2de1f13a6d255fff470907c9c3dcc66ee3e6bb98759537b",
+    "docs/releases/macos-trial-488ca31-source-and-relink.md": "2cc9a28a13478eb091f28b09da8bf521d6a65c5a5e95a6e48ce938387ddf8fc0"
   },
   "license_present": true,
   "missing_inputs": [],

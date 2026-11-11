@@ -75,3 +75,5 @@ Main continues to run the ordinary Linux/macOS source build. This fresh native
 trial runs automatically only on its release-preparation branch (or by manual
 dispatch), so integrating the reviewed history into main does not duplicate
 the expensive native build or publish anything automatically.
+
+Current exported-source trial: [source and full-app rebuild/relink directions](docs/releases/macos-trial-488ca31-source-and-relink.md). This document binds the new native source commit and supplies the exact upstream, recipe, patch and library modification routes.
