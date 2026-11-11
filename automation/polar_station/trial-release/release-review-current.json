@@ -1,0 +1,181 @@
+{
+  "artifact_review_summary": {
+    "additional_original_terms": [
+      "flatbuffers exact VCS root Apache text matches existing notice",
+      "objc2-security exact VCS root statement and MIT option match retained full texts",
+      "half additional original MIT template retained alongside elected Apache option"
+    ],
+    "cargo_compiler_candidates": 1123,
+    "inspection_report_sha256": "76b20fe11f6b966707c8741fba35d8c49bddba82028c6191d988d1b1f2202fcb",
+    "native_components": 26,
+    "native_recipe_sha256": {
+      "homebrew/gettext/1.0/.brew/gettext.rb": "74dbc9cbf1c427c148b5d5247adfb43957b5d02be20a4e1d162aa903f0dd614e",
+      "homebrew/glib/2.90.1/.brew/glib.rb": "7352a67a6a1a15554d996d38886812e858bebbbcbf3985901724cab444ee3b3b",
+      "homebrew/graphviz/16.1.0/.brew/graphviz.rb": "6bfbd0cfd4781e5f3242e9c4b6a4fd00d540d34d6c9d16f37495a9089c2b6265",
+      "homebrew/gts/0.7.6_4/.brew/gts.rb": "5ea32681a81c5217dc2e8f09094afc887a218565b7be62f3b4af98a712e3d39a",
+      "homebrew/libtool/2.6.2/.brew/libtool.rb": "725532b53263fa67aa5e9a660bcd498b312c13da54d34d42788e073ced587031",
+      "homebrew/pcre2/10.49/.brew/pcre2.rb": "94c19a0d869da4990a8f3f371e37c986ad72124d2d94032e061c4a9019f9e174"
+    },
+    "native_run": 43099863954,
+    "new_legal_texts_read": [
+      "gix-trace MIT tracing-forest attribution",
+      "libbz2-rs-sys full Bzip2 grant and original authors",
+      "sha1dc full MIT notice and original authors",
+      "GTS AUTHORS original512 bytes and README original2756 bytes"
+    ],
+    "notice_rows": 798,
+    "proofs": [
+      {
+        "path": "source-ci-488ca31.json",
+        "sha256": "584524572e601fac376df09f66ed31b98d0e906a0b9df3a0b317b64ddfee8e1d"
+      },
+      {
+        "path": "native-ci-488ca31.json",
+        "sha256": "b9063b4df9b6fcd8b9e1229de36bc269d1cf8ddbdc17db88ebc0eb5c2db5e114"
+      },
+      {
+        "path": "current-compiled-package-identities.json",
+        "sha256": "693baabf806e1dfab94d7622021efec6167cf39e5d6cb6c26f0386600a297e2e"
+      },
+      {
+        "path": "current-git-source-availability.json",
+        "sha256": "da53d817fa480910729d2e2afcea9c637b3d8154a73cddf578769aa0d5d41234"
+      },
+      {
+        "path": "current-first-party-source-availability.json",
+        "sha256": "595721ddb5e6b184a5381766dda71b597ce5f8ff7fe3ef330a529dfd115dd617"
+      },
+      {
+        "path": "native-source-availability.json",
+        "sha256": "8d0a91344caae1eca48d73e8e53de20f6e24800b8811d59a608a569a2e47bcde"
+      },
+      {
+        "path": "new-registry-source-checksums.json",
+        "sha256": "c8f7e109feb8d9ce8bcfc35220b5ef0b1f5f8ca72fec9348573c345fb9d726ba"
+      },
+      {
+        "path": "new-git-license-commit-verification.json",
+        "sha256": "edd0d20cf0baab93e18d6e0625e58f528fa41b8b9a97fd8a84945279a120315d"
+      },
+      {
+        "path": "current-notice-decisions.json",
+        "sha256": "e8f71c6233472469dbd44acce30df83890100bc2ab6017650d5fa830d5af45c0"
+      },
+      {
+        "path": "current-notice-symlink-dispositions.json",
+        "sha256": "64a1b12d274ce89bbf2c566f2b54b25b697f36ec6a056ba4ac01f05c56c48d48"
+      },
+      {
+        "path": "flatbuffers-current-license-verification.json",
+        "sha256": "3b02a4a6cf8eb8b11681cb148c4b76e1f3e3767e0c7b21ff734cb0b5a6ec6ca3"
+      },
+      {
+        "path": "objc2-current-license-verification.json",
+        "sha256": "461510489d8b85d2d31f9c1c1a7f0d488e7c64ac98e4f78934d5b52533b424ca"
+      },
+      {
+        "path": "current-directions-verification.json",
+        "sha256": "90c9456577e10e4c02f36e1d5119c4b6af093f40127a721ab99a3addabd9c6e9"
+      },
+      {
+        "path": "native-license-integration-boundaries.json",
+        "sha256": "fb37280fff503f735563063d43e779fa4e9fe4267222c52449e090a0831df246"
+      }
+    ],
+    "remaining_mandatory_execution_gates": [
+      "Final mounted-app copyright condition empty/absent",
+      "Unchanged app/signature/launch hash binding and final DMG verification",
+      "Actual publication and separate public-download installation/signature/launch check"
+    ],
+    "reviewed_at": "2026-11-11T22:27:12Z",
+    "scope": "Artifact-specific trial review; not human review, notarization or clean-machine/GUI/TCC acceptance",
+    "signing_disposition": "Intermediate Graphviz packaging hashes precede final nested signing. The source-bound collector validated original-to-copy-to-before/after-signing associations and reports no provenance gaps. Finalizer must preserve the entire launched signed app unchanged.",
+    "signing_observation": {
+      "asset": "build-evidence.zip",
+      "bytes": 7784,
+      "origin": "Build/macos-signing.json",
+      "path": "station-evidence/build-provenance/texts/d28592cbbe41de3904e26c8008bd46d4dcb4b45caaae108bf1068e41f7968c03.txt",
+      "sha256": "d28592cbbe41de3904e26c8008bd46d4dcb4b45caaae108bf1068e41f7968c03"
+    },
+    "source_checksum_limit": "Cargo1.95 package-local checksum manifests are absent for942 registry candidates. Exact lock identities, retained inventories and declared original archive checksums are used; the new63 cached original archives and files were checked separately. This is not an assertion of independent upstream equivalence for every compiled file.",
+    "source_commit": "488ca31d32321a4aa070607ac7330a8aba23bc8f",
+    "unchanged_native_versions_and_dependencies": true,
+    "unmapped_components": [],
+    "unresolved_legal_or_source_items": []
+  },
+  "attestations": {
+    "actual_capture_and_source_identity": true,
+    "cargo_and_zig_notices": true,
+    "complete_corresponding_source_and_build_inputs": true,
+    "lgpl_runtime_copyright_condition": true,
+    "license_compatibility_and_required_change_notices": true,
+    "native_versions_recipes_patches_resources": true,
+    "no_private_logs_or_secrets_in_public_assets": true,
+    "original_native_launch_evidence_matches_exact_dmg": true,
+    "public_source_access_and_final_documents": true,
+    "verified_upstream_source_patch_and_rebuild_access": true
+  },
+  "gap_dispositions": [
+    {
+      "evidence": {
+        "sha256": "068d14f86ecf7f3b617f52230b05499d5cbe6779bc5189e784b44cd68a8c39fa"
+      },
+      "gap": "Actual source, compiler candidates and native inputs",
+      "resolution": "Exact current source and all1123 compiler package candidates bound; native versions, all6 installed recipes, Zig package keys and Sparkle pin match prior reviewed inputs. Preserve all observed candidates conservatively without claiming a precise static-link map."
+    },
+    {
+      "evidence": {
+        "sha256": "068d14f86ecf7f3b617f52230b05499d5cbe6779bc5189e784b44cd68a8c39fa"
+      },
+      "gap": "Missing package-local checksum metadata and omitted source paths",
+      "resolution": "Cargo lock and exact public source/archive routes retain complete corresponding inputs.942 missing checksum manifests are recorded as collector limits, not as a claim of file-by-file upstream equivalence. Three filtered public tracked files remain available in immutable Git source; GTS README is additionally supplied verbatim."
+    },
+    {
+      "evidence": {
+        "sha256": "90c9456577e10e4c02f36e1d5119c4b6af093f40127a721ab99a3addabd9c6e9"
+      },
+      "gap": "Native source, patch, resource and relink fulfillment",
+      "resolution": "All9 original native archives/patch/resources were downloaded and hash-verified, and match unchanged current versions and recipes. Immutable public directions provide full source, SDK/toolchain, overlay, complete-app build and static gettext modification/relink routes."
+    },
+    {
+      "evidence": {
+        "sha256": "e8f71c6233472469dbd44acce30df83890100bc2ab6017650d5fa830d5af45c0"
+      },
+      "gap": "Full notice associations and omitted legal candidates",
+      "resolution": "All1123 observed packages mapped. Original root grants for flatbuffers and objc2-security verified at crate VCS commits. All4 symlink targets already retained. Additional half MIT text included. Non-UTF8 GTS author bytes and full README restored directly; collector JSON envelope excluded. Nine code/header suffix candidates are not notice files; original Godot LICENSE/COPYRIGHT/AUTHORS terms remain retained."
+    },
+    {
+      "evidence": {
+        "sha256": "d28592cbbe41de3904e26c8008bd46d4dcb4b45caaae108bf1068e41f7968c03"
+      },
+      "gap": "Copy receipts precede final signing",
+      "resolution": "The source-bound before/after signing recorder and collector validate the current binary inventory with no provenance gaps. Simplified intermediate hashes in inspector output precede nested signing. Finalizer must verify strict signatures and preserve the original launched app contents unchanged."
+    },
+    {
+      "evidence": {
+        "sha256": "6d68f2421bc04c4f003212ded2ee76c5a59838387308699ce4ba41fcad013ef5"
+      },
+      "gap": "LGPL runtime copyright condition",
+      "resolution": "Captured About implementation files match prior reviewed source. Existing finalizer remains unchanged and requires empty/absent NSHumanReadableCopyright in the actual mounted application; publication must stop on any violation. This Linux metadata review does not substitute for that mandatory Mac runtime-package check."
+    },
+    {
+      "evidence": {
+        "sha256": "b9063b4df9b6fcd8b9e1229de36bc269d1cf8ddbdc17db88ebc0eb5c2db5e114"
+      },
+      "gap": "Native launch and final public bytes",
+      "resolution": "Original fresh native installation-copy launch and actual terminal command passed. The plan binds the exact launch member and original DMG. Finalizer must verify those bytes, final package and separate post-publication public-download launch before completion."
+    }
+  ],
+  "inspection_report_sha256": "76b20fe11f6b966707c8741fba35d8c49bddba82028c6191d988d1b1f2202fcb",
+  "notice_tree_sha256": "f87b39dc6b58af7a4398ac4b7ac1a83aa9c91a70ea0359aa32893899a1d4f119",
+  "plan_sha256": "c8a5a01f2f60373c2e06f05e9522a7c4ea177a166616bd8ec75d71833fe48666",
+  "program_sha256": "6d68f2421bc04c4f003212ded2ee76c5a59838387308699ce4ba41fcad013ef5",
+  "reviewed_at": "2026-11-11T22:27:12Z",
+  "reviewer": "Codex artifact-specific source and notice review",
+  "run_attempt": 1,
+  "run_id": 43099863954,
+  "source_access_sha256": "a29b61354526a73502d7a1f6780aba25f79e5294200480dd0ba348669e1c25e9",
+  "source_commit": "488ca31d32321a4aa070607ac7330a8aba23bc8f",
+  "status": "approved-for-this-trial",
+  "unresolved": []
+}

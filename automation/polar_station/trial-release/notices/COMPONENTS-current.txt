@@ -1,0 +1,2131 @@
+Polar Station Mac trial - components and full notices
+Application source: 488ca31d32321a4aa070607ac7330a8aba23bc8f
+Native build run: 43099863954
+
+Cargo entries conservatively include all observed compiler packages, including build tools.
+Some prior full notice texts remain conservatively retained; this is not a final static-link map.
+Source and full-app modification/relink directions: SOURCE-ACCESS.txt at the DMG root.
+Original per-file grants, copyright notices and exceptions remain controlling.
+
+CARGO COMPONENTS: name version | declared terms | full notice IDs
+Inflector 0.11.4 | BSD-2-Clause | N0028,N0757
+adler2 2.0.1 | 0BSD OR MIT OR Apache-2.0 | N0041,N0140,N0429,N0438,N0476,N0711
+aead 0.5.2 | MIT OR Apache-2.0 | N0041,N0473,N0476,N0549
+aes 0.8.4 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0771
+aes 0.9.3 | MIT OR Apache-2.0 | N0149,N0524
+aes-gcm 0.10.3 | Apache-2.0 OR MIT | N0041,N0214,N0476,N0524
+age 0.12.1 | MIT OR Apache-2.0 | N0041,N0201,N0476,N0793
+age-core 0.12.0 | MIT OR Apache-2.0 | N0041,N0201,N0476,N0793
+ahash 0.8.12 | MIT OR Apache-2.0 | N0029,N0041,N0476,N0513
+aho-corasick 1.1.4 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+aliasable 0.1.3 | MIT | N0476,N0567
+allocative 0.3.6 | Apache-2.0 | N0041,N0620
+allocative_derive 0.3.6 | Apache-2.0 | N0041,N0080
+allocator-api2 0.2.21 | MIT OR Apache-2.0 | N0041,N0128,N0199,N0476
+ambient-authority 0.0.2 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0476,N0513,N0654,N0709
+annotate-snippets 0.9.2 | Apache-2.0/MIT | N0041,N0250,N0476,N0621
+anstream 1.0.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+anstyle 1.0.13 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+anstyle-parse 1.0.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+anstyle-query 1.1.5 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+anyhow 1.0.104 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+arbitrary-chunks 0.4.1 | Apache-2.0 OR MIT | N0041,N0476,N0621,N0756
+arc-swap 1.9.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0796
+arrayref 0.3.9 | BSD-2-Clause | N0107,N0757
+arrayvec 0.7.6 | MIT OR Apache-2.0 | N0041,N0258,N0476,N0513
+ascii 1.1.0 | Apache-2.0 OR MIT | N0041,N0404,N0476,N0777
+asn1-rs 0.6.2 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+asn1-rs 0.7.1 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+asn1-rs-derive 0.5.1 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+asn1-rs-derive 0.6.0 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+asn1-rs-impl 0.2.0 | MIT/Apache-2.0 | N0041,N0476,N0512,N0513
+async-channel 2.5.0 | Apache-2.0 OR MIT | N0041,N0140,N0476,N0513
+async-trait 0.1.89 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+asynk-strim 0.1.5 | MIT OR Apache-2.0 | N0041,N0476,N0787
+atoi 2.0.0 | MIT | N0476,N0541
+atomic 0.5.3 | Apache-2.0/MIT | N0041,N0476,N0513,N0631
+atomic-waker 1.1.2 | Apache-2.0 OR MIT | N0041,N0140,N0319,N0476,N0513
+autocfg 1.5.1 | Apache-2.0 OR MIT | N0041,N0156,N0476,N0513
+aws-config 1.9.0 | Apache-2.0 | N0041,N0048
+aws-credential-types 1.3.0 | Apache-2.0 | N0041,N0048
+aws-lc-rs 1.18.1 | ISC AND (Apache-2.0 OR ISC) | N0041,N0268,N0560
+aws-lc-sys 0.45.0 | ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) | N0041,N0234,N0268,N0294,N0295,N0371,N0476,N0480
+aws-runtime 1.8.1 | Apache-2.0 | N0041,N0048
+aws-sdk-signin 1.16.0 | Apache-2.0 | N0041,N0468
+aws-sdk-sso 1.103.0 | Apache-2.0 | N0041,N0468
+aws-sdk-ssooidc 1.105.0 | Apache-2.0 | N0041,N0468
+aws-sdk-sts 1.108.0 | Apache-2.0 | N0041,N0468
+aws-sigv4 1.5.1 | Apache-2.0 | N0041,N0048
+aws-smithy-async 1.3.0 | Apache-2.0 | N0041,N0048
+aws-smithy-http 0.64.0 | Apache-2.0 | N0041,N0048
+aws-smithy-http-client 1.2.0 | Apache-2.0 | N0041,N0048
+aws-smithy-json 0.63.0 | Apache-2.0 | N0041,N0048
+aws-smithy-observability 0.3.0 | Apache-2.0 | N0041,N0048
+aws-smithy-query 0.61.1 | Apache-2.0 | N0041,N0048
+aws-smithy-runtime 1.12.0 | Apache-2.0 | N0041,N0048
+aws-smithy-runtime-api 1.13.0 | Apache-2.0 | N0041,N0048
+aws-smithy-runtime-api-macros 1.1.0 | Apache-2.0 | N0041,N0048
+aws-smithy-schema 0.2.0 | Apache-2.0 | N0041,N0048
+aws-smithy-types 1.6.1 | Apache-2.0 | N0041,N0048
+aws-smithy-xml 0.61.1 | Apache-2.0 | N0041,N0048
+aws-types 1.4.0 | Apache-2.0 | N0041,N0048
+axum 0.7.9 | MIT | N0476,N0602
+axum 0.8.8 | MIT | N0340,N0476
+axum-core 0.4.5 | MIT | N0476,N0529
+axum-core 0.5.6 | MIT | N0009,N0476
+axum-macros 0.4.2 | MIT | N0476,N0529
+base16ct 0.2.0 | Apache-2.0 OR MIT | N0041,N0050,N0476,N0524
+base64 0.21.7 | MIT OR Apache-2.0 | N0063,N0513
+base64 0.22.1 | MIT OR Apache-2.0 | N0041,N0063,N0476,N0513
+base64 0.23.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0530
+base64-simd 0.8.0 | MIT | N0367,N0476
+base64ct 1.8.3 | Apache-2.0 OR MIT | N0041,N0172,N0476,N0524
+basic-toml 0.1.10 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+bech32 0.11.1 | MIT | N0476,N0484
+beef 0.5.2 | MIT OR Apache-2.0 | N0041,N0412,N0476,N0794
+bip39 2.2.0 | CC0-1.0 | N0368,N0505
+bit-set 0.8.0 | Apache-2.0 OR MIT | N0041,N0414,N0476,N0762
+bit-vec 0.8.0 | Apache-2.0 OR MIT | N0041,N0414,N0476,N0762
+bitcoin_hashes 0.13.1 | CC0-1.0 | N0368,N0505
+bitflags 1.3.2 | MIT/Apache-2.0 | N0041,N0323,N0476,N0513
+bitflags 2.13.1 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+bitvec 1.1.1 | MIT | N0225,N0476
+blake2 0.10.6 | MIT OR Apache-2.0 | N0041,N0476,N0492,N0524
+blake3 1.8.2 | CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception | N0010,N0041,N0505,N0511,N0709
+block-buffer 0.10.4 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0674
+block-buffer 0.12.0 | MIT OR Apache-2.0 | N0041,N0476,N0483,N0524
+block-padding 0.3.3 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0674
+block2 0.6.2 | MIT | N0408,N0476
+bm25 2.3.2 | MIT | N0006,N0476
+bstr 1.12.1 | MIT OR Apache-2.0 | N0041,N0334,N0348,N0476,N0513
+bumpalo 3.20.2 | MIT OR Apache-2.0 | N0041,N0326,N0476,N0513
+bytecheck 0.8.2 | MIT | N0380,N0476
+bytecheck_derive 0.8.2 | MIT | N0476,N0791
+bytemuck 1.25.0 | Zlib OR Apache-2.0 OR MIT | N0041,N0426,N0476,N0495,N0596,N0710
+bytemuck_derive 1.11.0 | Zlib OR Apache-2.0 OR MIT | N0041,N0426,N0476,N0495,N0596,N0710
+byteorder 1.5.0 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+byteorder-lite 0.1.0 | Unlicense OR MIT | N0057,N0066,N0476
+bytes 1.12.1 | MIT | N0239,N0476
+bytes-utils 0.1.4 | Apache-2.0/MIT | N0041,N0476,N0513,N0796
+bzip2 0.6.1 | MIT OR Apache-2.0 | N0513,N0627
+bzip2-sys 0.1.13+1.0.8 | MIT/Apache-2.0 | N0041,N0476,N0513,N0619,N0627
+cached 0.56.0 | MIT | N0450,N0454,N0476
+cached_proc_macro 0.25.0 | MIT | N0454,N0476
+cached_proc_macro_types 0.1.1 | MIT | N0454,N0476
+cacheline-ef 2.0.0 | MIT | N0476
+cap-primitives 3.4.6 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0476,N0513,N0522,N0709
+cap-std 3.4.6 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0346,N0476,N0513,N0709
+caseless 0.2.2 | MIT | N0476,N0487
+cbc 0.1.2 | MIT OR Apache-2.0 | N0041,N0322,N0476,N0524
+cc 1.2.56 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+ccm 0.5.0 | Apache-2.0 OR MIT | N0041,N0459,N0476,N0524
+cfg-if 1.0.4 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+cfg_aliases 0.1.1 | MIT | N0112,N0180,N0476
+cfg_aliases 0.2.1 | MIT | N0112,N0180,N0476
+chacha20 0.9.1 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0568
+chacha20 0.10.1 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0577
+chacha20poly1305 0.10.1 | Apache-2.0 OR MIT | N0041,N0214,N0476,N0524
+chardetng 0.1.17 | Apache-2.0 OR MIT | N0014,N0041,N0221,N0476,N0653
+chrono 0.4.44 | MIT OR Apache-2.0 | N0041,N0472,N0476
+chunked_transfer 1.5.0 | MIT OR Apache-2.0 | N0041,N0306,N0476,N0513
+cidr 0.3.2 | MIT | N0476,N0605
+cipher 0.4.4 | MIT OR Apache-2.0 | N0041,N0301,N0476,N0524
+cipher 0.5.2 | MIT OR Apache-2.0 | N0474,N0524
+clap 4.5.61 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+clap_builder 4.5.61 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+clap_derive 4.5.61 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+clap_lex 1.0.1 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+clatter 2.2.0 | MIT | N0476,N0606
+clru 0.6.3 | MIT | N0365,N0476
+cmake 0.1.57 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+cmov 0.5.3 | Apache-2.0 OR MIT | N0041,N0363,N0476,N0653
+cmp_any 0.8.1 | MIT OR Apache-2.0 | N0041,N0266,N0476,N0686
+cobs 0.3.0 | MIT OR Apache-2.0 | N0041,N0476,N0616,N0703
+codex-agent-graph-store 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-agent-identity 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-agent-message-board-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-agent-message-board-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-agent-roles 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-analytics 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-api 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-app-server 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-app-server-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-app-server-daemon 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-app-server-protocol 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-app-server-protocol-noop-macros 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-app-server-transport 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-apply-patch 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-arg0 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-async-utils 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-attachment-store 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-aws-auth 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-backend-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-backend-openapi-models 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-build-info 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-chatgpt 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-cloud-config 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-code-mode 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-code-mode-protocol 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-collaboration-mode-templates 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-config 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-connectors 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-connectors-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-context-fragments 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-core 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-core-plugin-common 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-core-plugins 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-diagnostics 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-direct-tool-timing 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-exec-server 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-exec-server-protocol 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-execpolicy 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-experimental-api-macros 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-extension-api 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-extension-items 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-external-agent-migration 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-features 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-feedback 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-file-search 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-file-system 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-file-watcher 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-git-attribution 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-git-utils 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-goal-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-guardian-context 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-guardian-reviewer 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-guardian-v2 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-history 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-history-notes-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-home 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-hooks 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-http-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-image-generation-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-install-context 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-keyring-store 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-linux-sandbox 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-login 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-mcp 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-mcp-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-memories-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-memories-read 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-memories-write 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-message-board 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-model-provider 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-model-provider-info 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-models-manager 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-multi-env-copy-file 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-mxc-sandbox 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-network-proxy 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-otel 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-plugin 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-prompts 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-protocol 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-queue-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-response-debug-context 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-rmcp-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-rollout 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-rollout-trace 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-runtime-agent-instance 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-sandboxing 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-secrets 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-shell-command 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-skills 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-skills-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-state 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-terminal-detection 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-thread-store 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-tools 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-uds 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-user-verification 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-absolute-path 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-audio 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-cache 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-cli 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-critical-path 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-git-discovery 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-head-tail-buffer 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-home-dir 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-image 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-json-to-toml 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-output-truncation 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-path 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-path-uri 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-plugins 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-process 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-pty 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-redacted-string 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-rustls-provider 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-stream-parser 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-string 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-utils-template 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-web-search-extension 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-websocket-auth 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-websocket-client 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-windows-sandbox 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+codex-workload-identity 0.167.0 | Apache-2.0 | N0186,N0222,N0260,N0494,N0569,N0653,N0659,N0695
+color_quant 1.1.0 | MIT | N0292,N0476
+colorchoice 1.0.4 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+colored 3.1.1 | MPL-2.0 | N0329,N0776
+combine 4.6.7 | MIT | N0476,N0491
+common_traits 0.13.0 | Apache-2.0 | N0041,N0621,N0693
+concurrent-queue 2.5.0 | Apache-2.0 OR MIT | N0041,N0140,N0476,N0513
+const-hex 1.19.1 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+const-oid 0.9.6 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0584
+const-oid 0.10.2 | Apache-2.0 OR MIT | N0041,N0377,N0476,N0524
+const_format 0.2.35 | Zlib | N0596,N0604
+const_format_proc_macros 0.2.34 | Zlib | N0596,N0604
+constant_time_eq 0.3.1 | CC0-1.0 OR MIT-0 OR Apache-2.0 | N0041,N0294,N0320,N0488,N0505
+constant_time_eq 0.4.2 | CC0-1.0 OR MIT-0 OR Apache-2.0 | N0320,N0488,N0505
+convert_case 0.6.0 | MIT | N0390,N0476
+cookie 0.18.1 | MIT OR Apache-2.0 | N0041,N0155,N0476,N0752
+cookie-factory 0.3.3 | MIT | N0476,N0657
+cookie_store 0.22.1 | MIT OR Apache-2.0 | N0041,N0476,N0541,N0556
+core-foundation 0.9.4 | MIT OR Apache-2.0 | N0041,N0318,N0476,N0513
+core-foundation 0.10.1 | MIT OR Apache-2.0 | N0041,N0318,N0476,N0513
+core-foundation-sys 0.8.7 | MIT OR Apache-2.0 | N0041,N0318,N0476,N0513
+cpubits 0.1.1 | MIT OR Apache-2.0 | N0005,N0524
+cpufeatures 0.2.17 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0537
+cpufeatures 0.3.0 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0537
+crc 3.4.0 | MIT OR Apache-2.0 | N0041,N0191,N0242,N0476
+crc-catalog 2.5.0 | MIT OR Apache-2.0 | N0041,N0308,N0476,N0671
+crc32fast 1.5.3 | MIT OR Apache-2.0 | N0041,N0317,N0476,N0616
+critical-section 1.2.0 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0795
+crossbeam-channel 0.5.15 | MIT OR Apache-2.0 | N0041,N0283,N0476,N0513,N0547
+crossbeam-deque 0.8.6 | MIT OR Apache-2.0 | N0041,N0283,N0476,N0513
+crossbeam-epoch 0.9.18 | MIT OR Apache-2.0 | N0041,N0283,N0476,N0513
+crossbeam-queue 0.3.12 | MIT OR Apache-2.0 | N0041,N0283,N0476,N0513
+crossbeam-utils 0.8.21 | MIT OR Apache-2.0 | N0041,N0283,N0476,N0513
+crypto-bigint 0.5.5 | Apache-2.0 OR MIT | N0041,N0462,N0476,N0524
+crypto-common 0.1.7 | MIT OR Apache-2.0 | N0041,N0196,N0476,N0524
+crypto-common 0.2.2 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0668
+crypto_box 0.9.1 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0534
+crypto_secretbox 0.1.1 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0568
+csv 1.4.0 | Unlicense/MIT | N0015,N0057,N0066,N0476
+csv-core 0.1.13 | Unlicense/MIT | N0015,N0057,N0066,N0476
+ctor 1.0.8 | Apache-2.0 OR MIT | N0041,N0476,N0523,N0589
+ctr 0.9.2 | MIT OR Apache-2.0 | N0041,N0322,N0476,N0524
+ctutils 0.4.6 | Apache-2.0 OR MIT | N0041,N0466,N0476,N0653
+curve25519-dalek 4.1.3 | BSD-3-Clause | N0295,N0643
+darling 0.20.11 | MIT | N0456,N0476
+darling 0.23.0 | MIT | N0456,N0476
+darling 0.24.1 | MIT | N0456,N0476
+darling_core 0.20.11 | MIT | N0456,N0476
+darling_core 0.23.0 | MIT | N0456,N0476
+darling_core 0.24.1 | MIT | N0456,N0476
+darling_macro 0.20.11 | MIT | N0456,N0476
+darling_macro 0.23.0 | MIT | N0456,N0476
+darling_macro 0.24.1 | MIT | N0456,N0476
+dashmap 6.2.1 | MIT | N0088,N0476
+data-encoding 2.10.0 | MIT | N0476,N0565
+debugid 0.8.0 | Apache-2.0 | N0041,N0513
+debugserver-types 0.5.0 | MIT | N0476
+deflate64 0.1.12 | MIT | N0430,N0476
+der 0.7.10 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0534
+der-parser 9.0.0 | MIT/Apache-2.0 | N0041,N0476,N0512,N0513
+der-parser 10.0.0 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+deranged 0.5.8 | MIT OR Apache-2.0 | N0041,N0133,N0476,N0736
+derivative 2.2.0 | MIT/Apache-2.0 | N0041,N0476,N0513,N0722
+derive_builder 0.20.2 | MIT OR Apache-2.0 | N0041,N0445,N0476,N0616
+derive_builder_core 0.20.2 | MIT OR Apache-2.0 | N0041,N0445,N0476,N0616
+derive_builder_macro 0.20.2 | MIT OR Apache-2.0 | N0041,N0445,N0476,N0616
+derive_more 1.0.0 | MIT | N0437,N0476
+derive_more 2.1.1 | MIT | N0437,N0476
+derive_more-impl 1.0.0 | MIT | N0437,N0476
+derive_more-impl 2.1.1 | MIT | N0437,N0476
+deunicode 1.6.2 | BSD-3-Clause | N0124,N0295
+digest 0.10.7 | MIT OR Apache-2.0 | N0041,N0476,N0498,N0524
+digest 0.11.3 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0539
+dirs 6.0.0 | MIT OR Apache-2.0 | N0041,N0343,N0476,N0670
+dirs-next 2.0.0 | MIT OR Apache-2.0 | N0041,N0343,N0476,N0670
+dirs-sys 0.5.0 | MIT OR Apache-2.0 | N0041,N0343,N0476,N0670
+dirs-sys-next 0.1.2 | MIT OR Apache-2.0 | N0041,N0343,N0476,N0670
+display_container 0.9.0 | MIT OR Apache-2.0 | N0041,N0476,N0551
+displaydoc 0.2.5 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+dns-lookup 3.0.1 | MIT/Apache-2.0 | N0041,N0077,N0097,N0476
+document-features 0.2.12 | MIT OR Apache-2.0 | N0041,N0476,N0526
+dotenvy 0.15.7 | MIT | N0202,N0476
+downcast-rs 1.2.1 | MIT/Apache-2.0 | N0041,N0414,N0476,N0779
+dtls 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+dunce 1.0.5 | CC0-1.0 OR MIT-0 OR Apache-2.0 | N0041,N0294,N0505
+dupe 0.9.1 | MIT OR Apache-2.0 | N0041,N0266,N0476,N0686
+dupe_derive 0.9.1 | MIT OR Apache-2.0 | N0041,N0266,N0476,N0686
+dyn-clone 1.0.20 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+ecdsa 0.16.9 | Apache-2.0 OR MIT | N0041,N0388,N0476,N0592
+ed25519 2.2.3 | Apache-2.0 OR MIT | N0041,N0388,N0476,N0553
+ed25519-dalek 2.2.0 | BSD-3-Clause | N0295,N0392
+either 1.15.0 | MIT OR Apache-2.0 | N0041,N0383,N0476,N0513
+elliptic-curve 0.13.8 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0665
+encoding_rs 0.8.35 | (Apache-2.0 OR MIT) AND BSD-3-Clause | N0041,N0073,N0221,N0295,N0418,N0476,N0653
+endian-type 0.1.2 | MIT | N0161,N0476
+endian-type 0.2.0 | MIT | N0161,N0476
+enum-as-inner 0.6.1 | MIT/Apache-2.0 | N0041,N0070,N0476,N0561,N0616
+env_filter 2.0.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+env_logger 0.11.11 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+epserde 0.13.1 | Apache-2.0 OR MIT | N0041,N0476,N0621
+epserde-derive 0.13.1 | Apache-2.0 OR MIT | N0041,N0476,N0621
+equivalent 1.0.2 | Apache-2.0 OR MIT | N0041,N0376,N0476,N0513
+erased-serde 0.3.31 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+erased-serde 0.4.10 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+errno 0.3.14 | MIT OR Apache-2.0 | N0041,N0432,N0476,N0513
+event-listener 5.4.1 | Apache-2.0 OR MIT | N0041,N0140,N0476,N0513
+event-listener-strategy 0.5.4 | Apache-2.0 OR MIT | N0041,N0140,N0476,N0513
+eventsource-stream 0.2.3 | MIT OR Apache-2.0 | N0041,N0476
+extended 0.1.0 | MIT | N0148,N0476
+fallible-iterator 0.3.0 | MIT/Apache-2.0 | N0041,N0043,N0476,N0616
+fallible-streaming-iterator 0.1.9 | MIT/Apache-2.0 | N0041,N0453,N0476,N0616
+fancy-regex 0.16.2 | MIT | N0213,N0476,N0675
+faster-hex 0.10.1 | MIT | N0405,N0476
+fastrand 2.5.0 | Apache-2.0 OR MIT | N0041,N0140,N0476,N0513
+fd-lock 4.0.4 | MIT OR Apache-2.0 | N0041,N0476,N0542,N0647
+fdeflate 0.3.7 | MIT OR Apache-2.0 | N0041,N0061,N0476,N0623
+ff 0.13.1 | MIT/Apache-2.0 | N0041,N0201,N0451,N0476
+file-id 0.2.3 | MIT OR Apache-2.0 | N0041,N0476,N0563,N0564
+filedescriptor 0.8.3 | MIT | N0101,N0476
+filetime 0.2.29 | MIT/Apache-2.0 | N0041,N0204,N0476,N0513
+find-crate 0.6.3 | Apache-2.0 OR MIT | N0041,N0061,N0140,N0476
+find-msvc-tools 0.1.9 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+fixed_decimal 0.7.2 | Unicode-3.0 | N0758,N0770
+fixedbitset 0.5.7 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0646
+flatbuffers 25.12.19 | Apache-2.0 | N0653
+flate2 1.1.10 | MIT OR Apache-2.0 | N0022,N0041,N0476,N0513
+fluent 0.17.0 | Apache-2.0 OR MIT | N0041,N0250,N0304,N0476
+fluent-bundle 0.16.0 | Apache-2.0 OR MIT | N0041,N0250,N0304,N0476
+fluent-langneg 0.13.1 | Apache-2.0 OR MIT | N0012,N0041,N0476,N0556
+fluent-syntax 0.12.0 | Apache-2.0 OR MIT | N0041,N0250,N0304,N0476
+fluent-uri 0.1.4 | MIT | N0476,N0672
+flume 0.12.0 | Apache-2.0/MIT | N0041,N0178,N0476,N0678
+fnv 1.0.7 | Apache-2.0 / MIT | N0041,N0327,N0476,N0513
+foldhash 0.1.5 | Zlib | N0546,N0596
+foldhash 0.2.0 | Zlib | N0546,N0596
+form_urlencoded 1.2.2 | MIT OR Apache-2.0 | N0041,N0126,N0476,N0513
+fs-set-times 0.20.3 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0476,N0513,N0704,N0709
+fs_extra 1.3.0 | MIT | N0144,N0476
+fsevent-sys 4.1.0 | MIT | N0476,N0612
+funty 2.0.0 | MIT | N0476,N0768
+futures 0.3.32 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-channel 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-core 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-executor 0.3.32 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-intrusive 0.5.0 | MIT OR Apache-2.0 | N0041,N0086,N0241,N0476
+futures-io 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-macro 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-sink 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-task 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+futures-util 0.3.34 | MIT OR Apache-2.0 | N0041,N0154,N0328,N0476
+fxhash 0.2.1 | Apache-2.0/MIT | N0041,N0387,N0476
+gdextension-api 0.3.3 | MPL-2.0 | N0106,N0329
+generic-array 0.14.7 | MIT | N0476,N0597
+gethostname 1.1.0 | Apache-2.0 | N0041,N0513
+getopts 0.2.24 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+getrandom 0.2.17 | MIT OR Apache-2.0 | N0041,N0231,N0476,N0528
+getrandom 0.3.4 | MIT OR Apache-2.0 | N0041,N0160,N0476,N0528
+getrandom 0.4.3 | MIT OR Apache-2.0 | N0041,N0269,N0476,N0528
+getset 0.1.7 | MIT | N0004,N0476
+ghash 0.5.1 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0598
+gif 0.14.1 | MIT OR Apache-2.0 | N0041,N0385,N0386,N0476
+gix 0.89.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-actor 0.44.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-chunk 0.10.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-command 0.12.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-commitgraph 0.41.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-config 0.62.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-config-value 0.21.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-date 0.18.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-diff 0.69.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-discover 0.57.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-error 0.5.2 | MIT OR Apache-2.0 | N0061,N0774
+gix-fs 0.24.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-glob 0.29.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-hash 0.28.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-hashtable 0.18.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-lock 26.0.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-macros 0.2.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-object 0.66.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-odb 0.86.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-pack 0.76.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-packetline 0.24.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-parallel 0.50.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-path 0.14.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-protocol 0.67.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-quote 0.10.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-ref 0.69.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-refspec 0.47.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-revision 0.51.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-revwalk 0.37.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-sec 0.16.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-shallow 0.15.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-tempfile 26.0.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-trace 0.3.1 | MIT OR Apache-2.0 | N0061,N0169,N0774
+gix-transport 0.61.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-traverse 0.63.0 | MIT OR Apache-2.0 | N0061,N0774
+gix-url 0.40.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-utils 0.5.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-validate 0.13.1 | MIT OR Apache-2.0 | N0061,N0774
+gix-zlib 0.3.0 | MIT OR Apache-2.0 | N0061,N0774
+glam 0.30.10 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0593
+glob 0.3.3 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+globset 0.4.18 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+godot 0.4.5 | MPL-2.0 | N0329
+godot-bindings 0.4.5 | MPL-2.0 | N0329
+godot-cell 0.4.5 | MPL-2.0 | N0329
+godot-codegen 0.4.5 | MPL-2.0 | N0329
+godot-core 0.4.5 | MPL-2.0 | N0329
+godot-ffi 0.4.5 | MPL-2.0 | N0329
+godot-macros 0.4.5 | MPL-2.0 | N0329
+group 0.13.0 | MIT/Apache-2.0 | N0041,N0140,N0379,N0476,N0513
+h2 0.4.19 | MIT | N0476,N0550
+half 1.8.3 | MIT OR Apache-2.0 | N0041,N0200,N0476,N0575
+half 2.7.1 | MIT OR Apache-2.0 | N0041,N0265,N0476,N0516
+hash32 0.2.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0629
+hash32 0.3.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0629
+hashbrown 0.14.5 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0797
+hashbrown 0.15.5 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0797
+hashbrown 0.16.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0797
+hashbrown 0.17.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0797
+hashlink 0.11.1 | MIT OR Apache-2.0 | N0041,N0476,N0601,N0721
+headers 0.4.1 | MIT | N0109,N0476
+headers-core 0.3.0 | MIT | N0476,N0689
+heapless 0.7.17 | MIT OR Apache-2.0 | N0026,N0041,N0476,N0513
+heapless 0.8.0 | MIT OR Apache-2.0 | N0026,N0041,N0476,N0513
+heck 0.4.1 | MIT OR Apache-2.0 | N0397,N0513
+heck 0.5.0 | MIT OR Apache-2.0 | N0041,N0397,N0476,N0513
+hex 0.4.3 | MIT OR Apache-2.0 | N0041,N0476,N0616,N0769
+hex-conservative 0.1.2 | CC0-1.0 | N0368,N0505
+hickory-proto 0.25.2 | MIT OR Apache-2.0 | N0041,N0349,N0476,N0692
+hickory-resolver 0.25.2 | MIT OR Apache-2.0 | N0041,N0349,N0476,N0692
+hkdf 0.12.4 | MIT OR Apache-2.0 | N0041,N0290,N0476,N0666
+hmac 0.12.1 | MIT OR Apache-2.0 | N0041,N0476,N0498,N0524
+hmac 0.13.0 | MIT OR Apache-2.0 | N0041,N0476,N0498,N0524
+home 0.5.12 | MIT OR Apache-2.0 | N0041,N0140,N0438,N0476
+hpke 0.12.0 | MIT/Apache-2.0 | N0041,N0046,N0476,N0521
+http 0.2.12 | MIT OR Apache-2.0 | N0041,N0443,N0476,N0694
+http 1.4.0 | MIT OR Apache-2.0 | N0041,N0443,N0476,N0694
+http-body 0.4.6 | MIT | N0025,N0476
+http-body 1.0.1 | MIT | N0476,N0645
+http-body-util 0.1.3 | MIT | N0476,N0573
+http-range-header 0.4.2 | MIT | N0476,N0732
+httparse 1.10.1 | MIT OR Apache-2.0 | N0041,N0209,N0476,N0513
+httpdate 1.0.3 | MIT OR Apache-2.0 | N0041,N0256,N0470,N0476
+hybrid-array 0.2.3 | MIT OR Apache-2.0 | N0041,N0044,N0476,N0524
+hybrid-array 0.4.10 | MIT OR Apache-2.0 | N0041,N0363,N0476,N0524
+hyper 1.11.1 | MIT | N0171,N0476
+hyper-rustls 0.27.7 | Apache-2.0 OR ISC OR MIT | N0041,N0268,N0361,N0400,N0476,N0513,N0660
+hyper-timeout 0.5.2 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0642
+hyper-tls 0.6.0 | MIT/Apache-2.0 | N0041,N0395,N0476,N0513
+hyper-util 0.1.20 | MIT | N0476,N0497
+i18n-config 0.4.8 | MIT | N0476,N0504
+i18n-embed 0.16.0 | MIT | N0476,N0504
+i18n-embed-fl 0.10.1 | MIT | N0476,N0504
+i18n-embed-impl 0.8.4 | MIT | N0476,N0504
+iana-time-zone 0.1.65 | MIT OR Apache-2.0 | N0041,N0336,N0476,N0683
+icu_collections 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_decimal 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_decimal_data 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_locale 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_locale_core 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_locale_data 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_normalizer 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_normalizer_data 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_properties 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_properties_data 2.2.0 | Unicode-3.0 | N0758,N0770
+icu_provider 2.2.0 | Unicode-3.0 | N0758,N0770
+ident_case 1.0.1 | MIT/Apache-2.0 | N0041,N0265,N0476
+idna 1.1.0 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0554
+idna_adapter 1.2.1 | Apache-2.0 OR MIT | N0041,N0440,N0476,N0513
+if-addrs 0.15.0 | MIT OR BSD-3-Clause | N0210,N0289,N0295,N0476
+ignore 0.4.28 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+image 0.25.10 | MIT OR Apache-2.0 | N0041,N0061,N0476,N0623
+image-webp 0.2.4 | MIT OR Apache-2.0 | N0041,N0061,N0476,N0623
+impl-tools 0.12.0 | MIT/Apache-2.0 | N0041,N0293,N0320,N0476
+impl-tools-lib 0.12.0 | MIT/Apache-2.0 | N0041,N0320,N0476
+include_dir 0.7.4 | MIT | N0471,N0476
+include_dir_macros 0.7.4 | MIT | N0471,N0476
+indenter 0.3.4 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+indexmap 2.14.0 | Apache-2.0 OR MIT | N0041,N0476,N0513,N0731
+inout 0.1.4 | MIT OR Apache-2.0 | N0041,N0175,N0476,N0524
+inout 0.2.5 | MIT OR Apache-2.0 | N0502,N0524
+interceptor 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+intl-memoizer 0.5.3 | Apache-2.0 OR MIT | N0041,N0250,N0304,N0476
+intl_pluralrules 7.0.2 | Apache-2.0/MIT | N0041,N0140,N0320,N0476
+inventory 0.3.24 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+io-extras 0.18.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0476,N0513,N0709,N0746
+io-lifetimes 2.0.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0248,N0476,N0513,N0709
+io_tee 0.1.1 | MIT OR Apache-2.0 | N0041,N0476
+ipnet 2.12.0 | MIT OR Apache-2.0 | N0041,N0245,N0433,N0476
+iri-string 0.7.10 | MIT OR Apache-2.0 | N0041,N0131,N0476,N0653
+is-terminal 0.4.17 | MIT | N0140,N0476,N0583
+is_ci 1.2.0 | ISC | N0134,N0268
+is_terminal_polyfill 1.70.2 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+itertools 0.13.0 | MIT OR Apache-2.0 | N0383,N0513
+itertools 0.14.0 | MIT OR Apache-2.0 | N0041,N0383,N0476,N0513
+itertools 0.15.0 | MIT OR Apache-2.0 | N0041,N0383,N0476,N0513
+itoa 1.0.17 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+jiff 0.2.38 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+jiff-core 0.1.1 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+jobserver 0.1.34 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+jsonptr 0.7.1 | MIT OR Apache-2.0 | N0041,N0164,N0170,N0476
+jsonwebtoken 9.3.1 | MIT | N0476,N0519
+keccak 0.1.6 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0592
+kem 0.3.0-pre.0 | Apache-2.0 OR MIT | N0041,N0096,N0476,N0751
+keyring 3.6.3 | MIT OR Apache-2.0 | N0041,N0085,N0389,N0476
+lazy_static 1.5.0 | MIT OR Apache-2.0 | N0037,N0041,N0476,N0513
+libbz2-rs-sys 0.2.5 | bzip2-1.0.6 | N0276
+libc 0.2.189 | MIT OR Apache-2.0 | N0041,N0074,N0320,N0476
+libsqlite3-sys 0.37.0 | MIT | N0476,N0600,N0726
+libz-sys 1.1.25 | MIT OR Apache-2.0 | N0041,N0193,N0198,N0350,N0476,N0513,N0708,N0784
+link-section 0.19.0 | Apache-2.0 OR MIT | N0041,N0476,N0523,N0589
+linkify 0.11.0 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0737
+linktime-proc-macro 0.2.0 | Apache-2.0 OR MIT | N0041,N0476,N0523,N0589
+litemap 0.8.1 | Unicode-3.0 | N0758,N0770
+litrs 1.0.0 | MIT OR Apache-2.0 | N0041,N0320,N0402,N0476
+lock_api 0.4.14 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0631
+lock_free_hashtable 0.1.4 | MIT OR Apache-2.0 | N0041,N0428,N0476
+log 0.4.34 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+logos 0.15.1 | MIT OR Apache-2.0 | N0041,N0072,N0476,N0755
+logos-codegen 0.15.1 | MIT OR Apache-2.0 | N0041,N0072,N0476,N0755
+logos-derive 0.15.1 | MIT OR Apache-2.0 | N0041,N0072,N0476,N0755
+lru 0.16.3 | MIT | N0036,N0476
+lru 0.18.4 | MIT | N0036,N0476
+lsp-types 0.97.0 | MIT | N0476,N0503
+lzma-rust2 0.21.0 | Apache-2.0 | N0232
+mach2 0.4.3 | BSD-2-Clause OR MIT OR Apache-2.0 | N0030,N0041,N0220,N0320,N0476,N0757
+maplit 1.0.2 | MIT/Apache-2.0 | N0041,N0383,N0476,N0513
+matchers 0.2.0 | MIT | N0476,N0509
+matchit 0.7.3 | MIT AND BSD-3-Clause | N0087,N0295,N0476,N0698
+matchit 0.8.4 | MIT AND BSD-3-Clause | N0087,N0295,N0476,N0698
+matchit 0.9.1 | MIT AND BSD-3-Clause | N0045,N0087,N0295,N0476
+maybe-dangling 0.1.2 | Zlib OR MIT OR Apache-2.0 | N0041,N0215,N0434,N0476,N0596,N0745
+maybe-owned 0.3.4 | MIT OR Apache-2.0 | N0041,N0476,N0538,N0739
+md-5 0.10.6 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0559
+md5 0.8.1 | Apache-2.0 OR MIT | N0041,N0123,N0476
+mdns-sd 0.20.2 | Apache-2.0 OR MIT | N0041,N0071,N0476,N0650
+mem_dbg 0.4.4 | Apache-2.0 OR MIT | N0041,N0476,N0532
+mem_dbg-derive 0.3.4 | Apache-2.0 OR MIT | N0041,N0476,N0532
+memchr 2.8.0 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+memmap2 0.9.11 | MIT OR Apache-2.0 | N0034,N0041,N0060,N0476
+memoffset 0.7.1 | MIT | N0182,N0476
+memoffset 0.9.1 | MIT | N0182,N0476
+mime 0.3.17 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0700
+mime_guess 2.0.5 | MIT | N0413,N0476
+minimal-lexical 0.2.1 | MIT/Apache-2.0 | N0041,N0140,N0414,N0476,N0691
+miniz_oxide 0.8.9 | MIT OR Zlib OR Apache-2.0 | N0041,N0049,N0061,N0224,N0391,N0476,N0596
+miniz_oxide 0.9.1 | MIT OR Zlib OR Apache-2.0 | N0041,N0049,N0061,N0224,N0391,N0476,N0596
+mio 1.2.2 | MIT | N0042,N0476
+ml-kem 0.2.3 | Apache-2.0 OR MIT | N0041,N0476,N0518,N0524
+mmap-rs 0.7.0 | Apache-2.0 OR MIT | N0041,N0140,N0320,N0476
+moka 0.12.14 | (MIT OR Apache-2.0) AND Apache-2.0 | N0021,N0041,N0409,N0476,N0765
+moxcms 0.8.1 | BSD-3-Clause OR Apache-2.0 | N0041,N0163,N0295,N0461
+multimap 0.10.1 | MIT OR Apache-2.0 | N0041,N0138,N0476,N0513
+munge 0.4.7 | MIT | N0476,N0579
+munge_macro 0.4.7 | MIT | N0476,N0579
+mxc-sdk 1.0.0 | MIT | N0682
+nanoserde 0.2.1 | MIT OR Apache-2.0 | N0041,N0399,N0476,N0513
+nanoserde-derive 0.2.1 | MIT | N0399,N0476
+native-tls 0.2.18 | MIT OR Apache-2.0 | N0041,N0476,N0616,N0753
+nibble_vec 0.1.0 | MIT | N0476,N0715
+nix 0.26.4 | MIT | N0332,N0476
+nix 0.28.0 | MIT | N0332,N0476
+nix 0.29.0 | MIT | N0332
+nix 0.30.1 | MIT | N0332,N0476
+nix 0.31.3 | MIT | N0332,N0476
+nom 7.1.3 | MIT | N0259,N0476
+nom 8.0.0 | MIT | N0259,N0476
+nonempty 0.12.0 | MIT | N0476,N0723
+notify 8.2.0 | CC0-1.0 | N0505,N0702
+notify-types 2.1.0 | MIT OR Apache-2.0 | N0041,N0476,N0563,N0564
+nu-ansi-term 0.50.3 | MIT | N0158,N0476
+nucleo 0.5.0 | MPL-2.0 | N0116,N0329
+nucleo-matcher 0.3.1 | MPL-2.0 | N0116,N0329
+num-bigint 0.4.6 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+num-complex 0.4.6 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+num-conv 0.2.0 | MIT OR Apache-2.0 | N0041,N0476,N0540,N0599
+num-integer 0.1.46 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+num-traits 0.2.19 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+num_threads 0.1.7 | MIT OR Apache-2.0 | N0041,N0476,N0558,N0618
+oauth2 5.0.0 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+objc2 0.6.4 | MIT | N0408,N0476
+objc2-app-kit 0.3.2 | Zlib OR Apache-2.0 OR MIT | N0041,N0408,N0476,N0596
+objc2-core-foundation 0.3.2 | Zlib OR Apache-2.0 OR MIT | N0041,N0408,N0476,N0596
+objc2-encode 4.1.0 | MIT | N0408,N0476
+objc2-foundation 0.3.2 | MIT | N0408,N0476
+objc2-local-authentication 0.3.2 | Zlib OR Apache-2.0 OR MIT | N0041,N0408,N0476,N0596
+objc2-security 0.3.2 | Zlib OR Apache-2.0 OR MIT | N0408,N0476
+oci-spec 0.10.0 | Apache-2.0 | N0041,N0651
+oid-registry 0.7.1 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+oid-registry 0.8.1 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+once_cell 1.21.4 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+opaque-debug 0.3.1 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0763
+opentelemetry 0.31.0 | Apache-2.0 | N0041,N0621
+opentelemetry-appender-tracing 0.31.1 | Apache-2.0 | N0041,N0621
+opentelemetry-http 0.31.0 | Apache-2.0 | N0041,N0621
+opentelemetry-otlp 0.31.1 | Apache-2.0 | N0041,N0621
+opentelemetry-proto 0.31.0 | Apache-2.0 | N0041,N0621
+opentelemetry-semantic-conventions 0.31.0 | Apache-2.0 | N0041,N0621
+opentelemetry_sdk 0.31.0 | Apache-2.0 | N0041,N0621
+option-ext 0.2.0 | MPL-2.0 | N0329
+os_info 3.15.0 | MIT | N0237,N0476
+outref 0.5.2 | MIT | N0476,N0500
+owo-colors 4.3.0 | MIT | N0151,N0476
+p256 0.13.2 | Apache-2.0 OR MIT | N0041,N0135,N0476,N0524
+p384 0.13.1 | Apache-2.0 OR MIT | N0019,N0041,N0476,N0524
+pagable 0.4.1 | Apache-2.0 | N0041,N0266
+pagable_derive 0.4.1 | Apache-2.0 | N0041,N0266
+parking 2.2.1 | Apache-2.0 OR MIT | N0041,N0140,N0476,N0489,N0513
+parking_lot 0.12.5 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0631
+parking_lot_core 0.9.12 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0631
+partition 0.1.2 | MIT OR Apache-2.0 | N0041,N0476,N0541,N0556
+paste 1.0.15 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+pastey 0.2.1 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+pbkdf2 0.12.2 | MIT OR Apache-2.0 | N0041,N0455,N0476,N0524
+pbkdf2 0.13.0 | MIT OR Apache-2.0 | N0455,N0524
+pem 3.0.6 | MIT | N0476,N0571
+pem-rfc7468 0.7.0 | Apache-2.0 OR MIT | N0041,N0462,N0476,N0524
+percent-encoding 2.3.2 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0554
+petgraph 0.8.3 | MIT OR Apache-2.0 | N0041,N0313,N0383,N0476,N0513
+pin-project 1.1.11 | Apache-2.0 OR MIT | N0041,N0061,N0140,N0476
+pin-project-internal 1.1.11 | Apache-2.0 OR MIT | N0041,N0061,N0140,N0476
+pin-project-lite 0.2.17 | Apache-2.0 OR MIT | N0041,N0061,N0140,N0476
+pin-utils 0.1.0 | MIT OR Apache-2.0 | N0041,N0159,N0476,N0510
+pkcs8 0.10.2 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0534
+pkg-config 0.3.34 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+png 0.18.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0727
+polar-cas 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-cas-local 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-connector-contract 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-dictate 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-dictate-store-sqlite 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-edge-presentation 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-force-layout-core 0.1.0 | MIT | N0192,N0329,N0370,N0476
+polar-graphics-godot 0.1.0 | MIT | N0192,N0329,N0370,N0476
+polar-graphics-package 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-ideacave 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-ideacave-presentation 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-identity 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-inhouse-backend-adam 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-inhouse-contract 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-inhouse-model 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-inhouse-prompt 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-inquiry-graph-model 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-lgp-model 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-lgp-presentation 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-lgp-reader 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-lgp-store 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-local-access-contract 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-local-access-runtime 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-package-tree 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-payload-codec 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-pki 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-protocol 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-runtime-paths 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-sqlite-runtime 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-station-inbox 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-station-input 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-station-lgp 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-station-session 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-station-settings 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-station-store-sqlite 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-storage-core 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-storage-migration 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-telegram 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tmux 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tmux-core 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tmux-protocol 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tmux-resources 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tmux-types 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tmux-workspace 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-tools-model 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-transcreation 0.1.0 | AGPL-3.0-only | N0422
+polar-transport 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-trust 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-vault 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-voice 0.1.0 | AGPL-3.0-only | N0422,N0679
+polar-voice-provider-codex 0.1.0 | AGPL-3.0-only | N0422,N0679
+poly1305 0.8.0 | Apache-2.0 OR MIT | N0041,N0353,N0476,N0524
+polyval 0.6.2 | Apache-2.0 OR MIT | N0041,N0476,N0506,N0524
+portable-atomic 1.13.1 | Apache-2.0 OR MIT | N0041,N0061,N0140,N0476
+portable-pty 0.9.0 | MIT | N0101,N0476
+postcard 1.1.3 | MIT OR Apache-2.0 | N0041,N0092,N0476,N0513
+potential_utf 0.1.4 | Unicode-3.0 | N0758,N0770
+powerfmt 0.2.0 | MIT OR Apache-2.0 | N0039,N0041,N0082,N0476
+ppv-lite86 0.2.21 | MIT OR Apache-2.0 | N0020,N0041,N0254,N0476
+prefetch-index 0.2.1 | MIT | N0476
+prettyplease 0.2.37 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+primeorder 0.13.6 | Apache-2.0 OR MIT | N0041,N0135,N0476,N0524
+proc-macro-crate 3.5.0 | MIT OR Apache-2.0 | N0041,N0140,N0438,N0476
+proc-macro-error-attr3 3.1.1 | MIT OR Apache-2.0 | N0041,N0273,N0359,N0476
+proc-macro-error3 3.1.1 | MIT OR Apache-2.0 | N0041,N0257,N0447,N0476
+proc-macro2 1.0.106 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+process-wrap 10.0.1 | Apache-2.0 OR MIT | N0041,N0140,N0143,N0320,N0476
+prodash 31.0.1 | MIT | N0476,N0789
+prost 0.14.3 | Apache-2.0 | N0041,N0513
+prost-build 0.14.3 | Apache-2.0 | N0041,N0513
+prost-derive 0.14.3 | Apache-2.0 | N0041,N0513
+prost-types 0.14.3 | Apache-2.0 | N0041,N0513
+protoc-bin-vendored 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-linux-aarch_64 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-linux-ppcle_64 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-linux-s390_64 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-linux-x86_32 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-linux-x86_64 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-macos-aarch_64 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-macos-x86_64 3.2.0 | MIT | N0476,N0479
+protoc-bin-vendored-win32 3.2.0 | MIT | N0476,N0479
+psl 2.1.199 | MIT/Apache-2.0 | N0041,N0476,N0744
+psl-types 2.0.11 | MIT/Apache-2.0 | N0041,N0396,N0476,N0513
+ptr_hash 2.1.2 | MIT | N0217,N0476
+ptr_meta 0.3.1 | MIT | N0321,N0476
+ptr_meta_derive 0.3.1 | MIT | N0321,N0476
+publicsuffix 2.3.0 | MIT/Apache-2.0 | N0041,N0476,N0513,N0744
+pulldown-cmark 0.10.3 | MIT | N0476,N0613
+pulldown-cmark 0.13.4 | MIT | N0476,N0613
+pulldown-cmark-escape 0.11.0 | MIT | N0476,N0613
+pxfm 0.1.28 | BSD-3-Clause OR Apache-2.0 | N0041,N0163,N0295,N0461
+quick-error 2.0.1 | MIT/Apache-2.0 | N0035,N0041,N0476,N0616
+quick-xml 0.41.0 | MIT | N0299,N0476
+quickcheck 1.1.0 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+quote 1.0.45 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+radium 0.7.0 | MIT | N0078,N0476
+radix_trie 0.2.1 | MIT | N0476,N0715
+radix_trie 0.3.0 | MIT | N0476,N0715
+rama-core 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-dns 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-error 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-http 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-http-backend 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-http-core 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-http-headers 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-http-types 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-macros 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-net 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-socks5 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-tcp 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-tls-rustls 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-udp 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-unix 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rama-utils 0.3.0-alpha.4 | MIT OR Apache-2.0 | N0041,N0119,N0475,N0476
+rancor 0.1.2 | MIT | N0380,N0476
+rand 0.8.5 | MIT OR Apache-2.0 | N0041,N0125,N0197,N0463,N0476
+rand 0.9.2 | MIT OR Apache-2.0 | N0041,N0125,N0197,N0463,N0476
+rand 0.10.2 | MIT OR Apache-2.0 | N0041,N0125,N0197,N0463,N0476
+rand_chacha 0.3.1 | MIT OR Apache-2.0 | N0041,N0125,N0463,N0476,N0528
+rand_chacha 0.9.0 | MIT OR Apache-2.0 | N0041,N0125,N0197,N0463,N0476
+rand_chacha 0.10.0 | MIT OR Apache-2.0 | N0041,N0125,N0197,N0463,N0476
+rand_core 0.6.4 | MIT OR Apache-2.0 | N0041,N0125,N0354,N0463,N0476
+rand_core 0.9.5 | MIT OR Apache-2.0 | N0041,N0125,N0354,N0463,N0476
+rand_core 0.10.0 | MIT OR Apache-2.0 | N0041,N0354,N0442,N0469,N0476
+rand_regex 0.18.1 | MIT | N0315,N0476
+rayon 1.11.0 | MIT OR Apache-2.0 | N0037,N0041,N0476,N0513
+rayon-core 1.13.0 | MIT OR Apache-2.0 | N0037,N0041,N0476,N0513
+rcgen 0.13.2 | MIT OR Apache-2.0 | N0041,N0174,N0476
+rcgen 0.14.7 | MIT OR Apache-2.0 | N0041,N0476,N0699
+rdst 0.20.11 | Apache-2.0 OR MIT | N0041,N0476,N0621,N0756
+ref-cast 1.0.25 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+ref-cast-impl 1.0.25 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+regex 1.12.3 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+regex-automata 0.4.14 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+regex-lite 0.1.9 | MIT OR Apache-2.0 | N0041,N0323,N0476,N0513
+regex-syntax 0.8.10 | MIT OR Apache-2.0 | N0041,N0323,N0381,N0476,N0513
+rend 0.5.4 | MIT | N0321,N0476
+reqwest 0.12.28 | MIT OR Apache-2.0 | N0041,N0244,N0382,N0476
+reqwest 0.13.4 | MIT OR Apache-2.0 | N0041,N0382,N0476,N0697
+resolv-conf 0.7.6 | MIT OR Apache-2.0 | N0041,N0476,N0609,N0616
+rfc6979 0.4.0 | Apache-2.0 OR MIT | N0041,N0388,N0476,N0592
+ring 0.17.14 | Apache-2.0 AND ISC | N0008,N0041,N0268,N0356,N0499,N0513,N0555,N0741
+rkyv 0.8.17 | MIT | N0321,N0476
+rkyv_derive 0.8.17 | MIT | N0178,N0321,N0476
+rmcp 3.5.1 | Apache-2.0 | N0027,N0041
+rmcp-macros 3.5.1 | Apache-2.0 | N0027,N0041
+ropus 0.12.18 | BSD-3-Clause | N0295,N0778
+rtcp 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+rtp 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+rusqlite 0.39.0 | MIT | N0476,N0600
+rust-embed 8.12.0 | MIT | N0476,N0673
+rust-embed-impl 8.12.0 | MIT | N0476,N0673
+rust-embed-utils 8.12.0 | MIT | N0476,N0673
+rust-stemmers 1.2.0 | MIT/BSD-3-Clause | N0295,N0449,N0476,N0713,N0725
+rustc-hash 2.1.1 | Apache-2.0 OR MIT | N0041,N0178,N0475,N0476
+rustc_version 0.4.1 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0631
+rusticata-macros 4.1.0 | MIT/Apache-2.0 | N0041,N0476,N0512,N0513
+rustix 1.1.4 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | N0041,N0140,N0152,N0203,N0476,N0513,N0709
+rustls 0.23.46 | Apache-2.0 OR ISC OR MIT | N0361,N0400,N0513
+rustls-native-certs 0.8.3 | Apache-2.0 OR ISC OR MIT | N0041,N0268,N0361,N0400,N0476,N0513,N0677
+rustls-pki-types 1.15.0 | MIT OR Apache-2.0 | N0041,N0240,N0464,N0476
+rustls-webpki 0.103.15 | ISC | N0268,N0300
+rustversion 1.0.22 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+rustyline 14.0.0 | MIT | N0476,N0617
+ryu 1.0.23 | Apache-2.0 OR BSL-1.0 | N0041,N0320,N0427,N0632
+safe_arch 0.7.4 | Zlib OR Apache-2.0 OR MIT | N0041,N0476,N0596,N0611,N0710,N0717
+salsa20 0.10.2 | MIT OR Apache-2.0 | N0041,N0310,N0476,N0524
+same-file 1.0.6 | Unlicense/MIT | N0015,N0057,N0476,N0635
+schemafy 0.5.2 | MIT | N0083,N0476,N0503
+schemafy_core 0.5.2 | MIT | N0476,N0503
+schemafy_lib 0.5.2 | MIT | N0476,N0503
+schemars 0.8.22 | MIT | N0102,N0476
+schemars 1.2.1 | MIT | N0102,N0476
+schemars_derive 0.8.22 | MIT | N0102,N0476
+schemars_derive 1.2.1 | MIT | N0102,N0476
+scopeguard 1.2.0 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0781
+scrypt 0.11.0 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0630
+sdp 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+sealed 0.6.0 | MIT OR Apache-2.0 | N0041,N0178,N0385,N0476
+sec1 0.7.3 | Apache-2.0 OR MIT | N0041,N0251,N0476,N0524
+secrecy 0.10.3 | Apache-2.0 OR MIT | N0041,N0075,N0476,N0653
+security-framework 3.7.0 | MIT OR Apache-2.0 | N0041,N0467,N0476,N0513
+security-framework-sys 2.17.0 | MIT OR Apache-2.0 | N0041,N0467,N0476,N0513
+self_cell 1.2.2 | Apache-2.0 OR GPL-2.0-only | N0041,N0527,N0621,N0773
+semver 1.0.27 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+sentry 0.46.2 | MIT | N0212,N0476
+sentry-core 0.46.2 | MIT | N0212,N0476
+sentry-types 0.46.2 | MIT | N0212,N0476
+sequence_trie 0.3.6 | MIT/Apache-2.0 | N0016,N0041,N0052,N0476
+serde 1.0.228 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_cbor 0.11.2 | MIT/Apache-2.0 | N0041,N0476,N0513,N0701
+serde_core 1.0.228 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_derive 1.0.228 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_derive_internals 0.29.1 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_html_form 0.3.2 | MIT | N0140,N0476
+serde_ignored 0.1.14 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_json 1.0.149 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_path_to_error 0.1.20 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_repr 0.1.20 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serde_spanned 0.6.9 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+serde_spanned 1.1.2 | MIT OR Apache-2.0 | N0041,N0142,N0358,N0476
+serde_urlencoded 0.7.1 | MIT/Apache-2.0 | N0041,N0320,N0476,N0580
+serde_with 3.18.0 | MIT OR Apache-2.0 | N0041,N0383,N0476,N0513
+serde_with_macros 3.18.0 | MIT OR Apache-2.0 | N0041,N0383,N0476,N0513
+serde_yaml 0.9.34+deprecated | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+serial2 0.2.34 | BSD-2-Clause OR Apache-2.0 | N0041,N0452,N0685,N0757
+sha1 0.10.6 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0559
+sha1 0.11.0 | MIT OR Apache-2.0 | N0417,N0524
+sha1_smol 1.0.1 | BSD-3-Clause | N0157,N0295,N0316
+sha1dc 0.1.5 | MIT OR Apache-2.0 | N0524,N0749
+sha2 0.10.9 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0559
+sha2 0.11.1 | MIT OR Apache-2.0 | N0041,N0417,N0476,N0524
+sha3 0.10.8 | MIT OR Apache-2.0 | N0041,N0476,N0524,N0747
+sharded-slab 0.1.7 | MIT | N0476,N0728
+shell-words 1.1.1 | MIT/Apache-2.0 | N0041,N0423,N0476,N0767
+shlex 1.3.0 | MIT OR Apache-2.0 | N0041,N0235,N0279,N0476
+signal-hook 0.3.18 | Apache-2.0/MIT | N0041,N0263,N0476,N0513
+signal-hook-registry 1.4.8 | MIT OR Apache-2.0 | N0041,N0263,N0476,N0513
+signature 2.2.0 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0553
+simd-adler32 0.3.8 | MIT | N0230,N0476
+simdutf8 0.1.5 | MIT OR Apache-2.0 | N0041,N0059,N0099,N0476
+similar 2.7.0 | Apache-2.0 | N0041,N0513
+simple_asn1 0.6.4 | ISC | N0268,N0743
+slab 0.4.12 | MIT | N0448,N0476
+smallvec 1.15.1 | MIT OR Apache-2.0 | N0041,N0054,N0476,N0513
+smol_str 0.2.2 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+smol_str 0.3.6 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+socket-pktinfo 0.4.1 | MIT | N0115,N0476
+socket2 0.5.10 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+socket2 0.6.3 | MIT OR Apache-2.0 | N0041,N0204,N0476,N0513
+sorted_vector_map 0.2.1 | MIT OR Apache-2.0 | N0041,N0270,N0476,N0585
+spin 0.9.8 | MIT | N0345,N0476
+spki 0.7.3 | Apache-2.0 OR MIT | N0041,N0476,N0524,N0630
+sqlx 0.9.0 | MIT OR Apache-2.0 | N0041,N0297,N0476,N0628
+sqlx-core 0.9.0 | MIT OR Apache-2.0 | N0041,N0081,N0373,N0476
+sqlx-macros 0.9.0 | MIT OR Apache-2.0 | N0041,N0081,N0373,N0476
+sqlx-macros-core 0.9.0 | MIT OR Apache-2.0 | N0041,N0081,N0373,N0476
+sqlx-sqlite 0.9.0 | MIT OR Apache-2.0 | N0041,N0081,N0373,N0476
+sse-stream 0.2.6 | MIT OR Apache-2.0 | N0032,N0041,N0476,N0653
+stable_deref_trait 1.2.1 | MIT OR Apache-2.0 | N0041,N0305,N0476,N0513
+starlark 0.14.2 | Apache-2.0 | N0041,N0266
+starlark_derive 0.14.2 | Apache-2.0 | N0041,N0266
+starlark_map 0.14.2 | Apache-2.0 | N0041,N0266
+starlark_syntax 0.14.2 | Apache-2.0 | N0041,N0266,N0712
+static_assertions 1.1.0 | MIT OR Apache-2.0 | N0041,N0476,N0653,N0724
+static_interner 0.1.3 | MIT OR Apache-2.0 | N0041,N0266,N0476,N0552,N0686
+stop-words 0.9.0 | MIT OR Apache-2.0 | N0041,N0219,N0476
+streaming-iterator 0.1.9 | MIT OR Apache-2.0 | N0041,N0194,N0476,N0616
+strong_hash 0.1.0 | MIT OR Apache-2.0 | N0041,N0476,N0581
+strong_hash_derive 0.1.0 | MIT OR Apache-2.0 | N0041,N0424,N0476
+strsim 0.10.0 | MIT | N0113,N0476
+strsim 0.11.1 | MIT | N0113,N0476
+strum 0.27.2 | MIT | N0444,N0476
+strum_macros 0.27.2 | MIT | N0444,N0476
+strum_macros 0.28.0 | MIT | N0444,N0476
+stun 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+substring 1.4.5 | MIT OR Apache-2.0 | N0041,N0069,N0476,N0621
+subtle 2.6.1 | BSD-3-Clause | N0295,N0661
+supports-color 2.1.0 | Apache-2.0 | N0023,N0041
+supports-color 3.0.2 | Apache-2.0 | N0023,N0041
+symlink 0.1.0 | MIT/Apache-2.0 | N0041,N0476,N0513,N0574,N0735
+symphonia 0.6.0 | MPL-2.0 | N0329,N0622
+symphonia-bundle-mp3 0.6.0 | MPL-2.0 | N0329,N0622
+symphonia-common 0.6.1 | MPL-2.0 | N0329,N0622
+symphonia-core 0.6.1 | MPL-2.0 | N0329,N0622
+symphonia-format-isomp4 0.6.0 | MPL-2.0 | N0329,N0622
+symphonia-format-mkv 0.6.0 | MPL-2.0 | N0329,N0622
+symphonia-format-ogg 0.6.0 | MPL-2.0 | N0329,N0622
+symphonia-format-riff 0.6.0 | MPL-2.0 | N0329,N0622
+symphonia-metadata 0.6.1 | MPL-2.0 | N0329,N0622
+syn 1.0.109 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+syn 2.0.117 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+syn 3.0.5 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+sync_wrapper 1.0.2 | Apache-2.0 | N0041,N0061
+synstructure 0.13.2 | MIT | N0130,N0476
+sys-locale 0.3.2 | MIT OR Apache-2.0 | N0041,N0302,N0476,N0621
+sysctl 0.6.0 | MIT | N0272,N0476
+system-configuration 0.7.0 | MIT OR Apache-2.0 | N0003,N0041,N0476,N0513
+system-configuration-sys 0.6.0 | MIT OR Apache-2.0 | N0003,N0041,N0476,N0513
+tagptr 0.2.0 | MIT/Apache-2.0 | N0041,N0091,N0476,N0508
+take_mut 0.2.2 | MIT | N0185,N0476
+tap 1.0.1 | MIT | N0441,N0476
+tar 0.4.45 | MIT OR Apache-2.0 | N0041,N0446,N0476,N0513
+tempfile 3.27.0 | MIT OR Apache-2.0 | N0041,N0439,N0476,N0513
+termcolor 1.4.1 | Unlicense OR MIT | N0015,N0057,N0066,N0476
+terminal_size 0.4.4 | MIT OR Apache-2.0 | N0041,N0476,N0587,N0616
+textwrap 0.11.0 | MIT | N0476,N0648
+thiserror 1.0.69 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+thiserror 2.0.18 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+thiserror-impl 1.0.69 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+thiserror-impl 2.0.18 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+thiserror-impl-no-std 2.0.2 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+thiserror-no-std 2.0.2 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+thread_local 1.1.9 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0631
+time 0.3.47 | MIT OR Apache-2.0 | N0041,N0061,N0145,N0476
+time-core 0.1.8 | MIT OR Apache-2.0 | N0041,N0061,N0145,N0476
+time-macros 0.2.27 | MIT OR Apache-2.0 | N0041,N0061,N0145,N0476
+tiny_http 0.12.0 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0718
+tinystr 0.8.3 | Unicode-3.0 | N0758,N0770
+tinyvec 1.10.0 | Zlib OR Apache-2.0 OR MIT | N0041,N0426,N0476,N0596,N0653,N0790
+tinyvec_macros 0.1.1 | MIT OR Apache-2.0 OR Zlib | N0041,N0110,N0227,N0261,N0476,N0596
+tokio 1.54.1 | MIT | N0146,N0476
+tokio-graceful 0.2.2 | MIT OR Apache-2.0 | N0041,N0324,N0475,N0476
+tokio-macros 2.7.2 | MIT | N0056,N0476
+tokio-native-tls 0.3.1 | MIT | N0435,N0476
+tokio-rustls 0.26.4 | MIT OR Apache-2.0 | N0041,N0476,N0639,N0705
+tokio-stream 0.1.18 | MIT | N0146,N0476
+tokio-test 0.4.5 | MIT | N0146,N0476
+tokio-tungstenite 0.24.0 | MIT | N0476,N0792
+tokio-tungstenite 0.28.0 | MIT | N0476,N0792
+tokio-util 0.7.18 | MIT | N0146,N0476
+toml 0.5.11 | MIT/Apache-2.0 | N0041,N0204,N0476,N0513
+toml 0.8.23 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml 0.9.12+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_datetime 0.6.11 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_datetime 0.7.5+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_datetime 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0142,N0358,N0476
+toml_edit 0.22.27 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_edit 0.24.1+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_edit 0.25.4+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_parser 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0142,N0358,N0476
+toml_write 0.1.2 | MIT OR Apache-2.0 | N0041,N0358,N0476,N0616
+toml_writer 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 | N0041,N0142,N0358,N0476
+tonic 0.14.6 | MIT | N0476,N0706
+tonic-build 0.14.6 | MIT | N0476,N0706
+tonic-prost 0.14.6 | MIT | N0476,N0706
+tonic-prost-build 0.14.3 | MIT | N0476,N0706
+tower 0.5.3 | MIT | N0229,N0476
+tower-http 0.6.8 | MIT | N0264,N0476
+tower-layer 0.3.3 | MIT | N0229,N0476
+tower-service 0.3.3 | MIT | N0229,N0476
+tracing 0.1.44 | MIT | N0435,N0476
+tracing-appender 0.2.5 | MIT | N0435,N0476
+tracing-attributes 0.1.31 | MIT | N0435,N0476
+tracing-core 0.1.36 | MIT | N0287,N0435,N0476
+tracing-log 0.2.0 | MIT | N0435,N0476
+tracing-opentelemetry 0.32.1 | MIT | N0435,N0476
+tracing-serde 0.2.0 | MIT | N0435,N0476
+tracing-subscriber 0.3.22 | MIT | N0435,N0476
+tree-sitter 0.25.10 | MIT | N0341,N0476
+tree-sitter-bash 0.25.1 | MIT | N0249,N0476
+tree-sitter-language 0.1.7 | MIT | N0476,N0615
+tree-sitter-powershell 0.26.4 | MIT | N0120,N0476
+triomphe 0.1.16 | MIT OR Apache-2.0 | N0041,N0084,N0476,N0515
+try-lock 0.2.5 | MIT | N0476,N0626
+ts-rs 11.1.0 | MIT | N0476,N0690
+ts-rs-macros 11.1.0 | MIT | N0476,N0690
+tungstenite 0.24.0 | MIT OR Apache-2.0 | N0041,N0410,N0476,N0513
+tungstenite 0.27.0 | MIT OR Apache-2.0 | N0041,N0410,N0476,N0513
+turn 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+type-map 0.5.1 | MIT/Apache-2.0 | N0041,N0476,N0557,N0766
+typed-path 0.12.4 | MIT OR Apache-2.0 | N0140,N0320
+typeid 1.0.3 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+typenum 1.19.0 | MIT OR Apache-2.0 | N0041,N0267,N0476,N0520,N0688
+unic-langid 0.9.6 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+unic-langid-impl 0.9.6 | MIT OR Apache-2.0 | N0041,N0140,N0476,N0513
+unicase 2.9.0 | MIT OR Apache-2.0 | N0041,N0262,N0476,N0513
+unicode-bom 2.0.3 | Apache-2.0 | N0041,N0195
+unicode-general-category 1.1.0 | Apache-2.0 | N0041,N0556
+unicode-ident 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 | N0041,N0140,N0320,N0476,N0770
+unicode-normalization 0.1.25 | MIT OR Apache-2.0 | N0041,N0137,N0397,N0476,N0513
+unicode-segmentation 1.12.0 | MIT OR Apache-2.0 | N0041,N0137,N0397,N0476,N0513
+unicode-width 0.1.14 | MIT OR Apache-2.0 | N0041,N0137,N0397,N0476,N0513
+unicode-width 0.2.2 | MIT OR Apache-2.0 | N0041,N0137,N0397,N0476,N0513
+unicode-xid 0.2.6 | MIT OR Apache-2.0 | N0041,N0137,N0397,N0476,N0513
+universal-hash 0.5.1 | MIT OR Apache-2.0 | N0041,N0347,N0476,N0524
+unsafe-libyaml 0.2.11 | MIT | N0140,N0476
+untrusted 0.7.1 | ISC | N0268,N0393
+untrusted 0.9.0 | ISC | N0268,N0393
+url 2.5.8 | MIT OR Apache-2.0 | N0041,N0476,N0513,N0554
+urlencoding 2.1.3 | MIT | N0296,N0476
+utf-8 0.7.6 | MIT OR Apache-2.0 | N0041,N0140,N0320,N0476
+utf8_iter 1.0.4 | Apache-2.0 OR MIT | N0041,N0221,N0476,N0608,N0653
+utf8parse 0.2.2 | Apache-2.0 OR MIT | N0041,N0320,N0476,N0714
+uuid 1.26.0 | Apache-2.0 OR MIT | N0041,N0233,N0476,N0513
+vcpkg 0.2.15 | MIT/Apache-2.0 | N0011,N0041,N0314,N0476
+venial 0.6.1 | MIT | N0476,N0610
+version_check 0.9.5 | MIT/Apache-2.0 | N0041,N0476,N0513,N0572
+vsimd 0.8.0 | MIT | N0367,N0476
+waitgroup 0.1.2 | Apache-2.0 | N0041,N0621
+walkdir 2.5.0 | Unlicense/MIT | N0015,N0057,N0066,N0476
+want 0.3.1 | MIT | N0476,N0514
+web-time 1.1.0 | MIT OR Apache-2.0 | N0041,N0275,N0476,N0759
+webbrowser 1.2.4 | MIT OR Apache-2.0 | N0041,N0407,N0476,N0545
+webm 2.2.0 | MPL-2.0 | N0298,N0329
+webm-sys 2.2.1 | MPL-2.0 | N0298,N0329,N0640
+webpki-roots 0.26.11 | CDLA-Permissive-2.0 | N0238,N0707
+webpki-roots 1.0.9 | CDLA-Permissive-2.0 | N0238,N0707
+webrtc 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+webrtc-data 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+webrtc-ice 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+webrtc-mdns 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+webrtc-media 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0496
+webrtc-sctp 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+webrtc-srtp 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+webrtc-util 0.17.2 | MIT/Apache-2.0 | N0041,N0282,N0476,N0513
+weezl 0.1.12 | MIT OR Apache-2.0 | N0041,N0284,N0385,N0476
+which 8.0.2 | MIT | N0007,N0476
+whoami 1.6.1 | Apache-2.0 OR BSL-1.0 OR MIT | N0041,N0265,N0320,N0427,N0476,N0632
+wide 0.7.33 | Zlib OR Apache-2.0 OR MIT | N0041,N0476,N0596,N0611
+widestring 1.2.1 | MIT OR Apache-2.0 | N0265,N0516
+wildcard 0.3.0 | Apache-2.0 | N0041,N0653
+wildmatch 2.6.1 | MIT | N0476,N0477
+windows 0.58.0 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+windows-core 0.58.0 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+windows-implement 0.58.0 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+windows-interface 0.58.0 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+windows-result 0.2.0 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+windows-strings 0.1.0 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+windows-targets 0.52.6 | MIT OR Apache-2.0 | N0041,N0476,N0603,N0607
+winnow 0.7.15 | MIT | N0476,N0636
+winnow 1.0.4 | MIT | N0476,N0636
+writeable 0.6.2 | Unicode-3.0 | N0758,N0770
+wyz 0.5.1 | MIT | N0225,N0476
+x25519-dalek 2.0.1 | BSD-3-Clause | N0295,N0594
+x509-parser 0.16.0 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+x509-parser 0.18.1 | MIT OR Apache-2.0 | N0041,N0476,N0512,N0513
+xmlparser 0.13.6 | MIT/Apache-2.0 | N0041,N0055,N0476,N0513
+xxhash-rust 0.8.16 | BSL-1.0 | N0427,N0632
+yasna 0.5.2 | MIT OR Apache-2.0 | N0041,N0162,N0476,N0513
+yoke 0.8.2 | Unicode-3.0 | N0758,N0770
+yoke-derive 0.8.2 | Unicode-3.0 | N0758,N0770
+zerocopy 0.8.42 | BSD-2-Clause OR Apache-2.0 OR MIT | N0041,N0105,N0419,N0476,N0493,N0757
+zerocopy-derive 0.8.42 | BSD-2-Clause OR Apache-2.0 OR MIT | N0041,N0105,N0419,N0476,N0493,N0757
+zerofrom 0.1.6 | Unicode-3.0 | N0758,N0770
+zerofrom-derive 0.1.6 | Unicode-3.0 | N0758,N0770
+zeroize 1.8.2 | Apache-2.0 OR MIT | N0041,N0051,N0476,N0653
+zeroize_derive 1.4.3 | Apache-2.0 OR MIT | N0041,N0460,N0476,N0653
+zerotrie 0.2.4 | Unicode-3.0 | N0758,N0770
+zerovec 0.11.6 | Unicode-3.0 | N0758,N0770
+zerovec-derive 0.11.3 | Unicode-3.0 | N0758,N0770
+zip 2.4.2 | MIT | N0033,N0476
+zip 9.0.1 | MIT | N0287
+zlib-rs 0.6.6 | Zlib | N0596,N0719
+zmij 1.0.21 | MIT | N0140,N0476
+zopfli 0.8.3 | Apache-2.0 | N0013,N0041
+zstd 0.13.3 | MIT | N0076,N0476
+zstd-safe 7.2.4 | MIT OR Apache-2.0 | N0041,N0061,N0076,N0476,N0517
+zstd-sys 2.0.16+zstd.1.5.7 | MIT/Apache-2.0 | N0041,N0061,N0076,N0246,N0360,N0476,N0517,N0773
+zune-core 0.5.1 | MIT OR Apache-2.0 OR Zlib | N0041,N0476,N0596,N0621,N0662,N0669
+zune-jpeg 0.5.13 | MIT OR Apache-2.0 OR Zlib | N0041,N0476,N0596,N0621,N0662,N0669
+
+NATIVE AND ADDITIONAL FULL NOTICES
+Elected LGPLv3 route | N0001,N0002
+Homebrew/gettext/1.0 | N0089,N0127,N0337,N0720
+Homebrew/glib/2.90.1 | N0031,N0100,N0211,N0775
+Homebrew/graphviz/16.1.0 | N0058,N0098,N0108,N0111,N0465,N0478,N0548,N0652,N0658,N0693,N0785
+Homebrew/gts/0.7.6_4 | N0132,N0663
+Homebrew/libtool/2.6.2 | N0127,N0436,N0485,N0733
+Homebrew/pcre2/10.49 | N0103,N0226,N0309,N0325,N0486,N0562,N0641
+Individually licensed application source: polar-cas-fs-sys 0.1.0 (MIT; not observed in this compiler set) | N0183
+Polar Station upstream notices | N0783
+Recovered upstream notices | N0018,N0093,N0139,N0147,N0177,N0236,N0308,N0309,N0372,N0403,N0458,N0533,N0576,N0671,N0780
+Sparkle 2.9.0 | N0207,N0764
+Zig dependency N-V-__8AAAzZywE3s51XfsLbP9eyEw57ae9swYB9aGB6fCMs | N0061,N0122,N0586,N0772
+Zig dependency N-V-__8AAB0eQwD-0MdOEBmz7intriBReIsIDNlukNVoNu6o | N0198,N0421
+Zig dependency N-V-__8AABzkUgISeKGgXAzgtutgJsZc0-kkeqBBscJgMkvy | N0536
+Zig dependency N-V-__8AADYiAAB_80AWnH1AxXC0tql9thT-R-DYO1gBqTLc | N0342
+Zig dependency N-V-__8AADcZkgn4cMhTUpIz6mShCKyqqB-NBtf_S2bHaTC- | N0024,N0181,N0223,N0253,N0291,N0303,N0311,N0341,N0369,N0406,N0544,N0614,N0655,N0720
+Zig dependency N-V-__8AAEbOfQBnvcFcCX2W5z7tDaN8vaNZGamEQtNOe0UI | N0625,N0684
+Zig dependency N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE | N0232,N0355,N0664
+Zig dependency N-V-__8AAHffAgDU0YQmynL8K35WzkcnMUmBVQHQ0jlcKpjH | N0632
+Zig dependency N-V-__8AAHjwMQDBXnLq3Q2QhaivE0kE2aD138vtX2Bq1g7c | N0090,N0362
+Zig dependency N-V-__8AAIC5lwAVPJJzxnCAahSvZTIlG-HhtOvnM1uh-66x | N0190
+Zig dependency N-V-__8AAJrvXQCqAT8Mg9o_tk6m0yf5Fz-gCNEOKLyTSerD | N0265,N0375,N0482,N0566,N0624,N0676,N0738
+Zig dependency N-V-__8AAKLKpwC4H27Ps_0iL3bPkQb-z6ZVSrB-x_3EEkub | N0173
+Zig dependency N-V-__8AALw2uwF_03u4JRkZwRLc3Y9hakkYV7NKRR9-RIZJ | N0255,N0338,N0364,N0366,N0681
+Zig dependency N-V-__8AAMVLTABmYkLqhZPLXnMl-KyN38R8UVYqGrxqO26s | N0425
+Zig dependency N-V-__8AANb6pwD7O1WG6L5nvD_rNMvnSc9Cpg1ijSlTYywv | N0653,N0782
+Zig dependency N-V-__8AAPlZGwBEa-gxrcypGBZ2R8Bse4JYSfo_ul8i2jlG | N0307
+Zig dependency libxev-0.0.0-86vtc4IcEwCqEYxEYoN_3KXmc6A9VLcm22aVImfvecYs | N0786
+Zig dependency uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM | N0760
+Zig dependency uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9 | N0179
+Zig dependency vaxis-0.5.1-BWNV_LosCQAGmCCNOLljCIw6j6-yt53tji6n6rwJ2BhS | N0644
+Zig dependency zf-0.10.3-OIRy8RuJAACKA3Lohoumrt85nRbHwbpMcUaLES8vxDnh | N0038
+Zig dependency zig_objc-0.0.0-Ir_Sp5gTAQCvxxR7oVIrPXxXwsfKgVP7_wqoOQrZjFeK | N0786
+Zig dependency zigimg-0.1.0-8_eo2vHnEwCIVW34Q14Ec-xUlzIoVg86-7FU2ypPtxms | N0286
+ghostty | N0206
+ghostty/LICENSE | N0206
+ghostty/pkg/afl++ | N0188
+ghostty/pkg/afl++/LICENSE | N0188
+ghostty/vendor/nerd-fonts | N0118
+ghostty/vendor/nerd-fonts/LICENSE | N0118
+godot | N0280,N0351,N0543,N0634,N0730
+godot/AUTHORS.md | N0351
+godot/COPYRIGHT.txt | N0634
+godot/LICENSE.txt | N0543
+godot/misc/logo/LICENSE.txt | N0730
+godot/modules/betsy/LICENSE.Betsy.md | N0280
+godot/thirdparty/accesskit | N0140
+godot/thirdparty/accesskit/LICENSE-MIT | N0140
+godot/thirdparty/amd-fsr | N0687
+godot/thirdparty/amd-fsr/license.txt | N0687
+godot/thirdparty/amd-fsr2 | N0339
+godot/thirdparty/amd-fsr2/LICENSE.txt | N0339
+godot/thirdparty/angle | N0595
+godot/thirdparty/angle/LICENSE | N0595
+godot/thirdparty/astcenc | N0247
+godot/thirdparty/astcenc/LICENSE.txt | N0247
+godot/thirdparty/basis_universal | N0525
+godot/thirdparty/basis_universal/LICENSE | N0525
+godot/thirdparty/brotli | N0216
+godot/thirdparty/brotli/LICENSE | N0216
+godot/thirdparty/clipper2 | N0632
+godot/thirdparty/clipper2/LICENSE | N0632
+godot/thirdparty/cvtt | N0278
+godot/thirdparty/cvtt/LICENSE.txt | N0278
+godot/thirdparty/d3d12ma | N0274,N0394
+godot/thirdparty/d3d12ma/LICENSE.txt | N0274
+godot/thirdparty/d3d12ma/NOTICES.txt | N0394
+godot/thirdparty/directx_headers | N0788
+godot/thirdparty/directx_headers/LICENSE | N0788
+godot/thirdparty/doctest | N0067
+godot/thirdparty/doctest/LICENSE.txt | N0067
+godot/thirdparty/dr_libs | N0696
+godot/thirdparty/dr_libs/LICENSE | N0696
+godot/thirdparty/embree | N0653
+godot/thirdparty/embree/LICENSE.txt | N0653
+godot/thirdparty/enet | N0507
+godot/thirdparty/enet/LICENSE | N0507
+godot/thirdparty/etcpak | N0117,N0208
+godot/thirdparty/etcpak/AUTHORS.txt | N0117
+godot/thirdparty/etcpak/LICENSE.txt | N0208
+godot/thirdparty/fonts | N0017,N0094,N0150,N0344,N0637,N0656
+godot/thirdparty/fonts/LICENSE.DroidSans.txt | N0656
+godot/thirdparty/fonts/LICENSE.Inter.txt | N0150
+godot/thirdparty/fonts/LICENSE.JetBrainsMono.txt | N0637
+godot/thirdparty/fonts/LICENSE.Noto.txt | N0344
+godot/thirdparty/fonts/LICENSE.OpenSans.txt | N0017
+godot/thirdparty/fonts/LICENSE.Vazirmatn.txt | N0094
+godot/thirdparty/freetype | N0590
+godot/thirdparty/freetype/LICENSE.TXT | N0590
+godot/thirdparty/gamepadmotionhelpers | N0633
+godot/thirdparty/gamepadmotionhelpers/LICENSE.txt | N0633
+godot/thirdparty/glad | N0638
+godot/thirdparty/glad/LICENSE | N0638
+godot/thirdparty/glslang | N0095
+godot/thirdparty/glslang/LICENSE.txt | N0095
+godot/thirdparty/graphite | N0166
+godot/thirdparty/graphite/COPYING | N0166
+godot/thirdparty/grisu2 | N0490
+godot/thirdparty/grisu2/LICENSE | N0490
+godot/thirdparty/harfbuzz | N0104,N0582
+godot/thirdparty/harfbuzz/AUTHORS | N0104
+godot/thirdparty/harfbuzz/COPYING | N0582
+godot/thirdparty/icu4c | N0716
+godot/thirdparty/icu4c/LICENSE | N0716
+godot/thirdparty/jolt_physics | N0411
+godot/thirdparty/jolt_physics/LICENSE | N0411
+godot/thirdparty/libbacktrace | N0740
+godot/thirdparty/libbacktrace/LICENSE | N0740
+godot/thirdparty/libjpeg-turbo | N0129
+godot/thirdparty/libjpeg-turbo/LICENSE.md | N0129
+godot/thirdparty/libktx | N0065,N0457
+godot/thirdparty/libktx/LICENSE.dfdutils.adoc | N0457
+godot/thirdparty/libktx/LICENSE.md | N0065
+godot/thirdparty/libogg | N0667
+godot/thirdparty/libogg/COPYING | N0667
+godot/thirdparty/libpng | N0591
+godot/thirdparty/libpng/LICENSE | N0591
+godot/thirdparty/libtheora | N0167,N0420
+godot/thirdparty/libtheora/COPYING | N0420
+godot/thirdparty/libtheora/LICENSE | N0167
+godot/thirdparty/libvorbis | N0729
+godot/thirdparty/libvorbis/COPYING | N0729
+godot/thirdparty/libwebp | N0298,N0640,N0750
+godot/thirdparty/libwebp/AUTHORS | N0750
+godot/thirdparty/libwebp/COPYING | N0298
+godot/thirdparty/manifold | N0040,N0621
+godot/thirdparty/manifold/AUTHORS | N0040
+godot/thirdparty/manifold/LICENSE | N0621
+godot/thirdparty/mbedtls | N0653
+godot/thirdparty/mbedtls/LICENSE | N0653
+godot/thirdparty/meshoptimizer | N0742
+godot/thirdparty/meshoptimizer/LICENSE.md | N0742
+godot/thirdparty/metal-cpp | N0761
+godot/thirdparty/metal-cpp/LICENSE.txt | N0761
+godot/thirdparty/mingw-std-threads | N0431
+godot/thirdparty/mingw-std-threads/LICENSE | N0431
+godot/thirdparty/miniupnpc | N0271
+godot/thirdparty/miniupnpc/LICENSE | N0271
+godot/thirdparty/msdfgen | N0184
+godot/thirdparty/msdfgen/LICENSE.txt | N0184
+godot/thirdparty/openxr | N0053,N0570,N0649,N0653
+godot/thirdparty/openxr/COPYING.adoc | N0570
+godot/thirdparty/openxr/LICENSE | N0653
+godot/thirdparty/openxr/src/external/jsoncpp/AUTHORS | N0053
+godot/thirdparty/openxr/src/external/jsoncpp/LICENSE | N0649
+godot/thirdparty/pcre2 | N0103,N0330
+godot/thirdparty/pcre2/AUTHORS.md | N0330
+godot/thirdparty/pcre2/LICENCE.md | N0103
+godot/thirdparty/re-spirv | N0384
+godot/thirdparty/re-spirv/LICENSE | N0384
+godot/thirdparty/recastnavigation | N0288
+godot/thirdparty/recastnavigation/License.txt | N0288
+godot/thirdparty/rvo2 | N0653
+godot/thirdparty/rvo2/LICENSE | N0653
+godot/thirdparty/sdl | N0176,N0205,N0401,N0481
+godot/thirdparty/sdl/LICENSE.txt | N0481
+godot/thirdparty/sdl/hidapi/AUTHORS.txt | N0205
+godot/thirdparty/sdl/hidapi/LICENSE-bsd.txt | N0176
+godot/thirdparty/sdl/hidapi/LICENSE.txt | N0401
+godot/thirdparty/smaa | N0312
+godot/thirdparty/smaa/LICENSE.txt | N0312
+godot/thirdparty/spirv-cross | N0653,N0782
+godot/thirdparty/spirv-cross/LICENSE | N0653
+godot/thirdparty/spirv-cross/LICENSES/LicenseRef-KhronosFreeUse.txt | N0782
+godot/thirdparty/spirv-headers | N0281
+godot/thirdparty/spirv-headers/LICENSE | N0281
+godot/thirdparty/spirv-reflect | N0621
+godot/thirdparty/spirv-reflect/LICENSE | N0621
+godot/thirdparty/swappy-frame-pacing | N0754
+godot/thirdparty/swappy-frame-pacing/LICENSE | N0754
+godot/thirdparty/thorvg | N0378
+godot/thirdparty/thorvg/LICENSE | N0378
+godot/thirdparty/tinyexr | N0578
+godot/thirdparty/tinyexr/LICENSE | N0578
+godot/thirdparty/ufbx | N0062
+godot/thirdparty/ufbx/LICENSE | N0062
+godot/thirdparty/vhacd | N0141
+godot/thirdparty/vhacd/LICENSE | N0141
+godot/thirdparty/volk | N0189
+godot/thirdparty/volk/LICENSE.md | N0189
+godot/thirdparty/vulkan | N0531
+godot/thirdparty/vulkan/LICENSE.md | N0531
+godot/thirdparty/wayland | N0357
+godot/thirdparty/wayland-protocols | N0748
+godot/thirdparty/wayland-protocols/COPYING | N0748
+godot/thirdparty/wayland/COPYING | N0357
+godot/thirdparty/wslay | N0064
+godot/thirdparty/wslay/COPYING | N0064
+godot/thirdparty/xatlas | N0165
+godot/thirdparty/xatlas/LICENSE | N0165
+godot/thirdparty/zlib | N0708
+godot/thirdparty/zlib/LICENSE | N0708
+godot/thirdparty/zstd | N0360
+godot/thirdparty/zstd/LICENSE | N0360
+Homebrew/gts/0.7.6_4/AUTHORS (original source bytes) | N0333
+GTS original README with copying and public-domain attribution | N0187
+Additional full notice texts collected from this build | N0169,N0276,N0575,N0749
+
+FULL TEXT FILES: notice ID | path (relative to THIRD-PARTY-NOTICES)
+N0001 | terms/GPL-3.0-only.txt
+N0002 | terms/LGPL-3.0-only.txt
+N0003 | texts/000cbb5bea6f21829c8f0d9e1fe87410bd5ef0453412ffc017845982a3e19824.txt
+N0004 | texts/002c2696d92b5c8cf956c11072baa58eaf9f6ade995c031ea635c6a1ee342ad1.txt
+N0005 | texts/003736bc98408b53511b9cc8ff5d1af3bf0a8f17d53841cc39d8ab1b96a195b0.txt
+N0006 | texts/0039260f31893b6b5797d5fd5be0f086a0e8f10ec81162acdb3199d51cebd5a5.txt
+N0007 | texts/0041560f5d419c30e1594567f3b7ac2bc078ff6a68f437e0348ba85d9cf99112.txt
+N0008 | texts/005fc765ddc5115da796cca915baa9557abae13ff35e0a47c47affc56f6c414d.txt
+N0009 | texts/008c87afcd2e626eaf564093250bed06dd7efb5732113264bba3dda8f1c556a1.txt
+N0010 | texts/00fcc7a934ddbc9ece2a7cc063ac788e284b703b1d705ccbba72d462aa97921e.txt
+N0011 | texts/016d20f335060a70e79d9fcf8dfaa6201114d65d592211f4bdfb8ae9ca2bc1dc.txt
+N0012 | texts/016fcc02048817d628b04b140c54db290fd9d29a5e8a55b77871194e810716ac.txt
+N0013 | texts/018b1cb87efdf7a04c2fcc13d57ed63f62149113fb207b27ea13430d64f13513.txt
+N0014 | texts/01a5b47e1a8a9a4d4f9d1790ee83aee8e66292ed936ad82fe9efbc808d790b92.txt
+N0015 | texts/01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f.txt
+N0016 | texts/01c44278ca54b35d12f806f9344846c81f1e84426bb675db9962130e4e4200b8.txt
+N0017 | texts/01cd5ffb3a528c219a86e49a814c6c53bd8a69b9a3c305dd237074ba1c811af7.txt
+N0018 | texts/01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551.txt
+N0019 | texts/02168781a5b59970e3da1784d2eb69f432598a3757f283dbffdafd9d483a9113.txt
+N0020 | texts/0218327e7a480793ffdd4eb792379a9709e5c135c7ba267f709d6f6d4d70af0a.txt
+N0021 | texts/021f4a01e58372b826203064fac216e15d51e07f7739b8ca33d4b746ec8abb3b.txt
+N0022 | texts/025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112.txt
+N0023 | texts/02872c3ff23e11da5a9b3289df11b581be36b4956bfb7cfdc3d8043f92d64794.txt
+N0024 | texts/03133addae5b99a6148c538300e6d97074453089be1423b741bd081f18e2b298.txt
+N0025 | texts/0345e2b98685e3807fd802a2478085dcae35023e3da59b5a00f712504314d83a.txt
+N0026 | texts/035e70219855119df4273b3c5b97543ae82e0dd60c520416e759107c602f651b.txt
+N0027 | texts/0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a.txt
+N0028 | texts/03d1bd5bfbee8d44651e7f57faf9e5b4eda4233f0d4eda36a716f2f0533d230b.txt
+N0029 | texts/0444c6991eead6822f7b9102e654448d51624431119546492e8b231db42c48bb.txt
+N0030 | texts/044983df14c97f2f9570766aaf977b3cdfc4a06cf1f36b776331c5ff89b4fb89.txt
+N0031 | texts/0494e354430e5925e628bf88c2e3dd799e5cfa1e99d0760538850e0803cdedbe.txt
+N0032 | texts/049d23c7810a0723f186a193f841378dbc307f62be89bdba21c73126b0df2c52.txt
+N0033 | texts/04dc52136d82400b11df5f474949863a70a5d05d2278dec45b99c479494450a6.txt
+N0034 | texts/04ea4849dba9dcae07113850c6f1b1a69052c625210639914eee352023f750ad.txt
+N0035 | texts/058f01fe181608d027fcde7e528fc03ea3cf90f30903c407644b0a9bbc54f500.txt
+N0036 | texts/061dc50af2cd9340703daf61978af3200cf681b12ea67a323c33ba109a23a45e.txt
+N0037 | texts/0621878e61f0d0fda054bcbe02df75192c28bde1ecc8289cbd86aeba2dd72720.txt
+N0038 | texts/0629000344ad0dc3c6e0e4c1b0c4a5cacf090e17d56e8bc5272705e3d35b7def.txt
+N0039 | texts/070dbc7dda03a29296f2d58bdb9b7331af90f2abc9f31df22875d1eabaf29852.txt
+N0040 | texts/074a43d4b1626a34a0a14a036d00100524dd463604b2570c4d76c7baa63608f3.txt
+N0041 | texts/074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff.txt
+N0042 | texts/07919255c7e04793d8ea760d6c2ce32d19f9ff02bdbdde3ce90b1e1880929a9b.txt
+N0043 | texts/0816e154b159ba255c563f7c8c7df5bbb8cc5fc96f5ab8cf9f4743b4f41fe7eb.txt
+N0044 | texts/086ed857073f4a67947c2722d6e769ccfbe1c8d8863bcd5c9b3d8bb25d3a1eab.txt
+N0045 | texts/088703893e23d7c50091e47fe2d0e949d22b3165a799361662d422594b4b0ba8.txt
+N0046 | texts/0967d697f9129783cb9393d02db2840182e24adf100f34f74f13d4c30f482be9.txt
+N0047 | texts/09785877275ffada6c371b652a30e95c26b435126fc0fc62f1bc2d72171f80a4.txt
+N0048 | texts/09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b.txt
+N0049 | texts/0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39.txt
+N0050 | texts/0aa8963e105e8b6e02f634484145d4e5b0f42d0a6dd05c16f8148f033383adef.txt
+N0051 | texts/0b04ee3ce0021a922f43f37a17fee09a5a1ee6d1f4e149d5bf75b72395a49c72.txt
+N0052 | texts/0b1bf570a251274b3b6a437b5f9b7920dbf66180237bb06905a2e43dceb0546f.txt
+N0053 | texts/0b21b1d9c90421380d30e8b55a02204949cd737535d98bf56076d661816deec4.txt
+N0054 | texts/0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9.txt
+N0055 | texts/0b5f24524360e15bcf9fb79bca875f5aa62f01f94f2988e23238c7ec0e6e8784.txt
+N0056 | texts/0b83dc40cba89b9922bb84b0a9c7d2768ce37c1d7e138b7424fd4549915778c9.txt
+N0057 | texts/0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240.txt
+N0058 | texts/0becf16567beb77fa252b7664631dd177c8f9a1889e48995b45379c7130e5303.txt
+N0059 | texts/0cec06e0e55fbc3dc5cee4fca9b607f66cb8f4e4dbcf3b3c013594dd156732e9.txt
+N0060 | texts/0d25d03b5ab49576178ad0cae7a2648d12c17ad0452fe49c07e55e4b59aa5257.txt
+N0061 | texts/0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594.txt
+N0062 | texts/0dd48ebadf52273c736256325c8f078c03c8bb4facee22a4122de0ad3f615391.txt
+N0063 | texts/0dd882e53de11566d50f8e8e2d5a651bcf3fabee4987d70f306233cf39094ba7.txt
+N0064 | texts/0e602a00db6ce15c1311a180b13563aa638918a77f813b24cd78c9fe5cab63d0.txt
+N0065 | texts/0f92b4ce771585dfebc963ede074a30b4431b9e327911db44097d83ccf372128.txt
+N0066 | texts/0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f.txt
+N0067 | texts/0fe0b331fa1513dcce8604ff1fa925f32d1cea17d8aeb1c2471fad40d291adc5.txt
+N0068 | texts/0ff5fd909226ed2bb30c59f57ef6659108b39d63df8de0d757f37cc498c3aa17.txt
+N0069 | texts/106653ff1a44c315af35725d5bbc88a3c9e5d83ecdd9ae7c76bb32312e1f4979.txt
+N0070 | texts/10d73bf26900fa6dd6f2613bb962b7bd8fa1e66618fcf0f9f899aa071a4ee200.txt
+N0071 | texts/1118360170ac75117538c65db992cfec5d0ffa28a6b990e46ab45602b638c8fd.txt
+N0072 | texts/112fcdb9f4935988cc2313e4cc38faaeccfff53eb1296499e618932d472908e0.txt
+N0073 | texts/11789f45bb180841cd362a5eee6789c68ddb573a11105e30768c308a6add0190.txt
+N0074 | texts/123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e.txt
+N0075 | texts/1264c45618bccf48df48b9e9beefdc704dc094ddedccf5ddef0243a031b9e114.txt
+N0076 | texts/129e8edef29e9abcd2ebabe252f4ef1b1289cdca356bf0040284a2fbccfb96c8.txt
+N0077 | texts/13614eea8cdc60c63e6c32bcbaece087286ef31341d40b5413de6f2b39dbdcd8.txt
+N0078 | texts/13f4cc9fbc8d4a447b28aa84019c10ad4abf4b5f6919db061bf6690ccc23bc02.txt
+N0079 | texts/1466d9b4f3a59bb8997fc8d5fa977ce3f6a24bb2358793c09bfdf007039f6486.txt
+N0080 | texts/151e9c23853f5a7ce858b8bd2705e9ffe4e0588affe67d9241f08fc9f534fadc.txt
+N0081 | texts/154397a08d0cb342110281129971868cd562542d0780b0d10722788cd11a1399.txt
+N0082 | texts/155420c6403d4e0fca34105e3c03fdd6939b64c393c7ec6f95f5b72c5474eab0.txt
+N0083 | texts/155ffbd9aea98a37669e58c32634f4849a4839b4dfee895e00d9c7242cb9d59c.txt
+N0084 | texts/15656cc11a8331f28c0986b8ab97220d3e76f98e60ed388b5ffad37dfac4710c.txt
+N0085 | texts/157cc607717b1b372a69f6b4526f6ad18c1279af9f3267835cca2943f37bc07d.txt
+N0086 | texts/161c4bcb09e94e97cf5d917129bbd78574ca2238704d602465cd54ebb9e570d6.txt
+N0087 | texts/162ce11ad71338d0a0c6ebaf5c48af72c6ae237b468859d3656fe2d9ed3f3a85.txt
+N0088 | texts/16692e8cee4aa06e3913787497eba2d47c42002014136f5da67be6ee640e28a3.txt
+N0089 | texts/167b04ed012e59c2d2cfc87d420d8c8a8f5c528ef1fd068598b36d57f39db203.txt
+N0090 | texts/172a2a72c080d3067969599308c91385af86fdeb2419f8ad687883ca5a8ff912.txt
+N0091 | texts/175d33d2e88fc3944f1f54125e886e7232a85380b73dce505e9088fe4e91c576.txt
+N0092 | texts/177540cad091a40e8071db310bc3b6115c4e329a92a234609b60c154b008a888.txt
+N0093 | texts/17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c.txt
+N0094 | texts/17e355067c8284f47743a1ee3b1ef7ff684ff0601eda357f9353b10b3016ab31.txt
+N0095 | texts/17e70c676e1521ff3e4686f04a2053d93a7e28a33be8de7ec37ab0ff72feb677.txt
+N0096 | texts/17f0e4abca848e78b7148718eb46346abf4a6664573e913928d1a1ed81e14d95.txt
+N0097 | texts/182e92cd15bfda3e7151d8694e9f030b41111bd0f2c4356eab9ed0e03f3545bd.txt
+N0098 | texts/182eaf397edc803d0e44a25708ba70ecafc143c0f610ea7048c6b9687a939ff0.txt
+N0099 | texts/1847e0e0698142ed4347c1441a9fa81c8fbddd44b1d8bbcd5e3647f991759d7f.txt
+N0100 | texts/1903868158d67ec1ee045085ba0e79c36268b2ad4d1cf930b4beb4618bef738b.txt
+N0101 | texts/191c46fcf52061382b1c51a70311eb9081381cc158e5899f3739473a9432185b.txt
+N0102 | texts/1954992a2b32e8a2af24a4c11b726902e344c1934b947a77f04d404908f8db30.txt
+N0103 | texts/197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811.txt
+N0104 | texts/19bfe8f5ed100636cd24ab0c90a3f71c21d8b02d9ba00719447a0faab364d49f.txt
+N0105 | texts/1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df.txt
+N0106 | texts/1ab0a45ecbe1249a8dd597a5157181cd624a738c744afabae51409db1e6de7eb.txt
+N0107 | texts/1bc7e6f475b3ec99b7e2643411950ae2368c250dd4c5c325f80f9811362a94a1.txt
+N0108 | texts/1be5b0283ded0074ee5c213b0b011a05cfc472fbd4e87518977f7131b972b347.txt
+N0109 | texts/1c2cca52370a84e35e699ac68f781a31e033d5a88e859be86c25a8643ee4ebdd.txt
+N0110 | texts/1dd8eca0f83669e75fa119e34fb9e1be9d16e3e9b6368962b8019db6e8ae5f7b.txt
+N0111 | texts/1de70f015d6777ee7c84693973d624f6ed0a2cb02063e01d230df16a6a218d00.txt
+N0112 | texts/1e2b7ade3fb228130408b9990cae6a7618eb314c75aa0b164bfe485d9d9756ee.txt
+N0113 | texts/1e697ce8d21401fbf1bddd9b5c3fd4c4c79ae1e3bdf51f81761c85e11d5a89cd.txt
+N0114 | texts/1e860b66ad4646c4f188d5ee6f0be5192089c1c066cb42a6d25285c250543444.txt
+N0115 | texts/1ea20122ffdda9e68f47eb121b811011757f332d41d97f610ea91c598beff733.txt
+N0116 | texts/1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5.txt
+N0117 | texts/1f64568dbc98dd11987a08a5ffc834a139d7cc36773a8f2c99ee09e94b241e6a.txt
+N0118 | texts/1f6ad4edae6479aaace3112ede5279a23284ae54b2a34db66357aef5f64df160.txt
+N0119 | texts/1fa7e078de3f9165a1c6742359307711e91652f035dc37a32376ca0023483e63.txt
+N0120 | texts/1fca8454c0d77a73f9922a52d39e1f7c339f5da5d03f2766eff66b859fa19477.txt
+N0121 | texts/1ff3a7c8519b29544bb28ba9b1e7502df0cb764051fb9a1172e60006aa2b8dcc.txt
+N0122 | texts/2047ae601a1fc0a80e251c32a668e443f3fb43e34a77adc7eace03d161ba8543.txt
+N0123 | texts/2096783a9b939ae2a3a4789d9696740cec1a72ac04ccf8a7972d436fd0e7b240.txt
+N0124 | texts/2098e4a5792bf962e23b5ab67f87b6e4305b9ff05e71f9d8ebc9822229fd8ea6.txt
+N0125 | texts/209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b.txt
+N0126 | texts/20c7855c364d57ea4c97889a5e8d98470a9952dade37bd9248b9a54431670e5e.txt
+N0127 | texts/20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95.txt
+N0128 | texts/20fe7b00e904ed690e3b9fd6073784d3fc428141dbd10b81c01fd143d0797f58.txt
+N0129 | texts/2189dc45a8fe96204069f8124caa53a148dfdc193f50f584c6ca7849a6072872.txt
+N0130 | texts/219920e865eee70b7dcfc948a86b099e7f4fe2de01bcca2ca9a20c0a033f2b59.txt
+N0131 | texts/21ab3c8e9af71d0212606c98a210f71d6a86234b179b3babff0ccc4798b90f33.txt
+N0132 | texts/21badfa270bcd84ede50f2f47188d7918fbba67002eea0c6edb2345fdbbc0944.txt
+N0133 | texts/231c837c45eb53f108fb48929e488965bc4fcc14e9ea21d35f50e6b99d98685b.txt
+N0134 | texts/23232f634e079478f8969da5dfcba06c0838c8dfe3151b444f5cecb37a55bf96.txt
+N0135 | texts/233b95ccbf90dc67e32f3e8995c489f6312d9191ebd141a931c3b684f1e3be6d.txt
+N0136 | texts/233be68ab89eaccff940b48aa638fbecbf060f4da9148837f78d0c3146b1dd30.txt
+N0137 | texts/23860c2a7b5d96b21569afedf033469bab9fe14a1b24a35068b8641c578ce24d.txt
+N0138 | texts/23ce717d2face34a1ae9af6a8c8fbbf488875afee16374d7a10ce79d41e22f37.txt
+N0139 | texts/23d608079a47693a26dfc8a5cb01894ad0136a50714d46221d9380aa4a4b4423.txt
+N0140 | texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt
+N0141 | texts/245c933225f5bd28a10336137b26f1f86551b6b1d29f804253eb5e1d73744c2e.txt
+N0142 | texts/249fdb6694467dd615b259f7ddde07be3f8ae5a72cecebb0e24f6629af4215fe.txt
+N0143 | texts/24c5719787d9ceccf41381943e08c6a5e9b9368d543b8c2a9ce9e4d5c53c3c43.txt
+N0144 | texts/251ea8ccb1205ce5fa847d6e264d6b6753af62de2cecf2fd9abc0eb02c7c83fc.txt
+N0145 | texts/2537228d9a1b44a5dc595241349cae7090b326c8de165aaf89bfddef4a00d0fc.txt
+N0146 | texts/253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552.txt
+N0147 | texts/259b22f571b54fed25f68ec5abd8eda223e7b0547a806f13ba797a0eabecd64f.txt
+N0148 | texts/25a0874d15e7c834a47c3adc80901edb2219759254992023ef1010c3065413d5.txt
+N0149 | texts/25f77efa393854f7c15eaf6a2589a2071db2d7337642742763adb12bdecf0445.txt
+N0150 | texts/262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a.txt
+N0151 | texts/267afe8db5697b4b668d36a5a0d481b67d16ae751465e9ddf03d1e77a79c140a.txt
+N0152 | texts/268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5.txt
+N0153 | texts/2710a622a896bba67356913d4d0492cab5465f61b2ecce6d880aeb483834fb50.txt
+N0154 | texts/275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427.txt
+N0155 | texts/2773e20df8f4c52a026b5b578c7f2457341f5aa3fb6612fd87e1d2e1bd8f48ad.txt
+N0156 | texts/27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac.txt
+N0157 | texts/282a21b0710441c364025461a447362daf18f5798a7b72ae2f801a2aa536da51.txt
+N0158 | texts/284465860407420254e39be4e1bdcaaf2e7f2d18e06f9bab75bc75341a5d8501.txt
+N0159 | texts/28802412d2bfbafe432b305634413b41a984d30fba0df41d30aa2c8a2077c5b1.txt
+N0160 | texts/29e9fe5074bd27e0e5d5d110394fbbcd841baee2651a3c4b4560a632702cede4.txt
+N0161 | texts/2a50d5b85df79a0ad844670b1c93fbbbfa2d243e23109ab04c3b273950efa329.txt
+N0162 | texts/2a7df90e60fd5512b8bca35d3ce90e068f21c52d962855053fd1d9e2e7ca0f16.txt
+N0163 | texts/2aa92cada6431e75615e3fe6cb1a9082c98f777d48ae1c087c0da0e37f7b8bff.txt
+N0164 | texts/2bc107bdc18a74263d20bdefdb8073e17bc1a01b6b374dc5835683a33ee5ba7d.txt
+N0165 | texts/2c16d5b1c2808277fe975b4f70f0fd9afc9b3bcf04e6c676665a82cb2d5579e3.txt
+N0166 | texts/2c272829ff23f182c8bf7ea12fedea69b0ae148663123ed5240c117cb129c9c1.txt
+N0167 | texts/2c902950c73a63cd285dc0c36573de9c5fefe66d49312949c51d941f33e92932.txt
+N0168 | texts/2ca9996043628ad4dea1408974e1d92d3932f6acf9db8ffb7faecbfa6d928997.txt
+N0169 | texts/2ccb35ce51bb2522509cdcd3ae57256ffe05b6ff4811c63750f34e1e460c80e7.txt
+N0170 | texts/2cf31f2ae7f3feba667d50fc1d4d21ecf217703c04c3068b83c9a73b6dde723a.txt
+N0171 | texts/2d01890414494742ba4a509fcec8efa40f6d8be22cbd72be7cff08d6fda4ec89.txt
+N0172 | texts/2d1c57bff28344b9e698f51063bc8509799cc4c99a4e0cf2aa3f7e7c3e1f9a9d.txt
+N0173 | texts/2e3bbb7d7c5c396368dd0853a790ec29ce5b8647163dde42a0493fb0d6556b2b.txt
+N0174 | texts/2ff0e21d54b189664c884c142f7a608aae1515524b72e6b1ca251577760d44cf.txt
+N0175 | texts/304b898acad7f02e03d6d8832d682a3b43ee729ab5d3a069af5a36979083b6b4.txt
+N0176 | texts/30eb1bef29b46f8ba7ab8b416035dbd93cb034a45481dd97815b944284582cd2.txt
+N0177 | texts/30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad.txt
+N0178 | texts/30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652.txt
+N0179 | texts/312e901e142be2477b4ca859e9311f9e3f80d33372991759b7921c1893605f33.txt
+N0180 | texts/31b94860253d8ec7b4529f51901044d3b459d6292d996504a36b1bae3a36a812.txt
+N0181 | texts/31d5b6f4243d5c7c6e1c4ebbbb9f6407bd1457a08bcc4f706521710341acba36.txt
+N0182 | texts/3234ac55816264ee7b6c7ee27efd61cf0a1fe775806870e3d9b4c41ea73c5cb1.txt
+N0183 | texts/323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f.txt
+N0184 | texts/32a94b25ad7072a78457d35019b32d73d2c265c806b0b76e9638fe800330bbe4.txt
+N0185 | texts/32ea321ca83edfbf1074d5c646ec3c1bc6105890f0c923f7f30c74d1064fe966.txt
+N0186 | texts/331312c214f14dc1455a0e45e3a66f4b70bbc73916cffd525570e8cdb9d63bf4.txt
+N0187 | texts/335bd1faa1da929676d0aa10095b2b7aed5c5d8f8825c3baa343720da324cf9e.txt
+N0188 | texts/337a40d58de145036691382b3aec220ee28f507fe4f0db8970b6844f6dd60eb3.txt
+N0189 | texts/33c831f76b79501665e66c23ac8f876020457c216d44526a8f747da897999b35.txt
+N0190 | texts/33f99c94ef0a0909d7584a5d4bde1fb9b1630daa620f5a788c28c43327e79412.txt
+N0191 | texts/3488679340a49ecc34d342c4009d2dabf76f4a21f12aec2ca99b15805d656544.txt
+N0192 | texts/34be597b63158d7737b8e30e9c87a33c2b9d6078ca71fe34e623779147b6e496.txt
+N0193 | texts/34c467b6945a22696d060b8fdd2379d464acb3408d4c599d3dc5fe4fa1b4c84f.txt
+N0194 | texts/34cb64162194d52a8412e96d8693ebf43a67d019c6b5bd76da3bb377ba7507aa.txt
+N0195 | texts/34cb75d73943f10a7f9a3b0e3e7bf8ef271065eedcb0d47481e7c831b637aeae.txt
+N0196 | texts/3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897.txt
+N0197 | texts/35242e7a83f69875e6edeff02291e688c97caafe2f8902e4e19b49d3e78b4cab.txt
+N0198 | texts/36266a8fd073568394cb81cdb2b124f7fdae2c64c1a7ed09db34b4d22efa2951.txt
+N0199 | texts/36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9.txt
+N0200 | texts/36bb253818ac13761081556ff5c457d626da9df1eb4f56194d9ad3926c418a68.txt
+N0201 | texts/3708458dee7f359ac6c9c5558023ed481be87e5372c43ebd7f2ca7ad23c12026.txt
+N0202 | texts/37653ea50ac84bb5e93bf59d801df1ecbe17f0042a30bfe335e3b20f4a4465fa.txt
+N0203 | texts/377c2e7c53250cc5905c0b0532d35973392af16ffb9596a41d99d202cf3617c9.txt
+N0204 | texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt
+N0205 | texts/38102075d829116ee23d7a1fe0cb53f0c6932a9275da0ca1a3885b44db1963b4.txt
+N0206 | texts/386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1.txt
+N0207 | texts/389a4e4e9a32f059775b13a06e25a591445ba229d2838d26dd3e7c0c45127cfe.txt
+N0208 | texts/38f5183e1228651dc7f9dfbca5ebdcfd8711b60fabed58ed9f922bdfeaf76583.txt
+N0209 | texts/391a5396cec6230bfabd4ef4eb2350eb895bc5efce377a2218f5702ed020d3e3.txt
+N0210 | texts/3990ddb78a5a2cfd64a5ffe5cebc3306f3298f6880c644afdf15043ef7d702d9.txt
+N0211 | texts/3a62bc7f47f0580269ae63f9b314c4ea4e800a7686328c371b22dd077ff1c7aa.txt
+N0212 | texts/3afdd95644173f52aca9289c76df1c73199650e2e75771e347c750bfb0c99631.txt
+N0213 | texts/3bc70e239e91272782006c638fc0452a714d384224f11f0923036b7be07cf9b5.txt
+N0214 | texts/3c0dfa33fd2e6976038555b52095699452653b1fcabe113074f14e0848a6b11e.txt
+N0215 | texts/3c638385e6deedebff9a9bb15111cb0855159873c8981bd7e71d2b9dfdccf535.txt
+N0216 | texts/3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94.txt
+N0217 | texts/3d3c7af53722a7a2255659f2f20632bfa8de40819de9229ebb5fdee2c3fb73a4.txt
+N0218 | texts/3dfe4aab7aa5676496afeee00d802d84c2bc44dfb7f3ba2338a7a8b65dfc9d9a.txt
+N0219 | texts/3e5c8474b4b47979289f1d086deee42dd25a2cc62169963089dd0845dd628d0f.txt
+N0220 | texts/3f9f0f7e5a5911a8042e32c83ff5d061ce1ffd02e8a207ec2135a44ad73b4191.txt
+N0221 | texts/3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c.txt
+N0222 | texts/40097a1799441051aa0b6645cdc819cceb19be73cdd265eb602aa2b15e0b1f48.txt
+N0223 | texts/4027705b723299dd8e6153939ab73395e22685503994cc8de92fa2ebaa432a49.txt
+N0224 | texts/4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b.txt
+N0225 | texts/411781fd38700f2357a14126d0ab048164ab881f1dcb335c1bb932e232c9a2f5.txt
+N0226 | texts/412ace3355a4d6a4d835c350a7df172903811eafda7b13500dacf58429ee757e.txt
+N0227 | texts/41ace205715d9f19a3214218cc1c01d57c533e02cd0fef7c8e51a49a7fce5ac5.txt
+N0228 | texts/423e1c4900b3fbb41cda3e34530b2597d50c2e61473e18c085756c507e46fe1c.txt
+N0229 | texts/4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482.txt
+N0230 | texts/42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d.txt
+N0231 | texts/42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737.txt
+N0232 | texts/43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1.txt
+N0233 | texts/436bc5a105d8e57dcd8778730f3754f7bf39c14d2f530e4cde4bd2d17a83ec3d.txt
+N0234 | texts/43e358d7b6eb109d0f51f7b3a090fd82607965767c25fadee39e922475de2061.txt
+N0235 | texts/4455bf75a91154108304cb283e0fea9948c14f13e20d60887cf2552449dea3b1.txt
+N0236 | texts/44b0a56e80b41a1b0a6bd1292515e806539fd97b30be54c2719e6c763190ab57.txt
+N0237 | texts/44b62aa8f8a212f36d120a4f719438765020731207fd78bf28768032291df836.txt
+N0238 | texts/4531a67d443284d93ffed0803df5b10634aff21c3d77e381f2d48af01d875868.txt
+N0239 | texts/45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42.txt
+N0240 | texts/45fd05c4865e7c350b98ad7ac50e1b15462d49af4a91e9b0c9dd933dc9a69742.txt
+N0241 | texts/4618209e13998293f82505724827ea83d927070af1c038b11e7a2ff6fd12d911.txt
+N0242 | texts/470355a7eed93fcc4281ec2e0f82ca3b94e7af1e4d83629f91de8cfac34d750e.txt
+N0243 | texts/47674f8b7d98c232c6f81346c4cfe48933d913a9e257d7a522ad9f42e3dd61e1.txt
+N0244 | texts/47d4e1803702728e03d30f8a848ae2249ba274bbd9f8443e803f7924d83cd371.txt
+N0245 | texts/47dc9ff29128ddfb4d6a0435383c9f89120bc374dbcc1dd00b933a0b28aa7865.txt
+N0246 | texts/48341f685c87304089aa099b23c386f8bacc519ef555aa7a13e239908907b3fd.txt
+N0247 | texts/494accc32e50eb523a0e384d0ae6d4b702db867a89d6971216760e92b240ee12.txt
+N0248 | texts/495c30b45120f8af07cfa26eb9cb1ebfe8324560dca2b3b1e76cad1b9b6b489a.txt
+N0249 | texts/49bf33cf78ef5897e4e161ce1517df7de1ae5042a65b6bcfd44401e0fc606559.txt
+N0250 | texts/49c0b000c03731d9e3970dc059ad4ca345d773681f4a612b0024435b663e0220.txt
+N0251 | texts/4a883ecc3bb1010faed542bf63d53e530fea5e5e12cf676aed588784298ba929.txt
+N0252 | texts/4b2d0aca6789fa39e03d6738e869ea0988cceba210ca34ebb59c15c463e93a04.txt
+N0253 | texts/4bd9e2cd15ab6d68b30965512b63a1d4aae95f4c1dd040657a4d1300252a695f.txt
+N0254 | texts/4cada0bd02ea3692eee6f16400d86c6508bbd3bafb2b65fed0419f36d4f83e8f.txt
+N0255 | texts/4d03f91b94e0db3bdc9ddaf0060dd41cc94a2096094fbc1417713a2f059658c7.txt
+N0256 | texts/4d10fe5f3aa176b05b229a248866bad70b834c173f1252a814ff4748d8a13837.txt
+N0257 | texts/4d6bf8cef395998be2de2da71eb023ca62603efbd8618b485bb3d1381d011d4b.txt
+N0258 | texts/4da95ec4ecb65b738d470b7d762894ad9c97da93e6cbfb18b570fc2c96f4b871.txt
+N0259 | texts/4dbda04344456f09a7a588140455413a9ac59b6b26a1ef7cdf9c800c012d87f0.txt
+N0260 | texts/4dd13869245e356246a5b770723247bbb80a8f07a181d1d3d873a1734297cdb9.txt
+N0261 | texts/4f44572785f35152c1fd2eadf565b7e079c0f300b4324f0af653419f9d76b735.txt
+N0262 | texts/4f6bd11a0f17fe5b085ace1daaedb7b002a08316850dd9577c246c6a68a68e8c.txt
+N0263 | texts/503558bfefe66ca15e4e3f7955b3cb0ec87fd52f29bf24b336af7bd00e946d5c.txt
+N0264 | texts/5049cf464977eff4b4fcfa7988d84e74116956a3eb9d5f1d451b3f828f945233.txt
+N0265 | texts/508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1.txt
+N0266 | texts/50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a.txt
+N0267 | texts/516b24e051bf5630880ebbd55c40a25ce9552ebaf8970a53e8976eb70e522406.txt
+N0268 | texts/521c6f0ed8e64736684f89843d16a4df6b4b7449acbcfc6ca6630a3037ca8c53.txt
+N0269 | texts/523a42c25d245dde9c015f882cec7f4555aad883382a6cf19b4b7d9b2cd5419b.txt
+N0270 | texts/52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85.txt
+N0271 | texts/52bdad87d7aefe3eab35cb02426aa748510f9398a1e2d520d93bcbb18f10dd11.txt
+N0272 | texts/53c2dcd4a0105784749459719bc59d759bb8dbb28939fd742645ac543416b556.txt
+N0273 | texts/544b3aed1fd723d0cadea567affdcfe0431e43e18d997a718f9d67256b814fde.txt
+N0274 | texts/5478a2f36b736e13dd3250b9c71a4ab521bc327fb9d112a92c647bf3e69ddb68.txt
+N0275 | texts/54a744942eb3fa63a74d8d359989ed6962c04f3f10ff20cfa08ff8aa7efbe4e6.txt
+N0276 | texts/54e1fd7bd53273e601c9599eb162a004dacddee031ae297ee7109a7beb93b1c2.txt
+N0277 | texts/54fb6dfe99a6906f862aa40282f0e8e9d9d0f22d57d99ab8acbaf4c8ceaa70e0.txt
+N0278 | texts/55162613b64f29d6a6f3be61d598355dc169d01fe764ba96148e1d29098fde68.txt
+N0279 | texts/553fffcd9b1cb158bc3e9edc35da85ca5c3b3d7d2e61c883ebcfa8a65814b583.txt
+N0280 | texts/566a2ee167ffcad3f1c973cf0de0540c0b888da064d69cccbe081ad0f61e0497.txt
+N0281 | texts/56724af6d76732a7a1f36ea69965ed2314ae04073676313a4f94c1e2fe55342a.txt
+N0282 | texts/56cc6c08157f4faf70d351b3a7ceac143399d5359a78c180e06dcd0390784f4d.txt
+N0283 | texts/5734ed989dfca1f625b40281ee9f4530f91b2411ec01cb748223e7eb87e201ab.txt
+N0284 | texts/573f5227db835cd30bbdd3aed3f82615f80119a4d5c82b4daf642dbfe2b6afde.txt
+N0285 | texts/57a4d75c1d095bb94754a478f3cd15e60ac66a5c5627d844be01a918eea5fe88.txt
+N0286 | texts/57d0bd32e00043f6387cc7b86ed351f10c190a3d6266bbfa3fa21a1c3200e48f.txt
+N0287 | texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt
+N0288 | texts/5881db2682bc4871837e36b5af4460f59905a7944848221406f841eaa3fda8c4.txt
+N0289 | texts/588713c78138d7d6985b87275724f7047949a71a007b16b352d7745499976f7f.txt
+N0290 | texts/59013a5c8d3a19c26a457579105915a5d51bb0c09d579f8cdedf12e4203c3018.txt
+N0291 | texts/590f1c4aa72c2c14dd52b0e230bf652e2109d00099fc7bb272e4594b800913d0.txt
+N0292 | texts/592dc80f1a865d20d61a2006a2d29ce34a2bc28cd7e868ab300fdeed6da154ca.txt
+N0293 | texts/593cb7b83882c9a417e6c61148781bc9eb0327e0996ad6b4783ea5db1ffe487d.txt
+N0294 | texts/59746d6285ffa44bfc7ecada352aa5d6a20dc8eab418a60ce091cc739012c135.txt
+N0295 | texts/5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d.txt
+N0296 | texts/5a952e4a62a3022a7f39e9f0eb8d0638addd3efffb3f4092890923668152296e.txt
+N0297 | texts/5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d.txt
+N0298 | texts/5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf.txt
+N0299 | texts/5b2c207dcf571267ebe0bbdd5bf321f561ddc22ff597e7b363e96f4539507a29.txt
+N0300 | texts/5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a.txt
+N0301 | texts/5c7bd92d1f096f12203dc1b601e3cb17484fa1b023e30b6b8edcc80e416237ec.txt
+N0302 | texts/5cc390ab5e5e6507f467368cbab1297552d64bfd863f4b496c7928508bcfefd8.txt
+N0303 | texts/5d4cff30d5038f82a0edc79798456049b61e1752fdb7e9ab1f4bfb9fae3a7303.txt
+N0304 | texts/5db2b182453ff32ed40f7da63589c9667a3f8bd8b16b1471b152caae56f77e45.txt
+N0305 | texts/5e05b024f653a5ce199e77cbbbd42fb5553562ec714b819421ed0c3e552a75d7.txt
+N0306 | texts/5eda8c6538e7d543efe31ebad3fc0e66a7c4df056ddb901a5bdfbf5ef397e116.txt
+N0307 | texts/5ef07a3d95f1f779c1597c0fbaecbb7ba242128ff0587ed1e3214c7ac6154523.txt
+N0308 | texts/5ef8fcfb6cccec8fcae043c834099a60c8b7406408db576e026d2b7e67dc5cf5.txt
+N0309 | texts/5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb.txt
+N0310 | texts/5f48cbaa21c857be3080d8e7bca0f55633a09c5fb7ba1ab3aa1360345a2bf525.txt
+N0311 | texts/5f9cf9fb6acb1972b35ae29119ce563bb60ec097656bc4b69b9bac2d04c7a147.txt
+N0312 | texts/6088dabb2126729ddb2355b179ce0598e7c246406677b30395f22220695d69fe.txt
+N0313 | texts/608fdcbb7daea2541c57228f21fc97deec310b19dafde70b2f4b84a96bf779f8.txt
+N0314 | texts/60c93a31f490375aadf64098b75f10715010379541021e00261045d7800611d3.txt
+N0315 | texts/60f8fc6a89a5d2d142a4b9b660b48406ae7df41233706a430a4bc829407bb79f.txt
+N0316 | texts/613ce6df827bdbab4f498700a141548396b6ff26488f263654159ada4b04f78e.txt
+N0317 | texts/61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf.txt
+N0318 | texts/62065228e42caebca7e7d7db1204cbb867033de5982ca4009928915e4095f3a3.txt
+N0319 | texts/6226d0632e2e1a80c23597e964da9812ae193c535fe058154afb034e94167aa5.txt
+N0320 | texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt
+N0321 | texts/635111a955495b5d8d34b8052f69656e8e45f6437f9266329077b9aad5fbe8d3.txt
+N0322 | texts/63af4bea227c94d021e99427f6ca3a4b8efddadcca93ab6130f708cf6138cf68.txt
+N0323 | texts/6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb.txt
+N0324 | texts/64e7a1fc01e8acc64bdd9cfa382bce6869ec1b92703423fd4e439b151e6ee843.txt
+N0325 | texts/651fd8b0c16e0fc282c9ef6cf21bfd1c21546bd37eef5a82944b62d87e5d6c88.txt
+N0326 | texts/65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee.txt
+N0327 | texts/65fdb6c76cd61612070c066eec9ecdb30ee74fb27859d0d9af58b9f499fd0c3e.txt
+N0328 | texts/6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd.txt
+N0329 | texts/66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172.txt
+N0330 | texts/66d9adef4d4bcb7c2dd99a499a89a52033375785edaa8a35ada0f2db7d05a1a4.txt
+N0331 | texts/66de1f18705bfb0d53af0f664af350ccd99dc84ce5dbbe111f65dadf536765b6.txt
+N0332 | texts/66e3ee1fa7f909ad3c612d556f2a0cdabcd809ad6e66f3b0605015ac64841b70.txt
+N0333 | texts/674d02b4f2a38d99362159b71ae0410046fa5ad261ab21118e320c544c7cabe9.txt
+N0334 | texts/68653aaa727a2bfa31b7a751e31701ce33c49d695c12dd291a07d1c54da4c14b.txt
+N0335 | texts/69036b033e4bb951821964dbc3d9b1efe6913a6e36d9c1f206de4035a1a85cc4.txt
+N0336 | texts/696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9.txt
+N0337 | texts/696f55177362295fa60c14c69e83f39cca3d381ee0d79c1c0c4ff738ba892ad8.txt
+N0338 | texts/69b3d80c19a460e09716910d54d1ada5d800716e2b73751bebac44352590f646.txt
+N0339 | texts/6a12d0fdb5410839473f80b5395cf9493e8c007f76faed9f3fa41ab2f273803e.txt
+N0340 | texts/6a13bc24a100a6812f053879ec51b126b103af7cda6dbf48c4188722da44da9f.txt
+N0341 | texts/6a18c5fac70d7860b57f5b72b4e2c9a1ba6b3d2741eef7ff9767c5379364f10d.txt
+N0342 | texts/6a1ee543e5282cd9061881edf462e6fdab181f328da71fc2c9a6950a80e94d01.txt
+N0343 | texts/6a2e0ade09a7d5f816f11566fee2b151b32235a7fad52b41d49cce96f833c1a9.txt
+N0344 | texts/6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2.txt
+N0345 | texts/6ac8711fb340c62ce0a4ecd463342d3fa0e8e70de697c863a2e1c0c53006003c.txt
+N0346 | texts/6b1691fdee3b03c3946696a7be125fcf50eff310b9486fac850c1b8aea91478b.txt
+N0347 | texts/6b50510a0400c72172355cc5d2ba0f2c5c2eb33149b8f96539dc345fdc484920.txt
+N0348 | texts/6b7374c39a57e57fc2c38eb529c4c88340152b10f51dd5ae2d819dfa67f61715.txt
+N0349 | texts/6b9522191b8cb7126b2d214edd7f782d2ccd83c467e9c03b8af9e0bf903b49b4.txt
+N0350 | texts/6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee.txt
+N0351 | texts/6ca51d335b9de108ea53c5621e820c187d98c6faf92e14c8413ddb946b5e56cf.txt
+N0352 | texts/6d6da4c40195ecbd22595195acd91e1b50bf61bfe0275fa57f8c4d0290f72674.txt
+N0353 | texts/6d99fffea918d1f7dfe567029c7bd21d6fcaf310ad28c44e6511a0e1f68c79ea.txt
+N0354 | texts/6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51.txt
+N0355 | texts/6e4ecf1cae052b678ea3178dd4b3652d581ee66a82d58db8800dd7d80dd6de76.txt
+N0356 | texts/6ee2ed6c77710de911761acd5fc1ad1da00f476beb1a7ef27e78c2d1858deafc.txt
+N0357 | texts/6eefcb023622a463168a5c20add95fd24a38c7482622a9254a23b99b7c153061.txt
+N0358 | texts/6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6.txt
+N0359 | texts/6fd0f3522047150ca7c1939f02bc4a15662a4741a89bc03ae784eefa18caa299.txt
+N0360 | texts/7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8.txt
+N0361 | texts/709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c.txt
+N0362 | texts/70ba5469ea0bab6e18a32d7009068f996503168d27be57747e08da34337ff26f.txt
+N0363 | texts/70c9d40f1f9545c3f133b8a67206e89da850f6468eed072281bb3701514114a9.txt
+N0364 | texts/70ca142d257e2690a1f8eda8a296e64a6d1b16d8aee6784f8ddcf67f3163635d.txt
+N0365 | texts/7109978a83ec9d6932d511c224e300c430851a2d6123de5895a3531788976bee.txt
+N0366 | texts/710c0a3a4681c8c40f5a59eb794f61093fa142935c647c92f46ea595f0591833.txt
+N0367 | texts/71674605ec4c087fe9eb534e3e4f9e26eb2e4aabcd76a29fd156c6a844d44b3d.txt
+N0368 | texts/7179683e8000e6bdc9bbc60d85edf0a4ac8e76f951857f54fcb775d5886f1309.txt
+N0369 | texts/71c0580cb05d28848b341e5a4da2761d4a8eb482592358d646dab104648a8303.txt
+N0370 | texts/7262e566e874d1ce8cfadace01d4f635f8d704b6bdf7b4345cc028e5faeafded.txt
+N0371 | texts/728536b4160e051f86d7c9c388f704866b3d512cd7df97ac3516c65279523c4e.txt
+N0372 | texts/72880d6961c6fabc1edde7db57ce5e38d40aaa8792d84b35bcd54a82287fd7f9.txt
+N0373 | texts/72af89a828df52a9dcc42512ed64663b3b8d7961dd7a5586d44478eede82bc7a.txt
+N0374 | texts/72d7a7ee8a4eaca5d0b53f20609eff95d5e6f9e155ecce98127414b8215b0b15.txt
+N0375 | texts/7317e078e2d3b5d7ba5a6159e650945153262b44b76f6700f8e9edb261c5143e.txt
+N0376 | texts/7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349.txt
+N0377 | texts/73b9dc2e79c7308998dd30296e073aefaefb944a68fb89aa412c23c0edcabcaa.txt
+N0378 | texts/74242cdc4ccaebc73fa04fbd52a538429eae2be7a231f9eaf1dbf59d2bedc16b.txt
+N0379 | texts/7429802d3e67e3308471b91fbea341e484c4e0a23d0fb230a8636c38184cec79.txt
+N0380 | texts/744ba853c063f56a8d79385406413e5e3600adbc6aae359c74022701fb55a42a.txt
+N0381 | texts/74db5baf44a41b1000312c673544b3374e4198af5605c7f9080a402cec42cfa3.txt
+N0382 | texts/751963a8b88c0e3a9f27e98933079fbcf09b9998b2c13ac49c2e4d58444520d6.txt
+N0383 | texts/7576269ea71f767b99297934c0b2367532690f8c4badc695edf8e04ab6a1e545.txt
+N0384 | texts/761ecab744d5ed0528b5b794239abaa6f62bd5bd36fc1980b3cb98c48ce32868.txt
+N0385 | texts/769f80b5bcb42ed0af4e4d2fd74e1ac9bf843cb80c5a29219d1ef3544428a6bb.txt
+N0386 | texts/77257f3d2181236b1aee78920238062ae64efe13c5d858b2db126e79c9e1b14f.txt
+N0387 | texts/7770f2668c9057577dbf84a59ede73e139112f60f37e1a062981483e63d604aa.txt
+N0388 | texts/78779d420019e6b4630376af8e86b6b335ee8a2f89ede6e0411e0469a326aaa4.txt
+N0389 | texts/78ebc2ea2a1cec9cbec2e1a6fc15e73474fe22bdad7575518e7f4628651d49c4.txt
+N0390 | texts/797087750c4103075e96bb7a60202a040812f8679ae2f7263148a1cc0b298d28.txt
+N0391 | texts/799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d.txt
+N0392 | texts/7a313964a6e050794d2ad57f4863c11f6bbe055c0ae6ce2cf3b9fc45150bada3.txt
+N0393 | texts/7abd9b6960dcf7d4d0a48606a5b71bfe37d472db68d70637f3a58a56785f1621.txt
+N0394 | texts/7af18e6093af41d516228ffd65e782859bf2918931d8c3670c7ba8b74afa8288.txt
+N0395 | texts/7b033f57f23fffca5bee9406cf453ce31e919c1b867df54bfa7487e73d8c9c1f.txt
+N0396 | texts/7b25e06666d3797292dbb4b1c3f5ba509ebe02fce102e1dca7ca81dd3cbfbeb7.txt
+N0397 | texts/7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0.txt
+N0398 | texts/7b724c8fa4a82af733caccabdaa21e2bf8bcb0822fe62d5cf03f99d458438705.txt
+N0399 | texts/7ba57659687d080189c3f520bc032919d62f45270cbb84977560fa7ab6b24eee.txt
+N0400 | texts/7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4.txt
+N0401 | texts/7d3b087c34f35d4d538e3bcddd1ff8f66e92f9ef336881999482800ddf840913.txt
+N0402 | texts/7dc1552e88f49132cb358b1b962fc5e79fa42d70bcbb88c526d33e45b8e98036.txt
+N0403 | texts/7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c.txt
+N0404 | texts/7e4b8a17b118d3d7fd7a362a4b6563e0bd98b098a24c4c7f07dd22042091a847.txt
+N0405 | texts/7e4baa202160a035c769bb83bd994222c74f479ec582624e3aedaa8f553481c7.txt
+N0406 | texts/7ef2cdfe58e0c0460657b6598b49af29d4e03c1e41cbaf0e1da1eb8ad74b95d0.txt
+N0407 | texts/7f0f4f8802c102d35110806d1755b7681127575b644f64750810cc47fa78df5b.txt
+N0408 | texts/7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54.txt
+N0409 | texts/7fe7e5e13e445074314ba0aa12ec2e71132931632876ba27b98a1020cf24eb57.txt
+N0410 | texts/7fea0ee51a4ca5d5cea7464135fd55e8b09caf3a61da3d451ac8a22af95c033f.txt
+N0411 | texts/800abe35d64ad9defd636ff1ee8c961e06f0ebca3ef8d10083e8aa0e8ef86ac3.txt
+N0412 | texts/809a5649163758f9182c72fa09fd50a426b5966dd1b4720915ba024c6b910356.txt
+N0413 | texts/816000f9c28f7005d931c77636eb79fa7020071eb0f6e6a995515dfccd3559cb.txt
+N0414 | texts/8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90.txt
+N0415 | texts/8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643.txt
+N0416 | texts/81890b5cd90859ee7879f9d8b990e702908d0dae3ee9fffa54bd4273d8a7b6d0.txt
+N0417 | texts/831e0f43ad0bf014c1c4fec5767aae470434c1d66d6e671be2d823e729063e25.txt
+N0418 | texts/838118388fe5c2e7f1dbbaeed13e1c7f3ebf88be91319c7c1d77c18e987d1a50.txt
+N0419 | texts/83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32.txt
+N0420 | texts/8417fad7da775735564e209484a2e011e0fa201e94f01fdbee6e4977e478e6fc.txt
+N0421 | texts/845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243.txt
+N0422 | texts/8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef.txt
+N0423 | texts/848d7bf14c618c39f1e29fcac2318a2fcc4254045ba7e2f6f5fa799e057225cb.txt
+N0424 | texts/849618ea9294708de46403916d4bded0e1e2156d874c0441ce401ebd21fa3334.txt
+N0425 | texts/84a7a98c82140fb12c37fe42b93805baa16024cb3e5acc599b7ffe612c55d847.txt
+N0426 | texts/84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151.txt
+N0427 | texts/84c6ef3ea9e3254a54d0acf5d3e0c61ae011b8fef7dd6940591cf060e6380a8f.txt
+N0428 | texts/8547bf15936398ab33bb77a4b817b5be91d36b1a5ca374599a0fcdff453ca911.txt
+N0429 | texts/861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17.txt
+N0430 | texts/86b5aedec040ac6eab419af61a8f0aea48ab0037c4b764e5cff5df15bee40df2.txt
+N0431 | texts/86c148320eb0acc26607ed347e0fde9f49a236d0ec5291d36dc6a7e0e1d26b9f.txt
+N0432 | texts/8764a597675778ddfd4e25f81b08a05dbcf089ac05662df7613fe67f150e3aa2.txt
+N0433 | texts/87d9feb9238c6bd8e0024fc4733b06cff036f89f36d93b7df1c8a0549bbb7a5b.txt
+N0434 | texts/8927279141619056b903290bbd478e49bc98e337640bb9e75eb4ed329bff81de.txt
+N0435 | texts/898b1ae9821e98daf8964c8d6c7f61641f5f5aa78ad500020771c0939ee0dea1.txt
+N0436 | texts/89b6827e8d809c892d0920f7d6274e982b907332f68d031b23f9b74e94eebd46.txt
+N0437 | texts/8a35369f3ca263b3c62fbb5032947e53b6bfebc6c8a4d1bb982de1c069f6fba5.txt
+N0438 | texts/8ada45cd9f843acf64e4722ae262c622a2b3b3007c7310ef36ac1061a30f6adb.txt
+N0439 | texts/8b427f5bc501764575e52ba4f9d95673cf8f6d80a86d0d06599852e1a9a20a36.txt
+N0440 | texts/8b43ce8accd61e9d370b5ca9e9c4f953279b5c239926c62315b40e24df51b726.txt
+N0441 | texts/8b4e95f5cf0dc40269c99f7b787203ffe04ded245ca2427422c196efa2b2f42a.txt
+N0442 | texts/8b6e9feec03e7c9a5facb26855cecd31662bf989b636bcfe79521bdf8ac863f0.txt
+N0443 | texts/8bb1b50b0e5c9399ae33bd35fab2769010fa6c14e8860c729a52295d84896b7a.txt
+N0444 | texts/8bce3b45e49ecd1461f223b46de133d8f62cd39f745cfdaf81bee554b908bd42.txt
+N0445 | texts/8c9612877aacfa1b42f5e80b679e6c3c93a7ba2bb99dfaf6e87e200dca4b4e6c.txt
+N0446 | texts/8ca6b96cea9e67c6c5c63f452c31bd396db8bd2406231fdea5d48ef462b48077.txt
+N0447 | texts/8cdfc2c3fe15f6bdf5926ebac8e983315133b91128d888e6f1bd3227bd0a7cfc.txt
+N0448 | texts/8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18.txt
+N0449 | texts/8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903.txt
+N0450 | texts/8cef07d222d9332eabdb748e2284945320c5f9cb320acbe8a3b31fb3161ed2bd.txt
+N0451 | texts/8d0c1d1d4b2bebf5b9211f0e883d5a482b7808f3ed31320da14ddee95811f4ef.txt
+N0452 | texts/8db3a8bca21e298fa56df51250b723d4253755966a5c7a92f8027cdd3aaf5972.txt
+N0453 | texts/8dcec5569a9be5b0e086c80faed6f1aefa670af0ec29cecc2f714303096887e0.txt
+N0454 | texts/8e65cf73127700ffe243f50963547dd6c297190945033677e29eecdde69d666f.txt
+N0455 | texts/8ea5cea8ddecc46a64a004406414d25529fca7eb71cfd8c0cfe49c343bff79c5.txt
+N0456 | texts/8ea93490d74a5a1b1af3ff71d786271b3f1e5f0bea79ac16e02ec533cef040d6.txt
+N0457 | texts/8ee9fdaf365c301bb413656765fc85c5424a807c50e35a8ae622b99f4ea22244.txt
+N0458 | texts/8f25018489d6fe0dec34a352314c38dc146247b7de65735790f4398a92afa84b.txt
+N0459 | texts/904801faf3f1850328af8e1aa1047b9190cc22ed40df5c87f2d93d17f847ef67.txt
+N0460 | texts/90a8b6622d5e3faa3055007a9ab99c4e99a51e6ebdccbada7530cb16dc2bd4fb.txt
+N0461 | texts/90bf2d659c43045111b65c733ab2a6d4cbcb422a098368c8c58a9ba3db4ed0c5.txt
+N0462 | texts/90c503b61dee04e1449c323ec34c229dfb68d7adcb96c7e140ee55f70fce2d8e.txt
+N0463 | texts/90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5.txt
+N0464 | texts/9117d922e667125508dde62b02c1f57ed22f5ad21eb536aa2e2d99e1c796e639.txt
+N0465 | texts/912e26b92cd9857d16616f70bd25e814fe4be5f2cf2dc948a60e22ff21dcf024.txt
+N0466 | texts/91585c36e4fb9ab4ca0d3dfac5d66d3c0c62cc51f640a0e1196542daf2267eae.txt
+N0467 | texts/91e934255ba3b2f21103d68c5581c23ef34aa95c4628e4405b8c901935e11c69.txt
+N0468 | texts/929e8ca5ef8ec9905c00a89d004d1f6933bae951996992c8579734875bbf46a8.txt
+N0469 | texts/92b81db30f7ab6d693e0af5661a40d273ca1947e891123ed823924192c10cbc7.txt
+N0470 | texts/934887691e05d69d7c86ad3f2c360980fa30c15b035e351f3c9865e99da4debc.txt
+N0471 | texts/9369f62987b3a116111f2edfdc4cc72633e44ddc94d5d0c68659cf537b76a31f.txt
+N0472 | texts/946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831.txt
+N0473 | texts/949ab7b3e7140fee216f06fe3a2bd67d68dd511f8ea73c1e01c98cb348e9c8ae.txt
+N0474 | texts/950d712c518a02fcb7cff96950aee304a1cc5283361712c980ea21e8d6d669a5.txt
+N0475 | texts/95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc.txt
+N0476 | texts/9645fb6e878aebd5e959be648a71973a108d4aa0d18eee478d0579066ad99958.txt
+N0477 | texts/965116a3d1e412221d5ff2e58edfab30a62fe112f0f6bf13136a946907869da9.txt
+N0478 | texts/96f3890affd2fecc4c26276170472c6132262dd05146e1ac800b1db1da3f463f.txt
+N0479 | texts/97647e63047ef75a82ee2928b335df94f45c87e08777dc033393c73294f3a57a.txt
+N0480 | texts/977c541bd25ffe36975dde25c028c0cd15ddf3d08243983b58e8a6a3d9447523.txt
+N0481 | texts/97f35b302b361680ec1e891e95d2d52097bb95abff361434916d99dc1305f127.txt
+N0482 | texts/980af1d09d9a1092e35c463776757c90becb07f9879f6549d46e90e22629f4e1.txt
+N0483 | texts/98181e7249d0c01737645ec982499ce99a0f07eb8f7d625b8840d799d10dbc01.txt
+N0484 | texts/9877c7b48cde1462f4e8688263aa96f3f1bd9717250718d3d2d9ebb031414fb9.txt
+N0485 | texts/98e9accf4ed196034b78297967c6fd9588fbbb6dba47e7794dd2a5fdeea81014.txt
+N0486 | texts/99272c55f3dcfa07a8a7e15a5c1a33096e4727de74241d65fa049fccfdd59507.txt
+N0487 | texts/9a1284e016a7770f3c033a108662a94490419796001b422f5c6738c9ebf486d7.txt
+N0488 | texts/9a3aeb3f63659c4c6302d315e1d98784d1e8559858a47ff9562e091bb922d28d.txt
+N0489 | texts/9a6d7a3c1b8edcc706c4b6c37f8dae9a77f02c7f9051df603f975db136b55419.txt
+N0490 | texts/9b2646fd3a16b9c382853aadc2e707d7a872c4c03eb5af7401e6389a7fe42f1a.txt
+N0491 | texts/9bbc1b3dc4674a9ebb12c2a62f54fe3c08672539717f8d05828f684b6cc419a3.txt
+N0492 | texts/9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db.txt
+N0493 | texts/9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3.txt
+N0494 | texts/9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915.txt
+N0495 | texts/9df9ba60a11af705f2e451b53762686e615d86f76b169cf075c3237730dbd7e2.txt
+N0496 | texts/9e05d9ac94b39f32a4172436c510161b085a9468d0579a1808a23132665ad1ee.txt
+N0497 | texts/9e0a97848ea543aef745c98e84fde696a9a3e0735538f6daefdd3cb1942effc1.txt
+N0498 | texts/9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba.txt
+N0499 | texts/9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f.txt
+N0500 | texts/a00511478c83ebb464ef19d840f061c7444adc4636bb561900e75c5808cfc6cc.txt
+N0501 | texts/a07450fd4496cb8b58466e6d529f1f502444eee4a235659337e9194d694739d6.txt
+N0502 | texts/a07fcacc3c60de4dc0fab10ac9d6aaba7379974e28451c99da7f7df09c25b28c.txt
+N0503 | texts/a11232911aa0d746688b560af367728021184084eeb6328a1922d60925c5eda0.txt
+N0504 | texts/a1d2bd09632724b23c62b05e2fd0dc26c5c9d21b409594cf7da1a1aba555f802.txt
+N0505 | texts/a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499.txt
+N0506 | texts/a291b6910744d262a9e953c3b5868d74510e20161359f649a11e1791fde84fcd.txt
+N0507 | texts/a29cd246638974da7c6edf423a0a69d4a6f7d759940b7cfa9a2bc3442ac3834c.txt
+N0508 | texts/a2b15e1e900414317d0e00d887dd2747d4abd00382c6addeb5daf746bed4b52b.txt
+N0509 | texts/a47129d738752a6ae52247fea645b42cb320d19e9327f1eb2d1a7f99d9455ad3.txt
+N0510 | texts/a4db788775cb25f2da419a7ccd3f1f89c3d2cfa8748fb25257596b88183b4c77.txt
+N0511 | texts/a5695f57ea0c221e0e8b7d784ff774c35e88c3d3270353646a925880bb3492cc.txt
+N0512 | texts/a5c61b93b6ee1d104af9920cf020ff3c7efe818e31fe562c72261847a728f513.txt
+N0513 | texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt
+N0514 | texts/a65f5d0a945d267751344c95665945b90c030ea107faf5c85d518929886187da.txt
+N0515 | texts/a6b7260485462860838b76ad1846d21f1605e6d239141c3aa949a601d992676c.txt
+N0516 | texts/a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9.txt
+N0517 | texts/a77b7cfeaf911ed410ffbe76f0cb2b24ad8a4d94e7ead5727e914425c416cc63.txt
+N0518 | texts/a7e3b55af7a711768727f3f4a39fed2559c0c996d476908d888715ffb29e4cfe.txt
+N0519 | texts/a8012be84ea176195305bfb4e9109ed6f28860a8e697bc50302e75c2040813f3.txt
+N0520 | texts/a825bd853ab71619a4923d7b4311221427848070ff44d990da39b0b274c1683f.txt
+N0521 | texts/a84d077b0e89c9322485227b8ab5b3c7b7733add58d53124212013865d30b025.txt
+N0522 | texts/a8799c2a07dabcb8d52481f885c5ab7000acb8a4d3cd9503fbcb97c84d350e65.txt
+N0523 | texts/a8ad31b1c3f40dca5a84119351b8fa8ddc868edd77fad8a8ebf6d8f2d16fa4ae.txt
+N0524 | texts/a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.txt
+N0525 | texts/a9dfe3795e7bdcf240626d70d72de2933964f8ff482c75e68f29253ee2e79b1b.txt
+N0526 | texts/aa893340d14b9844625be6a50ac644169a01b52f0211cbf81b09e1874c8cd81d.txt
+N0527 | texts/aaf135472f81c5b4a0dca9367e5bb5e9750032b5bebe5442b36e4c0a47430df3.txt
+N0528 | texts/aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf.txt
+N0529 | texts/ab25eee08e7b6d209398f44e6f4a6f17c9446cd54b99fd64e041edadc96b6f9b.txt
+N0530 | texts/ab499c75a0f0da8e0fe83bf9ba3a27e5c39705310f07107c6c66b69958d2401c.txt
+N0531 | texts/ac24e5ea920e4318e4d02c4086ae51f53cfb03feed06c18df1019e7ada1ec7bc.txt
+N0532 | texts/ac35f6021362d05b3f1b8a24cca017eabf4b957fd710e41bbc02ffdccfc12e0a.txt
+N0533 | texts/ad2eec519ebd4b5df86ea84dff24ae3bfa2edea846a703b58902dd221ae375db.txt
+N0534 | texts/ad64fcb9589f162720f3cc5010ad76ca6ad3764e11861f9192c489df176bb71d.txt
+N0535 | texts/ad9f07faa5f6f671df93523293cf8c1ce24f14886fa101013c21536c7890c59b.txt
+N0536 | texts/adb783e734e906d1f46db5df29991dbde84bdb0ceab502ac2febb44fe3c2b5f4.txt
+N0537 | texts/ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985.txt
+N0538 | texts/aecc100d0547aa3bcbe04bcf5cb87c7db0be11004602adfa5056edf8bb847b35.txt
+N0539 | texts/af59cea35d7f5e2777a713b8d155d65efa2c339eb43f3c14e868c6ac8506edad.txt
+N0540 | texts/af85fff507d80e6c7ff242acfc4b0a7f5de9a72286bb3c883c782772ca4b4402.txt
+N0541 | texts/afb11426e09da40a1ae4f8fa17ddcc6b6a52d14df04c29bc5bcd06eb8730624d.txt
+N0542 | texts/b00ec75cd7ef2a62ff1f26c0ddafbc508282d15dce149506f983ce6c8e7a4876.txt
+N0543 | texts/b0435e3b3e4e55238f05f4b306f30524a1b2e20147810d436eaa554fa6855c80.txt
+N0544 | texts/b0a47f17ae2fbe64475d144d03076fe3893f7c2a7bb93af357db41beae4b7bda.txt
+N0545 | texts/b0f7d40eaa9577d99132579866bf1eaf448577dc737582b8a34f1b3e7fab8994.txt
+N0546 | texts/b1181a40b2a7b25cf66fd01481713bc1005df082c53ef73e851e55071b102744.txt
+N0547 | texts/b16db96b93b1d7cf7bea533f572091ec6bca3234fbe0a83038be772ff391a44c.txt
+N0548 | texts/b19f5d85668b7cff95c5566ae7689d8c6ef2dc2ee0b9fda939df12715f774804.txt
+N0549 | texts/b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c.txt
+N0550 | texts/b21623012e6c453d944b0342c515b631cfcbf30704c2621b291526b69c10724d.txt
+N0551 | texts/b2fe72478e14023737e850c88712c5543b0b5d4c2182ecaf46f54de15c6b4e9a.txt
+N0552 | texts/b3355ad324483539ba40a8ad85bcaa5c03c19b6b54831e3f7f3b67f56ac4982e.txt
+N0553 | texts/b3470648aff02beb36d7a53240fc9260ed80ed93bd43bace6b67d7ef7336ee33.txt
+N0554 | texts/b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5.txt
+N0555 | texts/b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a.txt
+N0556 | texts/b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1.txt
+N0557 | texts/b47fb719a40d9ef9c8e3be525c41ce129c46d613cfc96a91bddd7c19dcebf7a1.txt
+N0558 | texts/b4bf94a9fceb8846320fda938ee53fc16b506572609da5cf1d2d289a5597a8f8.txt
+N0559 | texts/b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1.txt
+N0560 | texts/b50b376e7d24a0598488b730c3034ffcd0b58dd36c0913a24b9903a3cfd04bf7.txt
+N0561 | texts/b54db71f7d0b1f62c8c1b6b297347b81f7c217b4ce7e58223a20d2275535cd17.txt
+N0562 | texts/b5af5a2c86e27565eb5a2083c5418e3297d5a280ff0a2e9536e1ae5bc3789f8b.txt
+N0563 | texts/b5b413d7421d728c14f33d78198d6e255a0018beef717d78c4c3f6188be3dfb4.txt
+N0564 | texts/b63e167d61ced1d872a588c5ac764b0dda477d62209dc4f6b6bfea5517d0a24c.txt
+N0565 | texts/b68ad1a3367b825447089e1f8d6829b97f47a89eb78d2f4ebaef4672f5606186.txt
+N0566 | texts/b6a03c1803eb58ffb1f1278d5c7d4096c4c116e66dce8a7553e8c77d163c3438.txt
+N0567 | texts/b6e8f9bd07084b3ed3a061cd0e9f0c5d5fb46667ef007684c87573a7c8090a34.txt
+N0568 | texts/b6f6f01b03ee7e93c0ae96d62ed39527e98a120fb951afc9de456a741ef3f204.txt
+N0569 | texts/b7993225104d90ddd8024fd838faf300bea5e83d91203eab98e29512acebd69c.txt
+N0570 | texts/b7a6297e6013f7b1664a68829e83868d1bf2cf29efa384dd0cc74f2aedd35df5.txt
+N0571 | texts/b7c76ff4466a3aeb6a7d903e81b651335e97d64ecb857e2ee9812a36c6fd1acf.txt
+N0572 | texts/b7e650f3fce5c53249d1cdc608b54df156a97edd636cf9d23498d0cfe7aec63e.txt
+N0573 | texts/b843fb7430efdf9732c834b6814beda44fccf3f0ddf7c9e030b39da17f6b159c.txt
+N0574 | texts/b85cb7b51c3f8d600bbac3fb8dbbfe64cde697e460a55fc80978eb0804ca1427.txt
+N0575 | texts/b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0.txt
+N0576 | texts/b89aeb7c2a164a0576786dd2a8b57f2fb628b23981f0a06bd77e2f99a9befa0f.txt
+N0577 | texts/b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0.txt
+N0578 | texts/b90388aaadc2b6f77a5c01278697a2a0539eab471a3befc6a081728becdc3390.txt
+N0579 | texts/b9c981ef9c76c0188c3ea22dca3c54744ad228071229cde4ff532543e1146a88.txt
+N0580 | texts/b9eb266294324f672cbe945fe8f2e32f85024f0d61a1a7d14382cdde0ac44769.txt
+N0581 | texts/ba7b07b9e6f9817919e6db0d33aa6100466b2848528278a2a9e6e759c32c84e7.txt
+N0582 | texts/ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64.txt
+N0583 | texts/bab426a663ce3d5bbbcea9cdc300da74e94d76c3c79e46699a953f967a08e533.txt
+N0584 | texts/bada9e7ed8dc00d63502053c455d7c8d7575dfb7e8277a2a832531844d900682.txt
+N0585 | texts/bb28c48e3e078166e91cfc2b6db7ffebb8a0973b9e23b3df060561292d8d69ec.txt
+N0586 | texts/bb811a4b485eac3caeb8bdc58bbafb355fbcb6116010a7ea9179e5c70b0bc878.txt
+N0587 | texts/bc8dcbbd559a61b8a8c0c89d5c3e15d0dc47c6fae94e78ac428d6a7b7da3c4f9.txt
+N0588 | texts/bcb02973ef6e87ea73d331b3a80df7748407f17efdb784b61b47e0e610d3bb5c.txt
+N0589 | texts/bccaa8b6c09f94e81f06696e179dbe058464bbdfbc823b6d49cada1d71e84ac3.txt
+N0590 | texts/bd36c8b474855fa294c2ec5c184544478ef3720aad37d65a6296a4f264fd2d3b.txt
+N0591 | texts/bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526.txt
+N0592 | texts/bdebaf9156a298f8fdab56dd26cb5144673de522d80f4c0d88e0039145f147f9.txt
+N0593 | texts/be33ddb87a30fd321ab100e2d922cba512e50ec7a63d8e62e5bfc0798dd4b585.txt
+N0594 | texts/bebc725b8cb1ba1ed1798cb505cf31bf9bce4cbe942baf358b642666ba8186bd.txt
+N0595 | texts/bf4da21bd20bcfb5b60b7ecc67fa864a79be049e21d6178076887f178dd6c71a.txt
+N0596 | texts/bfb1112d49db5b1daecdfef24bd7e2f3ea0bafb33aa67aa0ab51e2bf8407c03d.txt
+N0597 | texts/c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583.txt
+N0598 | texts/c0fabcc308b450cb6fe62c9f56fae6abbeb9768eb80d992484c857d744846c2e.txt
+N0599 | texts/c0fd5f9df8d17e13587f8fe403d2326b835e60d532817d0b42ae4aea44209251.txt
+N0600 | texts/c10c1f27337546471e5f7e4e97fdd398b35b9d4e126115dcd22de8d8e65abf6f.txt
+N0601 | texts/c144680885b29e4719e2a51f0aab5439a1e02d980692b5aaf086cae12727f28b.txt
+N0602 | texts/c14b6ed9d732322af9bae1551f6ca373b3893d7ce6e9d46429fc378478d00dfb.txt
+N0603 | texts/c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b.txt
+N0604 | texts/c1e018d60dd011b335b5280b919bd3a75dbba81c6fbe24e2fc90cb235bdb6883.txt
+N0605 | texts/c1f40c17f2f407656c9934898e3c40573581346251dba68158742af4275eb66d.txt
+N0606 | texts/c202212089fcdf93baf7f9bed6945ba98fa334569ec29d9591ffdb3388b548dc.txt
+N0607 | texts/c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383.txt
+N0608 | texts/c30152c94a6d75e021adbc52b3a52470366a46edb917e17deae3259251af244c.txt
+N0609 | texts/c303b44873acb399b27d3d3983937073246f1ab083f32990ea6015ea31d976b2.txt
+N0610 | texts/c307673606c3635bcbc4e03a52a06eb9e04c7fd8ffa1649d715388da6ce5512a.txt
+N0611 | texts/c43b9a9b1387ed53d2c49263838261129a010e280e3a174a792242c3e2c98db9.txt
+N0612 | texts/c4d64f0ce17c85d4a14e22d224fbbd76dbb1e03eb38f0d3c209fb38bdc8dc646.txt
+N0613 | texts/c4f10f55904bdb9f27d3fbf94c354926d6cfe8b982276e556238c258941b243b.txt
+N0614 | texts/c5c63674f8a83c4d2e385d96d1c670a03cb871ba2927755467017317878574bd.txt
+N0615 | texts/c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78.txt
+N0616 | texts/c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08.txt
+N0617 | texts/c660c3a1ca6c7c0d736f249dbc7ca5bdf1cbc7bf4d57bc867d3b47ec1ba8374e.txt
+N0618 | texts/c69b72788ec261765e460532016b4bb78372f238e449b5e70e3268ec1e18fd15.txt
+N0619 | texts/c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3.txt
+N0620 | texts/c6fe7b0c5c6516c12e7119fd9e509d2ea1a8c3f36d924466f705fde75e26cd08.txt
+N0621 | texts/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt
+N0622 | texts/c76f740d1521b9bed9ca7a04ad526c310493c62621b1341d623b431736533b30.txt
+N0623 | texts/c77a4cf9da729987d0fe7ccd811e3bd27393914ddf3d23467c18cc22954513b3.txt
+N0624 | texts/c7cc03f49a26c66803ccbe51964ed7df3ce6faed8cc8648c9534b9138bfe80f9.txt
+N0625 | texts/c80c5789748d955c4a650562baa0d750494e2c7128c2ca66aaebe2e3c4e198bf.txt
+N0626 | texts/c816a0749cdc6bf062a5111c159723de51b2bfac66a1dac2655abd9e6b1583eb.txt
+N0627 | texts/c8c6324cf2f0f076e3ed5dea4a21f00bd4dd6fce44f72b110bc52e7fe06f6e1e.txt
+N0628 | texts/c8f5453612253e8ea8bad241617fe74c4a6d5d592ba64ff881668c211b50ac99.txt
+N0629 | texts/c986bcdb83103d4ddf58aeb7b5302359782e54dc4eea14a0cc27c62dcbd50729.txt
+N0630 | texts/c995204cc6bad2ed67dd41f7d89bb9f1a9d48e0edd745732b30640d7912089a4.txt
+N0631 | texts/c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5.txt
+N0632 | texts/c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566.txt
+N0633 | texts/cab235520dc9bda018e27ccc8c533ecf375766823f9ed918f3698fa52aaffa33.txt
+N0634 | texts/cb1980c88089573bcacd7221d777c689bb8bbd778799f24c27fca0fe5f774d6d.txt
+N0635 | texts/cb3c929a05e6cbc9de9ab06a4c57eeb60ca8c724bef6c138c87d3a577e27aa14.txt
+N0636 | texts/cb5aedb296c5246d1f22e9099f925a65146f9f0d6b4eebba97fd27a6cdbbab2d.txt
+N0637 | texts/cba21c71f3727ba46904a35430c384cedc1e7fcdbb2b8ac0aae093af729290f6.txt
+N0638 | texts/cbb325cd4ac5bd06717ffa34a322b984f9d285e4c67c8ca1b7380d6ef08c2a77.txt
+N0639 | texts/cc117d90b498b32b11a886f279b359da16a73c3b01efbb2f5cc004b20262334e.txt
+N0640 | texts/cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c.txt
+N0641 | texts/cc5c939bd0d409430fb5070183ca1f04c9e69379cdd332e4a4e7d742b76670f3.txt
+N0642 | texts/cc87cc2020d8b17220b5a4e500d7952b0601c7903ee36cfd00eb8ed6ffdcd0f5.txt
+N0643 | texts/cca0bd3c4fcdba74145ef9d49c62337e2c9fbf9368288f11d0547f1b0273219f.txt
+N0644 | texts/cca4ffa6a45c0b17d3e9840b4cbe5be1e76ab84fda69850e0cb3f117729eeeea.txt
+N0645 | texts/cddabf8adc6ccd6c3e68f5d71eac9fae3094116623cf23a46af0a5fd6b8ee813.txt
+N0646 | texts/ce592787ff2321feab698a4c612237f4378cc658ebb1d472913e5802cc47afb4.txt
+N0647 | texts/ce688e08d0454a032063ff701c4e88051ed89f0c5c9c391cbe58e4099769ae5d.txt
+N0648 | texts/ce93600c49fbb3e14df32efe752264644f6a2f8e08a735ba981725799e5309ef.txt
+N0649 | texts/cec0db5f6d7ed6b3a72647bd50aed02e13c3377fd44382b96dc2915534c042ad.txt
+N0650 | texts/cf0547f95d22b91b11540bc053d4973ad8beed39f98b614254c074ca4ed6b6af.txt
+N0651 | texts/cf088ffd3c6a81d0eaabf393a1333eaf043c74aaee6696c2247cd9dce65ee851.txt
+N0652 | texts/cfc3ab04181d3ffb7d18b8d47e2ebdf4946597400efdbc3bf77c1f7e443f1dd1.txt
+N0653 | texts/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt
+N0654 | texts/d00d6d48df2db6f91e4ca9c656e5e30782d5becf52bb3e5bfd0aff467bd37781.txt
+N0655 | texts/d013195954f932a5234c357ef74c4e872d0a067c8b60aa1f57ce8e68f8026f4c.txt
+N0656 | texts/d0588452395c674334105d9a39e4d8627c66080f45491013e877139581a78ed1.txt
+N0657 | texts/d09216dc1ea5f273997667935a8d6514d80f00b89fb6954ecc3a43e0a6e360de.txt
+N0658 | texts/d153c538b26c67cf85a430d30df672154daec3e17be7d92e52dba2887e8d6097.txt
+N0659 | texts/d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc.txt
+N0660 | texts/d1ef92123fc699442e1e8d971fe84921947efc8d9a1249ab037f1e661a972a6d.txt
+N0661 | texts/d1fc1bc0d155df60b2e7705b6b2ae02a05c96f948e1cec6e2fb86360b09f346b.txt
+N0662 | texts/d201d14804d3bcd3b944147173175e4abfbd838b7c8069b6bd3452496bf13e6c.txt
+N0663 | texts/d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5.txt
+N0664 | texts/d25e82e26acd42ca3ccc9993622631163425b869b9e16284226d534cff6470f2.txt
+N0665 | texts/d27687b51f2874822c1530976b7e837eac4f308d94bf3dd42047011b7d437b47.txt
+N0666 | texts/d288f9c9b4590446ec18c22ead8f8b5a12a3d4025b68f62dc9015063eb9cca69.txt
+N0667 | texts/d2ab5758336489da61c12cc5bb757da5339c4ae9001f9bb0562b4370249af814.txt
+N0668 | texts/d2e7ec5355c96eeade56b09187ceb48a6a30299da3ce7531a66d3d11405ab963.txt
+N0669 | texts/d30047bca3b516639339a3c279bb84c3483124fb5a9dafe3c75056a85090e745.txt
+N0670 | texts/d3174ad63e721d4c9dccb8ad4320848992d314369bc46319720b5802c9153fe9.txt
+N0671 | texts/d3cdb764b98283ee7c3a3cea8d374e2a2957322374378d1f3263f4d512741fc3.txt
+N0672 | texts/d49f02a020f14eed5c36d743d6bc43199b137a6f5ae608328fa093d0301f7a29.txt
+N0673 | texts/d517148a36db1081efe894d3534c5c3d2694d1fea434f8b0c5a5871016374495.txt
+N0674 | texts/d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef.txt
+N0675 | texts/d5fca2653c88ad02d197faead77e22b80c70636b5bec6e02f2805f389a21b86d.txt
+N0676 | texts/d6cb0e9e560f51085556949a84af12b79a00f10ab8b66c752537faf7cd665572.txt
+N0677 | texts/d75967ce788187f83c3bd3328210974acfc443d4dc44909f1d7e34f21623a0c6.txt
+N0678 | texts/d8621ec2eee5b9ca3c65f8492505f3590de8574fac0fdf5132a77232dba47abc.txt
+N0679 | texts/d8a6cc31abc16b6748c7a21f21611f5a1ec33f67d22ca23d7da1c19b95496bee.txt
+N0680 | texts/d8e0806926ce9f0a5030c382ecc0ffdf6de6fbea5c69a458435fd443fa7a5b92.txt
+N0681 | texts/d8eaba95b8d03c5912da9b5823de2c920e84a993133039a22fc8100f9edb33a1.txt
+N0682 | texts/d9a1b1e30d633d5732ea18e3cba9538d293ebc53e1a9e4e96ab739e0c5c4f1cb.txt
+N0683 | texts/da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9.txt
+N0684 | texts/da2fb2c802537710cdebe8881b55356d07b88a6dbd7e4b912ac3091f8e6b5f6a.txt
+N0685 | texts/da4d60bfcfd15870aa69e0d0891796d7075a860c54e7b38ec5ccd353c66049ed.txt
+N0686 | texts/da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93.txt
+N0687 | texts/db089274ce766da70f5b7d791029c3486f9f9e27c8c79c652689603d3192e802.txt
+N0688 | texts/db11fec9946737df39ca3898d9cd8c10ec6f6c3a884a6802b0ad0b81b4e8f23a.txt
+N0689 | texts/db53b66c3f5fb89143c1f223029f985d9902eb5a5ae83f8eb280446e56ec8284.txt
+N0690 | texts/db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1.txt
+N0691 | texts/dbe1fff0fb1314b6af94f161511406275cf01c5a32441fbf24528a57a051d599.txt
+N0692 | texts/dc470946f0a127507a9e577a20da1eb19eae0abc383b2be1f786f6427944f06c.txt
+N0693 | texts/dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551.txt
+N0694 | texts/dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff.txt
+N0695 | texts/dca51cd27a681f46b17d7867d1e8311c024ec1478a6e12b6463a71a4e2f869ba.txt
+N0696 | texts/dd1c647e6f767f8ff4b2dfae0fed314726600a01e0cf1ef556afddd5fa96ff15.txt
+N0697 | texts/dd87e27dfbaa888cb77ea34592648a7743636b8dce07e49543bddda0fcfc73bc.txt
+N0698 | texts/de701d0618d694feb1af90f02181a1763d9b0bdeb70a3a592781e529077dba65.txt
+N0699 | texts/debe6fed7ac143217c7f533759c54b14f18cd01d5fe195c51d83c2ae2d136cb4.txt
+N0700 | texts/df9cfd06d8a44d9a671eadd39ffd97f166481da015a30f45dfd27886209c5922.txt
+N0701 | texts/e03e58ea9205f51989b7a50f450051b24e6516cc1f0b920222dcda992072be99.txt
+N0702 | texts/e0456cbab4f7b5e7203e678faff37eadbdfef02e822db3b7a52a1dd9d3dc514a.txt
+N0703 | texts/e0cfa1006a64520633de6bfbf563f5b1bea04ef0c5b73f049681931fa297dda3.txt
+N0704 | texts/e196ffeb5ab101e9ec8bbe395c9f367c5380ee2d28c47e5c03371523798a9af7.txt
+N0705 | texts/e20fa2b8e0a2565f24a792b94b4bf4b6c2b9d36f781d8a9516e218a036e6677a.txt
+N0706 | texts/e24a56698aa6feaf3a02272b3624f9dc255d982970c5ed97ac4525a95056a5b3.txt
+N0707 | texts/e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8.txt
+N0708 | texts/e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2.txt
+N0709 | texts/e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e.txt
+N0710 | texts/e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb.txt
+N0711 | texts/e3f18c71e10d673590eb9856c1d79dd3b4b0d65404efb5e8584dbede7edd608b.txt
+N0712 | texts/e42fb1176320d8b8e39133f038c6fa1d27c938c830b077c59cf1e4f5f9741bca.txt
+N0713 | texts/e46379f1aba07707c23fab8733d3441e9df981b1543046e0317b2036f8fdaef8.txt
+N0714 | texts/e4c9b06fa850cb9b540a5e400e9f6394cf15efcf4098144de477d1d3dae10150.txt
+N0715 | texts/e4e06f4bee6b18fbe6ab33b26331739a0b2bda0c1037cfa869e7d97512e9fcf7.txt
+N0716 | texts/e55522d81edc687a341a4411e0776e54ca654e90147f354a90458aaced4116af.txt
+N0717 | texts/e57011537d230b14e790f6666dc00816f7b371ebbd7da8a12491e51086fec278.txt
+N0718 | texts/e69bb98ae371fc43e5ef9cb1fc648762faf92edd93a8afd71411fac419b1b550.txt
+N0719 | texts/e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba.txt
+N0720 | texts/e79e9c8a0c85d735ff98185918ec94ed7d175efc377012787aebcf3b80f0d90b.txt
+N0721 | texts/e915669a595b11a200873df8286561881b0e04932f6412a585db6297ba0bc97c.txt
+N0722 | texts/e94997ba9934ce993406caf5d5002a99ac7b0692363cb801e777b961d1934b98.txt
+N0723 | texts/e9a7f23bee03fd95309a52a27f3eb77ad8ba9910ec47871111dd80db4df41648.txt
+N0724 | texts/ea084a2373ebc1f0902c09266e7bf25a05ab3814c1805bb017ffa7308f90c061.txt
+N0725 | texts/ea2879fe94b4b2e6b3c6fb18b3bf265f9ff162637e5e1ac21fabc43d8cf34961.txt
+N0726 | texts/ea4fcb309f14a22065e1ea45362d494d320012249ed865fe9c7c0946db754131.txt
+N0727 | texts/eaf40297c75da471f7cda1f3458e8d91b4b2ec866e609527a13acfa93b638652.txt
+N0728 | texts/eafbfa606bc005ed7fd2f623d65af17ffe4ef7c017221ac14405bf4140771ea9.txt
+N0729 | texts/ec1815db59fcd302846df949d7424876cb2e2dc5ed1606c5fb0b36787b1cf43a.txt
+N0730 | texts/ecbabe930d468f0552a079cdb2cbd1eefe66f03d0aedbb13293bd1b1ec15b67c.txt
+N0731 | texts/ecc269ef87fd38a1d98e30bfac9ba964a9dbd9315c3770fed98d4d7cb5882055.txt
+N0732 | texts/ed72515b08d7ce8a497e7cb8418a0c93f5b0a119349db4f3b8a0dcf6cb76951a.txt
+N0733 | texts/edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6.txt
+N0734 | texts/edb20b474f6cbd4f4db066b54a9e0f687d0009d309412a63431189b59b8e2a07.txt
+N0735 | texts/edb9885b41e4851740dcdcde4d2419c60104e1f3473f7bea6293a82729a32068.txt
+N0736 | texts/edd65bdd88957a205c47d53fa499eed8865a70320f0f03f6391668cb304ea376.txt
+N0737 | texts/ee04163bfec76c4f977a0c0a5834fd285c0df4b3889da5bba27d2151f3833d95.txt
+N0738 | texts/eeb50cca0bf0537aeeef00874e1e22f0de50cb035f5db37e36036dc9b8218e8d.txt
+N0739 | texts/ef2b3bbd7b718a7881253226313f103e89b379e1279681a3c1ebcb65a27d209d.txt
+N0740 | texts/ef8a9b3247488f8901ca60de9b17b745d7bd67e5ec1e622f80d62364572200d8.txt
+N0741 | texts/f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f.txt
+N0742 | texts/f03037ca7bad1e3eb7f4a63fa6084a8baabd5ba30d3c239a9a7f35705d873e26.txt
+N0743 | texts/f06524678fd27a7e85cb84b77ddb66bf15bdc0b1a11bff33a436fe9443444d62.txt
+N0744 | texts/f09adf500d35265ee63ef552f8e61487e09ee549da66eaf0ec7924e3ad7cf14b.txt
+N0745 | texts/f0bae5fa40b0f188fbcfdf3e7fd1ffdefb2f9770c97f10c8e552c072ee41b279.txt
+N0746 | texts/f0c1d22de8bd3b776a40f2691f08b84e91c7bafc78b72a51150e231002b88db3.txt
+N0747 | texts/f18f6229547ab07f0b7b3e1f83acad8bb436f5f4c95a8a98b44f876caa00f04e.txt
+N0748 | texts/f1a2b233e8a9a71c40f4aa885be08a0842ac85bb8588703c1dd7e6e6502e3124.txt
+N0749 | texts/f1e3e65d8df616a4cb0a9b669c0c6d4df37a7e3cd4d582be4d5bb433b61199cc.txt
+N0750 | texts/f251be89fd442bd9d701360730aea163cc8e2076ff03528f59267dc2c4f8b60a.txt
+N0751 | texts/f25e815326bb6e7efb7baf7eeca7f096cd05bc1af9bb7c408984db61bd69e304.txt
+N0752 | texts/f28420c1906af38be726cd7842798f0194b27c41d6051c0d1e9ee348b8a4a0ea.txt
+N0753 | texts/f2ad7982ddbfa8c45eb965315718c55b70b9cc311b49afacb50d5fe84173ae2c.txt
+N0754 | texts/f2bdf6f48abaa135ee6feba72d3b2eb2fa242352a9e558585d1084f6f2a45811.txt
+N0755 | texts/f30735c11407534952947e1c7b7457ddf28847000bb038402495ad66f3d020a4.txt
+N0756 | texts/f32ada08ad4a8dbd2f81d719e1bb67b0b518a9f5d41b073958cf31daca9fde1f.txt
+N0757 | texts/f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df.txt
+N0758 | texts/f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2.txt
+N0759 | texts/f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b.txt
+N0760 | texts/f4bf7a78f2333d3afadd7f92b511cf8fccd7aae04a5827f6af13e70244303963.txt
+N0761 | texts/f4e92c7fe2aa066e294c0da9d08683dc9fb741ee6e6debbfad99a0c96e07c1f2.txt
+N0762 | texts/f51ac2c59a222f7476ce507ca879960e2b64ea64bb2786eefdbeb7b0b538d1b7.txt
+N0763 | texts/f59f5a78193597e04fd932ee9af86254d14d08be5c9d0e003ab888feccce2161.txt
+N0764 | texts/f68d76b9c1c2271422e55134ea94cf71f2ac3fc3ed6a7ec6b83a1a0538753214.txt
+N0765 | texts/f6d3f84b39d597c19748c6b50a04abe1634edb3c0b15392daa217ec44119f652.txt
+N0766 | texts/f70ebc7cddd5befd46ce2aa9a8782deb7b59ac9fd55e8c0e10647d1ac66cecd1.txt
+N0767 | texts/f76b7831ee8f42d3ac38919101e4ceb9f56aeb7796cdfe8a5ef52e26acedcbbf.txt
+N0768 | texts/f790cc576999f5998c766d3d26d7d64dc368e805a98461484f65e8d961ec6d9f.txt
+N0769 | texts/f7bdb3426d045cd50efd4953026e3eb5a83d0199f458a075602611b9344da5b9.txt
+N0770 | texts/f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1.txt
+N0771 | texts/f7e8ab639afef15573680c97f796166835cbeb3865175882fea41c60d106b733.txt
+N0772 | texts/f8ac2c75e7f629a87565c80d61ff9fe5aa15cdea0bda997d52a4dc13fdbd19cb.txt
+N0773 | texts/f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505.txt
+N0774 | texts/f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d.txt
+N0775 | texts/fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb.txt
+N0776 | texts/fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85.txt
+N0777 | texts/fabba0cb7d00a4b3211fdc13699223ab2d22f88678ccd608494cf2b332b903e9.txt
+N0778 | texts/fafacd644576227eb4628b7277bf53aafe8a889c79c1d4d9befe40161b582224.txt
+N0779 | texts/fb252fecf98d9af8f1d9201c5860319a514f5a8a24700dc84fc6ea287a7a4958.txt
+N0780 | texts/fb755fa3280d1d215a20df2e64fe6a0f75f8208439b11671978214aae60d2997.txt
+N0781 | texts/fb77f0a9c53e473abe5103c8632ef9f0f2874d4fb3f17cb2d8c661aab9cee9d7.txt
+N0782 | texts/fbeaca472f4f70e276dd1106ca5097435967a22ad6c1d8200aef7ad9f70aaf3f.txt
+N0783 | texts/fc5c16d4edccf166d9dc18b4d8772c8bb4eea0608264f0d1853ef9e3070c8fd5.txt
+N0784 | texts/fc686023047ce5ce3a18a9b8a777156f0e475929d3de06bac279f3c025d2b2ca.txt
+N0785 | texts/fcb423209a3a3909f41e629a4973eab3995ceb93136dd72485fb12ad3de29dfc.txt
+N0786 | texts/fcd26bcead569a910dd778cb864e027683498ca414e15db1694a5893eee1b835.txt
+N0787 | texts/fd28cbabc15132b709b2635cbc9e0c86c7602c07a4e033c98350da2f987f51d5.txt
+N0788 | texts/fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d.txt
+N0789 | texts/fd6e8d4faaa8ad5856140481c2d7664ded0c92ddba62bd3d1f84fa50ba026a30.txt
+N0790 | texts/fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc.txt
+N0791 | texts/fd8fd6dd623c97a311881bac2621022a29d2bdf31caa784f029d965dfa9491b6.txt
+N0792 | texts/fdd55e2b2da854b0fbdc1e607df7c2ba1e1ebf91ecb77c515511ebeef972bc8f.txt
+N0793 | texts/fe56c030c2d8c3404a37fe711cebb27ebea13d0aacf7e3524db4198335ad8cd1.txt
+N0794 | texts/fe99bc314b2672132fe8b986fdcdf5a4ffb29edfdf6bf79ec88ccc6cbe092b13.txt
+N0795 | texts/fee6bdac4b917351332567b9fd5013c2ef3c847dd113fd6216cf28e96637a157.txt
+N0796 | texts/ff3f1cd12af8866d9bde961d6cc40df774cd131d484de31d3170c4b02b21a7b5.txt
+N0797 | texts/ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2.txt

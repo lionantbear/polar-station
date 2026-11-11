@@ -1,0 +1,130 @@
+# Two-file automated release. Exact source, notice, review and authorization gates apply.
+# Owner-authorized publication of the newly exported, artifact-reviewed trial.
+# A write token is needed even to GET private drafts. No app runs in that job.
+name: Publish current reviewed trial and check public download
+on:
+  workflow_dispatch:
+  push:
+    branches: [release/macos-current-source-20261111]
+    paths:
+      - '.github/workflows/macos-current-trial-publish.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: macos-trial-publication-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  publish-reviewed-trial:
+    if: github.repository == 'lionantbear/polar-station'
+    runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      release_metadata: ${{ steps.publication.outputs.release_metadata }}
+    steps:
+      - name: Check out reviewed two-file tooling and full notice texts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          sparse-checkout: automation/polar_station/trial-release
+      - name: Require actual source, retained native run, launch and legal review
+        run: |
+          set -euo pipefail
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" validate \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+      - name: Privately download exact inputs using the permission GitHub requires
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" fetch \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+      - name: Repackage and verify unchanged app, original launch evidence and legal bytes
+        run: |
+          set -euo pipefail
+          umask 077
+          test -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}"
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" package \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+          python3 "$tools/finalize_trial_release.py" verify-publication \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+      - name: Stage exactly the DMG and one-line SHA256SUMS in a new private draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" stage-candidate \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+      - name: Publish the authorized two-file candidate without executing the app
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" publish \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+          python3 - "$RUNNER_TEMP/final-trial/publication-receipt.json" <<'PY'
+          import json, os, sys
+          value = json.load(open(sys.argv[1]))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('release_metadata=' + json.dumps(value, separators=(',', ':')) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('Published reviewed trial: ' + value['url'] + '\n\n')
+              out.write('Original native launch is hash-bound; final app is unchanged and signature/DMG verified. No app ran in the write-authorized job. Public-download smoke check follows.\n')
+          PY
+  check-public-download:
+    needs: publish-reviewed-trial
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          sparse-checkout: automation/polar_station/trial-release
+      - name: Receive only published IDs and hashes, never private transfer capabilities
+        env:
+          RELEASE_METADATA: ${{ needs.publish-reviewed-trial.outputs.release_metadata }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - "$RUNNER_TEMP/final-trial" <<'PY'
+          import json, os, pathlib, sys
+          root = pathlib.Path(sys.argv[1]); root.mkdir()
+          value = json.loads(os.environ.pop('RELEASE_METADATA'))
+          (root/'publication-receipt.json').write_text(json.dumps(value) + '\n')
+          PY
+      - name: Download and verify the exact now-public DMG with read-only authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" fetch-public \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+      - name: Check public install copy and 15-second launch without any token
+        run: |
+          set -euo pipefail
+          test -z "${GH_TOKEN:-}${GITHUB_TOKEN:-}"
+          tools=automation/polar_station/trial-release
+          python3 "$tools/finalize_trial_release.py" launch-public \
+            --plan "$tools/release-plan-current.json" --review "$tools/release-review-current.json" --work "$RUNNER_TEMP/final-trial"
+          printf '%s\n' 'Public-download mount/copy/signature/15-second smoke check passed on macOS 26. This is not GUI or clean-machine acceptance.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Surface a post-publication failure promptly without changing the release
+        if: failure()
+        run: |
+          printf '%s\n' '::error::Post-publication public-download smoke check failed. The authorized trial remains published; inspect the failure and report it to the user. No release was hidden or deleted.'
+          printf '%s\n' 'Post-publication smoke check FAILED. The trial remains published. This result requires prompt review and user reporting; no automatic deletion or hiding was performed.' >> "$GITHUB_STEP_SUMMARY"
