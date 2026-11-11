@@ -1,6 +1,6 @@
 name: macOS arm64 trial build and draft retention
 # Owner authorized fresh-source release preparation on 2026-11-11.
-# Explicit Godot checkout and runtime config repaired after run 43067824052; pinned inputs below.
+# Ad-hoc Host identity and selected Xcode validated after run 43070138327; pinned inputs below.
 on:
   workflow_dispatch:
   push:
@@ -86,7 +86,7 @@ jobs:
           python3 - <<'PY_SOURCE'
           import json
           value = json.load(open('PUBLIC_SOURCE_MANIFEST.json'))
-          assert value['source_provenance']['inputs_sha256'] == '5536498c32c19fd72c0cd311f1300db7c785e7dd3a320004d90ab32fe133e3f0'
+          assert value['source_provenance']['inputs_sha256'] == '7b5f53cb56130ac533e978fca5dd783234ef7e6ba36dd5016dda7580fc6caab4'
           assert value['source_provenance']['git_dirty'] is False
           assert value['cargo_lock_normalization'] == 'passed'
           PY_SOURCE
