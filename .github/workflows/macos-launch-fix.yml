@@ -1,4 +1,5 @@
 name: Correct and validate ad-hoc trial launch
+# Terminal completion and intentional GUI residency are checked before publish.
 on:
   workflow_dispatch:
   push:

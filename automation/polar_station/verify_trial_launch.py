@@ -44,8 +44,8 @@ def command(executable, sentinel, token):
     # Positional arguments avoid interpreting paths/token as shell code.
     # Ghostty/macOS deliberately retains exits faster than 250ms as abnormal,
     # even with code 0; give the real terminal command one second of runtime.
-    return [str(executable), "--shell-integration=none", "--quit-after-last-window-closed=true", "-e", "/bin/sh", "-c",
-            'umask 077; printf "%s" "$2" > "$1"; /bin/sleep 1; exit 0',
+    return [str(executable), "--shell-integration=none", "-e", "/bin/sh", "-c",
+            'umask 077; /bin/sleep 1; printf "%s" "$2" > "$1"; exit 0',
             "polar-trial-smoke", str(sentinel), token]
 
 
@@ -104,8 +104,15 @@ def run(args):
                 require(proc.poll() is None, "app_exited_before_terminal_execution")
                 time.sleep(0.1)
             require(result.get("terminal_child_executed"), "terminal_sentinel_timeout")
-            remaining = max(0.1, args.timeout - (time.monotonic() - start))
-            require(proc.wait(timeout=remaining) == 0, "app_did_not_exit_cleanly")
+            # Polar Station's overlay intentionally returns false from
+            # applicationShouldTerminateAfterLastWindowClosed. The app remains
+            # resident after a terminal closes; automatic app exit is NOT its
+            # contract. Verify healthy residency, then explicitly clean up only
+            # this test process group. Do not report cleanup as natural exit.
+            time.sleep(3)
+            require(proc.poll() is None, "app_exited_after_terminal_execution")
+            result["resident_after_terminal_command"] = True
+            result["cleanup_method"] = "SIGTERM of test-owned process group"
             result["observed_seconds"] = round(time.monotonic() - start, 3)
             result["passed"] = True
     except Exception as exc:
