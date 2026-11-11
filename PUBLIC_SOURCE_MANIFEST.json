@@ -4119,7 +4119,7 @@
     "vendor/grammers-tl-gen/src/metadata.rs": "e625828bf9a6d46b33c9271bc1360cc8ecda524d3c4a80a9035121ab2af044e1",
     "vendor/grammers-tl-gen/src/rustifier.rs": "0b5181ce39d8ee78fca9b3c355d24546516f9d4a75b81afd87bac5f27daf86d4",
     "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86",
-    ".github/workflows/macos-current-trial-status.yml": "58a79edffc692bac29f339ee99002864ab01d8be1c49217ae7eb88b3f06c045b"
+    ".github/workflows/macos-current-trial-status.yml": "e22e4b4cb6ad9807c993da24a6f30957e1aa9a37f7114a34d158d13a6150276c"
   },
   "license_present": true,
   "missing_inputs": [],
