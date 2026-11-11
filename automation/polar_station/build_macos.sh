@@ -125,6 +125,7 @@ export POLAR_STATION_CLIENT_LIB_DIR
     # The pinned build.nu has no architecture override. Use the same project,
     # scheme and output contract directly, without modifying upstream sources.
     /usr/bin/env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+        DEVELOPER_DIR="${DEVELOPER_DIR:-$(/usr/bin/xcode-select -p)}" \
         /usr/bin/xcodebuild -project macos/Ghostty.xcodeproj -scheme Ghostty \
         -configuration "$configuration" "SYMROOT=$build_source/macos/build" \
         ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
@@ -222,7 +223,7 @@ fi
 # Deep bundle signing must preserve the independently signed Host entitlement.
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)
 printf '%s' "$host_entitlements" | python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
-/usr/bin/codesign -d -r- "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -q 'com.polarealm.polar-station.host'
+/usr/bin/codesign --display --verbose=2 "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -Fxq 'Identifier=com.polarealm.polar-station.host'
 
 mkdir -p "$output_root"
 if [ -e "$output_app" ]; then
