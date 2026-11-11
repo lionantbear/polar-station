@@ -77,3 +77,7 @@ dispatch), so integrating the reviewed history into main does not duplicate
 the expensive native build or publish anything automatically.
 
 Current exported-source trial: [source and full-app rebuild/relink directions](docs/releases/macos-trial-488ca31-source-and-relink.md). This document binds the new native source commit and supplies the exact upstream, recipe, patch and library modification routes.
+
+Fresh source compilation passed on Linux and macOS in [run 43099862938](https://github.com/lionantbear/polar-station/actions/runs/43099862938). The complete native App and original DMG launch/terminal checks passed in [run 43099863954](https://github.com/lionantbear/polar-station/actions/runs/43099863954).
+
+The separate [current reviewed-trial publisher](.github/workflows/macos-current-trial-publish.yml) verifies the immutable plan/review, preserves the launched signed app, packages full original notices and publishes exactly the trial DMG and SHA256SUMS. Its independent public-download installation/signature/launch result is recorded in [run 43112245187](https://github.com/lionantbear/polar-station/actions/runs/43112245187); this document does not replace that result. These are limited macOS CI checks, distinct from clean-machine GUI/TCC/voice acceptance.
