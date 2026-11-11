@@ -70,3 +70,8 @@ Upload the complete explicit file selection and verify its authenticated bytes
 before checking each asset anonymously, so a delayed anonymous check does not
 discard the remaining build evidence. Never retry uncertain writes, replace
 assets, publish the raw draft, or weaken final publication review.
+
+Main continues to run the ordinary Linux/macOS source build. This fresh native
+trial runs automatically only on its release-preparation branch (or by manual
+dispatch), so integrating the reviewed history into main does not duplicate
+the expensive native build or publish anything automatically.

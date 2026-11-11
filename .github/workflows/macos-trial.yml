@@ -4,7 +4,7 @@ name: macOS arm64 trial build and draft retention
 on:
   workflow_dispatch:
   push:
-    branches: [main, release/macos-current-source-20261111]
+    branches: [release/macos-current-source-20261111]
     paths:
       - '.github/workflows/macos-trial.yml'
       - 'automation/polar_station/retain_private_draft.py'
