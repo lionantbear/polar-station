@@ -1,5 +1,6 @@
-#!/bin/sh
-set -eu
+#!/bin/bash
+set -euo pipefail
+trap 'rc=$?; printf "Station build failed at line %s (exit %s)\n" "$LINENO" "$rc" >&2; exit "$rc"' ERR
 
 usage() {
     echo "usage: build_macos.sh [--configuration Debug|Release] [--ghostty-checkout PATH]" >&2
@@ -111,8 +112,9 @@ rustup target list --installed | grep -Fxq "$rust_target" || {
     echo "Polar Station requires installed Rust target $rust_target." >&2
     exit 78
 }
-cargo build --locked $host_flags --manifest-path "$repo_root/Cargo.toml" --target-dir "$repo_root/target" \
-    --target "$rust_target" -p polar-tmux --bin polar-tmux --lib
+mkdir -p "$repo_root/target/build-evidence"
+cargo build --message-format=json-render-diagnostics --locked $host_flags --manifest-path "$repo_root/Cargo.toml" --target-dir "$repo_root/target" \
+    --target "$rust_target" -p polar-tmux --bin polar-tmux --lib | tee "$repo_root/target/build-evidence/cargo-host.jsonl"
 client_dir="$repo_root/target/polar-station-client/current"
 mkdir -p "$client_dir"
 cp "$repo_root/target/$rust_target/$host_profile/libpolar_tmux.a" \
@@ -130,8 +132,17 @@ export POLAR_STATION_CLIENT_LIB_DIR
         -configuration "$configuration" "SYMROOT=$build_source/macos/build" \
         ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
         ENABLE_CODE_COVERAGE=NO CLANG_ENABLE_CODE_COVERAGE=NO \
-        CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+        CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build
 )
+
+if [ -n "${POLAR_STATION_NATIVE_SOURCE_EVIDENCE:-}" ]; then
+    mkdir -p "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE"
+    python3 "$repo_root/automation/polar_station/capture_native_source.py" \
+        --tree "$build_source" --component ghostty \
+        --source-commit "$(git -C "$repo_root" rev-parse HEAD)" \
+        --build-script "$repo_root/automation/polar_station/build_macos.sh" \
+        --output "$POLAR_STATION_NATIVE_SOURCE_EVIDENCE/ghostty-built-source.tar.gz"
+fi
 
 app="$build_source/macos/build/$configuration/Polar Station.app"
 [ -d "$app" ] || {
@@ -205,6 +216,8 @@ else
     }
     identity=$(printf '%s\n' "$identity_line" | /usr/bin/awk '{print $2}')
 fi
+python3 "$repo_root/automation/polar_station/record_macos_signing.py" before \
+    --app "$app" --source "$repo_root" --before "$repo_root/target/build-evidence/macos-pre-sign.json"
 /usr/bin/codesign --force --identifier com.polarealm.polar-station.host \
     --options runtime --entitlements "$repo_root/automation/polar_station/host-macos.entitlements" \
     --sign "$identity" "$helpers/polar-tmux"
@@ -224,6 +237,9 @@ fi
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)
 printf '%s' "$host_entitlements" | python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
 /usr/bin/codesign --display --verbose=2 "$helpers/polar-tmux" 2>&1 | /usr/bin/grep -Fxq 'Identifier=com.polarealm.polar-station.host'
+python3 "$repo_root/automation/polar_station/record_macos_signing.py" after \
+    --app "$app" --source "$repo_root" --before "$repo_root/target/build-evidence/macos-pre-sign.json" \
+    --output "$repo_root/target/build-evidence/macos-signing.json"
 
 mkdir -p "$output_root"
 if [ -e "$output_app" ]; then

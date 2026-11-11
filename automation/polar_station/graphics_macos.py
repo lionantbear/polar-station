@@ -38,6 +38,7 @@ def package(source: Path, godot: Path, editor: Path, extension: Path, graphviz: 
         lib.mkdir(parents=True)
         (stage / 'graphviz/bin').mkdir()
         copied: dict[Path, Path] = {}
+        transformations = []
         def copy_macho(original: Path, destination: Path):
             original = original.resolve()
             if original in copied:
@@ -61,6 +62,7 @@ def package(source: Path, godot: Path, editor: Path, extension: Path, graphviz: 
                 relative = os.path.relpath(target, destination.parent)
                 run('install_name_tool', '-change', dependency, '@loader_path/' + relative, str(destination))
             run('codesign', '--force', '--sign', '-', str(destination))
+            transformations.append({'source_path': str(original), 'source_sha256': hashlib.sha256(original.read_bytes()).hexdigest(), 'bundle_relative_path': str(destination.relative_to(stage)), 'packaged_sha256': hashlib.sha256(destination.read_bytes()).hexdigest(), 'operations': ['copy', 'install_name_tool relocation', 'ad-hoc codesign'], 'license_reviewed': False})
             return destination
         copy_macho(graphviz / 'bin/dot', stage / 'graphviz/bin/dot.bin')
         for pattern in ('libgvplugin_core.*.dylib', 'libgvplugin_dot_layout.*.dylib', 'libgvplugin_neato_layout.*.dylib'):
@@ -89,11 +91,12 @@ exec "$base/bin/dot.bin" -Kdot "$@"
         shutil.rmtree(stage / 'project/.godot/editor', ignore_errors=True)
         shutil.rmtree(stage / 'project/.godot/shader_cache', ignore_errors=True)
         receipt = {'schema': 'polar.graphics.macos-bundle.v1', 'godot_commit': 'ed1daf0bf001b61586d9930840f2f1394092c079',
-                   'source_commit': source_identity(source)['revision'],
+                   'source_commit': source_identity(source)['build_revision'],
                    'source_provenance': source_identity(source)['source_provenance'],
                    'source_state_sha256': source_identity(source)['fingerprint'],
                    'macos_lifecycle_patch': 'OS_MacOS_Headless (host owns NSApplication)',
                    'inputs': {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in [('libgodot', godot), ('gdextension', extension), ('editor', editor)]}}
+        receipt['graphviz_transformations'] = transformations
         (stage / 'provenance.json').write_text(json.dumps(receipt, indent=2) + '\n')
         digest(stage)
         if output.exists():

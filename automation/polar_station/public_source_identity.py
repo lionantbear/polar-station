@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import subprocess
 
 
 def source_identity(root: Path) -> dict:
@@ -78,8 +79,30 @@ def source_identity(root: Path) -> dict:
         revision += "-" + label + "-" + inputs[:12]
     if modified:
         revision += "-export-modified-" + fingerprint[:12]
+    build_revision = revision
+    checkout = None
+    if (root / '.git').exists():
+        if (root / '.git').is_symlink():
+            raise ValueError('build checkout metadata must not be a symlink')
+        def git(*args):
+            return subprocess.check_output(['git', '-C', str(root), *args],
+                                           stderr=subprocess.DEVNULL, text=True).strip()
+        try:
+            if Path(git('rev-parse', '--show-toplevel')).resolve() != root:
+                raise ValueError('build checkout root mismatch')
+            checkout_head = git('rev-parse', 'HEAD')
+            if not re.fullmatch('[0-9a-f]{40}', checkout_head):
+                raise ValueError('build checkout commit is invalid')
+            checkout_dirty = bool(git('status', '--porcelain', '--untracked-files=normal'))
+        except subprocess.CalledProcessError as error:
+            raise ValueError('cannot identify build checkout') from error
+        checkout = {'git_head': checkout_head, 'git_dirty': checkout_dirty}
+        build_revision = checkout_head
+        if checkout_dirty or modified:
+            build_revision += '-dirty-' + fingerprint[:12]
     return {"revision": revision, "source_provenance": provenance,
-            "fingerprint": fingerprint, "export_modified": modified}
+            "fingerprint": fingerprint, "export_modified": modified,
+            "build_revision": build_revision, "checkout_provenance": checkout}
 
 
 def main() -> None:
@@ -90,7 +113,7 @@ def main() -> None:
     output.add_argument("--fingerprint", action="store_true")
     args = parser.parse_args()
     identity = source_identity(args.root)
-    print(identity["revision"] if args.revision else identity["fingerprint"]
+    print(identity["build_revision"] if args.revision else identity["fingerprint"]
           if args.fingerprint else json.dumps(identity, sort_keys=True))
 
 

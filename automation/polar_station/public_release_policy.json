@@ -55,7 +55,8 @@
     "automation/polar_station/source_structural.py",
     "automation/polar_station/source-tools-requirements.txt",
     "automation/polar_station/source_manifest.py",
-    "automation/polar_station/sign_trial_main.py"
+    "automation/polar_station/sign_trial_main.py",
+    "automation/polar_station/capture_native_source.py"
   ],
   "root_inputs": [
     "Cargo.lock",
