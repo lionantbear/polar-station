@@ -77,13 +77,15 @@ def main():
         run('/usr/bin/ditto','--rsrc','--extattr',str(mount/'Polar Station.app'),str(install/'Polar Station.app'))
     installed=install/'Polar Station.app'
     assert inventory(installed)==after, 'Install copy differs'
+    run('/usr/bin/swift',str(tools/'verify_trial_app.swift'),'--app',str(installed),'--report',str(work/'launchservices.json'))
+    gui=json.loads((work/'launchservices.json').read_text()); assert gui['passed'] is True
     run(sys.executable,str(tools/'verify_trial_launch.py'),'--app',str(installed),'--output',str(work/'launch-evidence'))
     result=json.loads((work/'launch-evidence/result.json').read_text())
     assert result['passed'] is True and result['terminal_child_executed'] is True
     assert inventory(installed)==after, 'Launch modified signed application'
     sha=digest(public/DMG)
     (public/'SHA256SUMS').write_text(sha+'  '+DMG+'\n')
-    report={'passed':True,'original_dmg_sha256':OLD_SHA,'final_dmg_sha256':sha,'changed_signature_files':changed,'original_policy_regression_detected':True,'nested_signatures_and_resources_unchanged':True,'notice_files_unchanged':True,'source_commit':os.environ.get('GITHUB_SHA'),'terminal_launch':result}
+    report={'passed':True,'original_dmg_sha256':OLD_SHA,'final_dmg_sha256':sha,'changed_signature_files':changed,'original_policy_regression_detected':True,'nested_signatures_and_resources_unchanged':True,'notice_files_unchanged':True,'source_commit':os.environ.get('GITHUB_SHA'),'terminal_launch':result,'launchservices':gui}
     (work/'validation.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))
 

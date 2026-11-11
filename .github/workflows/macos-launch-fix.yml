@@ -30,6 +30,7 @@ jobs:
       - name: Print retained launch evidence
         if: always()
         run: |
+          if [ -f "$RUNNER_TEMP/launch-fix/launchservices.json" ]; then cat "$RUNNER_TEMP/launch-fix/launchservices.json"; fi
           for name in result.json app.stderr app.stdout terminal-sentinel.trace processes.txt; do
             if [ -f "$RUNNER_TEMP/launch-fix/launch-evidence/$name" ]; then
               echo "=== $name ==="
@@ -70,6 +71,7 @@ jobs:
           name='Polar-Station-macOS-arm64-TRIAL-UNNOTARIZED.dmg'
           assert {x.name for x in public.iterdir()}=={name,'SHA256SUMS'}
           digest=hashlib.sha256((public/name).read_bytes()).hexdigest()
+          assert report['launchservices']['passed'] is True
           assert report['passed'] is True and report['terminal_launch']['terminal_child_executed'] is True
           assert report['source_commit']==os.environ['GITHUB_SHA'] and digest==report['final_dmg_sha256']
           assert (public/'SHA256SUMS').read_text()==digest+'  '+name+'\n'
