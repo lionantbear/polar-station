@@ -651,12 +651,20 @@ def stage_candidate(plan,work,client):
     exact_public_assets(public)
     check_run(client);asset_state(client,plan);verify_source_access(client,plan)
     # Never update/reuse the raw draft, or resume an uncertain prior attempt automatically.
-    for path in ('/releases/tags/'+FINAL_TAG,'/git/ref/tags/'+FINAL_TAG):
-        try:client.json('/repos/'+REPO+path)
+    try:client.json('/repos/'+REPO+'/releases/tags/'+FINAL_TAG)
+    except Stop as e:
+        if str(e)!='github_not_found':raise
+    else:raise Stop('final_release_already_exists_inspect_before_retry')
+    if plan.get('tag_prepared_via_ssh') is True:
+        # GitHub workflow tokens cannot create every workflow-bearing tag.
+        # Owner SSH prepares this exact ref; no release or asset is reused.
+        verify_tag(client)
+    else:
+        try:client.json('/repos/'+REPO+'/git/ref/tags/'+FINAL_TAG)
         except Stop as e:
             if str(e)!='github_not_found':raise
-        else:raise Stop('final_tag_or_release_already_exists_inspect_before_retry')
-    client.json('/repos/'+REPO+'/git/refs','POST',{'ref':'refs/tags/'+FINAL_TAG,'sha':SOURCE})
+        else:raise Stop('final_tag_already_exists_inspect_before_retry')
+        client.json('/repos/'+REPO+'/git/refs','POST',{'ref':'refs/tags/'+FINAL_TAG,'sha':SOURCE})
     verify_tag(client)
     body=release_body(plan)
     release=client.json('/repos/'+REPO+'/releases','POST',{'tag_name':FINAL_TAG,'target_commitish':SOURCE,

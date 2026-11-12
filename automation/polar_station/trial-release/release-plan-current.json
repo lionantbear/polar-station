@@ -6024,5 +6024,6 @@
     "unresolved": []
   },
   "source_commit": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
-  "status": "ready-for-reviewed-trial"
+  "status": "ready-for-reviewed-trial",
+  "tag_prepared_via_ssh": true
 }

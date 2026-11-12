@@ -65,6 +65,7 @@
         "sha256": "0218b67006cb7a15cf8522b537705f2258b78c9a2ffb32f3b9ae44cdefd44a0e"
       }
     ],
+    "publication_transport": "Exact lightweight native-source tag prepared and verified through owner SSH; existing releases and mismatched tags rejected",
     "remaining_mandatory_execution_gates": [
       "Final mounted app copyright condition and audio-input/usage verification",
       "Preserve original signed app byte inventory",
@@ -143,8 +144,8 @@
   ],
   "inspection_report_sha256": "033f2992acfa3976e41eee809c7211939b7010eb441ea3f69caf369462907d6f",
   "notice_tree_sha256": "f24a0eb2efb18b8a750ae975472348e966978a0f7374fdcb1563899e9f25752f",
-  "plan_sha256": "1f9676bde484319dffe5947b968b05123c73c334840fdada9d6cb0c0c94ced01",
-  "program_sha256": "2790d23e9493686dc3d28cd50d2869dd3ce0f98e42fb72efad8110d55112d7c7",
+  "plan_sha256": "0df231b553a8b79a68c3508b95f8682f8930a69653cf1ed6536cf8221ac3f9e1",
+  "program_sha256": "1991afca4de8b72926c8ecd576b7637adf576edc15f6a03ad44735d9d10a399e",
   "reviewed_at": "2026-11-12T09:09:23Z",
   "reviewer": "Codex artifact-specific source, notice and native-run review",
   "run_attempt": 1,
