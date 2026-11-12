@@ -232,7 +232,8 @@ done
 if [ "$identity" = - ]; then
     python3 "$repo_root/automation/polar_station/sign_trial_main.py" "$app"
 fi
-/usr/bin/codesign --verify --deep --strict "$app"
+# Inspect the final main signature, not just an entitlement source plist.
+python3 "$repo_root/automation/polar_station/sign_trial_main.py" --verify-only "$app"
 # Deep bundle signing must preserve the independently signed Host entitlement.
 host_entitlements=$(/usr/bin/codesign -d --entitlements :- "$helpers/polar-tmux" 2>/dev/null)
 printf '%s' "$host_entitlements" | python3 -c 'import plistlib,sys; assert plistlib.loads(sys.stdin.buffer.read()).get("com.apple.security.automation.apple-events") is True'
