@@ -41,10 +41,15 @@ impl CodexControlService {
     pub(super) async fn discover_account_endpoints(&self) {
         let Some(network) = &self.network else { return; };
         for descriptor in network.targets.descriptors() {
-            let id = format!("auto-codex-{}", descriptor.id);
-            if self.config.read().await.endpoints.iter().any(|e| e.id == id) { continue; }
-            let Some(target) = network.targets.get(descriptor.id.as_str()) else { continue; };
-            let Ok(client) = target.managed_client(&network.ssh).await else { continue; };
+            self.discover_account_endpoint(descriptor.id.as_str()).await;
+        }
+    }
+    pub(super) async fn discover_account_endpoint(&self,target_id:&str) {
+        let Some(network)=&self.network else{return};
+            let id = format!("auto-codex-{target_id}");
+            if self.config.read().await.endpoints.iter().any(|e| e.id == id) { return; }
+            let Some(target) = network.targets.get(target_id) else { return; };
+            let Ok(client) = target.managed_client(&network.ssh).await else { return; };
             let local = matches!(client.target(), polar_tmux_core::TmuxTarget::Local);
             let home = if local {
                 std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from)
@@ -54,17 +59,19 @@ impl CodexControlService {
                     "printf '%s' \"${CODEX_HOME:-$HOME/.codex}\"").await.ok()
                     .and_then(|bytes| String::from_utf8(bytes).ok()).map(std::path::PathBuf::from)
             };
-            let Some(home) = home else { continue; };
-            let Ok(socket) = codex_app_server_client::app_server_control_socket_path(&home) else { continue; };
-            let Some(socket) = socket.as_path().to_str() else { continue; };
+            let Some(home) = home else { return; };
+            let Ok(socket) = codex_app_server_client::app_server_control_socket_path(&home) else { return; };
+            let Some(socket) = socket.as_path().to_str() else { return; };
             let mut config = self.config.write().await;
-            if config.endpoints.iter().any(|e| e.execution_target_id == descriptor.id.as_str() && e.socket_path == socket) { continue; }
+            if config.endpoints.iter().any(|e| e.execution_target_id == target_id && e.socket_path == socket) { return; }
             config.endpoints.push(polar_station_settings::CodexEndpointSettingsV1 {
-                id, execution_target_id: descriptor.id.to_string(), owner_host_id: self.owner.clone(),
+                id, execution_target_id: target_id.to_owned(), owner_host_id: self.owner.clone(),
                 control_mode: if local { CodexControlModeV1::Local } else { CodexControlModeV1::SshDirect },
                 socket_path: socket.into(), peer_connection_ref: None, remote_endpoint_id: None, remote_target_id: None,
             });
-        }
+            drop(config);
+            self.publisher.publish(ApplicationStateApiV1::ControlCenterV1);
+            self.publisher.publish(ApplicationStateApiV1::CodexV1);
     }
 
     // The recovery tick may call this, but a healthy generation performs no RPC.

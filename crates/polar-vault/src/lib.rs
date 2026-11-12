@@ -4,6 +4,8 @@ use polar_trust::ControlScope;
 use std::sync::Arc;
 
 mod cipher;
+pub mod keys;
+pub mod protection;
 pub use cipher::{SoftwareVaultCipher, VaultCipher, VaultCiphertext};
 
 pub struct PolarVault {
@@ -13,6 +15,8 @@ pub struct PolarVault {
         std::sync::RwLock<std::collections::HashMap<NodeId, authorization::PeerAuthorization>>,
     >,
     local_chat_changes: tokio::sync::watch::Sender<u64>,
+    secret_changes: tokio::sync::watch::Sender<u64>,
+    key_directory: tokio::sync::OnceCell<keys::directory::ManagedKeyDirectory>,
     authorization_write: tokio::sync::Mutex<()>,
     material_index:
         tokio::sync::OnceCell<std::sync::RwLock<std::collections::HashSet<(String, String)>>>,
@@ -82,7 +86,7 @@ mod secrets;
 pub use credential_bundle::{CredentialBundle, CredentialBundleResolver, CredentialBundleStore};
 pub use operations::VaultStore;
 pub use secrets::{
-    SecretImportMetadata,
-    CredentialResolver, SecretId, SecretInput, SecretKind, SecretLease, SecretMetadata, SecretPage,
-    SecretQuery, StoredSecret, VaultAuthority,
+    CredentialResolver, SecretId, SecretImportMetadata, SecretInput, SecretKind, SecretLease,
+    SecretMetadata, SecretPage, SecretQuery, StoredSecret, VaultAuthority,
 };
+pub use secrets::{Ed25519SecretExecutor, SecretUseSession, SecretUseTiming};

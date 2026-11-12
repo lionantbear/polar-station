@@ -14,7 +14,8 @@ const STATE_PREFIX: &str = "POLAR_STATE_V1\n";
 fn protected_state_scope(scope: &str) -> bool {
     matches!(
         scope,
-        "local_chat_authority_v1" | "peer_authorization_v1"
+        "local_chat_authority_v1"
+            | "peer_authorization_v1"
             | "access_plane_trust"
             | "access_bind_requests"
             | "realm_enrollment"
@@ -53,6 +54,20 @@ pub(crate) fn decode_material(scope: &str, name: &str, plain: Vec<u8>) -> Result
 /// and ciphertext policy; adapters own rows, SQL, and backend runtime access.
 #[async_trait]
 pub trait VaultStore: Send + Sync {
+    async fn load_key_directory(
+        &self,
+        _owner: NodeId,
+    ) -> Result<Option<crate::keys::directory::StoredDirectory>> {
+        anyhow::bail!("key directory unsupported by Vault adapter")
+    }
+    async fn compare_exchange_key_directory(
+        &self,
+        _owner: NodeId,
+        _expected: u64,
+        _record: crate::keys::directory::StoredDirectory,
+    ) -> Result<bool> {
+        anyhow::bail!("key directory unsupported by Vault adapter")
+    }
     async fn query_uuid_secrets(
         &self,
         _owner: NodeId,
@@ -204,6 +219,8 @@ impl PolarVault {
             cipher,
             authorization: Default::default(),
             local_chat_changes: tokio::sync::watch::channel(0).0,
+            secret_changes: tokio::sync::watch::channel(0).0,
+            key_directory: Default::default(),
             authorization_write: Default::default(),
             material_index: Default::default(),
             material_write: Default::default(),

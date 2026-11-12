@@ -24,6 +24,9 @@ import CPolarStationDesktopClient
         public init() {}
     }
     public struct State: Decodable {
+        public let prepare_label:String?
+        public let can_prepare:Bool
+        public let endpoints:[CodexEndpointSettingsV1]
         public let end_preview: SessionEndPreviewV1?
         public let end_loading: Bool
         public let end_completed: Bool
@@ -71,8 +74,12 @@ import CPolarStationDesktopClient
         let archived: Bool?
         let include_subagents: Bool?
         let yolo: Bool?
+        let tmux:Bool?
+        let codex:Bool?
+        let codex_service:Bool?
         var wire: SessionEditorRequestV1? {
             switch type {
+            case "prepare_tools": .prepareTools(target:execution_target_id ?? "",tmux:tmux ?? false,codex:codex ?? false,codexService:codex_service ?? false)
             case "set_creation_yolo": yolo.map { .setCreationYolo($0) }
             case "history": .history(target: execution_target_id ?? "", endpoint: endpoint_id ?? "", cursor: cursor,
                 search: search_term, archived: archived ?? false, subagents: include_subagents ?? false)
@@ -125,7 +132,8 @@ import CPolarStationDesktopClient
         switch result {
         case .history(let rows, let next): value = ["type":"history", "threads":object(rows), "next_cursor":next as Any? ?? NSNull()]
         case .historyDetail(let detail): value = ["type":"history_detail", "detail":object(detail)]
-        case .launchContext(let directory, let notice, let yolo): value = ["type":"launch_context", "directory":object(directory), "notice":notice as Any? ?? NSNull(), "yolo":yolo]
+        case .launchContext(let directory, let notice, let yolo,let tools,let endpoints): value = ["type":"launch_context", "directory":object(directory), "notice":notice as Any? ?? NSNull(), "yolo":yolo,"tools":tools.map(object) ?? NSNull(),"codex_endpoints":endpoints.map(object) ?? NSNull()]
+        case .toolsLaunched(let target):value=["type":"tools_launched","execution_target_id":target]
         case .creationYolo(let yolo): value = ["type":"creation_yolo", "yolo":yolo]
         case .endPreview(let preview): value = ["type":"end_preview", "preview":object(preview)]
         default: break

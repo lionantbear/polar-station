@@ -268,7 +268,9 @@ impl RegisteredTarget {
     /// Configuration identity only; SSH execution requires a verified lease.
     pub(crate) fn configured_target(&self) -> &TmuxTarget { self.client.target() }
 
-    
+    pub(crate) fn configured_client(&self) -> &TmuxClient {
+        &self.client
+    }
 
     pub fn descriptor(&self) -> ExecutionTargetDescriptor {
         ExecutionTargetDescriptor {

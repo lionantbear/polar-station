@@ -92,6 +92,10 @@ impl ResourcesRequestEnvelopeV1 {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourcesCommandV1 {
     GetProjection,
+    ResolveFileCandidates {
+        origin: polar_tmux_resources::FileOrigin,
+        candidates: Vec<polar_tmux_resources::FileReference>,
+    },
     ResolveFile {
         execution_target_id: String,
         path: String,
@@ -99,6 +103,9 @@ pub enum ResourcesCommandV1 {
         /// Authoritative source session; never infer a harness cwd from the UI.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source_session: Option<crate::SessionKeyV1>,
+        /// Opt in to the additive LocalFile result; old clients keep v1 results.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        client_supports_local_file: bool,
     },
     GetLogTail {
         resource_id: String,
@@ -118,17 +125,29 @@ impl ResourcesCommandV1 {
     pub fn is_mutation(&self) -> bool {
         !matches!(
             self,
-            Self::GetProjection | Self::GetLogTail { .. } | Self::ResolveFile { .. }
+            Self::GetProjection | Self::GetLogTail { .. } | Self::ResolveFile { .. } | Self::ResolveFileCandidates { .. }
         )
     }
 
     fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
+            Self::ResolveFileCandidates { origin, candidates } => {
+                validate_stable_identifier(&origin.execution_target_id, "execution target")?;
+                if candidates.is_empty() || candidates.len() > polar_tmux_resources::MAX_FILE_CANDIDATES
+                    || candidates.iter().map(|r| r.path.len()).sum::<usize>() > polar_tmux_resources::MAX_FILE_CANDIDATE_BYTES
+                    || origin.terminal_session_id.as_ref().is_some_and(|s| s.is_empty() || s.len() > 256 || s.chars().any(char::is_control))
+                    || origin.cwd.as_ref().is_some_and(|s| s.len() > 16384 || s.chars().any(char::is_control))
+                    || candidates.iter().any(|r| r.path.is_empty() || r.path.len() > 16384 || r.path.chars().any(char::is_control)) {
+                    return Err(ProtocolValidationError::InvalidResourcesCommand);
+                }
+                Ok(())
+            }
             Self::ResolveFile {
                 execution_target_id,
                 path,
                 cwd,
                 source_session,
+                ..
             } => {
                 if let Some(session) = source_session {
                     session.validate()?;
@@ -230,5 +249,7 @@ fn validate_projection(
     }
     Ok(())
 }
+
+
 
 

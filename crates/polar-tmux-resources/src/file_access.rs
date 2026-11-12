@@ -9,6 +9,11 @@ use std::{
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FileAccess {
+    Verified { reference: crate::FileReference, access: Box<FileAccess> },
+    ChooseFile { origin: crate::FileOrigin, candidates: Vec<crate::FileReference> },
+    LocalFile {
+        local_path: String,
+    },
     Ready {
         resource_id: ResourceId,
         local_path: String,

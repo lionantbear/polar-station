@@ -1,6 +1,7 @@
 import Foundation
 
 public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
+    case prepareTools(target:String, tmux:Bool, codex:Bool, codexService:Bool)
     case setCreationYolo(Bool)
     case history(target: String, endpoint: String, cursor: String?, search: String?, archived: Bool, subagents: Bool)
     case historyDetail(target: String, endpoint: String, thread: String)
@@ -9,7 +10,7 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     case previewEnd(SessionRowProjectionV1.Identity)
     case previewEndAgent(target: String, owner: String, endpoint: String, thread: String)
     enum CodingKeys: String, CodingKey {
-        case type, path, cursor, threads, detail, yolo
+        case type, path, cursor, threads, detail, yolo, tmux, codex, codex_service
         case search = "search_term", archived, subagents = "include_subagents"
         case owner = "owner_host_id", thread = "thread_id"
         case target = "execution_target_id", source = "source_session_id"
@@ -18,6 +19,10 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case let .prepareTools(target, tmux, codex, service):
+            try c.encode("prepare_tools", forKey:.type);try c.encode(target,forKey:.target)
+            try c.encode(tmux,forKey:.tmux);try c.encode(codex,forKey:.codex);try c.encode(service,forKey:.codex_service)
+
         case let .setCreationYolo(yolo):
             try c.encode("set_creation_yolo", forKey: .type); try c.encode(yolo, forKey: .yolo)
         case let .history(target, endpoint, cursor, search, archived, subagents):
@@ -64,20 +69,28 @@ public struct SessionEndPreviewV1: Codable, Equatable, Sendable {
         case targetLabel = "target_label", attachedClients = "attached_clients"
     }
 }
+public struct SessionTargetToolsV1:Codable,Equatable,Sendable {
+    public let execution_target_id:String
+    public let tmux:String
+    public let codex:String
+    public let codex_control_enabled:Bool
+}
 public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
     case history([CodexHistoryThreadV1], String?)
     case historyDetail(CodexHistoryDetailV1)
-    case launchContext(SessionDirectoryV1, String?, Bool)
+    case launchContext(SessionDirectoryV1, String?, Bool, [SessionTargetToolsV1]?, [CodexEndpointSettingsV1]?)
+    case toolsLaunched(String)
     case creationYolo(Bool)
     case directory(SessionDirectoryV1)
     case endPreview(SessionEndPreviewV1)
-    enum CodingKeys: String, CodingKey { case type, directory, notice, preview, threads, detail, next_cursor, yolo }
+    enum CodingKeys: String, CodingKey { case type, directory, notice, preview, threads, detail, next_cursor, yolo, tools, codex_endpoints, execution_target_id }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switch try c.decode(String.self, forKey: .type) {
         case "history": self = try .history(c.decode([CodexHistoryThreadV1].self, forKey: .threads), c.decodeIfPresent(String.self, forKey: .next_cursor))
         case "history_detail": self = try .historyDetail(c.decode(CodexHistoryDetailV1.self, forKey: .detail))
-        case "launch_context": self = try .launchContext(c.decode(SessionDirectoryV1.self, forKey: .directory), c.decodeIfPresent(String.self, forKey: .notice), c.decodeIfPresent(Bool.self, forKey: .yolo) ?? true)
+        case "launch_context": self = try .launchContext(c.decode(SessionDirectoryV1.self, forKey: .directory), c.decodeIfPresent(String.self, forKey: .notice), c.decodeIfPresent(Bool.self, forKey: .yolo) ?? true, c.decodeIfPresent([SessionTargetToolsV1].self, forKey:.tools), c.decodeIfPresent([CodexEndpointSettingsV1].self,forKey:.codex_endpoints))
+        case "tools_launched": self = try .toolsLaunched(c.decode(String.self,forKey:.execution_target_id))
         case "creation_yolo": self = try .creationYolo(c.decode(Bool.self, forKey: .yolo))
         case "directory": self = try .directory(c.decode(SessionDirectoryV1.self, forKey: .directory))
         case "end_preview": self = try .endPreview(c.decode(SessionEndPreviewV1.self, forKey: .preview))

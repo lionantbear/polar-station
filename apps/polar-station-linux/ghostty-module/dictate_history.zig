@@ -106,6 +106,11 @@ pub const History = struct {
         for(self.rows.items)|row|a.free(row.id);self.rows.deinit(a);
         if(self.selected_id)|id|a.free(id);self.empty.as(gobject.Object).unref();a.destroy(self);
     }
+    pub fn bindInput(self:*History,editor:*gtk.TextView) void {
+        if(self.input_editor==editor) return;
+        if(self.insert_source!=0){_=glib.Source.remove(self.insert_source);self.insert_source=0;}
+        self.input_editor=editor;
+    }
     fn label(button:*gtk.Button, text:[]const u8) void { const z=a.dupeZ(u8,text) catch return;defer a.free(z);button.setLabel(z); }
     fn setLabel(widget:*gtk.Label,text:[]const u8) void {const z=a.dupeZ(u8,text) catch return;defer a.free(z);widget.setText(z);}
     fn rowSummary(button:*gtk.Button,text:[]const u8) void {

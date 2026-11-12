@@ -324,7 +324,13 @@ final class ControlCenterStore: ObservableObject {
                 guard let id=effect["request_id"] as? String,let path=effect["path"] as? String,
                       let origin=effect["origin"] as? [String:Any],let target=origin["execution_target_id"] as? String else{continue}
                 let command:ResourcesCommandV1
-                if let session=origin["terminal_session_id"] as? String {
+                if let candidates=effect["candidates"] as? [[String:Any]],
+                   let originData=try? JSONSerialization.data(withJSONObject:origin),
+                   let candidateData=try? JSONSerialization.data(withJSONObject:candidates),
+                   let source=try? JSONDecoder().decode(ResourceFileOriginV1.self,from:originData),
+                   let references=try? JSONDecoder().decode([ResourceFileReferenceV1].self,from:candidateData) {
+                    command = .resolveFileCandidates(origin:source,candidates:references)
+                } else if let session=origin["terminal_session_id"] as? String {
                     command = .resolveSessionFile(session:.init(executionTarget:target,tmuxSessionID:session),path:path,cwd:origin["cwd"] as? String)
                 } else { command = .resolveFile(target:target,path:path,cwd:origin["cwd"] as? String) }
                 Task {
@@ -339,6 +345,19 @@ final class ControlCenterStore: ObservableObject {
                         default:fileOpenInput(["type":"failed","request_id":id,"message":"Unexpected file access response."])
                         }
                     }catch{fileOpenInput(["type":"failed","request_id":id,"message":error.localizedDescription])}
+                }
+            case "choose_file":
+                guard let id=effect["request_id"] as? String,let candidates=effect["candidates"] as? [[String:Any]],!candidates.isEmpty else {continue}
+                let picker=NSPopUpButton(frame:NSRect(x:0,y:0,width:520,height:28))
+                for item in candidates {picker.addItem(withTitle:item["path"] as? String ?? "")}
+                let alert=NSAlert();alert.messageText="Choose a file"
+                alert.informativeText="Several matching files exist on the source machine."
+                alert.accessoryView=picker;alert.addButton(withTitle:"Open");alert.addButton(withTitle:"Cancel")
+                guard let window=NSApp.keyWindow ?? NSApp.mainWindow else {
+                    fileOpenInput(["type":"choose","request_id":id,"index":NSNull()]);continue
+                }
+                alert.beginSheetModal(for:window) { [weak self] result in
+                    self?.fileOpenInput(["type":"choose","request_id":id,"index":result == .alertFirstButtonReturn ? picker.indexOfSelectedItem as Any : NSNull()])
                 }
             case "start_resource":if let id=effect["resource_id"] as? String{restartResource(id)}
             case "create_mapping":

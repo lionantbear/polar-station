@@ -14,6 +14,16 @@ pub struct FileLocation {
     pub column: Option<u32>,
 }
 
+/// Explicit file-open intents may contain terminal display line breaks. This
+/// never changes the terminal selection or the strict parser used for links.
+pub fn parse_selected_file_reference(value: &str) -> Option<FileReference> {
+    if value.len() > 16384 {
+        return None;
+    }
+    let joined: String = value.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
+    parse_file_reference(&joined)
+}
+
 /// Parse one candidate selected by the native link engine or by the user.
 /// URI authorities never select an execution target.
 pub fn parse_file_reference(value: &str) -> Option<FileReference> {

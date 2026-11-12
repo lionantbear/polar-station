@@ -51,6 +51,7 @@ pub(crate) mod resource_service;
 pub(crate) mod session_fact_provider;
 pub(crate) mod session_lifecycle;
 mod target_directory;
+mod target_tools;
 pub(crate) mod session_monitor;
 pub(crate) mod session_registry;
 

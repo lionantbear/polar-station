@@ -227,8 +227,11 @@ find "$app/Contents/Resources/graphics" -type f -print0 | while IFS= read -r -d 
         /usr/bin/codesign --force --options runtime --sign "$identity" "$file"
     fi
 done
+# Xcode signing is disabled above, so there are no entitlements to preserve.
+main_entitlements="$build_source/macos/Ghostty.entitlements"
+[ "$configuration" != Debug ] || main_entitlements="$build_source/macos/GhosttyDebug.entitlements"
 /usr/bin/codesign --force --deep --options runtime \
-    --preserve-metadata=identifier,entitlements --sign "$identity" "$app"
+    --preserve-metadata=identifier --entitlements "$main_entitlements" --sign "$identity" "$app"
 if [ "$identity" = - ]; then
     python3 "$repo_root/automation/polar_station/sign_trial_main.py" "$app"
 fi

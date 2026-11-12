@@ -172,7 +172,7 @@ struct SessionEditorSheet: View {
     }
 
     private var binding: Bool { request.bindPane != nil }
-    private var availableEndpoints: [CodexEndpointSettingsV1] { endpoints }
+    private var availableEndpoints: [CodexEndpointSettingsV1] { editor.state?.endpoints ?? endpoints }
     private var browsingHistory: Bool { showsCreationOptions && sessionType == "codex" && agentMode == "resume" }
 
     var body: some View {
@@ -252,7 +252,8 @@ struct SessionEditorSheet: View {
             editor.open(draft, endpoints: availableEndpoints, source: sourceSession, read: readSessionEditor)
         }
         .onDisappear { editor.action("close") }
-        .onChange(of: endpoints) { _ in editor.endpoints(availableEndpoints) }
+        .onChange(of: endpoints) { _ in editor.endpoints(endpoints) }
+        .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in editor.action("returned_from_tools") }
         .onChange(of: recovery) { value in
             guard let value else { return }
             editor.edit { $0.target = value.execution_target_id; $0.session_type = "codex"; $0.endpoint = value.endpoint_id; $0.mode = "resume"; $0.original_id = value.thread_id }
@@ -280,6 +281,9 @@ struct SessionEditorSheet: View {
                     Text("This computer").tag(localTargetID)
                     ForEach(remoteTargets) { Text($0.label).tag($0.id) }
                 }.labelsHidden().frame(minWidth: 120, maxWidth: 180).accessibilityLabel("Host")
+                if let label=editor.state?.prepare_label {
+                    Button(label){editor.action("prepare_tools")}.disabled(editor.state?.can_prepare != true)
+                }
                 if sessionType == "codex" {
                     Picker("App server", selection: field(\.endpoint)) {
                         Text("Select app server").tag("")

@@ -2710,9 +2710,11 @@ fn resourceFileInput(current:*State,input:anytype) void {
         resourceFileTrace(kind);
         if(std.mem.eql(u8,kind,"resolve")){
             const origin=dict.field(effect,"origin");
-            const bytes=resources.encodeResolveFile(current.allocator,dict.string(effect,"request_id"),dict.string(origin,"execution_target_id"),dict.string(effect,"path"),if(dict.string(origin,"cwd").len>0)dict.string(origin,"cwd")else null,if(dict.string(origin,"terminal_session_id").len>0)dict.string(origin,"terminal_session_id")else null) catch continue;
+            const bytes=(if(dict.field(effect,"candidates")==.array) resources.encodeResolveFileCandidates(current.allocator,dict.string(effect,"request_id"),origin,dict.field(effect,"candidates")) else resources.encodeResolveFile(current.allocator,dict.string(effect,"request_id"),dict.string(origin,"execution_target_id"),dict.string(effect,"path"),if(dict.string(origin,"cwd").len>0)dict.string(origin,"cwd")else null,if(dict.string(origin,"terminal_session_id").len>0)dict.string(origin,"terminal_session_id")else null)) catch continue;
             defer current.allocator.free(bytes);
             current.client.sendJson(bytes) catch {resourceFileInput(current,.{.type="failed",.request_id=dict.string(effect,"request_id"),.message="Could not resolve the source file."});};
+        }else if(std.mem.eql(u8,kind,"choose_file")){
+            presentFileChoices(current,effect);
         }else if(std.mem.eql(u8,kind,"start_resource")){
             resourceAction(current,.{.restart=dict.string(effect,"resource_id")});
         }else if(std.mem.eql(u8,kind,"create_mapping")){
@@ -2729,6 +2731,33 @@ fn resourceFileInput(current:*State,input:anytype) void {
         }
     }
 }
+const FileChoiceDialog = struct { request_id: []u8, picker: *gtk.DropDown };
+fn presentFileChoices(current:*State,effect:std.json.Value) void {
+    const dict=@import("dictate.zig");
+    const window=activeGhosttyWindow(current.app) orelse return;
+    const choices=dict.field(effect,"candidates");if(choices!=.array)return;
+    const names=gtk.StringList.new(null);
+    for(choices.array.items)|item|{
+        const label=current.allocator.dupeZ(u8,dict.string(item,"path")) catch return;
+        defer current.allocator.free(label);names.append(label);
+    }
+    const picker=gtk.DropDown.new(names.as(gio.ListModel),null);
+    const data=current.allocator.create(FileChoiceDialog) catch return;
+    data.*=.{.request_id=current.allocator.dupe(u8,dict.string(effect,"request_id")) catch {current.allocator.destroy(data);return;},.picker=picker};
+    const dialog=adw.MessageDialog.new(window.as(gtk.Window),"Choose a file","Several matching files exist on the source machine.");
+    dialog.setExtraChild(picker.as(gtk.Widget));dialog.addResponse("cancel","Cancel");dialog.addResponse("open","Open");
+    dialog.setCloseResponse("cancel");dialog.setDefaultResponse("cancel");
+    _=adw.MessageDialog.signals.response.connect(dialog,*FileChoiceDialog,fileChoiceResponse,data,.{});
+    dialog.as(gtk.Window).present();
+}
+fn fileChoiceResponse(dialog:*adw.MessageDialog,response:[*:0]const u8,data:*FileChoiceDialog) callconv(.c) void {
+    defer dialog.as(gtk.Window).destroy();
+    const current=if(state)|*value|value else return;
+    defer {current.allocator.free(data.request_id);current.allocator.destroy(data);}
+    const index:?usize=if(std.mem.eql(u8,std.mem.span(response),"open")) @intCast(data.picker.getSelected()) else null;
+    resourceFileInput(current,.{.type="choose",.request_id=data.request_id,.index=index});
+}
+
 pub fn openSelectedFile(app:*Application) void {
     resourceFileTrace("selected-action");
     openSelectedFileInWindow(activeGhosttyWindow(app) orelse return);

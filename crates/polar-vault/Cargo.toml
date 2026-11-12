@@ -5,6 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bip0032 = { version = "=0.2.2", default-features = false, features = ["std", "slip10", "ed25519-dalek", "p256"] }
 schemars = "0.8.22"
 anyhow = { workspace = true }
 async-trait = "0.1"

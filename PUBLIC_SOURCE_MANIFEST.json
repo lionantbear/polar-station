@@ -1,14 +1,14 @@
 {
   "cargo_lock_normalization": "passed",
   "cargo_lock_provenance": {
-    "after_sha256": "1c290985fdd314c2b908a234ab4fca4bd5e41096cc1dea08d7661140e79affb7",
-    "before_sha256": "742ea0d317804f42e1a4489aed2b749aac33ebc634ce5c03a53c054b46f993fe",
+    "after_sha256": "5eae107be500b19e0bc6df58fa94c91d4c3a513e23f628e418df256f35de79a5",
+    "before_sha256": "aa1608397f1c272db4540f1655b4fd279ee07c30aab835457dba8ab76843774d",
     "method": "offline_metadata_then_locked_all_features_metadata",
     "new_identities_checksums_or_edges": false,
-    "packages_after": 1361,
-    "packages_before": 2310,
-    "packages_removed": 949,
-    "resolved_graph_sha256": "5e6ad0b14ff053dc3bfe25705138d0fda238ec4532e77cf976f35fa233394f67",
+    "packages_after": 1377,
+    "packages_before": 2348,
+    "packages_removed": 971,
+    "resolved_graph_sha256": "50c62ad1a59cc0212b6608e2fe8ee2b3253635d37e4b5eb44a71ad7398405a91",
     "status": "passed",
     "toolchain": "1.95.0",
     "tools": {
@@ -26,8 +26,9 @@
   },
   "cargo_validation": "not_run",
   "companion_release": "unavailable",
-  "crate_count": 56,
+  "crate_count": 57,
   "crate_paths": {
+    "bip0032": "vendor/bip0032",
     "grammers-tl-gen": "vendor/grammers-tl-gen",
     "polar-cas": "crates/polar-cas",
     "polar-cas-fs": "crates/polar-cas-fs",
@@ -90,6 +91,7 @@
     ".github/workflows/macos-current-trial-publish.yml": "100644",
     ".github/workflows/macos-current-trial-review.yml": "100644",
     ".github/workflows/macos-launch-fix.yml": "100644",
+    ".github/workflows/macos-microphone-fix.yml": "100644",
     ".github/workflows/macos-trial-publish.yml": "100644",
     ".github/workflows/macos-trial-review.yml": "100644",
     ".github/workflows/macos-trial.yml": "100644",
@@ -1196,6 +1198,7 @@
     "crates/polar-tmux-resources/src/command.rs": "100644",
     "crates/polar-tmux-resources/src/error.rs": "100644",
     "crates/polar-tmux-resources/src/file_access.rs": "100644",
+    "crates/polar-tmux-resources/src/file_candidates.rs": "100644",
     "crates/polar-tmux-resources/src/file_open.rs": "100644",
     "crates/polar-tmux-resources/src/file_reference.rs": "100644",
     "crates/polar-tmux-resources/src/lib.rs": "100644",
@@ -1290,6 +1293,7 @@
     "crates/polar-tmux/src/host/resource_provider.rs": "100644",
     "crates/polar-tmux/src/host/resource_recovery.rs": "100644",
     "crates/polar-tmux/src/host/resource_service.rs": "100644",
+    "crates/polar-tmux/src/host/resource_service/candidate_files.rs": "100644",
     "crates/polar-tmux/src/host/session_fact_provider.rs": "100644",
     "crates/polar-tmux/src/host/session_lifecycle.rs": "100644",
     "crates/polar-tmux/src/host/session_lifecycle/runtime.rs": "100644",
@@ -1301,6 +1305,8 @@
     "crates/polar-tmux/src/host/ssh_socket_forward.rs": "100644",
     "crates/polar-tmux/src/host/storage.rs": "100644",
     "crates/polar-tmux/src/host/target_directory.rs": "100644",
+    "crates/polar-tmux/src/host/target_tool_setup.sh": "100644",
+    "crates/polar-tmux/src/host/target_tools.rs": "100644",
     "crates/polar-tmux/src/host/terminal_runtime.rs": "100644",
     "crates/polar-tmux/src/host/terminal_runtime/bridge.rs": "100644",
     "crates/polar-tmux/src/host/terminal_runtime/control.rs": "100644",
@@ -1379,11 +1385,17 @@
     "crates/polar-vault/src/cipher.rs": "100644",
     "crates/polar-vault/src/credential_bundle.rs": "100644",
     "crates/polar-vault/src/inhouse_identity.rs": "100644",
+    "crates/polar-vault/src/keys.rs": "100644",
+    "crates/polar-vault/src/keys/derivation.rs": "100644",
+    "crates/polar-vault/src/keys/directory.rs": "100644",
     "crates/polar-vault/src/lib.rs": "100644",
     "crates/polar-vault/src/local_chat.rs": "100644",
     "crates/polar-vault/src/operations.rs": "100644",
+    "crates/polar-vault/src/protection.rs": "100644",
     "crates/polar-vault/src/public_state.rs": "100644",
     "crates/polar-vault/src/secrets.rs": "100644",
+    "crates/polar-vault/src/secrets/cache.rs": "100644",
+    "crates/polar-vault/src/secrets/device.rs": "100644",
     "crates/polar-voice-provider-codex/Cargo.toml": "100644",
     "crates/polar-voice-provider-codex/src/dictate.rs": "100644",
     "crates/polar-voice-provider-codex/src/jitter.rs": "100644",
@@ -2108,7 +2120,41 @@
     "migrations/sqlite/vault/V0002__legacy_management_request_repair.sql": "100644",
     "migrations/sqlite/vault/V0003__uuid_secrets.sql": "100644",
     "migrations/sqlite/vault/V0004__credential_names.sql": "100644",
+    "migrations/sqlite/vault/V0005__key_directory.sql": "100644",
     "rust-toolchain.toml": "100644",
+    "vendor/bip0032/.cargo_vcs_info.json": "100644",
+    "vendor/bip0032/Cargo.lock": "100644",
+    "vendor/bip0032/Cargo.toml": "100644",
+    "vendor/bip0032/Cargo.toml.orig": "100644",
+    "vendor/bip0032/LICENSE": "100644",
+    "vendor/bip0032/POLAR-PATCHES.md": "100644",
+    "vendor/bip0032/README.md": "100644",
+    "vendor/bip0032/SLIP-0010.md": "100644",
+    "vendor/bip0032/justfile": "100644",
+    "vendor/bip0032/src/curve/ed25519/backends/ed25519_dalek.rs": "100644",
+    "vendor/bip0032/src/curve/ed25519/backends/mod.rs": "100644",
+    "vendor/bip0032/src/curve/ed25519/mod.rs": "100644",
+    "vendor/bip0032/src/curve/error.rs": "100644",
+    "vendor/bip0032/src/curve/mod.rs": "100644",
+    "vendor/bip0032/src/curve/nist256p1/backends/mod.rs": "100644",
+    "vendor/bip0032/src/curve/nist256p1/backends/p256.rs": "100644",
+    "vendor/bip0032/src/curve/nist256p1/mod.rs": "100644",
+    "vendor/bip0032/src/curve/secp256k1/backends/k256.rs": "100644",
+    "vendor/bip0032/src/curve/secp256k1/backends/mod.rs": "100644",
+    "vendor/bip0032/src/curve/secp256k1/backends/secp256k1.rs": "100644",
+    "vendor/bip0032/src/curve/secp256k1/mod.rs": "100644",
+    "vendor/bip0032/src/curve/slip10.rs": "100644",
+    "vendor/bip0032/src/error.rs": "100644",
+    "vendor/bip0032/src/lib.rs": "100644",
+    "vendor/bip0032/src/path/child.rs": "100644",
+    "vendor/bip0032/src/path/mod.rs": "100644",
+    "vendor/bip0032/src/xkey/core/mod.rs": "100644",
+    "vendor/bip0032/src/xkey/core/private.rs": "100644",
+    "vendor/bip0032/src/xkey/core/public.rs": "100644",
+    "vendor/bip0032/src/xkey/mod.rs": "100644",
+    "vendor/bip0032/src/xkey/payload/mod.rs": "100644",
+    "vendor/bip0032/src/xkey/payload/version.rs": "100644",
+    "vendor/bip0032/src/xkey/slip10.rs": "100644",
     "vendor/grammers-tl-gen/Cargo.toml": "100644",
     "vendor/grammers-tl-gen/DEPS.md": "100644",
     "vendor/grammers-tl-gen/LICENSE-APACHE": "100644",
@@ -2118,14 +2164,14 @@
     "vendor/grammers-tl-gen/src/lib.rs": "100644",
     "vendor/grammers-tl-gen/src/metadata.rs": "100644",
     "vendor/grammers-tl-gen/src/rustifier.rs": "100644",
-    "vendor/grammers-tl-gen/src/structs.rs": "100644",
-    ".github/workflows/macos-microphone-fix.yml": "100644"
+    "vendor/grammers-tl-gen/src/structs.rs": "100644"
   },
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
     ".github/workflows/macos-current-trial-publish.yml": "a356f8c0550b4c79ea0b3f859a69c34a3235b57b76f2621b964ad692eccfc858",
     ".github/workflows/macos-current-trial-review.yml": "a88d5f6173228592f2de1f13a6d255fff470907c9c3dcc66ee3e6bb98759537b",
     ".github/workflows/macos-launch-fix.yml": "6cfb48085a5b1837164969db5e48954a138b8c587a3f34940579adeb45094538",
+    ".github/workflows/macos-microphone-fix.yml": "ac14687f18017c341a309b225034487622b1e7e0e3489644e17fee674464b403",
     ".github/workflows/macos-trial-publish.yml": "b91b5fad1758bbba3ac28a6978ed47cfa5a5c577a299c37c16e15696153b2e3f",
     ".github/workflows/macos-trial-review.yml": "2027032fa2a8207059fe1918b02feb8be4f4719fff21c11f23f81228d4308615",
     ".github/workflows/macos-trial.yml": "4d8af55f4a622d18ab939687b692c33786dfa1742d14f6e3f0bc8f998707a572",
@@ -2133,8 +2179,8 @@
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "17ddd47e8025e645f5e455911030dd694ba6b7f58f60bd905caea1216916d95e",
     "CI.md": "ef425167b455a8b8b6c311e4afd6a37f459ecd044d6cb028523dae98cbc3a5de",
-    "Cargo.lock": "1c290985fdd314c2b908a234ab4fca4bd5e41096cc1dea08d7661140e79affb7",
-    "Cargo.toml": "cdd969f63567ca7d3f1e25d2908fc8fc2a0dd742356b3b6086017388ab2e43ca",
+    "Cargo.lock": "5eae107be500b19e0bc6df58fa94c91d4c3a513e23f628e418df256f35de79a5",
+    "Cargo.toml": "e6f67fcde99ad363a78bb32de10db922d103c62a0b712e55bbad3ad41f726d80",
     "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
     "README.md": "496bd9c3a85bb876044cbc0f15f9186e6f1ae3400f3b3fe17acbce650d42bc89",
     "RELEASE_PLAN.md": "d36ed053e59b87881bd35b931a11ceba91d2045ea45f59558a636dbed3b5fbb9",
@@ -2215,16 +2261,16 @@
     "apps/polar-station-linux/ghostty-module/connector_window.zig": "be942eb2c601d63630af6e08891e9df77b6a380bf59ded1580ebadfc6275b11c",
     "apps/polar-station-linux/ghostty-module/content_lifecycle.zig": "fa3b94ff308d9f11ff1f298e37722883e4edc02702c699d4f5a4e10c7bbc8a26",
     "apps/polar-station-linux/ghostty-module/control_center/host_geometry.zig": "ad083ccf4e4000b3670562f9cf9d9aa08844393384f9f68bd6234b9cc5a6d8ea",
-    "apps/polar-station-linux/ghostty-module/control_center/intent.zig": "dda673f6cb5590765f4b97c4a321f9593a01a7c9f2fd244800a5ebe084a1b1de",
+    "apps/polar-station-linux/ghostty-module/control_center/intent.zig": "461c352efaca1e77d3628395290078f6cf1f367da0fedf855c094acf63444e3b",
     "apps/polar-station-linux/ghostty-module/control_center/layout_policy.zig": "2755d3e76e8446a81a269aec074371f05cd06ceba8df56638e46caa7d193602b",
     "apps/polar-station-linux/ghostty-module/control_center/model.zig": "4f095b0974a95a4e04435658e2d7d64ac78f6d1118572f1a789f0737ac151684",
     "apps/polar-station-linux/ghostty-module/control_center/session_interaction.zig": "d5b6ecf0cecf1dc878686bb9d383d7dbbadd0098439754a7ad01d433ea618023",
     "apps/polar-station-linux/ghostty-module/control_center/width_preferences.zig": "647dcb319d893f7dd8bb16514ff9a69fc51b1a4df3d0542f8433d1c65c618041",
-    "apps/polar-station-linux/ghostty-module/controller_pane.zig": "37026a9964270ffb8d96adec307a045d9dbcb2715c5d3b25b820168695734b51",
+    "apps/polar-station-linux/ghostty-module/controller_pane.zig": "4eee3b8fffe15a14024a0caef80ab84fa4a22fc9959976caab273680dfd30fe7",
     "apps/polar-station-linux/ghostty-module/dictate.zig": "16ba15bba1402314757aad99d912b86b25baa25c24ccc397bf9d62622ba140ab",
     "apps/polar-station-linux/ghostty-module/dictate_cleanup.zig": "2fafc7b372672fe4e4c9e056bf357962d68c60802efa5593332af960b38eab08",
     "apps/polar-station-linux/ghostty-module/dictate_external.zig": "dc94a98debe6383774ae59c38efe2e7844ab854802721092024662ce194a10cf",
-    "apps/polar-station-linux/ghostty-module/dictate_history.zig": "cada698d6fc8fc3dcc13196d991423062fc7fed44d39b3320c730f3df4b76b49",
+    "apps/polar-station-linux/ghostty-module/dictate_history.zig": "2d3ad0d12ae61ed0a3995aa9d7b24f07d038fe279c25a458fedd742777978f8d",
     "apps/polar-station-linux/ghostty-module/dictate_local_keys.zig": "4e12e7c942673073f108b52f61a70ab6ef4f2ee7505c576c1cd88188a5318122",
     "apps/polar-station-linux/ghostty-module/dictate_modifiers.zig": "b7e57b4d74692c36277550634f71a21b7069ff092e02c013cb61ed7b2e6c75d5",
     "apps/polar-station-linux/ghostty-module/dictate_panel.zig": "1849bedd973fa202591f91fde78ce9fdc3876df0b48db55ba340ee2524044d6a",
@@ -2234,10 +2280,10 @@
     "apps/polar-station-linux/ghostty-module/graphics_surface.zig": "19288c8cd666e9b0c73334f4cd24e4b1b40c908dae6cc0cb5f8c91a5eae5c632",
     "apps/polar-station-linux/ghostty-module/host_frame_batch.zig": "9f077066adb9634243a9cde76353f66d40deca753404bd5620dab3807f147829",
     "apps/polar-station-linux/ghostty-module/inbox.zig": "0ed9e01d2be3cff5c224a1ac6cc210d2d03382a5c5b17a4a792d7333b7cf6911",
-    "apps/polar-station-linux/ghostty-module/input_bar.zig": "85e68e152de28e2a91b4ca47936a514dcf2323a238d2b7519049c3473a3d15ec",
+    "apps/polar-station-linux/ghostty-module/input_bar.zig": "ceacd18c7722f84da71ac5e0f382da02736490b4f20594690892f993610a044e",
     "apps/polar-station-linux/ghostty-module/ipc_client.zig": "2a863af4272409e2214dbdb36c7f992807238b2650c1b6db80367b56db8a7bba",
-    "apps/polar-station-linux/ghostty-module/lgp_workspace.zig": "2a3f5cbcb9858c61580cee58c824897e111a14f10b84742429f2b2a127ac097f",
-    "apps/polar-station-linux/ghostty-module/main.zig": "f0fb705dfd62a2adbc3f01573040deb06082ddcd83d8d695cba89790290a8f6e",
+    "apps/polar-station-linux/ghostty-module/lgp_workspace.zig": "2caccc9df65db86d096e962861ce38b39f186b7e1e9c4d7bed116dce3e8e652a",
+    "apps/polar-station-linux/ghostty-module/main.zig": "2bc2d744c5582204cad3d7dd3b4a5dc0d1f27471b2956f3a77cf9898f304bbb0",
     "apps/polar-station-linux/ghostty-module/native_content_hooks.zig": "9b0f15096d978a9aff791a59e73d0bf5c51e9a8b9ef34ff86d677fd91a443fa6",
     "apps/polar-station-linux/ghostty-module/native_surface_transition.zig": "352992bfc4d36f65f423fc4b4f4e5441d1539812cc25feb67ce6a0f6875da0af",
     "apps/polar-station-linux/ghostty-module/native_workspace_layout.zig": "826ec972be16455e04b61329c12bede3748d0d685bdd07473463c97709b0f233",
@@ -2251,11 +2297,11 @@
     "apps/polar-station-linux/ghostty-module/projection_probe.zig": "171f38af9a713083b17abf6d0cba89117bbfcf1c2de327846cd00501dda2504b",
     "apps/polar-station-linux/ghostty-module/protocol.zig": "877a19b84a8dcfc21d86400f3c7334f3bbc91a76ee817e9c6f47916c710eb320",
     "apps/polar-station-linux/ghostty-module/resource_file_open.zig": "6d2b91b2a6feca847981e5dc9de8dabfd33aa1e9721dc6ba90df30c9be239b3c",
-    "apps/polar-station-linux/ghostty-module/resources.zig": "a6d6ac5425db68c3ff5a18c9f8bafd8ba5421de44bebd74ef5306d1c0632f086",
+    "apps/polar-station-linux/ghostty-module/resources.zig": "51340d066dd545a04b280c5a02effd1b41c47790dbff841832ef964d95cfc83f",
     "apps/polar-station-linux/ghostty-module/resources_window.zig": "6b845a12bcc8568620d22d8c96c53c7fa8bda8a4d57e0b841215a30f21883208",
     "apps/polar-station-linux/ghostty-module/session_directory_window.zig": "4f261751ad9b00d87e0a859e65820826be6716cde9bd5f0df18804d15cab19dd",
-    "apps/polar-station-linux/ghostty-module/session_editor_interaction.zig": "431e923fa1a5093cec0f66467a3af1099d5589bf495effae80fb6fb2bc3fc70a",
-    "apps/polar-station-linux/ghostty-module/session_editor_window.zig": "71e42d5b83b131d2d3bf6db93ba88c1eba9f80b917d512dfa1610660f8295406",
+    "apps/polar-station-linux/ghostty-module/session_editor_interaction.zig": "ae7b34a461363b952154cf388cc70c831bcafd8a95d0348b9990f3f24cacfdc8",
+    "apps/polar-station-linux/ghostty-module/session_editor_window.zig": "fa8ecc6be5f6e6830099403099c7111757b6e6b66a96e409de9a8bc74186efba",
     "apps/polar-station-linux/ghostty-module/session_end_window.zig": "ebe24e0a35ef3a0a9cd0699f7a8e7f664091a2c773280741deb47adcef67ff32",
     "apps/polar-station-linux/ghostty-module/session_runtime.zig": "add526067d2cabe50294cb1ad2c5c070fdec9378da82d9ae23716f540d30c418",
     "apps/polar-station-linux/ghostty-module/settings.zig": "d65202325731dbf23553ccadb787b494c9894bcc5c6a2018addb394dc6df02f2",
@@ -2310,10 +2356,10 @@
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/NotificationWireModels.swift": "e9549a6535d770eb607cae330b1ecfe34fc92bdb7595ab299139769635f0e523",
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/PaneContentWireModels.swift": "d40cfe0f4a3f14d9129cb47014caef54e25f068bad9628906f88e09062958fff",
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/RecoveryPresentation.swift": "4d60b8bfbdd3502b5574a02848cd4bf3a189729f69f62ef0e382ff5736b9c4cd",
-    "apps/polar-station-macos/Sources/PolarTmuxHostClient/ResourcesWireModels.swift": "a3baf3432fa8d1f7663c58e385cb9e164f306a10924be14ff0a5747ae4867808",
+    "apps/polar-station-macos/Sources/PolarTmuxHostClient/ResourcesWireModels.swift": "b30b5e5b25c645869cba94cd7df15fbcf8b943c8c0ee1d56de6ac39d5459bce1",
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/RustDesktopClientTransport.swift": "0672a1ab11bbf4d8880cd846f0d1a852c2b23fbff890c82e56362945d711f19b",
-    "apps/polar-station-macos/Sources/PolarTmuxHostClient/SessionEditor.swift": "1598f47c93f2cc2c8327ab0a7a508a390404a0d1e6727e239ec38111f311695a",
-    "apps/polar-station-macos/Sources/PolarTmuxHostClient/SessionEditorInteraction.swift": "c2678e30338c591237f4888e6f655f7864e7e2e29bc983ba6aab92bd56ef1249",
+    "apps/polar-station-macos/Sources/PolarTmuxHostClient/SessionEditor.swift": "95670979684c1f637c50c47ee5d6ea2a95b46d2f8777b8bb0f4c28a3220f871b",
+    "apps/polar-station-macos/Sources/PolarTmuxHostClient/SessionEditorInteraction.swift": "5c17b4726994c1a31d0e097bdb7531f7c7fb12d2de2ea22776d78d33140a7eef",
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/SessionRuntime.swift": "fb0797115fb3a09640fee0e31fa2154abfdd34d44b5e40ea9b8363cf8089c6c4",
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/SettingsWireModels.swift": "19770481004af92296e8cb70ccbfeab668234360b58fde491446faa55a977088",
     "apps/polar-station-macos/Sources/PolarTmuxHostClient/UnixSocketSecurity.swift": "1b655c540833a5beb59200eb1cb7107be6042cdfa00c5b2b679da20d9880f122",
@@ -2351,7 +2397,7 @@
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionAssignmentPresentation.swift": "80e35ed456a1ff1cfda54dfd21af707262dce38b916673fb0e92b2f7dc8b716f",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionCreationWindowHost.swift": "121a310fc70e06bc6f44aa046a21c5741f472ee645d75d2ed6d26013353169d0",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionDirectoryPicker.swift": "725a85f5fd9cdd2cf53ba88cfee130373a8bd654c69563b2c62a29f58c42b67a",
-    "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionEditorView.swift": "42705b2c9bce8858062a872999a9d40d21940ad433092c1f131c3f44c1670ae1",
+    "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionEditorView.swift": "07e8f92f11fe8119378cc5b701aac94d091ddefc1be591b42eb908a975afdf4a",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionEndWindow.swift": "8c4416e9367aab4c0bff350aeafb16f016fcaedb7aa27bca14049a934ff94fc1",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionHistoryKeyboard.swift": "bf09d5a728300dc26cc9985c637f3fc9a5d6be7a7c1fe8ead946e5ccb4cdb5f1",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/SessionLibraryView.swift": "a09fda250ba7309083b980a8fc255a6df60de72c64e11fc4498ef517c8f45614",
@@ -2359,19 +2405,19 @@
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/VoiceSettingsView.swift": "a58339b3a1f7a235c3c905b537e99e9091d6bb92a87708069c82b07880231443",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/WorkspaceChooserView.swift": "34a1644c96173fb17ccd68c069c580c8bbd8f64eabe274dd5a5c28232dcfb6f1",
     "apps/polar-station-macos/Sources/PolarTmuxMacUI/WorkspaceMapView.swift": "3a92fddc16cddf6d866f57608e7ff951c57bdd3f2dc24a81a1eaf2bd83eef676",
-    "apps/polar-station-macos/ghostty-module/ControlCenterStore.swift": "9e5cb2a16fbe85556e589935ee59eaa90bbdae75eecc891111c86434edcd122c",
+    "apps/polar-station-macos/ghostty-module/ControlCenterStore.swift": "dd50c2b5f3c26d7aa94e8160f7adabae85b162e7ce05a43a97a6b75def75e735",
     "apps/polar-station-macos/ghostty-module/ControlCenterWidthPreferences.swift": "4fd58094feaf1275e14c8a9b1e39a0e2183a2b6908dbeb17e4a72ca662721053",
     "apps/polar-station-macos/ghostty-module/ManagedApplicationPresentationState.swift": "73a51c2a62f227acff27bcd0500c8bb8d88b9320c7507b75665eb724da05d630",
     "apps/polar-station-macos/ghostty-module/NativeSurfaceRetirementState.swift": "2c74fdb296461c80d3542bbb29a0240edf11532d73930f932af1e45eb79208e8",
     "apps/polar-station-macos/ghostty-module/NativeTabGroupPresentationState.swift": "95211b5eb65ad7851b485c804964f6788d68d95a73a6e75879040fe4dec02ab8",
     "apps/polar-station-macos/ghostty-module/NativeWorkspaceLayout.swift": "6b317dae61f126f6cbbb67d64dae285e6ba226c175606158e1c1e0e0b90f9146",
     "apps/polar-station-macos/ghostty-module/NativeWorkspaceState.swift": "898f6a2fa48afe5838e846a466c213ca2580c1c424ff39ada89d687b7b425eef",
-    "apps/polar-station-macos/ghostty-module/PolarStationDictate.swift": "b8772a79520087ba47da6fa12090bf6de9212d051f188f6b0bbcb50a8a108859",
+    "apps/polar-station-macos/ghostty-module/PolarStationDictate.swift": "d63063551c35f8279dfae73c3e976bf8f06c652556ac7ce62092643aac8ce7ef",
     "apps/polar-station-macos/ghostty-module/PolarStationDictateAudio.swift": "e14b93ded55d6a3ca2c413fb337fa607a13461817d221c6a02185658d2d102f4",
     "apps/polar-station-macos/ghostty-module/PolarStationDisplaySurface.swift": "050ace67895384d91fcce6539390c93cdf85817f21de5c8c10af0b1596ac666b",
     "apps/polar-station-macos/ghostty-module/PolarStationGraphicsView.swift": "800980faae5f15d9a4a9c9fe1da0b57302ddb3ec9d5b4600102d421b04685b63",
-    "apps/polar-station-macos/ghostty-module/PolarStationInputBar.swift": "efb0daa4287f60f4f8a146d803fed68c4c3123fd3c422456f8eecb8c0207df09",
-    "apps/polar-station-macos/ghostty-module/PolarStationLgpWorkspace.swift": "4491fdd00f1ab8e918a217eadd6fb681adce4eaa54842566da53a979530f2834",
+    "apps/polar-station-macos/ghostty-module/PolarStationInputBar.swift": "4e80d239614778f2fe64aef9266f29ef259ccc3a45da6bf16d78cc956f36b0b3",
+    "apps/polar-station-macos/ghostty-module/PolarStationLgpWorkspace.swift": "93c585bf9af554818085cd4771f83201cde21f36b1da810902511cedcb0c9faa",
     "apps/polar-station-macos/ghostty-module/PolarStationNativeExecutor.swift": "b9a6c426a5175f2b241c44186f930b960edef84e6349bcb6f5f5f0fb6098441e",
     "apps/polar-station-macos/ghostty-module/PolarStationNativeTabGroupCoordinator.swift": "c569cabb2fb75af59c4086584a7b91d2027ad6d8452c593cb75f3d5240322ac5",
     "apps/polar-station-macos/ghostty-module/PolarStationPaneSurfaceCoordinator.swift": "19b0731491315347e21553c0855c1a8c7a8e815f0e9b26c571e1ca58e041a6f0",
@@ -2392,7 +2438,7 @@
     "automation/polar_station/apply_display_overlay.py": "d47871638e896a876ca1f158964af4a0eb172c706c78e85707b48650cd8b4a35",
     "automation/polar_station/build_linux_ghostty.sh": "5e4eff382529aca6a24102c54da8491df3a0d8fa15378c88986b8256a37b33ec",
     "automation/polar_station/build_linux_graphics.sh": "9c3d6ef2ba3fa8666e16be173ad9cbd4cd08d76e1250bdf68fe0a1f9dace46a3",
-    "automation/polar_station/build_macos.sh": "cf3a5f1cc5283a21c9469dc3714853648ab13d9c7e9a3defcf0e94c5620e8c41",
+    "automation/polar_station/build_macos.sh": "053275dc2c342821917b04bbaad864e65d3628667b210e59c17d526afcdb5f96",
     "automation/polar_station/build_macos_graphics.sh": "94be6e0bf0b91a050bb596e2cd5dcd901513a84bc71f2f0f91f1b155c3584166",
     "automation/polar_station/build_rust_runtime.py": "fd1035d40e9f09d92d6c55ae2cc73ea84b1f0f0b1aa1363223b0dc51bd599e3c",
     "automation/polar_station/capture_native_source.py": "df11a060daab179ffac020c08e4338e0bc43582f464c3a87bf388881a8f038d1",
@@ -2411,7 +2457,7 @@
     "automation/polar_station/license_audit.py": "e2b60e983977e330c1828873ce0bb90bc363625dd1320fa74811adf6caf3ca97",
     "automation/polar_station/license_policy.json": "a9b3e4bc197f3b32d886357d7a8bb686a64e260526e29fd6e3f28d7adb705064",
     "automation/polar_station/macos_binary_inventory.py": "39a24e575b94260577b7c75e4928dfc5acd2f637d3d4beee5ea9fd0fdb5bca04",
-    "automation/polar_station/native_action_overlay.py": "a26047442d7a61405fa013a61f3f99b14bfd0be66e5bf915f2c2f2ffc3e9bafd",
+    "automation/polar_station/native_action_overlay.py": "3a54f8f694d61344f9f734107834342809a324424b04a814b3a3540d68285f9e",
     "automation/polar_station/package_launch_fix.py": "6bd7c69940d1eac00f0a843a0f13665afa41232f2cf0f9c0369818fd7a7dcc76",
     "automation/polar_station/package_macos_free.sh": "fca526dcebd53b33a045d7e881d176c9c429cc9fa9ccfa6d0fbeb67951b5b677",
     "automation/polar_station/public_build_cleanup.json": "6d8a6f170c4b2e4ec9dcfea3fc344b787763ae70a0236972759f96686a35c516",
@@ -3222,8 +3268,8 @@
     "crates/polar-tmux-protocol/src/mobile.rs": "f87f0d3dc5d6b2a794813279ffc05e7ccc45cd127ffa776dd6cc339501e885c2",
     "crates/polar-tmux-protocol/src/notification_relay.rs": "f95690b2d73163ea5dd4c681c3fc5845db2cf7c20a31e5210675f77b0ee6e87e",
     "crates/polar-tmux-protocol/src/polar_access_transport.rs": "984bb853dc0b43d1453fe4b1926ddba8fd1543ffeae4f96d99280ef80a7f1738",
-    "crates/polar-tmux-protocol/src/resources.rs": "afbdbd697c2321cb98c316c9455991d1920cbf38dacd61502e616352462d2ef5",
-    "crates/polar-tmux-protocol/src/session_editor.rs": "030b359568b4654b0d7420a554631455f609d0b538cf3367252ae06db46cb6fa",
+    "crates/polar-tmux-protocol/src/resources.rs": "29d2b02b21f4b5e3ae2a1d2d48134f59ccbad94caab480a34336c9d22c9ffe10",
+    "crates/polar-tmux-protocol/src/session_editor.rs": "b51c8de5925528fada0f63816c87b832cc475763f511dc2d7ea71f7c1869ddaa",
     "crates/polar-tmux-protocol/src/session_runtime.rs": "b24c00a3f7d71deea7f405a97c3ba9344983ef38a5ffb54166b391043320d329",
     "crates/polar-tmux-protocol/src/settings.rs": "16de185c03d0bafca9e02a445a780d3392c1db4b795430f5398c2108182d35c2",
     "crates/polar-tmux-protocol/src/terminal_control.rs": "9d5aaf515a1ddc211c9e22473fc3f1c20830c657001e01b7a125b7925aa6ffc8",
@@ -3231,10 +3277,11 @@
     "crates/polar-tmux-resources/Cargo.toml": "4306c200c1c1fa2b5dc0ffbbfcc69dd3184fcf278680e9628986d7fa5d1cd6e1",
     "crates/polar-tmux-resources/src/command.rs": "45bdc5f9cb89f7048f9f1b026cbc46e7aa66ba5bcaef6365466a30e1cd70dbbf",
     "crates/polar-tmux-resources/src/error.rs": "a52faa201a760ed9cf723c6b842bca95dd4c8a05cd3fcd83416b6b00a41040d6",
-    "crates/polar-tmux-resources/src/file_access.rs": "a1bcbec0fe4c64cf7d6e6ad795722d92e53c0bbd0a8d194bb0ed7dc6be12f4d1",
-    "crates/polar-tmux-resources/src/file_open.rs": "a3d4f173b15e102b684d6dde3ff9be3057ea8cb255cf33fe44144e077ea1e880",
-    "crates/polar-tmux-resources/src/file_reference.rs": "2377baeebd5b2113a918c426bec900d3b3934fbed5b897d94fd5ee4ddbe241aa",
-    "crates/polar-tmux-resources/src/lib.rs": "33be94b093d185c28e81b5cecb6855e279e1f858689401126405aec0148e3e67",
+    "crates/polar-tmux-resources/src/file_access.rs": "cf02c9d2ded6c96bead4d31d6dc48fd51564218630711d64b84fcd9244001108",
+    "crates/polar-tmux-resources/src/file_candidates.rs": "5bae491bc624a9fd97f52f84c6da445380469a2a29fd376c5dfc7361b0ed28ee",
+    "crates/polar-tmux-resources/src/file_open.rs": "6a77509a4d116079a614075f52be1eed2011c5a5cd90ad0cb9b78ab3bf4bbc0b",
+    "crates/polar-tmux-resources/src/file_reference.rs": "8361024b83d93484bc22ecf385d32b1b69eb972a16a4ecf4cd7e6b2be008dee6",
+    "crates/polar-tmux-resources/src/lib.rs": "494153f6798c1c2453d1ac0c2962b48b012fa7fd6f3def7f63042c8c96c56605",
     "crates/polar-tmux-resources/src/model.rs": "3d4e7c332d6a5dcf4620097e82e5bbea7b68d3989071267ba23deaf1ffbd1067",
     "crates/polar-tmux-resources/src/projection.rs": "4bd4d7816d813c6f8540578b40cf7f0ccff1944955b07b142ef4ad50ad9fed28",
     "crates/polar-tmux-resources/src/reconciliation.rs": "5ca11f17858e92621756be4013ae4fc48f0c25e1280d50b6ce0294ee392b0bb2",
@@ -3255,7 +3302,7 @@
     "crates/polar-tmux-workspace/src/control_center/mod.rs": "f0b4d598db5edae2662b50a3fe1edce8bdd06240bffa7ad14a5d473c7bf04860",
     "crates/polar-tmux-workspace/src/control_center/native_action.rs": "3aa8f7f4deca1320133677ba9ef53d04ba3e85f1dbf1694b5314b1f6c87bedf1",
     "crates/polar-tmux-workspace/src/control_center/projection.rs": "3787547c142b7bab6efa737a28d81c21087a8cd6e810b6a41c156ef4e980c936",
-    "crates/polar-tmux-workspace/src/control_center/session_editor.rs": "cbe7cad6e341b6868941b10be0d59e123049860793ef1d0871e2f420289d94ba",
+    "crates/polar-tmux-workspace/src/control_center/session_editor.rs": "a7067b9af96972dfa286a4f7d045867078c7b816fa2b9fe33d7bb0538cc681bc",
     "crates/polar-tmux-workspace/src/control_center/session_library.rs": "dff3a332f11e093427ed839a10c7b134cd840c79693dcb1ee0af2e925a60493d",
     "crates/polar-tmux-workspace/src/control_center/session_library/catalog.rs": "95b9f2a448a2b4a5eaa356ca48fca68c88797de080628061d39ff53382f7113a",
     "crates/polar-tmux-workspace/src/control_center/shortcuts.rs": "c94ee5b765c518e3fc03fcfa30debde2356c39daf43d2219d7c417bd6cd96c20",
@@ -3297,7 +3344,7 @@
     "crates/polar-tmux/src/host/child_process.rs": "50d78af088bbf174c0039226079f9b1a123ae1911269bc18a244b0222cfab002",
     "crates/polar-tmux/src/host/codex_config.rs": "4c825687ffa5fb3f8047f9e6379daa809dd7b776e751c1d7f61e852141ff7a97",
     "crates/polar-tmux/src/host/codex_control.rs": "e3159ca6a3b5c98c0f5b9f37a77a2675d216ac4cb7d37a5082198e4851574271",
-    "crates/polar-tmux/src/host/codex_discovery.rs": "43f4513d451ee1e773dceac3db8c26d99b1f52ffe2769159a8b26c1312676f93",
+    "crates/polar-tmux/src/host/codex_discovery.rs": "71990eaaf198a6b89ef64dfd40842e095778e9936a8a003e76420459adb9c525",
     "crates/polar-tmux/src/host/codex_endpoint.rs": "d1c1cd104f9394686692b46d0f5940964b8f29e3fae471133bd5d31eacf1c62d",
     "crates/polar-tmux/src/host/codex_file_references.rs": "b5a4041bd04ef2c5093aabb2c816b17638d00fb095c19e9a44ea7a465dccfa3a",
     "crates/polar-tmux/src/host/codex_imessage_runtime.rs": "6c242049b43f24af53c36889aa9cb626abfbac7a9409bbf606b9bec299070044",
@@ -3307,13 +3354,13 @@
     "crates/polar-tmux/src/host/codex_remote.rs": "71ade2de2f8acbc6b10ce53b1bda2c6adf0ac02d309eb681c69bfc548b3486ae",
     "crates/polar-tmux/src/host/codex_reply.rs": "52e3f133a1228220b8fd771c90f288329e2baaeba2e016e06342f7ec614515f4",
     "crates/polar-tmux/src/host/codex_session.rs": "b9c4f8f3addfefdbc5336b24e8a0c8014714d5c37ec9cfed2c8c9a47fdccc047",
-    "crates/polar-tmux/src/host/codex_startup.rs": "257cf85ce0e52a8282a69593d567e1f04bbbdb5da2b91d44febe2f51da1c0062",
+    "crates/polar-tmux/src/host/codex_startup.rs": "da089d310a128f724ddc9fc7272ade20d170e64d0a46a64a20517c92745ff8e6",
     "crates/polar-tmux/src/host/codex_telegram.rs": "5b5423d9f0a995b90f7348e037559a843be14f63c94699c57a7154f97284df3b",
     "crates/polar-tmux/src/host/codex_telegram_runtime.rs": "979fe35bfb444d1c76eea0d9f118ac1a5e8ea71d9313f2cd40a1ec84a4266402",
     "crates/polar-tmux/src/host/connector_monitor.rs": "05a73f0aff9c61c1adab3e2e7419c27fc081a75ca2c53c3b54e554966be2dd99",
     "crates/polar-tmux/src/host/connector_telegram.rs": "3469ad224908e6fdbfae006faedd90dee9d956bd5ff86c26f0d56c94389c2f5f",
     "crates/polar-tmux/src/host/control_center_service.rs": "9619bea2c0baff8174d100eb100ddf3d86a5703b194615a45a047ef5c12c45ff",
-    "crates/polar-tmux/src/host/control_center_service/editor.rs": "54365a6ef9171fbf5c9986e656e9647cd226b0395ccc8d3ceed691ee7d88b468",
+    "crates/polar-tmux/src/host/control_center_service/editor.rs": "53d60519e57dfd49460c5d88242ad49b8ec09efee8016e3a969732cb61997df7",
     "crates/polar-tmux/src/host/control_center_wire.rs": "703c5a79de6a294797f78307229dc8779512d8d69a7d0f3d827ebe0eb4576e80",
     "crates/polar-tmux/src/host/imessage_sender.rs": "2ea1550b542d9c2b7b94825e81a38ddffaf00afb10eb91c7bd9e2c56802dfa2f",
     "crates/polar-tmux/src/host/imessage_sender/macos.rs": "ccd623f85c49ed9abfeb0cbc3b96da0203bbb6d468138ebf23ca7edc3aaba6d5",
@@ -3321,13 +3368,14 @@
     "crates/polar-tmux/src/host/inbox_overview.rs": "ddd1c84896748c409996619d3d3caa9c0091ab7de75369bba518de96879604da",
     "crates/polar-tmux/src/host/inbox_service.rs": "efba2c6c26f561c2aa0c489ecc2b7e9a72111b164a6125b6b23a50b0d6424154",
     "crates/polar-tmux/src/host/message_connector.rs": "26c4343a73d30f8f8ea14a7ac629f0f8da0bb0a3d17cb0105186ed097cd44207",
-    "crates/polar-tmux/src/host/mod.rs": "651cb74059ec17105eb3344767a67e971f27afc759504e2719b08cddf25f0eb0",
+    "crates/polar-tmux/src/host/mod.rs": "bdccea91fd8ac9f934d8305b4af34091e2955949832e779559a5949481e41f6d",
     "crates/polar-tmux/src/host/peer_client.rs": "a910d7bbfaca1fa930f1157f1912bd97c0132da843a0c585efe86707959ef1b0",
     "crates/polar-tmux/src/host/resource_provider.rs": "8102e29bdff5cfb8f66acb4060f1d5e1c9083160467f642ed6167a396cacb69f",
     "crates/polar-tmux/src/host/resource_recovery.rs": "973f64d0afa0d446c91c25a6af46c3f10adef0c1aa241cf85384922749e2266e",
-    "crates/polar-tmux/src/host/resource_service.rs": "fbf4e0eda512850ebe3c0377226c35003c3f25784352f0600a4c2d56e304627e",
+    "crates/polar-tmux/src/host/resource_service.rs": "ecd745e9a3686ff13f57bf7016357875c020eef7357af5772c9c292256057c49",
+    "crates/polar-tmux/src/host/resource_service/candidate_files.rs": "d810cb742af518df914344d0c8865001bd6190e906c392eb84716b816e7ecd4c",
     "crates/polar-tmux/src/host/session_fact_provider.rs": "8cfba3c2eae14b6e8b1f12b79d9fd4a4e3999b835801f84bc2a72f57374a3fdf",
-    "crates/polar-tmux/src/host/session_lifecycle.rs": "782714e45d2359c466ecddada39305ebcb2bb84b24eda76567e889f6a7b7ab7d",
+    "crates/polar-tmux/src/host/session_lifecycle.rs": "50b2c55cd4b0f14b3fcc8d35d400b21b73ba87b81477f5ae9cf3df7ce28e920b",
     "crates/polar-tmux/src/host/session_lifecycle/runtime.rs": "72ea12bc4edaf336a24ef62ef72a21b2e35c9a03d5fa6cfcc1bb5d2f09dd1e35",
     "crates/polar-tmux/src/host/session_monitor.rs": "dedb34f4ff4b82847830a1851b6db2918ad59509071862fd235475098564b8d8",
     "crates/polar-tmux/src/host/session_registry.rs": "1aa4a0538b96c49cdde77589e25aa6acfd4eea47936e46ec95e5a6285066b473",
@@ -3336,7 +3384,9 @@
     "crates/polar-tmux/src/host/settings_service.rs": "cc03fd7be26d0cdda921af1a1c21b4ddb15c4f2899a9373f0b67c91b8b9c789f",
     "crates/polar-tmux/src/host/ssh_socket_forward.rs": "0a87de61470d956e5491197c4e627b2302ac1c56916dffd5b1a55b3881da7de6",
     "crates/polar-tmux/src/host/storage.rs": "c918d69bbadef76c85df1011daa27a5b7f3dcc4eee3caef2db5061dbcf056f5c",
-    "crates/polar-tmux/src/host/target_directory.rs": "02a467bf1bf1924e11f6deae3443295e318b6693c72b27396a5dc00a338f0e5c",
+    "crates/polar-tmux/src/host/target_directory.rs": "ec2e7a7818d5baddfec5bd9acf62b7c972525125b3802149fd7ad4a7a60f4d0c",
+    "crates/polar-tmux/src/host/target_tool_setup.sh": "5bf22ac30a14383eec0c281b39dce501f1f078c3e112e91a78e44b9762fdc9d4",
+    "crates/polar-tmux/src/host/target_tools.rs": "d3f0207b290a725084fec9607ae2333145117f0769834d3831f37947e77a5baa",
     "crates/polar-tmux/src/host/terminal_runtime.rs": "f3c5b982c490b3b1bb52f08d06ebc141cc8c924a3bcb00bdf25321d0e5057dad",
     "crates/polar-tmux/src/host/terminal_runtime/bridge.rs": "01fc810adde49b43fbe089cac4a34f9837ee81e1f374f0fe25208eac63664d7e",
     "crates/polar-tmux/src/host/terminal_runtime/control.rs": "3a2e2517e7bf38b943e07446af253a32cdfb24ee4269607d2e875f0e244cdc98",
@@ -3353,7 +3403,7 @@
     "crates/polar-tmux/src/local_ipc/socket_readiness.rs": "686b02e0cba9fff2da0f41e0edf729eb5c4c2c154f40c24e2cdac73753fed841",
     "crates/polar-tmux/src/main.rs": "91e5965a8118276a7428af27a3ad3cc163b71880d8ecba26bd0f4ddeec016093",
     "crates/polar-tmux/src/native_state_file.rs": "40ca7cbf7bf5a3832af03bf1a04c69a94f06e92c755495bb47b9993e3ed35ceb",
-    "crates/polar-tmux/src/native_ui_ffi.rs": "48291cafb57397afa91d74a4720cfe6e052ff1374450cbeb08b567a9760d728b",
+    "crates/polar-tmux/src/native_ui_ffi.rs": "83aaee545805a5a6d96d08e5a29a49e36ba61a2a9a128d9c01be52044ef97466",
     "crates/polar-tmux/src/operation_trace.rs": "ef201c5378485ee993cc6047851d29af816dcc74e7f921ead25dfb19d624b34f",
     "crates/polar-tmux/src/pane_host.rs": "e42d32f74cb68fd3a2be2f09ddaae71877810119d8470c09049bdb854d6a42df",
     "crates/polar-tmux/src/polar_access_transport.rs": "601e252887adaee22af529d5e72b84c876b144ea776e0016fe92f9bfd8ca70d7",
@@ -3369,7 +3419,7 @@
     "crates/polar-tmux/src/ssh_connection_manager/route.rs": "31d6edea054f1c7e674b75ea657c270d8e00c3ea85e424cd31725a8ad5dc54c3",
     "crates/polar-tmux/src/standalone_runtime.rs": "21c274337cbdfafc291e7c6397db3f39abfb5d4e01115f461403e43adda9444a",
     "crates/polar-tmux/src/station_input_client.rs": "55324558e073c8862d061331aad5534e7193656c7019174149ee681e227615d5",
-    "crates/polar-tmux/src/target_registry.rs": "ab5c8c90d70198e4290bcd86ef42d20b7b183fc3367122482360f10c8adce263",
+    "crates/polar-tmux/src/target_registry.rs": "56ef526651dc3f0e256a1b74d459bc635698f019dcfc912561957ef69d38edeb",
     "crates/polar-tmux/src/target_registry/connections.rs": "bb23127cbccf431642378530fca0d50852338ebdeaf49dc2908656c63fbcb632",
     "crates/polar-tmux/src/terminal_io.rs": "ac7d006e5917c649835fe6f6621286ac8785ae83739df21f3d5d48c3cb7c4e84",
     "crates/polar-tools-model/Cargo.toml": "7926c418546274f92e41e50e6c25b270e3e3e26fae81669a493452d6b20bf3ba",
@@ -3402,24 +3452,30 @@
     "crates/polar-vault-store-sqlite/Cargo.toml": "e291bcd6ee687711b3475e280b7cbf6bfbb790e0f8d1386b5e1d6bfb352d1a2f",
     "crates/polar-vault-store-sqlite/src/capability_security.rs": "28baeacc834276f4bb10d08f4aa00ef2197918332b597cd3559b84ecd3ceba6a",
     "crates/polar-vault-store-sqlite/src/control_authority.rs": "9078e325663613b44d0fe817af58bd17a89b30d803ce119ab0f7199bbed83221",
-    "crates/polar-vault-store-sqlite/src/implementation.rs": "7c189af620e6bc588046f04aa1d25072d4fc99e110d28b6d80bd3eab05d223cc",
+    "crates/polar-vault-store-sqlite/src/implementation.rs": "363116d097fef3f70e8b7510aa7c8f056a3bd59b87fc2f50123186c038104b01",
     "crates/polar-vault-store-sqlite/src/lib.rs": "ef51b85b093b5db6f08122a04418fb2fe8e46cd6b8f512425ceefed7e1cc5870",
     "crates/polar-vault-store-sqlite/src/managed_nodes.rs": "860861b1e9d440eb8bc76a0d570cda24916b675cef31415fdb08e4041a4e69f6",
     "crates/polar-vault-store-sqlite/src/management_requests.rs": "f8256dc7aed04f531271c130ad81dbb928a9a6709a49ad00f9bfd165ff68c4c9",
     "crates/polar-vault-store-sqlite/src/node_settings.rs": "9195b2d10979faeaf1dfebb4c23a11ed22a34a2120f37ba859692e7f03d2fd92",
     "crates/polar-vault-store-sqlite/src/runtime_dedup.rs": "0e8497680656001a229906d2ae5b2ab49876005420efe28de016c2105a90297e",
     "crates/polar-vault-store-sqlite/src/trust_state.rs": "8f2cabbce1ee80f02ab7bd1e8896feaccb4b572a41d2854a534cb38f69b51d77",
-    "crates/polar-vault-store-sqlite/src/uuid_secrets.rs": "e2fa1712c98f89490eeba3137a510a50293ba9d1948253e662767754cd453e40",
-    "crates/polar-vault/Cargo.toml": "6ee9cf2f5f68e2539ef17e65adcd66932f9b6e91972465cada7bc6944c8c642a",
+    "crates/polar-vault-store-sqlite/src/uuid_secrets.rs": "e760bbb783d3cbd696147f717be991de4077cf4515ef2d09069253fb013bdc13",
+    "crates/polar-vault/Cargo.toml": "a2f0974236d37f8ddac649838f5286eff840a15d64746b34324706293b0dad04",
     "crates/polar-vault/src/authorization.rs": "ba5ffc4f39ed2d8e1507be95e8e4c9c9a5f6984a66b4798599f483dfa21fcbb5",
     "crates/polar-vault/src/cipher.rs": "bdd44633969bfe1ec6ae82083fec5eb6e33b02f273ab37ff54b9da132f34fc3d",
     "crates/polar-vault/src/credential_bundle.rs": "6e514b4ca12e3739ff7151e6d65f9edeef7c22fa24e9813bc06d6dbd5a6fac44",
     "crates/polar-vault/src/inhouse_identity.rs": "d552763b9457a12a23808d9c30d29a46cd9a763ef0e7dd24021479a5eccdc7ee",
-    "crates/polar-vault/src/lib.rs": "a11c1efc3e757f06a14d982074eace14c143bb73b5df8e138c090e365cbcb970",
+    "crates/polar-vault/src/keys.rs": "08954118b2a3080e089eacac4d06b5ebf0b153b20d2781f8e9be4d10d8d8c653",
+    "crates/polar-vault/src/keys/derivation.rs": "27b82f3982fc8ca12c65896546595e33e219f4297a1a6c1ab7895f7d51189624",
+    "crates/polar-vault/src/keys/directory.rs": "c78cac65438d11bb018695028a0a1197532de6c65d1dd3312855f142fcefaadb",
+    "crates/polar-vault/src/lib.rs": "16506b18d93b38adf8b48b15dea7388a5c8ddb63ef4e81d42785ffa74c839d30",
     "crates/polar-vault/src/local_chat.rs": "7c361b85c24cc3d80176a0ad00ceba80925bc72ae7ab1e33d3bca3e9471deaf9",
-    "crates/polar-vault/src/operations.rs": "cf0acd154247f5b00c5050cd08cdf95ddef24e4d865745afb93345c3325f985f",
+    "crates/polar-vault/src/operations.rs": "3b3a9cf7100a8557f50574c045b6c0f1f874302596108a7c9ec6eee06b713867",
+    "crates/polar-vault/src/protection.rs": "736baa2a30e62e8b7ea7f7637b0353ece040f42e18e27baf63f23de3d220696b",
     "crates/polar-vault/src/public_state.rs": "8b8489141576436cff1c81ddbb08c704ffba7583f95cc5f0f65170f753cbcc08",
-    "crates/polar-vault/src/secrets.rs": "68d13bd1a28aff5db26bac53599c3e4040154fc325ca8f0edc07c3063b3ab9b4",
+    "crates/polar-vault/src/secrets.rs": "f01230b6b90a6f3c47fc3e0dfe86095bd8189c9364c5b43b960c586d3334b4d5",
+    "crates/polar-vault/src/secrets/cache.rs": "a4a315cf0ef95c6643ae26cd92679642f014ed233c2366b607e8f740b410ef41",
+    "crates/polar-vault/src/secrets/device.rs": "b0b9b990d2839b203107be518d2bbae9bb7118b12690bc578a58fb895374fefb",
     "crates/polar-voice-provider-codex/Cargo.toml": "d8d789e3437dd9a9aec02ea1b3349cc19b699c091d72d8fc0b950b51c92f31f5",
     "crates/polar-voice-provider-codex/src/dictate.rs": "49cd9cef55869e31f1bf9a15fb2939073680db10dd7031c194fcf058faa67ea3",
     "crates/polar-voice-provider-codex/src/jitter.rs": "5f63577b3664aade73b8232a591f6a5276e44007c37b8840f3a0ef1d4db48ddd",
@@ -4144,7 +4200,41 @@
     "migrations/sqlite/vault/V0002__legacy_management_request_repair.sql": "8d79b67612960065c9faff1902f582df495ae3f33a238f78ed991cbf97508ab0",
     "migrations/sqlite/vault/V0003__uuid_secrets.sql": "23f176fa92421346e6690f2e1d6b03352d1414ee4920df7736905688bb4a41e9",
     "migrations/sqlite/vault/V0004__credential_names.sql": "75d720e3ed28b171c2aff8c09074060f67cf3ace3b8a57ca4c13587fe9cbceac",
+    "migrations/sqlite/vault/V0005__key_directory.sql": "c0fe1145e097895402781960d98c0a5214af749573db87bff8b36ecc356adb2d",
     "rust-toolchain.toml": "22dfad9fb1a3c7cecd49b613944ecc01bd95ec443a57382de84633263f83fdb7",
+    "vendor/bip0032/.cargo_vcs_info.json": "c0cbbd1cb3aad7c9b88114ba4d3f59275a059ba0688f706ab470214abcfec317",
+    "vendor/bip0032/Cargo.lock": "d05f5c85e417d4aed4deb3108470140fb2b317f8acc609585377242bded07449",
+    "vendor/bip0032/Cargo.toml": "63633c0b0c1b8fac784ff8ae80fdf36c19a7c039d43fc17c27b6e6a3d1698610",
+    "vendor/bip0032/Cargo.toml.orig": "d30b91f9801d84228b1e5a75474b935a649c7a73d357b685d1e29743674b0cf7",
+    "vendor/bip0032/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "vendor/bip0032/POLAR-PATCHES.md": "ab4bc5d7ed2fcd2d2fe1dc6947837f7b9f94c79de17bc31e4b7e77f7b4e19a96",
+    "vendor/bip0032/README.md": "023ffae3450a92c5135bc79cd599d8ba85b63526468f03d327d2aba40088961b",
+    "vendor/bip0032/SLIP-0010.md": "33e1219c857933293d3f397f43c592c142e80d86223f89296ba5ebb285c947c9",
+    "vendor/bip0032/justfile": "fcee0f615d98356b5715d72cc0080d2a382023d2cf328bb9f363c651a7fd019e",
+    "vendor/bip0032/src/curve/ed25519/backends/ed25519_dalek.rs": "5f1c8ff03aa525463724dfe6f57ab7ddbabcafa785f393a656a82f59eb9d3069",
+    "vendor/bip0032/src/curve/ed25519/backends/mod.rs": "591ef55aae1f1b13ce729d9c1c755a7c44a334e9673bb2f0d3c48b23dff47b66",
+    "vendor/bip0032/src/curve/ed25519/mod.rs": "4cc46b78c58ae32c95eb7db91a9eafb9ab0f87847109a9c13a1efa48867f66e4",
+    "vendor/bip0032/src/curve/error.rs": "527a30d5c99ec6f181a6751dbb8d3c41f844104af269a794f13f4d1c368f6e13",
+    "vendor/bip0032/src/curve/mod.rs": "0c97d3427c6a6f7ae594ffdb6bd76cdb90d10b8f0a7044fc655c4f828e74c122",
+    "vendor/bip0032/src/curve/nist256p1/backends/mod.rs": "f7a9cda38a8e3c94cd46d6388f88b6ffd21c78ab6e045267f58da2353fe87deb",
+    "vendor/bip0032/src/curve/nist256p1/backends/p256.rs": "e0c79b2e19bbc68493c416ee81827872449d6c871740beef3d22f308a492a837",
+    "vendor/bip0032/src/curve/nist256p1/mod.rs": "0f09c44d762e2bc86d3338a2ee7fd06d46dfea93073c17d44fb3c9739e11c8e9",
+    "vendor/bip0032/src/curve/secp256k1/backends/k256.rs": "e934cfb720e42578a7b8ebedce1322257888b397ac6e8a924952e4bb6299888c",
+    "vendor/bip0032/src/curve/secp256k1/backends/mod.rs": "b51339796e53e9baf72793a9e80dfffda6b6e98a7024acacd8330f83c6075b09",
+    "vendor/bip0032/src/curve/secp256k1/backends/secp256k1.rs": "2fb033815d74b90cf1fbf7553502d3fa4d3b521654d76e07048d54d55a90591f",
+    "vendor/bip0032/src/curve/secp256k1/mod.rs": "33f54850f13a41a7f1a9cd8646d288966cc700855ccc2504506a06edf9312590",
+    "vendor/bip0032/src/curve/slip10.rs": "039b8000fe9686fb2b18809a4e06eab97e8bcd9ac0e46b0861a494c50a36602c",
+    "vendor/bip0032/src/error.rs": "585359462237ea5ad3db0003daa7c6175fcba9f01fb672a31c31a62db95623e8",
+    "vendor/bip0032/src/lib.rs": "8fc50c5a8d96fa08521e1186936ec55a761dbb48e47cb0fce42165e493bf5602",
+    "vendor/bip0032/src/path/child.rs": "baf55010cdcf3b181795df880f60a32586f5310ad6b716d7cae3177245aed5d5",
+    "vendor/bip0032/src/path/mod.rs": "31d5b9ad8a7b7a195e733783b704c9b4d58cfee2d148baeb0c82e4028e6eac9d",
+    "vendor/bip0032/src/xkey/core/mod.rs": "e09cd6376c98101c6bbcaf6e90bb53bee5d3733a7c4a39d7ea1417171073564e",
+    "vendor/bip0032/src/xkey/core/private.rs": "7042cfa38bf3c02c033fec6ffa0c8aba890896949251120419588915b2d56636",
+    "vendor/bip0032/src/xkey/core/public.rs": "106dce8869f008a738c127cf33ab18cd0c9db0fd175fb20ee45a9d495639dd46",
+    "vendor/bip0032/src/xkey/mod.rs": "3d06d76482553ddca4c401135e5e7e11fa61f32b7d300c511b8750fef9911f4a",
+    "vendor/bip0032/src/xkey/payload/mod.rs": "98956d6bbd3f0d86ae4d12bed2e37b3783b55384149f8331671a1b65c4a92d6d",
+    "vendor/bip0032/src/xkey/payload/version.rs": "4ae2fc3303604a81808e86b736448609ab466a8bd00ca904687f8ee7b5fe99b8",
+    "vendor/bip0032/src/xkey/slip10.rs": "0a0471154eb3fcf44dc063fda5506c9a49435f1f17a7df6619fad8a607e3dbd5",
     "vendor/grammers-tl-gen/Cargo.toml": "b8bac221bdddd1af8adb59aa4617335efd37fc4f18568eb6931cc05bae43fb6d",
     "vendor/grammers-tl-gen/DEPS.md": "b79e741d325cfcbf17fb3c020a5d32cede060ab17c977c93c5bcb54185fe7573",
     "vendor/grammers-tl-gen/LICENSE-APACHE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
@@ -4154,8 +4244,7 @@
     "vendor/grammers-tl-gen/src/lib.rs": "46767dcf9dc1b3cc15d5cb80bf284887a26c6c85b8f572fa6f452b2bee73532f",
     "vendor/grammers-tl-gen/src/metadata.rs": "e625828bf9a6d46b33c9271bc1360cc8ecda524d3c4a80a9035121ab2af044e1",
     "vendor/grammers-tl-gen/src/rustifier.rs": "0b5181ce39d8ee78fca9b3c355d24546516f9d4a75b81afd87bac5f27daf86d4",
-    "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86",
-    ".github/workflows/macos-microphone-fix.yml": "ac14687f18017c341a309b225034487622b1e7e0e3489644e17fee674464b403"
+    "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86"
   },
   "license_present": true,
   "missing_inputs": [],
@@ -4165,9 +4254,9 @@
   "schema_version": 1,
   "source_provenance": {
     "git_dirty": false,
-    "git_head": "0cb12dfabedc9e891a171593813eec1cd17e2c8b",
-    "input_count": 1997,
-    "inputs_sha256": "ae2e56238162a648cb3049e20b909b7a9020f14676e729357d3f84b90fc9e6c1",
+    "git_head": "acfa70d1c3da082d1f9bc4d980bd6e31b38ef7f8",
+    "input_count": 2041,
+    "inputs_sha256": "cd3e05399b4012ab060ab1c18bea695fd2a89fdff763d123f936b3b9bc71b040",
     "kind": "working_tree"
   },
   "status": "source_export_preview_not_release",
@@ -4176,8 +4265,8 @@
     "files": {
       "apps/polar-station-linux/ghostty-module/control_center/intent.zig": [
         [
-          16110,
-          17444
+          16174,
+          17508
         ]
       ],
       "apps/polar-station-linux/ghostty-module/control_center/width_preferences.zig": [
@@ -4354,16 +4443,20 @@
       ],
       "apps/polar-station-linux/ghostty-module/resources.zig": [
         [
-          9013,
-          9612
+          9132,
+          9731
         ],
         [
-          10063,
-          11031
+          10495,
+          11541
         ],
         [
-          11033,
-          11756
+          11543,
+          12266
+        ],
+        [
+          12268,
+          13307
         ]
       ],
       "apps/polar-station-linux/ghostty-module/session_runtime.zig": [
@@ -5638,8 +5731,12 @@
       ],
       "crates/polar-tmux-protocol/src/resources.rs": [
         [
-          7445,
-          8594
+          8759,
+          9908
+        ],
+        [
+          9910,
+          10513
         ]
       ],
       "crates/polar-tmux-protocol/src/terminal_control.rs": [
@@ -5650,24 +5747,30 @@
       ],
       "crates/polar-tmux-resources/src/file_access.rs": [
         [
-          3932,
-          8731
+          4143,
+          8942
         ],
         [
-          9365,
-          9884
+          9576,
+          10095
+        ]
+      ],
+      "crates/polar-tmux-resources/src/file_candidates.rs": [
+        [
+          6197,
+          8280
         ]
       ],
       "crates/polar-tmux-resources/src/file_open.rs": [
         [
-          5380,
-          9078
+          7150,
+          13778
         ]
       ],
       "crates/polar-tmux-resources/src/file_reference.rs": [
         [
-          6403,
-          8811
+          6817,
+          9225
         ]
       ],
       "crates/polar-tmux-resources/src/projection.rs": [
@@ -5700,8 +5803,8 @@
       ],
       "crates/polar-tmux-workspace/src/control_center/session_editor.rs": [
         [
-          34833,
-          58385
+          41176,
+          68726
         ]
       ],
       "crates/polar-tmux-workspace/src/control_center/session_library.rs": [
@@ -5858,8 +5961,8 @@
       ],
       "crates/polar-tmux/src/host/codex_discovery.rs": [
         [
-          3885,
-          4099
+          4212,
+          4426
         ]
       ],
       "crates/polar-tmux/src/host/codex_monitor.rs": [
@@ -5942,16 +6045,16 @@
           1526
         ],
         [
-          1686,
-          1726
+          1704,
+          1744
         ],
         [
-          1924,
-          1982
+          1942,
+          2000
         ],
         [
-          2029,
-          2080
+          2047,
+          2098
         ]
       ],
       "crates/polar-tmux/src/host/resource_provider.rs": [
@@ -5980,24 +6083,30 @@
       ],
       "crates/polar-tmux/src/host/resource_service.rs": [
         [
-          3776,
-          3908
+          3798,
+          3930
         ],
         [
-          3910,
-          4415
+          3932,
+          4437
         ],
         [
-          7523,
-          7635
+          7690,
+          7802
         ],
         [
-          7641,
-          7967
+          7808,
+          8134
         ],
         [
-          31047,
-          33736
+          34241,
+          38340
+        ]
+      ],
+      "crates/polar-tmux/src/host/resource_service/candidate_files.rs": [
+        [
+          6934,
+          10522
         ]
       ],
       "crates/polar-tmux/src/host/session_fact_provider.rs": [
@@ -6064,12 +6173,12 @@
           70635
         ],
         [
-          78277,
-          114318
+          78559,
+          114610
         ],
         [
-          114320,
-          117624
+          114612,
+          117916
         ]
       ],
       "crates/polar-tmux/src/host/session_monitor.rs": [
@@ -6134,8 +6243,14 @@
       ],
       "crates/polar-tmux/src/host/target_directory.rs": [
         [
-          6920,
-          8531
+          7192,
+          8803
+        ]
+      ],
+      "crates/polar-tmux/src/host/target_tools.rs": [
+        [
+          4589,
+          9887
         ]
       ],
       "crates/polar-tmux/src/host/terminal_runtime.rs": [
@@ -6266,8 +6381,8 @@
       ],
       "crates/polar-tmux/src/native_ui_ffi.rs": [
         [
-          15167,
-          16263
+          15816,
+          16912
         ]
       ],
       "crates/polar-tmux/src/operation_trace.rs": [
@@ -6368,20 +6483,16 @@
       ],
       "crates/polar-tmux/src/target_registry.rs": [
         [
-          9344,
-          9436
+          17857,
+          18065
         ],
         [
-          17867,
-          18075
+          18071,
+          18376
         ],
         [
-          18081,
-          18386
-        ],
-        [
-          34367,
-          53314
+          34357,
+          53304
         ]
       ],
       "crates/polar-transcreation/src/learning.rs": [
@@ -6428,12 +6539,30 @@
       ],
       "crates/polar-vault-store-sqlite/src/implementation.rs": [
         [
-          22174,
-          22251
+          24814,
+          24891
         ],
         [
-          22253,
-          23263
+          24893,
+          25903
+        ]
+      ],
+      "crates/polar-vault/src/keys/derivation.rs": [
+        [
+          2778,
+          4768
+        ]
+      ],
+      "crates/polar-vault/src/protection.rs": [
+        [
+          5386,
+          8366
+        ]
+      ],
+      "crates/polar-vault/src/secrets/cache.rs": [
+        [
+          10329,
+          18318
         ]
       ],
       "crates/polar-voice-provider-codex/src/dictate.rs": [
@@ -7503,6 +7632,7 @@
     "crates/polar-tmux-resources/src/command.rs",
     "crates/polar-tmux-resources/src/error.rs",
     "crates/polar-tmux-resources/src/file_access.rs",
+    "crates/polar-tmux-resources/src/file_candidates.rs",
     "crates/polar-tmux-resources/src/file_open.rs",
     "crates/polar-tmux-resources/src/file_reference.rs",
     "crates/polar-tmux-resources/src/lib.rs",
@@ -7597,6 +7727,7 @@
     "crates/polar-tmux/src/host/resource_provider.rs",
     "crates/polar-tmux/src/host/resource_recovery.rs",
     "crates/polar-tmux/src/host/resource_service.rs",
+    "crates/polar-tmux/src/host/resource_service/candidate_files.rs",
     "crates/polar-tmux/src/host/session_fact_provider.rs",
     "crates/polar-tmux/src/host/session_lifecycle.rs",
     "crates/polar-tmux/src/host/session_lifecycle/runtime.rs",
@@ -7608,6 +7739,8 @@
     "crates/polar-tmux/src/host/ssh_socket_forward.rs",
     "crates/polar-tmux/src/host/storage.rs",
     "crates/polar-tmux/src/host/target_directory.rs",
+    "crates/polar-tmux/src/host/target_tool_setup.sh",
+    "crates/polar-tmux/src/host/target_tools.rs",
     "crates/polar-tmux/src/host/terminal_runtime.rs",
     "crates/polar-tmux/src/host/terminal_runtime/bridge.rs",
     "crates/polar-tmux/src/host/terminal_runtime/control.rs",
@@ -7686,11 +7819,17 @@
     "crates/polar-vault/src/cipher.rs",
     "crates/polar-vault/src/credential_bundle.rs",
     "crates/polar-vault/src/inhouse_identity.rs",
+    "crates/polar-vault/src/keys.rs",
+    "crates/polar-vault/src/keys/derivation.rs",
+    "crates/polar-vault/src/keys/directory.rs",
     "crates/polar-vault/src/lib.rs",
     "crates/polar-vault/src/local_chat.rs",
     "crates/polar-vault/src/operations.rs",
+    "crates/polar-vault/src/protection.rs",
     "crates/polar-vault/src/public_state.rs",
     "crates/polar-vault/src/secrets.rs",
+    "crates/polar-vault/src/secrets/cache.rs",
+    "crates/polar-vault/src/secrets/device.rs",
     "crates/polar-voice-provider-codex/Cargo.toml",
     "crates/polar-voice-provider-codex/src/dictate.rs",
     "crates/polar-voice-provider-codex/src/jitter.rs",
@@ -8413,7 +8552,41 @@
     "migrations/sqlite/vault/V0002__legacy_management_request_repair.sql",
     "migrations/sqlite/vault/V0003__uuid_secrets.sql",
     "migrations/sqlite/vault/V0004__credential_names.sql",
+    "migrations/sqlite/vault/V0005__key_directory.sql",
     "rust-toolchain.toml",
+    "vendor/bip0032/.cargo_vcs_info.json",
+    "vendor/bip0032/Cargo.lock",
+    "vendor/bip0032/Cargo.toml",
+    "vendor/bip0032/Cargo.toml.orig",
+    "vendor/bip0032/LICENSE",
+    "vendor/bip0032/POLAR-PATCHES.md",
+    "vendor/bip0032/README.md",
+    "vendor/bip0032/SLIP-0010.md",
+    "vendor/bip0032/justfile",
+    "vendor/bip0032/src/curve/ed25519/backends/ed25519_dalek.rs",
+    "vendor/bip0032/src/curve/ed25519/backends/mod.rs",
+    "vendor/bip0032/src/curve/ed25519/mod.rs",
+    "vendor/bip0032/src/curve/error.rs",
+    "vendor/bip0032/src/curve/mod.rs",
+    "vendor/bip0032/src/curve/nist256p1/backends/mod.rs",
+    "vendor/bip0032/src/curve/nist256p1/backends/p256.rs",
+    "vendor/bip0032/src/curve/nist256p1/mod.rs",
+    "vendor/bip0032/src/curve/secp256k1/backends/k256.rs",
+    "vendor/bip0032/src/curve/secp256k1/backends/mod.rs",
+    "vendor/bip0032/src/curve/secp256k1/backends/secp256k1.rs",
+    "vendor/bip0032/src/curve/secp256k1/mod.rs",
+    "vendor/bip0032/src/curve/slip10.rs",
+    "vendor/bip0032/src/error.rs",
+    "vendor/bip0032/src/lib.rs",
+    "vendor/bip0032/src/path/child.rs",
+    "vendor/bip0032/src/path/mod.rs",
+    "vendor/bip0032/src/xkey/core/mod.rs",
+    "vendor/bip0032/src/xkey/core/private.rs",
+    "vendor/bip0032/src/xkey/core/public.rs",
+    "vendor/bip0032/src/xkey/mod.rs",
+    "vendor/bip0032/src/xkey/payload/mod.rs",
+    "vendor/bip0032/src/xkey/payload/version.rs",
+    "vendor/bip0032/src/xkey/slip10.rs",
     "vendor/grammers-tl-gen/Cargo.toml",
     "vendor/grammers-tl-gen/DEPS.md",
     "vendor/grammers-tl-gen/LICENSE-APACHE",

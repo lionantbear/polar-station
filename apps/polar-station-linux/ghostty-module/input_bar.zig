@@ -34,6 +34,82 @@ const array = @import("lgp_workspace.zig").array;
 const setLabel = @import("lgp_workspace.zig").setLabel;
 const margins = @import("lgp_workspace.zig").margins;
 
+const FooterLayout = struct {
+    root:*gtk.Grid, leading:*gtk.Box, trailing:*gtk.Box,
+    fn create() FooterLayout {
+        const root=gtk.Grid.new();root.setColumnSpacing(6);
+        const leading=gtk.Box.new(.horizontal,6);const trailing=gtk.Box.new(.horizontal,6);
+        leading.as(gtk.Widget).setHexpand(0);trailing.as(gtk.Widget).setHexpand(0);
+        leading.as(gtk.Widget).setValign(.end);trailing.as(gtk.Widget).setValign(.end);
+        trailing.as(gtk.Widget).setHalign(.end);
+        root.attach(leading.as(gtk.Widget),0,0,1,1);root.attach(trailing.as(gtk.Widget),2,0,1,1);
+        return .{.root=root,.leading=leading,.trailing=trailing};
+    }
+    fn mountDraft(self:FooterLayout,widget:*gtk.Widget) void {
+        widget.setHexpand(1);self.root.attach(widget,1,0,1,1);
+    }
+};
+
+const DraftEditor = struct {
+    text: *gtk.TextView,
+    scroll: *gtk.ScrolledWindow,
+    document: *gtk.Box,
+    overlay: *gtk.Overlay,
+    hint: *gtk.Label,
+    fn create() DraftEditor {
+        const text = gtk.TextView.new();
+        text.setWrapMode(.word_char);
+        text.getBuffer().setEnableUndo(1);
+        text.setTopMargin(6);
+        text.setBottomMargin(6);
+        text.setLeftMargin(8);
+        text.setRightMargin(8);
+        const scroll = gtk.ScrolledWindow.new();
+        scroll.setPolicy(.never, .automatic);
+        scroll.as(gtk.Widget).addCssClass("station-chat-editor");
+        scroll.setMinContentHeight(30);
+        scroll.setMaxContentHeight(120);
+        scroll.setPropagateNaturalHeight(1);
+        const document = gtk.Box.new(.vertical, 6);
+        document.append(text.as(gtk.Widget));
+        scroll.setChild(document.as(gtk.Widget));
+        const overlay = gtk.Overlay.new();
+        // A measured single-line slot owns row geometry; GTK's unmeasured
+        // overlay grows upward and keeps native picking outside the slot.
+        const editor_slot = gtk.Box.new(.vertical, 0);
+        editor_slot.as(gtk.Widget).setSizeRequest(-1,30);
+        overlay.setChild(editor_slot.as(gtk.Widget));
+        scroll.as(gtk.Widget).setValign(.end);
+        overlay.addOverlay(scroll.as(gtk.Widget));
+        overlay.setMeasureOverlay(scroll.as(gtk.Widget),0);
+        overlay.setClipOverlay(scroll.as(gtk.Widget),0);
+        _ = gtk.Overlay.signals.get_child_position.connect(overlay,*gtk.ScrolledWindow,DraftEditor.position,scroll,.{});
+        overlay.as(gtk.Widget).setHexpand(1);
+        overlay.as(gtk.Widget).setSizeRequest(120,-1);
+        const hint = gtk.Label.new("Select a conversation");
+        hint.setXalign(0);
+        hint.setEllipsize(.end);
+        hint.as(gtk.Widget).setHalign(.fill);
+        hint.as(gtk.Widget).setValign(.start);
+        hint.as(gtk.Widget).setMarginStart(8);
+        hint.as(gtk.Widget).setMarginTop(6);
+        hint.as(gtk.Widget).addCssClass("dim-label");
+        hint.as(gtk.Widget).setCanTarget(0);
+        overlay.addOverlay(hint.as(gtk.Widget));
+
+        return .{.text=text,.scroll=scroll,.document=document,.overlay=overlay,.hint=hint};
+    }
+    fn position(overlay: *gtk.Overlay, child: *gtk.Widget, allocation: *gdk.Rectangle, scroll: *gtk.ScrolledWindow) callconv(.c) c_int {
+        if (child != scroll.as(gtk.Widget)) return 0;
+        const width = overlay.as(gtk.Widget).getWidth();
+        var natural: c_int = 0;
+        child.measure(.vertical,width,null,&natural,null,null);
+        allocation.* = .{ .f_x=0, .f_y=overlay.as(gtk.Widget).getHeight()-natural, .f_width=width, .f_height=natural };
+        return 1;
+    }
+
+};
+
 pub const InputBar = struct {
     dictate_button: *gtk.Button,
     dictate_menu: *gtk.MenuButton,
@@ -46,6 +122,7 @@ pub const InputBar = struct {
     host: *NativeWindow,
     container: *gtk.Box,
     body: *gtk.Box,
+    chat_tools: *gtk.Box,
     idea_row: *gtk.Box,
     idea_menu:*gtk.MenuButton,
     idea_files:*gtk.Box,
@@ -69,7 +146,7 @@ pub const InputBar = struct {
     inquiry_popover:*gtk.Popover,
     inquiry_data:?std.json.Parsed(Value)=null,
     inquiry_active:bool=false,
-    inquiry_editor_parent:?*gtk.Box=null,
+    inquiry_answer_scroll:?*gtk.ScrolledWindow=null,
     inquiry_buttons:std.ArrayListUnmanaged(*gtk.Button)=.empty,
     inquiry_held:?c_uint=null,
     inquiry_deferred:bool=false,
@@ -93,6 +170,7 @@ pub const InputBar = struct {
     tools: *gtk.Popover,
     hint: *gtk.Label,
     text: *gtk.TextView,
+    inquiry_text:*gtk.TextView,
     editor_scroll: *gtk.ScrolledWindow,
     send_button: *gtk.Button,
     older: *gtk.Button,
@@ -166,13 +244,11 @@ pub const InputBar = struct {
         margins(idea_themes.as(gtk.Widget));
         idea_theme_popup.setChild(idea_themes.as(gtk.Widget));
         idea_theme.setPopover(idea_theme_popup);
-        const root = gtk.Box.new(.horizontal, 6);
-        outer.append(root.as(gtk.Widget));
-        outer.as(gtk.Widget).setMarginStart(8);
-        outer.as(gtk.Widget).setMarginEnd(8);
-        outer.as(gtk.Widget).setMarginTop(4);
-        outer.as(gtk.Widget).setMarginBottom(6);
-        const header = root;
+        const layout = FooterLayout.create();
+        outer.append(layout.root.as(gtk.Widget));
+        outer.as(gtk.Widget).setMarginStart(8);outer.as(gtk.Widget).setMarginEnd(8);
+        outer.as(gtk.Widget).setMarginTop(4);outer.as(gtk.Widget).setMarginBottom(6);
+        const header=layout.leading;const trailing=layout.trailing;
         const toggle = gtk.Button.newWithLabel("▾ Chat");
         toggle.as(gtk.Widget).addCssClass("flat");
         header.append(toggle.as(gtk.Widget));
@@ -183,7 +259,7 @@ pub const InputBar = struct {
         target.as(gtk.Widget).setHexpand(0);
         target.as(gtk.Widget).setSizeRequest(90, -1);
         if (target.getChild()) |child| if (gobject.ext.cast(gtk.Label, child)) |label| {
-            label.setMaxWidthChars(20);
+            label.setMaxWidthChars(1);
             label.setEllipsize(.middle);
         };
         target.as(gtk.Widget).setTooltipText("Choose Polar, Channel and Thread");
@@ -210,61 +286,29 @@ pub const InputBar = struct {
         more.as(gtk.Widget).setTooltipText("Conversation tools");
         const tools = gtk.Popover.new();
         const tools_box = gtk.Box.new(.vertical, 6);
+        const chat_tools = gtk.Box.new(.vertical,6); tools_box.append(chat_tools.as(gtk.Widget));
         margins(tools_box.as(gtk.Widget));
         const older = gtk.Button.newWithLabel("Load older messages");
-        tools_box.append(older.as(gtk.Widget));
+        chat_tools.append(older.as(gtk.Widget));
         const references = gtk.Button.newWithLabel("Message references…");
-        tools_box.append(references.as(gtk.Widget));
+        chat_tools.append(references.as(gtk.Widget));
         const activity = gtk.Button.newWithLabel("Tool activity…");
-        tools_box.append(activity.as(gtk.Widget));
+        chat_tools.append(activity.as(gtk.Widget));
         const search = gtk.Entry.new();
         search.setPlaceholderText("Search loaded messages");
-        tools_box.append(search.as(gtk.Widget));
+        chat_tools.append(search.as(gtk.Widget));
         tools.setChild(tools_box.as(gtk.Widget));
         more.setPopover(tools);
 
         const body = gtk.Box.new(.horizontal, 6);
-        const text = gtk.TextView.new();
-        text.setWrapMode(.word_char);
-        text.getBuffer().setEnableUndo(1);
-        text.setTopMargin(6);
-        text.setBottomMargin(6);
-        text.setLeftMargin(8);
-        text.setRightMargin(8);
-        const scroll = gtk.ScrolledWindow.new();
-        scroll.setPolicy(.never, .automatic);
-        scroll.as(gtk.Widget).addCssClass("station-chat-editor");
-        scroll.setMinContentHeight(30);
-        scroll.setMaxContentHeight(120);
-        scroll.setPropagateNaturalHeight(1);
-        const document = gtk.Box.new(.vertical, 6);
-        document.append(text.as(gtk.Widget));
-        scroll.setChild(document.as(gtk.Widget));
-        const overlay = gtk.Overlay.new();
-        // A measured single-line slot owns row geometry; GTK's unmeasured
-        // overlay grows upward and keeps native picking outside the slot.
-        const editor_slot = gtk.Box.new(.vertical, 0);
-        editor_slot.as(gtk.Widget).setSizeRequest(-1,30);
-        overlay.setChild(editor_slot.as(gtk.Widget));
-        scroll.as(gtk.Widget).setValign(.end);
-        overlay.addOverlay(scroll.as(gtk.Widget));
-        overlay.setMeasureOverlay(scroll.as(gtk.Widget),0);
-        overlay.setClipOverlay(scroll.as(gtk.Widget),0);
-        _ = gtk.Overlay.signals.get_child_position.connect(overlay,*gtk.ScrolledWindow,footerEditorPosition,scroll,.{});
-        overlay.as(gtk.Widget).setHexpand(1);
-        overlay.as(gtk.Widget).setSizeRequest(120,-1);
-        const hint = gtk.Label.new("Select a conversation");
-        hint.setXalign(0);
-        hint.setEllipsize(.end);
-        hint.as(gtk.Widget).setHalign(.fill);
-        hint.as(gtk.Widget).setValign(.start);
-        hint.as(gtk.Widget).setMarginStart(8);
-        hint.as(gtk.Widget).setMarginTop(6);
-        hint.as(gtk.Widget).addCssClass("dim-label");
-        hint.as(gtk.Widget).setCanTarget(0);
-        overlay.addOverlay(hint.as(gtk.Widget));
+        const draft_editor = DraftEditor.create();
+        const inquiry_text=gtk.TextView.new();inquiry_text.setWrapMode(.word_char);
+        inquiry_text.getBuffer().setEnableUndo(1);_=inquiry_text.as(gobject.Object).refSink();
+        const text=draft_editor.text;const scroll=draft_editor.scroll;const document=draft_editor.document;
+        const overlay=draft_editor.overlay;const hint=draft_editor.hint;
         body.append(overlay.as(gtk.Widget));
-        const send = gtk.Button.newWithLabel("Send ↵");
+        const send = gtk.Button.newWithLabel("Send");
+        if(send.getChild()) |child| if(gobject.ext.cast(gtk.Label,child)) |label| {label.setMaxWidthChars(1);};
         send.as(gtk.Widget).setSensitive(0);
         send.as(gtk.Widget).addCssClass("suggested-action");
         send.as(gtk.Widget).setValign(.end);
@@ -295,33 +339,38 @@ pub const InputBar = struct {
         const inquiry_entry=gtk.Button.newWithLabel("Inquiry");
         inquiry_entry.as(gtk.Widget).setVisible(0);
         const inquiry_popover=gtk.Popover.new();
-        inquiry_popover.as(gtk.Widget).setParent(inquiry_entry.as(gtk.Widget));
+        inquiry_popover.as(gtk.Widget).setParent(more.as(gtk.Widget));
         inquiry_popover.setPosition(.top);inquiry_popover.setAutohide(0);
-        root.append(inquiry_entry.as(gtk.Widget));
-        root.append(body.as(gtk.Widget));
-        root.append(idea_attach.as(gtk.Widget));
+        tools_box.append(inquiry_entry.as(gtk.Widget));
+        layout.mountDraft(body.as(gtk.Widget));
+        trailing.append(idea_attach.as(gtk.Widget));
 
 
-        root.append(status_button.as(gtk.Widget));
-        root.append(retry.as(gtk.Widget));
+        tools_box.append(status_button.as(gtk.Widget));
+        tools_box.append(retry.as(gtk.Widget));
         const quote = gtk.Button.newWithLabel("❞");
         quote.as(gtk.Widget).setTooltipText("Quote selection · Ctrl+Shift+G");
         quote.as(gtk.Widget).setFocusOnClick(0);
         quote.as(gtk.Widget).setVisible(0);
-        root.append(quote.as(gtk.Widget));
-        root.append(more.as(gtk.Widget));
+        trailing.append(quote.as(gtk.Widget));
+        trailing.append(more.as(gtk.Widget));
         const refine = gtk.Button.newFromIconName("document-edit-symbolic"); refine.as(gtk.Widget).setTooltipText("Refine draft"); refine.as(gtk.Widget).setFocusOnClick(0);
-        refine.as(gtk.Widget).setValign(.end); root.append(refine.as(gtk.Widget));
-        root.append(dictate_button.as(gtk.Widget)); root.append(dictate_menu.as(gtk.Widget));
-        root.append(send.as(gtk.Widget));
-        root.append(mode.as(gtk.Widget));
+        refine.as(gtk.Widget).setSizeRequest(44,-1); refine.as(gtk.Widget).setValign(.end); trailing.append(refine.as(gtk.Widget));
+        trailing.append(dictate_button.as(gtk.Widget)); trailing.append(dictate_menu.as(gtk.Widget));
+        const primary_slot = gtk.Box.new(.horizontal,0);
+        primary_slot.as(gtk.Widget).setSizeRequest(88,30);
+        primary_slot.as(gtk.Widget).setHexpand(0);
+        send.as(gtk.Widget).setHexpand(1);
+        primary_slot.append(send.as(gtk.Widget));
+        trailing.append(primary_slot.as(gtk.Widget));
+        tools_box.append(mode.as(gtk.Widget));
         for ([_]*gtk.Widget{ toggle.as(gtk.Widget), idea_menu.as(gtk.Widget), idea_attach.as(gtk.Widget), target.as(gtk.Widget), status_button.as(gtk.Widget), more.as(gtk.Widget), dictate_button.as(gtk.Widget), dictate_menu.as(gtk.Widget), send.as(gtk.Widget), mode.as(gtk.Widget), retry.as(gtk.Widget), quote.as(gtk.Widget) }) |widget| widget.setValign(.end);
         const css = gtk.CssProvider.new();
         // The theme's vertical slider minimum otherwise forces two lines even
         // for an empty editor. Keep the scrollbar and six-line growth limit.
-        css.loadFromString(".station-input-bar { background-color: @window_bg_color; } .station-chat-target { outline: 2px solid @accent_color; outline-offset: -2px; } .station-chat-editor scrollbar.vertical slider { min-height: 16px; }");
+        css.loadFromString(".station-input-bar { background-color: @window_bg_color; } .station-chat-target { outline: 2px solid @accent_color; outline-offset: -2px; } .station-chat-editor { background-color: @view_bg_color; border: 1px solid alpha(@theme_fg_color,0.2); border-radius: 4px; } .station-chat-editor textview { background-color: transparent; } .station-chat-editor scrollbar.vertical slider { min-height: 16px; }");
         gtk.StyleContext.addProviderForDisplay(host.as(gtk.Widget).getDisplay(), css.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 5);
-        self.* = .{ .refine_button=refine, .dictate_button=dictate_button, .dictate_menu=dictate_menu, .dictate_history=dictate_history, .idea_document=document, .idea_refs=idea_refs,.idea_attach=idea_attach,.inquiry_entry=inquiry_entry,.inquiry_popover=inquiry_popover,.owner = owner, .id = owned_id, .host = host, .container = outer, .body = body, .idea_row = idea_row,.idea_menu=idea_menu,.idea_files=idea_files, .idea_configuration=idea_configuration, .idea_configuration_menu=idea_configuration_menu,.idea_search_button=idea_search_button,.editor_overlay=overlay, .idea_search = idea_search, .idea_more = idea_more, .idea_overflow = idea_overflow, .idea_view_scroll = idea_view_scroll, .idea_theme = idea_theme, .idea_themes = idea_themes, .more = more, .toggle = toggle, .target = target, .status = status, .status_button = status_button, .mode_button = mode, .tools = tools, .hint = hint, .text = text, .editor_scroll = scroll, .send_button = send, .older = older, .retry = retry, .quote = quote, .modified = modified, .css = css };
+        self.* = .{ .inquiry_text=inquiry_text, .chat_tools=chat_tools, .refine_button=refine, .dictate_button=dictate_button, .dictate_menu=dictate_menu, .dictate_history=dictate_history, .idea_document=document, .idea_refs=idea_refs,.idea_attach=idea_attach,.inquiry_entry=inquiry_entry,.inquiry_popover=inquiry_popover,.owner = owner, .id = owned_id, .host = host, .container = outer, .body = body, .idea_row = idea_row,.idea_menu=idea_menu,.idea_files=idea_files, .idea_configuration=idea_configuration, .idea_configuration_menu=idea_configuration_menu,.idea_search_button=idea_search_button,.editor_overlay=overlay, .idea_search = idea_search, .idea_more = idea_more, .idea_overflow = idea_overflow, .idea_view_scroll = idea_view_scroll, .idea_theme = idea_theme, .idea_themes = idea_themes, .more = more, .toggle = toggle, .target = target, .status = status, .status_button = status_button, .mode_button = mode, .tools = tools, .hint = hint, .text = text, .editor_scroll = scroll, .send_button = send, .older = older, .retry = retry, .quote = quote, .modified = modified, .css = css };
         // Keep all tree actions inside the one Idea menu.
         idea_files.append(idea_search_button.as(gtk.Widget));
         idea_files.append(idea_refs.as(gtk.Widget));
@@ -335,7 +384,7 @@ pub const InputBar = struct {
         _ = gtk.Entry.signals.activate.connect(idea_search, *InputBar, ideaSearchActivated, self, .{});
         _ = gobject.Object.signals.notify.connect(idea_popup.as(gobject.Object),*InputBar,ideaViewVisibility,self,.{ .detail="visible" });
         _ = gtk.Button.signals.clicked.connect(inquiry_entry,*InputBar,inquiryEntry,self,.{});
-        const inquiry_keys=gtk.EventControllerKey.new();inquiry_keys.as(gtk.EventController).setPropagationPhase(.capture);
+        const inquiry_keys=gtk.EventControllerKey.new();inquiry_keys.as(gtk.EventController).setPropagationPhase(.bubble);
         _ = gtk.EventControllerKey.signals.key_pressed.connect(inquiry_keys,*InputBar,inquiryKeys,self,.{});
         _ = gtk.EventControllerKey.signals.key_released.connect(inquiry_keys,*InputBar,inquiryKeyReleased,self,.{});
         inquiry_popover.as(gtk.Widget).addController(inquiry_keys.as(gtk.EventController));
@@ -360,6 +409,8 @@ pub const InputBar = struct {
         const text_focus=gtk.EventControllerFocus.new();
         _=gtk.EventControllerFocus.signals.enter.connect(text_focus,*InputBar,generalFocused,self,.{});text.as(gtk.Widget).addController(text_focus.as(gtk.EventController));
         _ = gtk.TextBuffer.signals.changed.connect(text.getBuffer(), *InputBar, changed, self, .{});
+        _ = gtk.TextBuffer.signals.changed.connect(inquiry_text.getBuffer(),*InputBar,inquiryEdited,self,.{});
+        _ = gtk.TextView.signals.preedit_changed.connect(inquiry_text,*InputBar,inquiryPreedit,self,.{});
         _ = gtk.TextView.signals.preedit_changed.connect(text, *InputBar, preeditChanged, self, .{});
         _ = gtk.Button.signals.clicked.connect(send, *InputBar, sendClicked, self, .{});
         _ = gtk.Button.signals.clicked.connect(older, *InputBar, olderClicked, self, .{});
@@ -369,11 +420,13 @@ pub const InputBar = struct {
         _ = gtk.Button.signals.clicked.connect(retry, *InputBar, retryClicked, self, .{});
         _ = gtk.Entry.signals.activate.connect(search, *InputBar, searchActivated, self, .{});
         _ = gtk.CheckButton.signals.toggled.connect(modified, *InputBar, modeChanged, self, .{});
-        const keys = gtk.EventControllerKey.new();
-        keys.as(gtk.EventController).setPropagationPhase(.capture);
-        _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *InputBar, keyPressed, self, .{});
-        _ = gtk.EventControllerKey.signals.key_released.connect(keys,*InputBar,inquiryKeyReleased,self,.{});
-        text.as(gtk.Widget).addController(keys.as(gtk.EventController));
+        for ([_]*gtk.TextView{text,inquiry_text}) |editor| {
+            const keys = gtk.EventControllerKey.new();
+            keys.as(gtk.EventController).setPropagationPhase(.capture);
+            _ = gtk.EventControllerKey.signals.key_pressed.connect(keys, *InputBar, keyPressed, self, .{});
+            _ = gtk.EventControllerKey.signals.key_released.connect(keys,*InputBar,inquiryKeyReleased,self,.{});
+            editor.as(gtk.Widget).addController(keys.as(gtk.EventController));
+        }
         return self;
     }
     pub fn beginTerminalView(self: *InputBar, effect: Value) !void {
@@ -443,19 +496,13 @@ pub const InputBar = struct {
         gtk.StyleContext.removeProviderForDisplay(self.host.as(gtk.Widget).getDisplay(), self.css.as(gtk.StyleProvider));
         self.css.unref();
         if (self.container.as(gtk.Widget).getParent()) |parent| if (gobject.ext.cast(gtk.Overlay, parent)) |overlay| overlay.removeOverlay(self.container.as(gtk.Widget));
+        self.inquiry_text.as(gobject.Object).unref();
         self.container.unref();
         self.owner.allocator.free(self.id);
         self.owner.allocator.destroy(self);
     }
-    fn footerEditorPosition(overlay: *gtk.Overlay, child: *gtk.Widget, allocation: *gdk.Rectangle, scroll: *gtk.ScrolledWindow) callconv(.c) c_int {
-        if (child != scroll.as(gtk.Widget)) return 0;
-        const width = overlay.as(gtk.Widget).getWidth();
-        var natural: c_int = 0;
-        child.measure(.vertical,width,null,&natural,null,null);
-        allocation.* = .{ .f_x=0, .f_y=overlay.as(gtk.Widget).getHeight()-natural, .f_width=width, .f_height=natural };
-        return 1;
-    }
     pub fn updateGeneric(self: *InputBar, view: Value) void {
+        self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_active=false;self.dictate_history.bindInput(self.text);self.text.setEditable(1);
         const lease = field(view, "lease") orelse return;
         const pane = string(lease, "pane") orelse return;
         const bytes = std.json.Stringify.valueAlloc(self.owner.allocator, .{
@@ -468,14 +515,15 @@ pub const InputBar = struct {
         defer parsed.deinit();
         self.update(parsed.value);
         const send_label=string(view,"send_label") orelse "Send";
-        if(!std.mem.eql(u8,send_label,"Send")) {
+        {
             const label_=self.owner.allocator.dupeZ(u8,send_label) catch return;
             defer self.owner.allocator.free(label_);self.send_button.setLabel(label_);
-        } else self.setSendMode(self.owner.modified_send);
+        }
+        self.setSendMode(self.owner.modified_send);
         const label = self.owner.allocator.dupeZ(u8,string(view,"target_status") orelse string(view,"target_label") orelse "Terminal input") catch return;
         defer self.owner.allocator.free(label);
         self.target.setLabel(label);
-        self.more.as(gtk.Widget).setVisible(0);
+        self.more.as(gtk.Widget).setVisible(1);
         const explanation=self.owner.allocator.dupeZ(u8,string(view,"unavailable") orelse string(view,"target_label") orelse "Terminal input") catch return;
         defer self.owner.allocator.free(explanation);self.target.as(gtk.Widget).setTooltipText(explanation);
         setLabel(self.owner.allocator, self.hint, "Input…");
@@ -497,6 +545,8 @@ pub const InputBar = struct {
         }, .{}) catch return;
         defer self.owner.allocator.free(identity);
         self.text.as(gobject.Object).setData("station-dictate-scope", @ptrFromInt(std.hash.Wyhash.hash(0,identity) | 1));
+        const answer_token=if(self.inquiry_data) |data| string(data.value,"token") orelse "" else "";
+        self.inquiry_text.as(gobject.Object).setData("station-dictate-scope",@ptrFromInt(std.hash.Wyhash.hash(std.hash.Wyhash.hash(0,identity),answer_token)|1));
         const bytes = std.json.Stringify.valueAlloc(self.owner.allocator, effect, .{}) catch return;
         defer self.owner.allocator.free(bytes);
         const metadata = std.json.parseFromSlice(Value, self.owner.allocator, bytes, .{ .allocate = .alloc_always }) catch return;
@@ -517,7 +567,7 @@ pub const InputBar = struct {
         self.updating = true;
         defer self.updating = false;
         const incoming = string(effect, "text") orelse "";
-        const buffer = self.text.getBuffer();
+        const buffer = (if(self.inquiry_active) self.inquiry_text else self.text).getBuffer();
         var start: gtk.TextIter = undefined;
         var end: gtk.TextIter = undefined;
         buffer.getBounds(&start, &end);
@@ -542,7 +592,7 @@ pub const InputBar = struct {
         self.status_button.as(gtk.Widget).setVisible(0);
             self.send_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(effect,"can_send")));
             const target_label=self.owner.allocator.dupeZ(u8,string(effect,"target_label") orelse "Bind Codex…") catch return;
-            defer self.owner.allocator.free(target_label);self.target.setLabel(if(self.host.as(gtk.Widget).getWidth()<640) "Codex" else target_label);
+            defer self.owner.allocator.free(target_label);self.target.setLabel(if(self.host.as(gtk.Widget).getWidth()<760) "Codex" else target_label);
             const target_hint=std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s}",.{string(effect,"target_label") orelse "Codex",string(effect,"status") orelse ""},0) catch return;
             defer self.owner.allocator.free(target_hint);self.target.as(gtk.Widget).setTooltipText(target_hint);
             self.updateReferences(effect);
@@ -604,7 +654,7 @@ pub const InputBar = struct {
     pub fn clearSelection(self: *InputBar) void {
         if (self.focus_source!=0) {_ = glib.Source.remove(self.focus_source);self.focus_source=0;}
         self.inquiry_held=null;self.inquiry_deferred=false;self.inquiry_focus_pending=false;
-        self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_entry.as(gtk.Widget).setVisible(0);self.inquiry_active=false;self.text.setEditable(1);
+        self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_entry.as(gtk.Widget).setVisible(0);self.inquiry_active=false;self.dictate_history.bindInput(self.text);self.text.setEditable(1);
         self.setIdeaMode(false);
         self.updating = true;
         defer self.updating = false;
@@ -670,8 +720,11 @@ pub const InputBar = struct {
             editor.setTopMargin(6);editor.setBottomMargin(6);editor.setLeftMargin(8);editor.setRightMargin(8);
             editor.as(gtk.Widget).setTooltipText("Node instruction");box.append(editor.as(gtk.Widget));
             self.*=.{.composer=cview,.uuid=try a.dupe(u8,uuid),.title=try a.dupe(u8,title),.view_id=try a.dupe(u8,string(cview.metadata.?.value,"view_id") orelse ""),.box=box,.text=editor,.detail=detail};
+            const node_actions=gtk.Box.new(.vertical,4);
             if(!detail) {
-                const locate=gtk.Button.newWithLabel("Locate");heading.append(locate.as(gtk.Widget));
+                const menu=gtk.MenuButton.new();menu.setLabel("⋯");menu.as(gtk.Widget).setTooltipText("Node actions");
+                const popup=gtk.Popover.new();popup.setChild(node_actions.as(gtk.Widget));menu.setPopover(popup);heading.append(menu.as(gtk.Widget));
+                const locate=gtk.Button.newWithLabel("Locate");node_actions.append(locate.as(gtk.Widget));
                 _=gtk.Button.signals.clicked.connect(locate,*NodeEditor,locateClicked,self,.{});
             }
             const action=gtk.Button.newWithLabel(if(detail) "Review" else "Remove");
@@ -682,7 +735,7 @@ pub const InputBar = struct {
                 const close=gtk.Button.newWithLabel("Close");actions.append(close.as(gtk.Widget));
                 _=gtk.Button.signals.clicked.connect(close,*NodeEditor,closeClicked,self,.{});
                 box.append(actions.as(gtk.Widget));
-            } else heading.append(action.as(gtk.Widget));
+            } else node_actions.append(action.as(gtk.Widget));
             _=gtk.Button.signals.clicked.connect(action,*NodeEditor,actionClicked,self,.{});
             _=gtk.TextBuffer.signals.changed.connect(editor.getBuffer(),*NodeEditor,edited,self,.{});
             _=gtk.TextView.signals.preedit_changed.connect(editor,*NodeEditor,preedit,self,.{});
@@ -912,12 +965,14 @@ pub const InputBar = struct {
     }
     fn setIdeaMode(self: *InputBar, value: bool) void {
         if(self.is_idea and !value) self.clearNodeEditors();
-        if(value) {self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_entry.as(gtk.Widget).setVisible(0);self.inquiry_active=false;self.text.setEditable(1);}
+        if(value) {self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_entry.as(gtk.Widget).setVisible(0);self.inquiry_active=false;self.dictate_history.bindInput(self.text);self.text.setEditable(1);}
         if (value and self.focus_source != 0) { _ = glib.Source.remove(self.focus_source); self.focus_source = 0; }
         self.is_idea = value;
-        self.target.as(gtk.Widget).setSizeRequest(if(value and self.host.as(gtk.Widget).getWidth()<640) 40 else 90,-1);
-        self.idea_attach.setLabel(if(self.host.as(gtk.Widget).getWidth()<640) "+" else "Insert node");
-        if(value) {self.send_button.setLabel(if(self.host.as(gtk.Widget).getWidth()<640) "↑" else "Send");self.send_button.as(gtk.Widget).setTooltipText("Send · Ctrl+Enter");}
+        self.chat_tools.as(gtk.Widget).setVisible(@intFromBool(!value and (if(self.metadata) |m| field(m.value,"generic_lease")==null else true)));
+        if(!value) self.send_button.setLabel("Send");
+        self.target.as(gtk.Widget).setSizeRequest(if(self.host.as(gtk.Widget).getWidth()<760) 76 else if(value) 140 else 200,-1);
+        self.idea_attach.setLabel(if(self.host.as(gtk.Widget).getWidth()<760) "+" else "Insert node");
+        if(value) {self.send_button.setLabel("Send");self.send_button.as(gtk.Widget).setTooltipText("Send · Ctrl+Enter");}
         if (!value) self.text.as(gtk.Widget).setTooltipText(if (self.owner.modified_send) "Ctrl+Enter sends; Enter inserts newline" else "Enter sends; Shift+Enter inserts newline");
         if (!value) {self.idea_more.popdown();self.idea_theme.popdown();if (self.idea_search_button.getPopover()) |popup| popup.popdown();}
         self.idea_row.as(gtk.Widget).setVisible(@intFromBool(value));
@@ -929,7 +984,7 @@ pub const InputBar = struct {
         self.send_button.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
         self.target.as(gtk.Widget).setVisible(1);
         self.idea_refs.as(gtk.Widget).setVisible(@intFromBool(value));self.idea_attach.as(gtk.Widget).setVisible(@intFromBool(value));
-        self.more.as(gtk.Widget).setVisible(@intFromBool(!value));
+        self.more.as(gtk.Widget).setVisible(1);
         self.mode_button.as(gtk.Widget).setVisible(@intFromBool(!value and !self.inquiry_active));
         self.toggle.setLabel(if (value) (if (self.expanded) "▾ Idea" else "▸ Idea") else (if (self.expanded) "▾ Chat" else "▸ Chat"));
     }
@@ -1009,8 +1064,8 @@ pub const InputBar = struct {
         self.updating = true;
         defer self.updating = false;
         self.modified.setActive(@intFromBool(modified));
-        self.send_button.setLabel(if (modified) "Send Ctrl+↵" else "Send ↵");
-        if (!self.is_idea) self.text.as(gtk.Widget).setTooltipText(if (modified) "Ctrl+Enter sends; Enter inserts newline" else "Enter sends; Shift+Enter inserts newline");
+        // Settings fanout updates Chat preference, not Idea/Inquiry actions.
+        if (!self.is_idea and !self.inquiry_active) self.text.as(gtk.Widget).setTooltipText(if (modified) "Ctrl+Enter sends; Enter inserts newline" else "Enter sends; Shift+Enter inserts newline");
     }
     fn toggleClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
         self.expanded = !self.expanded;
@@ -1062,7 +1117,8 @@ pub const InputBar = struct {
         }
         const reference=if(self.pane_id) |pane| (if(self.owner.terminal_selection) |read| read(self.owner.context,self.owner.allocator,self.host,pane) else null) else null;
         defer if(reference) |text| self.owner.allocator.free(text);
-        _=self.text.as(gtk.Widget).grabFocus();state.toggleQuoted(self.text,reference orelse "");
+        const editor=if(self.inquiry_active) self.inquiry_text else self.text;
+        _=editor.as(gtk.Widget).grabFocus();state.toggleQuoted(editor,reference orelse "");
     }
     const DictateNode = struct {
         owner:*Workspace,
@@ -1198,7 +1254,7 @@ pub const InputBar = struct {
     }
     fn refineClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
         if (self.composing or self.pane_id == null) return;
-        const editor = if (self.is_idea) self.last_editor orelse self.text else self.text;
+        const editor = if (self.is_idea) self.last_editor orelse self.text else if(self.inquiry_active) self.inquiry_text else self.text;
         _ = editor.as(gtk.Widget).grabFocus();
         const lease=if(self.metadata) |meta| field(meta.value,"generic_lease") else null;
         const project=if(self.metadata) |meta| field(meta.value,"project") else null;
@@ -1211,7 +1267,6 @@ pub const InputBar = struct {
     }
     fn changed(_: *gtk.TextBuffer, self: *InputBar) callconv(.c) void {
         if(!self.updating) self.last_editor=self.text;
-        if (self.pane_id == null) return;
         if (self.updating or self.composing or self.edit_action_depth > 0) return;
         const buffer = self.text.getBuffer();
         var start: gtk.TextIter = undefined;
@@ -1220,17 +1275,20 @@ pub const InputBar = struct {
         const text = buffer.getText(&start, &end, 1);
         defer glib.free(text);
         self.hint.as(gtk.Widget).setVisible(@intFromBool(text[0] == 0));
+        if (!self.inquiry_active)
+            self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
+        // Presentation follows the buffer even while sending is unavailable.
+        if (self.pane_id == null) return;
         const lease = if (self.metadata) |metadata| field(metadata.value,"generic_lease") else null;
         if (lease) |value| {
             self.owner.input(.{ .type="edit_input", .lease=value, .text=std.mem.span(text) });
         } else {
             self.owner.input(.{ .type = "draft", .window_id = self.id, .text = std.mem.span(text) });
         }
-        if (!self.inquiry_active)
-            self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
         self.owner.saveSoon();
     }
     pub fn commitDraft(self: *InputBar) void {
+        if(self.inquiry_active) {inquiryEdited(self.inquiry_text.getBuffer(),self);return;}
         if (self.pane_id == null) return;
         // End native composition while the old scope still owns the editor.
         if (self.composing) self.text.resetImContext();
@@ -1254,7 +1312,8 @@ pub const InputBar = struct {
         }
         if (key != gdk.KEY_Return and key != gdk.KEY_KP_Enter) return 0;
         const composing = self.composing;
-        if (keys.as(gtk.EventController).getCurrentEvent()) |event| if (self.text.imContextFilterKeypress(event) != 0) return 1;
+        const editor=if(self.inquiry_active) self.inquiry_text else self.text;
+        if (keys.as(gtk.EventController).getCurrentEvent()) |event| if (editor.imContextFilterKeypress(event) != 0) return 1;
         if (composing) return 1;
         if(self.inquiry_active) {if(!mods.control_mask or mods.shift_mask or mods.alt_mask or mods.super_mask) return 0;if(self.inquiry_held!=key){self.inquiry_held=key;sendClicked(self.send_button,self);}return 1;}
         if (mods.shift_mask or mods.alt_mask or mods.super_mask) return 0;
@@ -1272,7 +1331,7 @@ pub const InputBar = struct {
         if (self.composing or self.send_button.as(gtk.Widget).getSensitive() == 0) return;
         for(self.node_editors.items) |editor| if(editor.composing)return;
         if(self.detail_editor) |editor| if(editor.composing)return;
-        changed(self.text.getBuffer(), self);
+        self.commitDraft();
         const lease = if (self.metadata) |metadata| field(metadata.value,"generic_lease") else null;
         if (lease) |value| {
             self.owner.input(.{ .type="submit_input", .lease=value, .press_enter=true });
@@ -1284,6 +1343,7 @@ pub const InputBar = struct {
         self.owner.input(.{.type="inquiry_environment",.window_id=self.id,.foreground=self.host.as(gtk.Window).isActive()!=0,.composing=self.composing});
     }
     fn inquiryEntry(_: *gtk.Button,self:*InputBar) callconv(.c) void {
+        self.tools.popdown();
         self.commitDraft();self.inquiryEnvironment();self.owner.input(.{.type="inquiry_action",.window_id=self.id,.action="inbox"});
     }
     fn inquiryCommand(self:*InputBar,action:[]const u8,value:?[]const u8) void {
@@ -1312,14 +1372,29 @@ pub const InputBar = struct {
         self.inquiry_buttons.append(a,button) catch {};
         return button;
     }
+    pub fn setInquiryText(self:*InputBar,value:[]const u8) void {
+        if(self.composing) return;
+        const old=self.updating;self.updating=true;defer self.updating=old;
+        const buffer=self.inquiry_text.getBuffer();
+        var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;buffer.getBounds(&start,&end);
+        const current=buffer.getText(&start,&end,1);defer glib.free(current);
+        if(std.mem.eql(u8,std.mem.span(current),value)) return;
+        const z=self.owner.allocator.dupeZ(u8,value) catch return;defer self.owner.allocator.free(z);
+        buffer.setText(z,@intCast(value.len));
+    }
+    fn inquiryPreedit(_: *gtk.TextView, preedit: [*:0]const u8,self:*InputBar) callconv(.c) void {
+        self.composing=preedit[0]!=0;
+        if(!self.composing) inquiryEdited(self.inquiry_text.getBuffer(),self);
+    }
+    fn inquiryEdited(buffer:*gtk.TextBuffer,self:*InputBar) callconv(.c) void {
+        if(self.updating or self.composing or !self.inquiry_active) return;
+        var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;buffer.getBounds(&start,&end);
+        const text=buffer.getText(&start,&end,1);defer glib.free(text);
+        self.owner.input(.{.type="draft",.window_id=self.id,.text=std.mem.span(text)});self.owner.saveSoon();
+    }
     fn restoreInquiryEditor(self:*InputBar) void {
-        if(self.inquiry_editor_parent) |parent| {
-            _ = self.editor_overlay.as(gobject.Object).ref();parent.remove(self.editor_overlay.as(gtk.Widget));
-            self.body.prepend(self.editor_overlay.as(gtk.Widget));self.editor_overlay.as(gobject.Object).unref();
-            self.editor_scroll.setMinContentHeight(30);self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
-            self.editor_overlay.setMeasureOverlay(self.editor_scroll.as(gtk.Widget),0);
-            self.inquiry_editor_parent=null;
-        }
+        if(self.inquiry_answer_scroll) |scroll| scroll.setChild(null);
+        self.inquiry_answer_scroll=null;
     }
     fn inquiryLabel(self:*InputBar,text:[]const u8,dim:bool) *gtk.Label {
         const label=gtk.Label.new(null);setLabel(self.owner.allocator,label,text);
@@ -1334,15 +1409,15 @@ pub const InputBar = struct {
         if(self.inquiry_data) |*old| old.deinit();self.inquiry_data=parsed;
         if(self.inquiry_held!=null) {self.inquiry_deferred=true;self.inquiry_focus_pending=self.inquiry_focus_pending or focus;return;}
         self.inquiry_active=boolean(value,"active");
+        self.dictate_history.bindInput(if(self.inquiry_active) self.inquiry_text else self.text);
         self.send_button.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
         self.mode_button.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
         const count=number(value,"count");self.inquiry_entry.as(gtk.Widget).setVisible(@intFromBool(count>0 or self.inquiry_active or boolean(value,"has_history")));
         const entry=self.owner.allocator.dupeZ(u8,string(value,"entry_title") orelse "Inquiry") catch return;
         defer self.owner.allocator.free(entry);self.inquiry_entry.setLabel(entry);
-        self.text.setEditable(@intFromBool(!self.inquiry_active or boolean(value,"editable")));
-        if(self.inquiry_active) {
-            const label=self.owner.allocator.dupeZ(u8,string(value,"primary_label") orelse "Next") catch return;defer self.owner.allocator.free(label);self.send_button.setLabel(label);
-        }else self.setSendMode(self.owner.modified_send);
+        self.text.setEditable(@intFromBool(!self.inquiry_active));
+        self.inquiry_text.setEditable(@intFromBool(self.inquiry_active and boolean(value,"editable")));
+        if(!self.inquiry_active) self.setSendMode(self.owner.modified_send);
         const stage=string(value,"stage") orelse "badge";
         if(std.mem.eql(u8,stage,"badge") or self.host.as(gtk.Window).isActive()==0) {
             self.restoreInquiryEditor();
@@ -1383,9 +1458,10 @@ pub const InputBar = struct {
             if(routing) root.append(self.inquiryLabel(string(value,"task_label") orelse "",true).as(gtk.Widget));
             if(!routing and !prompt) root.append(self.inquiryLabel(string(value,"question") orelse "",false).as(gtk.Widget));
             if(boolean(value,"editable")) {
-                _ = self.editor_overlay.as(gobject.Object).ref();self.body.remove(self.editor_overlay.as(gtk.Widget));
-                root.append(self.editor_overlay.as(gtk.Widget));self.editor_overlay.as(gobject.Object).unref();
-                self.editor_scroll.setMinContentHeight(96);self.editor_scroll.setMaxContentHeight(144);self.editor_overlay.setMeasureOverlay(self.editor_scroll.as(gtk.Widget),1);self.inquiry_editor_parent=root;
+                const answer=gtk.ScrolledWindow.new();answer.setPolicy(.never,.automatic);
+                answer.setMinContentHeight(96);answer.setMaxContentHeight(144);answer.setPropagateNaturalHeight(1);
+                answer.setChild(self.inquiry_text.as(gtk.Widget));root.append(answer.as(gtk.Widget));
+                self.inquiry_answer_scroll=answer;
             } else {
                 const task=self.inquiryLabel(string(value,"task_preview") orelse "",false);task.setSelectable(1);root.append(task.as(gtk.Widget));
             }
@@ -1452,7 +1528,7 @@ pub const InputBar = struct {
         self.inquiry_popover.popup();
         if(!self.composing) {
             if(self.inquiry_focus_pending) {
-                if(boolean(data.value,"editable")){_ = self.text.as(gtk.Widget).grabFocus();}
+                if(boolean(data.value,"editable")){_ = self.inquiry_text.as(gtk.Widget).grabFocus();}
                 else if(self.inquiry_buttons.items.len>0){
                     var target=self.inquiry_buttons.items[0];
                     for(self.inquiry_buttons.items) |button| {if(button.getLabel()) |label| {if(std.mem.eql(u8,std.mem.span(label),"Open")){target=button;break;}}}
@@ -1481,8 +1557,8 @@ pub const InputBar = struct {
         self.updateInquiry(copy.value,self.inquiry_focus_pending);
     }
     fn inquiryKeys(_: *gtk.EventControllerKey,key:c_uint,_:c_uint,mods:gdk.ModifierType,self:*InputBar) callconv(.c) c_int {
+        if(self.composing) return 0;
         if(key==gdk.KEY_Escape){self.inquiryCommand("later",null);return 1;}
-        if(self.text.as(gtk.Widget).hasFocus()!=0) return 0;
         if(key==gdk.KEY_Return or key==gdk.KEY_KP_Enter) {
             if(self.inquiry_held==key)return 1;self.inquiry_held=key;
             if(mods.control_mask){if(self.inquiry_active and !mods.shift_mask and !mods.alt_mask and !mods.super_mask)sendClicked(self.send_button,self);return 1;}

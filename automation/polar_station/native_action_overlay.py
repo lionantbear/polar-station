@@ -64,6 +64,48 @@ def edits(platform):
         // Skip highlight/mods check when mouse_mods is null (double-click mode)''')
     anchor = '    return null;\n}\n\n/// This returns the mouse mods to consider for link highlighting or'
     add(surface, anchor, '    } // ordered file/default link passes\n\n' + anchor)
+    # Native text/pin mechanics only; Rust owns candidate reconstruction.
+    add(surface, '    if (self.config.links.len == 0) return null;', """    if (comptime @import("build_options").polar_tmux) {
+        if (mouse_mods) |mods| if (mods.equal(input.ctrlOrSuper(.{}))) {
+            if (try self.stationFileText(mouse_pin)) |context| {
+                defer self.alloc.free(context.text);
+                const domain = struct { extern fn polar_station_file_context_candidate([*]const u8, usize, usize) bool; };
+                if (domain.polar_station_file_context_candidate(context.text.ptr, context.text.len, context.hit)) {
+                    return .{ .action = .open, .selection = terminal.Selection.init(mouse_pin, mouse_pin, false), .station_file_reference = true };
+                }
+            }
+        };
+    }
+    if (self.config.links.len == 0) return null;""")
+    add(surface, 'fn linkAtPos(', """const StationFileText = struct { text: [:0]const u8, hit: usize };
+fn stationFileText(self: *Surface, pin: terminal.Pin) !?StationFileText {
+    const screen = self.renderer_state.terminal.screens.active;
+    const point = screen.pages.pointFromPin(.viewport, pin) orelse return null;
+    const y = point.viewport.y;
+    const top = screen.pages.pin(.{ .viewport = .{ .x = 0, .y = y -| 8 } }) orelse return null;
+    const bottom_y = @min(screen.pages.rows - 1, y +| 8);
+    const bottom = screen.pages.pin(.{ .viewport = .{ .x = screen.pages.cols - 1, .y = bottom_y } }) orelse return null;
+    var map: terminal.StringMap = undefined;
+    const text = try screen.selectionString(self.alloc, .{ .sel = terminal.Selection.init(top, bottom, false), .trim = false, .map = &map });
+    defer map.deinit(self.alloc);
+    if (text.len <= 16384) for (map.map, 0..) |mapped, index| {
+        if (mapped.eql(pin) and index < text.len) return .{ .text = text, .hit = index };
+    };
+    self.alloc.free(text);
+    return null;
+}
+fn stationFileClick(self: *Surface, pos: apprt.CursorPos) !?[:0]const u8 {
+    const point = self.posToViewport(pos.x, pos.y);
+    const pin = self.renderer_state.terminal.screens.active.pages.pin(.{ .viewport = point }) orelse return null;
+    const context = (try self.stationFileText(pin)) orelse return null;
+    defer self.alloc.free(context.text);
+    const json = try std.json.Stringify.valueAlloc(self.alloc, .{ .text = @as([]const u8, context.text), .hit = context.hit }, .{});
+    defer self.alloc.free(json);
+    return try std.fmt.allocPrintSentinel(self.alloc, "polar-station-file-context:{s}", .{json}, 0);
+}
+fn linkAtPos(""")
+    add(surface, '            const str = try self.io.terminal.screens.active.selectionString(self.alloc, .{\n                .sel = link.selection,',
+        '            const str = if (link.station_file_reference) ((try self.stationFileClick(pos)) orelse return false) else try self.io.terminal.screens.active.selectionString(self.alloc, .{\n                .sel = link.selection,')
     # TUI mouse reporting must not hide the terminal's explicit link chord.
     # Keep ownership for the complete physical left-button pair: over_link is
     # transient hover state and cannot safely own a press after dragging away.

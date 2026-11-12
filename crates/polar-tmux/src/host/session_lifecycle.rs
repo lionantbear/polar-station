@@ -1702,7 +1702,7 @@ pub(crate) fn codex_remote_cli_command(socket_path: &str, thread_id: &str) -> St
 pub(super) fn codex_cli_command(socket_path: &str, thread_id: &str, cwd: Option<&str>) -> String {
     let directory = cwd.map(|path| format!("--cd {}", shell_quote(path)))
         .unwrap_or_else(|| format!("-c {}", shell_quote("tui.resume_cwd=\"session\"")));
-    format!("exec codex --remote {} {directory} resume {}", shell_quote(&format!("unix://{socket_path}")), shell_quote(thread_id))
+    format!("{}; exec \"$station_codex\" --remote {} {directory} resume {}",super::target_tools::CODEX_RESOLVE, shell_quote(&format!("unix://{socket_path}")), shell_quote(thread_id))
 }
 
 fn claude_initial_command(session_id: &str) -> String {
@@ -1727,6 +1727,7 @@ pub(super) async fn ensure_codex_launcher(target: &polar_tmux_core::TmuxTarget, 
 
 async fn ensure_cli_launcher(target: &polar_tmux_core::TmuxTarget, directory: Option<&str>, tool: &'static str) -> Result<()> {
     let probe=directory.map(|path|format!("cd {} && command -v {tool} >/dev/null",shell_quote(path))).unwrap_or_else(||format!("command -v {tool} >/dev/null"));
+    let probe=if tool=="codex" {let check=format!("{}; command -v \"$station_codex\" >/dev/null",super::target_tools::CODEX_RESOLVE);directory.map(|path|format!("cd {} && {check}",shell_quote(path))).unwrap_or(check)}else{probe};
     let remote=format!("sh -lc {}",shell_quote(&probe));
     use polar_tmux_core::TmuxTarget;
     let mut command = match target {

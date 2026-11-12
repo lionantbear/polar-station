@@ -101,6 +101,20 @@ impl VaultSqliteStore {
                 sql: include_str!("../../../migrations/sqlite/vault/V0004__credential_names.sql"),
                 post_apply: None,
             },
+            SqliteMigration {
+                descriptor: MigrationDescriptor {
+                    backend: StorageBackend::Sqlite,
+                    component: "vault".into(),
+                    version: 5,
+                    name: "key_directory".into(),
+                    path: "migrations/sqlite/vault/V0005__key_directory.sql".into(),
+                    sha256: "c0fe1145e097895402781960d98c0a5214af749573db87bff8b36ecc356adb2d"
+                        .into(),
+                    transaction_mode: TransactionMode::Required,
+                },
+                sql: include_str!("../../../migrations/sqlite/vault/V0005__key_directory.sql"),
+                post_apply: None,
+            },
         ]
     }
 
@@ -385,6 +399,38 @@ impl VaultStore for VaultSqliteStore {
     ) -> Result<()> {
         VaultSqliteStore::resolve_management_request(self, &id, status, at, response.as_deref())
             .await
+    }
+    async fn load_key_directory(
+        &self,
+        owner: NodeId,
+    ) -> Result<Option<polar_vault::keys::directory::StoredDirectory>> {
+        use rusqlite::OptionalExtension;
+        Ok(self.runtime.read_with_operation(polar_storage_core::StorageOperationId::new("storage.polar-vault-store-sqlite.load_key_directory").expect("stable operation"),move|db|{
+            db.query_row("SELECT revision,nonce,ciphertext FROM vault_key_directory WHERE owner_node_id=?1",[owner.to_hex()],|row|{
+                let revision:i64=row.get(0)?;
+                Ok(polar_vault::keys::directory::StoredDirectory{revision:u64::try_from(revision).map_err(sql_conversion)?,nonce:row.get(1)?,ciphertext:row.get(2)?})
+            }).optional()
+        }).await?)
+    }
+    async fn compare_exchange_key_directory(
+        &self,
+        owner: NodeId,
+        expected: u64,
+        record: polar_vault::keys::directory::StoredDirectory,
+    ) -> Result<bool> {
+        anyhow::ensure!(
+            expected.checked_add(1) == Some(record.revision),
+            "invalid directory revision"
+        );
+        let expected = i64::try_from(expected)?;
+        let revision = i64::try_from(record.revision)?;
+        Ok(self.runtime.write_with_operation(polar_storage_core::StorageOperationId::new("storage.polar-vault-store-sqlite.commit_key_directory").expect("stable operation"),move|db|{
+            if expected==0 {
+                Ok(db.execute("INSERT INTO vault_key_directory(owner_node_id,revision,nonce,ciphertext) VALUES(?1,?2,?3,?4) ON CONFLICT(owner_node_id) DO NOTHING",rusqlite::params![owner.to_hex(),revision,record.nonce,record.ciphertext])?==1)
+            }else{
+                Ok(db.execute("UPDATE vault_key_directory SET revision=?1,nonce=?2,ciphertext=?3 WHERE owner_node_id=?4 AND revision=?5",rusqlite::params![revision,record.nonce,record.ciphertext,owner.to_hex(),expected])?==1)
+            }
+        }).await?)
     }
     async fn put_node_setting(&self, key: String, value: String) -> Result<()> {
         VaultSqliteStore::put_node_setting(self, &key, &value).await

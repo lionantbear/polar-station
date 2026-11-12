@@ -40,6 +40,7 @@ fn decode(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredSecret> {
             version: read_positive(row, 3)?,
             revision: read_positive(row, 4)?,
             revoked: row.get(5)?,
+            device_only: row.get(11)?,
         },
         vault_id: Uuid::parse_str(&vault_id).map_err(sql_conversion)?,
         key_generation: read_positive(row, 7)?,
@@ -63,14 +64,14 @@ impl VaultSqliteStore {
             "invalid credential query limit"
         );
         Ok(self.runtime.read_with_operation(operation("query_uuid_secrets"), move |db| {
-            let mut statement = db.prepare_cached("SELECT secret_id,name,kind,current_version,revision,revoked FROM vault_secret WHERE owner_node_id=?1 AND (?2 IS NULL OR secret_id=?2) AND (?3 IS NULL OR instr(name,?3)>0) AND (?4 IS NULL OR kind=?4) AND (?5=1 OR revoked=0) AND (?6 IS NULL OR secret_id>?6) ORDER BY secret_id LIMIT ?7")?;
+            let mut statement = db.prepare_cached("SELECT secret_id,name,kind,current_version,revision,revoked,device_only FROM vault_secret WHERE owner_node_id=?1 AND (?2 IS NULL OR secret_id=?2) AND (?3 IS NULL OR instr(name,?3)>0) AND (?4 IS NULL OR kind=?4) AND (?5=1 OR revoked=0) AND (?6 IS NULL OR secret_id>?6) ORDER BY secret_id LIMIT ?7")?;
             let rows = statement.query_map(params![owner.to_hex(),query.id.map(|id|id.to_string()),
                 query.name_contains,query.kind.map(|kind|kind as u16),query.include_revoked,
                 query.after.map(|id|id.to_string()),i64::from(query.limit)+1], |row| {
                 Ok(SecretMetadata { id: read_id(row.get(0)?)?, name: row.get(1)?, owner,
                     kind: SecretKind::try_from(row.get::<_,u16>(2)?)
                         .map_err(|_|sql_conversion(std::io::Error::other("invalid secret kind")))?,
-                    version: read_positive(row,3)?, revision: read_positive(row,4)?, revoked: row.get(5)? })
+                    version: read_positive(row,3)?, revision: read_positive(row,4)?, revoked: row.get(5)?, device_only:row.get(6)? })
             })?;
             rows.collect()
         }).await?)
@@ -87,7 +88,7 @@ impl VaultSqliteStore {
     }
     pub(super) async fn uuid_load(&self, id: SecretId) -> Result<Option<StoredSecret>> {
         Ok(self.runtime.read_with_operation(operation("load_uuid_secret"), move |db| {
-            db.query_row("SELECT s.secret_id,s.owner_node_id,s.kind,s.current_version,s.revision,s.revoked,v.vault_id,v.key_generation,v.nonce,v.ciphertext,s.name FROM vault_secret s JOIN vault_secret_version v ON v.secret_id=s.secret_id AND v.version=s.current_version WHERE s.secret_id=?1",
+            db.query_row("SELECT s.secret_id,s.owner_node_id,s.kind,s.current_version,s.revision,s.revoked,v.vault_id,v.key_generation,v.nonce,v.ciphertext,s.name,s.device_only FROM vault_secret s JOIN vault_secret_version v ON v.secret_id=s.secret_id AND v.version=s.current_version WHERE s.secret_id=?1",
                 [id.to_string()], decode).optional()
         }).await?)
     }
@@ -115,8 +116,8 @@ impl VaultSqliteStore {
             let existing = tx.query_row("SELECT secret_id FROM vault_secret_import WHERE owner_node_id=?1 AND import_id=?2",
                 params![m.owner.to_hex(),import.to_string()], |row| read_id(row.get(0)?)).optional()?;
             if let Some(id) = existing { return Ok(id); }
-            tx.execute("INSERT INTO vault_secret(secret_id,owner_node_id,kind,current_version,revision,revoked,name) VALUES(?1,?2,?3,1,1,0,?4)",
-                params![m.id.to_string(),m.owner.to_hex(),m.kind as u16,m.name])?;
+            tx.execute("INSERT INTO vault_secret(secret_id,owner_node_id,kind,current_version,revision,revoked,name,device_only) VALUES(?1,?2,?3,1,1,0,?4,?5)",
+                params![m.id.to_string(),m.owner.to_hex(),m.kind as u16,m.name,m.device_only])?;
             write_version(tx, &record)?;
             tx.execute("INSERT INTO vault_secret_import(owner_node_id,import_id,secret_id) VALUES(?1,?2,?3)",
                 params![m.owner.to_hex(),import.to_string(),m.id.to_string()])?;
@@ -133,8 +134,8 @@ impl VaultSqliteStore {
         );
         Ok(self.runtime.transaction_with_operation(operation("rotate_uuid_secret"), move |tx| {
             let m = &record.metadata;
-            let changed = tx.execute("UPDATE vault_secret SET current_version=?1,revision=?2 WHERE secret_id=?3 AND owner_node_id=?4 AND kind=?5 AND revision=?6 AND revoked=0 AND current_version=?7",
-                params![sql_integer(m.version)?,sql_integer(m.revision)?,m.id.to_string(),m.owner.to_hex(),m.kind as u16,sql_integer(expected)?,sql_integer(m.version-1)?])?;
+            let changed = tx.execute("UPDATE vault_secret SET current_version=?1,revision=?2 WHERE secret_id=?3 AND owner_node_id=?4 AND kind=?5 AND revision=?6 AND revoked=0 AND current_version=?7 AND device_only=?8",
+                params![sql_integer(m.version)?,sql_integer(m.revision)?,m.id.to_string(),m.owner.to_hex(),m.kind as u16,sql_integer(expected)?,sql_integer(m.version-1)?,m.device_only])?;
             if changed == 0 { return Ok(false); }
             write_version(tx, &record)?;
             Ok(true)

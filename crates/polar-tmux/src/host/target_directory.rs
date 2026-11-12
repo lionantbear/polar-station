@@ -128,14 +128,20 @@ async fn read_remote(
 }
 /// Read-only target query on the existing verified transport, bounded like directory reads.
 pub(super) async fn target_output(target: &TmuxTarget, script: &str) -> Result<Vec<u8>> {
-    let mut command = match target {
+    let mut command=target_command(target,script,false)?;
+    tokio::time::timeout(std::time::Duration::from_secs(10), output(&mut command))
+        .await.context("Target query timed out")?
+
+}
+pub(super) fn target_command(target:&TmuxTarget,script:&str,interactive:bool)->Result<Command> {
+    let command = match target {
         TmuxTarget::MultiplexedSsh {
             destination,
             control_socket,
         } => {
             let mut c = Command::new("ssh");
             c.args([
-                "-T",
+                if interactive {"-tt"} else {"-T"},
                 "-S",
                 control_socket,
                 "-o",
@@ -157,13 +163,12 @@ pub(super) async fn target_output(target: &TmuxTarget, script: &str) -> Result<V
             c.args(["--", "sh", "-c", script]);
             c
         }
-        TmuxTarget::Local | TmuxTarget::Ssh { .. } => {
+        TmuxTarget::Local => { let mut c=Command::new("/bin/sh");c.args(["-lc",script]);c },
+        TmuxTarget::Ssh { .. } => {
             anyhow::bail!("A verified shared SSH lease is required")
         }
     };
-    tokio::time::timeout(std::time::Duration::from_secs(10), output(&mut command))
-        .await.context("Target query timed out")?
-
+    Ok(command)
 }
 async fn output(command: &mut Command) -> Result<Vec<u8>> {
     command

@@ -20,7 +20,7 @@ impl CodexControlService {
         // Reuse the same login-shell executable resolution as existing session launch.
         // Codex owns the daemon's startup lock, package and readiness management.
         let mut command=tokio::process::Command::new("sh");
-        command.args(["-lc","exec codex app-server daemon start"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
+        command.args(["-lc",&format!("{}; exec \"$station_codex\" app-server daemon start",super::target_tools::CODEX_RESOLVE)]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
         super::child_process::configure_parent_lease(&mut command).map_err(|_|"codex_launch_failed")?;
         let status=tokio::time::timeout(Duration::from_secs(30),command.status()).await.map_err(|_|"codex_start_timeout")?.map_err(|_|"codex_launcher_unavailable")?;
         if !status.success(){return Err("codex_start_failed")}

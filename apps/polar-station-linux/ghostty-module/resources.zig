@@ -116,7 +116,7 @@ pub const LogTail = struct {
     truncated: bool,
 };
 
-pub const FileAccess=struct {state:[]const u8,resource_id:?[]const u8=null,local_path:?[]const u8=null,execution_target_id:?[]const u8=null,remote_directory:?[]const u8=null,source_path:?[]const u8=null};
+pub const FileAccess=struct {state:[]const u8,reference:?std.json.Value=null,access:?std.json.Value=null,origin:?std.json.Value=null,candidates:?std.json.Value=null,resource_id:?[]const u8=null,local_path:?[]const u8=null,execution_target_id:?[]const u8=null,remote_directory:?[]const u8=null,source_path:?[]const u8=null};
 const Result = struct {
     access:?FileAccess=null,
     type: []const u8,
@@ -324,10 +324,16 @@ fn encodeMutation(
 
 
 
-pub fn encodeResolveFile(allocator:std.mem.Allocator,id:[]const u8,target:[]const u8,path:[]const u8,cwd:?[]const u8,session:?[]const u8) ![]u8 {
-    if(session)|value|return encodeRead(allocator,id,.{ .type="resolve_file",.execution_target_id="",.source_session=.{.execution_target=target,.tmux_session_id=value},.path=path,.cwd=cwd});
-    return encodeRead(allocator,id,.{.type="resolve_file",.execution_target_id=target,.path=path,.cwd=cwd});
+pub fn encodeResolveFileCandidates(allocator:std.mem.Allocator,id:[]const u8,origin:std.json.Value,candidates:std.json.Value) ![]u8 {
+    return encodeRead(allocator,id,.{.type="resolve_file_candidates",.origin=origin,.candidates=candidates});
 }
+
+pub fn encodeResolveFile(allocator:std.mem.Allocator,id:[]const u8,target:[]const u8,path:[]const u8,cwd:?[]const u8,session:?[]const u8) ![]u8 {
+    if(session)|value|return encodeRead(allocator,id,.{ .type="resolve_file",.client_supports_local_file=true,.execution_target_id="",.source_session=.{.execution_target=target,.tmux_session_id=value},.path=path,.cwd=cwd});
+    return encodeRead(allocator,id,.{.type="resolve_file",.client_supports_local_file=true,.execution_target_id=target,.path=path,.cwd=cwd});
+}
+
+
 
 
 

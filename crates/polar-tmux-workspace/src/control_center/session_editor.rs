@@ -70,6 +70,8 @@ pub enum SessionEditorInput {
     },
     More,
     RetryHistory,
+    PrepareTools,
+    ReturnedFromTools,
     StartLocalServer,
     ServerStarted { token:u64,error:Option<String> },
     RetryDetail,
@@ -106,6 +108,10 @@ pub enum SessionEditorEffect {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEditorView {
+    pub context_preserves_form:bool,
+    pub prepare_label:Option<String>,
+    pub can_prepare:bool,
+    pub endpoints:Vec<CodexEndpointSettingsV1>,
     pub can_start_local_server:bool,
     pub server_starting:bool,
     pub server_start_label:String,
@@ -137,6 +143,11 @@ struct Read {
 }
 #[derive(Debug, Default)]
 pub struct SessionEditorEngine {
+    context_preserves_form:bool,
+    tools:Option<Vec<polar_tmux_protocol::SessionTargetToolsV1>>,
+    preparation:Option<(u64,String)>,
+    awaiting_tools:bool,
+    returned_tools:bool,
     end_target: Option<SessionEditorRequestV1>,
     end_preview: Option<SessionEndPreviewV1>,
     end_read: Option<Read>,
@@ -216,8 +227,35 @@ impl SessionEditorEngine {
             else { self.history.iter().find(|t| t.thread_id == *id) }?;
         Some((endpoint.owner_host_id.clone(), endpoint.id.clone(), id.clone(), thread.display_name.clone()))
     }
+    fn tools_missing(&self,id:&str,tmux:bool,codex:bool)->bool {
+        use polar_tmux_protocol::SessionToolStateV1::Available;
+        self.tools.as_ref().and_then(|v|v.iter().find(|t|t.execution_target_id==id))
+            .is_some_and(|t|(tmux && t.tmux!=Available)||(codex && t.codex!=Available))
+    }
+    fn tools_blocked(&self)->bool {
+        if self.end_target.is_some() || self.draft.rename.is_some() {return false}
+        match self.draft.session_type.as_str() {
+            "shell"|"command"|"codex_terminal"=>self.tools_missing(&self.draft.target,true,self.draft.session_type=="codex_terminal"),
+            "codex"=>self.tools.as_ref().and_then(|v|v.iter().find(|t|t.execution_target_id==self.draft.target)).is_some_and(|t|!t.codex_control_enabled) || (self.draft.open_local_cli && self.tools_missing("local",true,true)),
+            _=>false,
+        }
+    }
+    fn preparation_request(&self)->Option<SessionEditorRequestV1> {
+        if !self.open || self.draft.rename.is_some() || self.end_target.is_some() {return None}
+        let tools=self.tools.as_ref()?;
+        let cli=self.draft.session_type=="codex" && self.draft.open_local_cli && self.tools_missing("local",true,true);
+        let target=if cli {"local"}else{&self.draft.target};
+        let facts=tools.iter().find(|t|t.execution_target_id==target)?;
+        use polar_tmux_protocol::SessionToolStateV1::{Missing,Unavailable};
+        let codex=cli || matches!(self.draft.session_type.as_str(),"codex"|"codex_terminal");
+        if codex && !cli && self.endpoint().is_some_and(|e|e.control_mode==CodexControlModeV1::RemoteHost){return None}
+        let tmux=cli || matches!(self.draft.session_type.as_str(),"shell"|"command"|"codex_terminal");
+        if (tmux && facts.tmux==Unavailable)||(codex && facts.codex==Unavailable){return None}
+        let tmux=tmux && facts.tmux==Missing;
+        (tmux||codex).then(||SessionEditorRequestV1::PrepareTools{execution_target_id:target.into(),tmux,codex,codex_service:codex && !cli})
+    }
     fn operation(&self) -> Option<ControlCenterIntentV1> {
-        if self.draft.bind_only { return None; }
+        if self.draft.bind_only || self.tools_blocked() { return None; }
         if let Some(request) = &self.end_target {
             let confirmation_id = self.end_preview.as_ref()?.confirmation.id.clone();
             return Some(match request {
@@ -329,7 +367,21 @@ impl SessionEditorEngine {
     pub fn view(&self) -> SessionEditorView {
         let resume = matches!(self.draft.session_type.as_str(), "codex" | "claude")
             && self.draft.mode == "resume";
+        let request=self.preparation_request();
+        let prepare_label=match &request {
+            Some(SessionEditorRequestV1::PrepareTools{execution_target_id,codex,codex_service,..})=>Some(
+                if *codex && !codex_service {"Set up local CLI"}
+                else if *codex && self.tools.as_ref().and_then(|v|v.iter().find(|t|t.execution_target_id==*execution_target_id)).is_some_and(|t|!t.codex_control_enabled) {"Enable Codex"}
+                else if *codex {"Set up Codex"} else {"Install tmux"}.into()),
+            _ if self.tools.is_some() && self.tools_blocked()=>Some("Check tools".into()),
+            _=>None,
+        };
+        let can_prepare=prepare_label.is_some() && self.preparation.is_none() && self.pending.is_none() && self.server_start.is_none() && self.directory_read.is_none();
         SessionEditorView {
+            context_preserves_form:self.context_preserves_form,
+            prepare_label:if self.preparation.is_some(){Some("Opening setup terminal…".into())}else{prepare_label},
+            can_prepare,
+            endpoints:self.endpoints.clone(),
             can_start_local_server:self.open&&self.draft.session_type=="codex"&&self.endpoint().is_some_and(|e|e.control_mode==CodexControlModeV1::Local)&&self.server_start.is_none()&&self.pending.is_none(),
             server_starting:self.server_start.is_some(),
             server_start_label:(if self.server_start.is_some(){"Starting Codex…"}else{"Start local Codex app server"}).into(),
@@ -346,13 +398,14 @@ impl SessionEditorEngine {
             directory_loading: self.directory_read.is_some(),
             history_error: self.history_error.clone(),
             detail_error: self.detail_error.clone(),
-            message: self.yolo_save_error.clone().or_else(|| self.message.clone()),
+            message: self.yolo_save_error.clone().or_else(|| self.message.clone()).or_else(||self.tools_blocked().then(||"Required tools are unavailable on the execution machine. Prepare tools or check its connection.".into())),
             can_more: self.browsing()
                 && self.cursor.is_some()
                 && self.history_read.is_none()
                 && self.history_error.is_none(),
             can_submit: self.open
                 && self.server_start.is_none()
+                && self.preparation.is_none()
                 && self.pending.is_none()
                 && (resume || self.directory_read.is_none())
                 && (self.operation().is_some() || self.picked().is_some()),
@@ -521,6 +574,7 @@ impl SessionEditorEngine {
                 effects
             }
             SessionEditorInput::Close => {
+                self.context_preserves_form=false;self.tools=None;self.awaiting_tools=false;self.returned_tools=false;self.preparation=None;
                 self.server_start=None;
                 self.open = false;
                 self.end_target = None;
@@ -544,6 +598,7 @@ impl SessionEditorEngine {
                 self.draft = draft;
                 let target_changed = old.target != self.draft.target;
                 if target_changed {
+                    self.context_preserves_form=false;self.tools=None;self.awaiting_tools=false;self.preparation=None;self.returned_tools=false;
                     self.draft.directory.clear();
                     self.draft.open_local_cli = false;
                     self.draft.endpoint.clear();
@@ -644,6 +699,20 @@ impl SessionEditorEngine {
                 self.detail = None;
                 self.detail_request()
             }
+            SessionEditorInput::PrepareTools if self.view().can_prepare => {
+                let Some(request)=self.preparation_request() else {
+                    self.context_preserves_form=true;self.message=Some("Checking tools on the execution machine…".into());return self.directory_request();
+                };
+                let token=self.token();self.preparation=Some((token,self.draft.target.clone()));self.returned_tools=false;
+                self.message=Some("Complete setup in the system terminal, then return here. Your form is retained.".into());
+                vec![SessionEditorEffect::Read{token,request}]
+            }
+            SessionEditorInput::ReturnedFromTools if self.preparation.is_some()=>{self.returned_tools=true;vec![]}
+            SessionEditorInput::ReturnedFromTools if self.open && self.awaiting_tools=>{
+                self.awaiting_tools=false;self.context_preserves_form=true;
+                self.message=Some("Checking tools on the execution machine…".into());
+                self.directory_request()
+            }
             SessionEditorInput::More if self.history_error.is_none() => self.history_request(true),
             SessionEditorInput::StartLocalServer if self.view().can_start_local_server=>{
                 let endpoint=self.endpoint().unwrap().clone();let token=self.token();
@@ -701,6 +770,18 @@ impl SessionEditorEngine {
         result: Option<SessionEditorResultV1>,
         error: Option<String>,
     ) -> Vec<SessionEditorEffect> {
+        if self.preparation.as_ref().is_some_and(|p|p.0==token) {
+            let (_,target)=self.preparation.take().unwrap();
+            if !self.open || target!=self.draft.target {return vec![]}
+            match (result,error) {
+                (Some(SessionEditorResultV1::ToolsLaunched{..}),None)=>{
+                    self.awaiting_tools=true;
+                    if self.returned_tools {self.returned_tools=false;return self.dispatch(SessionEditorInput::ReturnedFromTools)}
+                }
+                (_,error)=>self.message=Some(error.unwrap_or_else(||"Setup launch was not confirmed. Check the system terminal before retrying.".into())),
+            }
+            return vec![];
+        }
         if let Some((_, written)) = self.yolo_write.filter(|(id, _)| *id == token) {
             self.yolo_write = None;
             match (result, error) {
@@ -806,17 +887,20 @@ impl SessionEditorEngine {
                 return vec![];
             }
             match (result, error) {
-                (Some(SessionEditorResultV1::LaunchContext { directory, notice, yolo }), None)
+                (Some(SessionEditorResultV1::LaunchContext { directory, notice, yolo,tools,codex_endpoints }), None)
                     if directory.execution_target_id == self.draft.target =>
                 {
+                    self.tools=tools;
+                    let mut effects=if let Some(endpoints)=codex_endpoints {self.dispatch(SessionEditorInput::Endpoints{endpoints})}else{vec![]};
+                    if self.message.as_deref()==Some("Checking tools on the execution machine…") {self.message=None;}
                     if !self.yolo_edited { self.draft.yolo = yolo; }
-                    if self.draft.directory.is_empty() {
+                    if !self.context_preserves_form && self.draft.directory.is_empty() {
                         self.draft.directory = directory.path.clone();
                         if self.message.is_none() {
                             self.message = notice;
                         }
                     }
-                    if self.draft.name.is_empty() {
+                    if !self.context_preserves_form && self.draft.name.is_empty() {
                         self.draft.name = directory
                             .path
                             .rsplit('/')
@@ -824,6 +908,8 @@ impl SessionEditorEngine {
                             .unwrap_or("Session")
                             .into();
                     }
+                    if self.browsing() && self.history_read.is_none() && (self.history_error.is_some()||self.history.is_empty()) {effects.extend(self.history_request(false));}
+                    return effects;
                 }
                 (_, error) => {
                     self.message =

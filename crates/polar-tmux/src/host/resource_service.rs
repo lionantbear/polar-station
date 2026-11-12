@@ -1,3 +1,5 @@
+mod candidate_files;
+
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
@@ -105,6 +107,7 @@ pub(crate) struct ResourceService {
     store: Arc<dyn ResourceCatalogStore>,
     targets: BTreeMap<String, ResourceTargetKind>,
     target_registry: Option<TargetRegistry>,
+    candidate_ssh: Option<SshConnectionManager>,
     catalog: Arc<Mutex<ResourceCatalog>>,
     statuses: Arc<Mutex<BTreeMap<ResourceId, ResourceRuntimeStatus>>>,
     logs: Arc<Mutex<BTreeMap<ResourceId, VecDeque<ResourceLogEventV1>>>>,
@@ -145,6 +148,7 @@ impl ResourceService {
         )
         .map_err(|_| "failed to load the global Resource catalog")?;
         service.target_registry = Some(target_registry.clone());
+        service.candidate_ssh = Some(ssh_connections.clone());
         let provider = SystemResourceProvider::new(
             target_registry,
             ssh_connections.clone(),
@@ -174,6 +178,7 @@ impl ResourceService {
             store,
             targets,
             target_registry: None,
+            candidate_ssh: None,
             catalog: Arc::new(Mutex::new(catalog)),
             statuses: Arc::new(Mutex::new(statuses)),
             logs: Arc::new(Mutex::new(BTreeMap::new())),
@@ -248,9 +253,35 @@ impl ResourceService {
         codex: Option<&super::codex_control::CodexControlService>,
         source: Option<SessionFileContext<'_>>,
     ) -> ResourcesResponseEnvelopeV1 {
+        if let ResourcesCommandV1::ResolveFileCandidates { origin, candidates } = &request.command {
+            if request.validate().is_err() {
+                return self.error_response(request.request_id, "resource_request_invalid", "Invalid file candidates.").await;
+            }
+            if let Some(session) = &origin.terminal_session_id {
+                let Ok(id) = polar_tmux_workspace::StableTmuxSessionId::new(session.clone()) else {
+                    return self.error_response(request.request_id,"resource_request_invalid","Invalid source Session.").await;
+                };
+                let Ok(target_id) = polar_tmux_workspace::ExecutionTargetId::new(origin.execution_target_id.clone()) else { return self.error_response(request.request_id,"resource_request_invalid","Invalid source target.").await; };
+                let key = polar_tmux_workspace::SessionKey::new(target_id,id);
+                let harness = if let Some(codex) = codex { codex.terminal_file_reference(&key,"./").await } else { Ok(None) };
+                let mut resolved = match harness {
+                    Ok(Some((origin,_))) => origin,
+                    Ok(None) => {
+                        let directory = if let Some(source) = source { source.directory(&origin.execution_target_id, session).await.ok() } else { None };
+                        let Some(cwd) = directory else { return self.error_response(request.request_id,"resource_session_origin_unavailable","The source Session directory is unavailable.").await; };
+                        polar_tmux_resources::FileOrigin { execution_target_id: origin.execution_target_id.clone(), cwd: Some(cwd), terminal_session_id: None }
+                    }
+                    Err(_) => return self.error_response(request.request_id,"resource_session_origin_unavailable","The original Session source is unavailable.").await,
+                };
+                resolved.terminal_session_id = None;
+                request.command = ResourcesCommandV1::ResolveFileCandidates { origin: resolved, candidates: candidates.clone() };
+            }
+            return self.dispatch(request).await;
+        }
         if let ResourcesCommandV1::ResolveFile {
             source_session: Some(session),
             path,
+            client_supports_local_file,
             ..
         } = &request.command
         {
@@ -303,6 +334,7 @@ impl ResourceService {
                 path: resolved_path,
                 cwd: origin.cwd,
                 source_session: None,
+                client_supports_local_file: *client_supports_local_file,
             };
         }
         self.dispatch(request).await
@@ -322,11 +354,15 @@ impl ResourceService {
                 .await;
         }
         match request.command.clone() {
+            ResourcesCommandV1::ResolveFileCandidates { origin, candidates } => {
+                self.resolve_file_candidates(request, origin, candidates).await
+            }
             ResourcesCommandV1::ResolveFile {
                 execution_target_id,
                 path,
                 cwd,
                 source_session,
+                client_supports_local_file,
             } => {
                 if source_session.is_some() {
                     return self
@@ -348,13 +384,22 @@ impl ResourceService {
                 }
                 let catalog = self.catalog.lock().await;
                 let statuses = self.statuses.lock().await;
-                let result = polar_tmux_resources::resolve_file(
+                let result = if client_supports_local_file
+                    && execution_target_id == crate::target_registry::LOCAL_TARGET_ID
+                {
+                    polar_tmux_resources::resolve_reference_path(
+                        &polar_tmux_resources::FileReference { path: path.clone(), location: None },
+                        cwd.as_deref(),
+                    ).map(|path| polar_tmux_resources::FileAccess::LocalFile {
+                        local_path: path.to_string_lossy().into_owned(),
+                    })
+                } else { polar_tmux_resources::resolve_file(
                     &catalog,
                     &statuses,
                     &execution_target_id,
                     &path,
                     cwd.as_deref(),
-                );
+                ) };
                 match result {
                     Ok(access) => ResourcesResponseEnvelopeV1 {
                         protocol_version: PROTOCOL_VERSION,

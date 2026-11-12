@@ -747,7 +747,7 @@ final class StationDictateControls: NSStackView {
     init(dictate: PolarStationDictate) {
         self.dictate = dictate
         super.init(frame: .zero)
-        orientation = .horizontal; spacing = 0
+        orientation = .horizontal; spacing = 0; distribution = .fill
         microphone.bezelStyle = .rounded; microphone.refusesFirstResponder = true
         microphone.target = self; microphone.action = #selector(toggle)
         history.refusesFirstResponder = true; history.target = self; history.action = #selector(openHistory)

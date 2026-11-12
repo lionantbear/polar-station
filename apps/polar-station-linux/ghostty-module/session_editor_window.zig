@@ -9,6 +9,7 @@ const auxiliary = @import("auxiliary_window.zig");
 const preferences = @import("control_center/width_preferences.zig");
 
 pub const State = struct {
+    prepare_tools:?*gtk.Button=null,
     start_server:?*gtk.Button=null,
     history_mode: ?bool = null,
     detail_cards: ?*gtk.Box = null,
@@ -115,6 +116,10 @@ pub fn create(comptime C: type, self: *C) void {
     const machine = gtk.DropDown.new(null, null);
     machine.as(gtk.Widget).setSizeRequest(145, -1);
     scope.append(machine.as(gtk.Widget));
+    const prepare=gtk.Button.newWithLabel("Prepare tools");prepare.as(gtk.Widget).setVisible(0);
+    self.editor.prepare_tools=prepare;scope.append(prepare.as(gtk.Widget));
+    _=gtk.Button.signals.clicked.connect(prepare,*C,C.prepareToolsClicked,self,.{});
+    _=gobject.Object.signals.notify.connect(window.as(gobject.Object),*C,C.editorBecameActive,self,.{.detail="is-active"});
     const appserver = gtk.Box.new(.horizontal, 8);
     appserver.as(gtk.Widget).setHexpand(1);
     const appserver_label = label("App server");

@@ -454,7 +454,17 @@ pub const Workspace = struct {
                 self.showError(string(parsed.value, "error") orelse "LGP operation failed");
                 continue;
             }
-            for (array(field(parsed.value, "effects"))) |effect| self.consume(effect);
+            const effects=array(field(parsed.value,"effects"));
+            for(effects) |effect| if(std.mem.eql(u8,string(effect,"type") orelse "","inquiry")) {
+                if(boolean(field(effect,"view") orelse .null,"active")) {
+                    const id=string(effect,"window_id") orelse continue;
+                    for(effects) |composer| if(std.mem.eql(u8,string(composer,"type") orelse "","composer") and std.mem.eql(u8,string(composer,"window_id") orelse "",id)) {
+                        if(self.composers.get(id)) |bar| bar.setInquiryText(string(composer,"text") orelse "");
+                    };
+                }
+                self.consume(effect);
+            };
+            for(effects) |effect| if(!std.mem.eql(u8,string(effect,"type") orelse "","inquiry")) {self.consume(effect);};
             if (self.timer != 0) { _ = glib.Source.remove(self.timer); self.timer = 0; }
             if (field(parsed.value, "next_deadline_ms")) |deadline| if (deadline == .integer) {
                 const now = self.clock.read() / std.time.ns_per_ms;

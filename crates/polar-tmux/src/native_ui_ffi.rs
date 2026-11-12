@@ -22,10 +22,19 @@ pub unsafe extern "C" fn polar_station_resource_image_path(bytes:*const u8,len:u
 /// `bytes` contains `len` readable bytes; returned text uses desktop_string_free.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_resource_file_path(bytes:*const u8,len:usize)->*mut c_char {
-    if bytes.is_null()||len==0||len>16384{return std::ptr::null_mut()}
+    if bytes.is_null()||len==0||len>65536{return std::ptr::null_mut()}
     let value=std::str::from_utf8(unsafe {std::slice::from_raw_parts(bytes,len)}).ok();
-    value.and_then(polar_tmux_resources::parse_file_reference)
+    value.and_then(|value| polar_tmux_resources::file_open_candidates(value).into_iter().next())
         .and_then(|r|CString::new(r.path).ok()).map_or(std::ptr::null_mut(),CString::into_raw)
+}
+/// Test whether native clicked text has bounded filesystem candidates. No IO.
+/// # Safety
+/// `bytes` must contain `len` readable bytes; `hit` is a UTF-8 byte offset.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_file_context_candidate(bytes: *const u8, len: usize, hit: usize) -> bool {
+    if bytes.is_null() || len == 0 || len > 16384 { return false; }
+    let Ok(text) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes,len) }) else { return false; };
+    !polar_tmux_resources::click_file_candidates(&polar_tmux_resources::FileClickContext { text: text.into(), hit }).is_empty()
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_resource_file_rule_count()->usize {polar_tmux_resources::file_link_rules().len()}

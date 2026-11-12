@@ -289,20 +289,38 @@ public struct ResourceLogTailV1: Codable, Equatable, Sendable {
     }
 }
 
+public struct ResourceFileReferenceV1: Codable, Equatable, Sendable {
+    public let path: String
+    public let location: ResourceFileLocationV1?
+}
+public struct ResourceFileLocationV1: Codable, Equatable, Sendable {
+    public let line: UInt32
+    public let column: UInt32?
+}
+public struct ResourceFileOriginV1: Codable, Equatable, Sendable {
+    public let execution_target_id: String
+    public let cwd: String?
+    public let terminal_session_id: String?
+}
 public struct ResourceFileAccessV1:Codable,Equatable,Sendable {
     public let state:String
+    public let reference:ResourceFileReferenceV1?
+    public let access:PolarTmuxJSONValue?
+    public let origin:ResourceFileOriginV1?
+    public let candidates:[ResourceFileReferenceV1]?
     public let resourceID:String?
     public let localPath:String?
     public let executionTargetID:String?
     public let remoteDirectory:String?
     public let sourcePath:String?
     enum CodingKeys:String,CodingKey {
-        case state
+        case state, reference, access, origin, candidates
         case resourceID="resource_id",localPath="local_path",executionTargetID="execution_target_id",remoteDirectory="remote_directory",sourcePath="source_path"
     }
 }
 public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     case getProjection
+    case resolveFileCandidates(origin:ResourceFileOriginV1,candidates:[ResourceFileReferenceV1])
     case resolveFile(target:String,path:String,cwd:String?)
     case resolveSessionFile(session:PolarTmuxSessionKey,path:String,cwd:String?)
     case getLogTail(resourceID: String)
@@ -311,7 +329,8 @@ public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     case openMirror(resourceID: String)
 
     private enum CodingKeys: String, CodingKey {
-        case type, catalog, path, cwd, sourceSession="source_session"
+        case type, catalog, path, cwd, origin, candidates, sourceSession="source_session"
+        case clientSupportsLocalFile="client_supports_local_file"
         case target="execution_target_id"
         case resourceID = "resource_id"
     }
@@ -319,6 +338,8 @@ public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(String.self, forKey: .type) {
+        case "resolve_file_candidates":
+            self = try .resolveFileCandidates(origin:container.decode(ResourceFileOriginV1.self,forKey:.origin),candidates:container.decode([ResourceFileReferenceV1].self,forKey:.candidates))
         case "resolve_file":
             if let session=try container.decodeIfPresent(PolarTmuxSessionKey.self,forKey:.sourceSession){self = try .resolveSessionFile(session:session,path:container.decode(String.self,forKey:.path),cwd:container.decodeIfPresent(String.self,forKey:.cwd))}
             else{self = try .resolveFile(target:container.decode(String.self,forKey:.target),path:container.decode(String.self,forKey:.path),cwd:container.decodeIfPresent(String.self,forKey:.cwd))}
@@ -364,9 +385,15 @@ public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case let .resolveFileCandidates(origin,candidates):
+            try container.encode("resolve_file_candidates",forKey:.type)
+            try container.encode(origin,forKey:.origin)
+            try container.encode(candidates,forKey:.candidates)
         case let .resolveSessionFile(session,path,cwd):
+            try container.encode(true,forKey:.clientSupportsLocalFile)
             try container.encode("resolve_file",forKey:.type);try container.encode("",forKey:.target);try container.encode(session,forKey:.sourceSession);try container.encode(path,forKey:.path);try container.encodeIfPresent(cwd,forKey:.cwd)
         case let .resolveFile(target,path,cwd):
+            try container.encode(true,forKey:.clientSupportsLocalFile)
             try container.encode("resolve_file",forKey:.type);try container.encode(target,forKey:.target);try container.encode(path,forKey:.path);try container.encodeIfPresent(cwd,forKey:.cwd)
         case .getProjection:
             try container.encode("get_projection", forKey: .type)

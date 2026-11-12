@@ -5694,6 +5694,10 @@ pub const Controller = struct {
         self.requestSessionHistory(true);
     }
     pub fn historySearchChanged(_: *gtk.Editable, self: *Controller) callconv(.c) void { self.syncSharedEditor(); }
+    pub fn prepareToolsClicked(_: *gtk.Button,self:*Controller) callconv(.c) void {self.editorInput(.{.type="prepare_tools"});}
+    pub fn editorBecameActive(_: *gobject.Object,_:*gobject.ParamSpec,self:*Controller) callconv(.c) void {
+        if(self.session_create_window) |w| if(w.as(gtk.Window).isActive()!=0) self.editorInput(.{.type="returned_from_tools"});
+    }
     pub fn startLocalCodexClicked(_: *gtk.Button,self:*Controller) callconv(.c) void {self.editorInput(.{.type="start_local_server"});}
     pub fn historyMoreClicked(_: *gtk.Button, self: *Controller) callconv(.c) void { self.editorInput(.{ .type = "retry_history" }); }
     pub fn historyDetailRetryClicked(_: *gtk.Button, self: *Controller) callconv(.c) void { self.editorInput(.{ .type = "retry_detail" }); }
@@ -5818,13 +5822,30 @@ pub const Controller = struct {
         }
     }
     fn renderEditorView(self: *Controller, view: editor_interaction.View) void {
-        const directory_ready = self.session_context_pending and !view.directory_loading and view.draft.directory.len > 0;
+        const directory_ready = !view.context_preserves_form and self.session_context_pending and !view.directory_loading and view.draft.directory.len > 0;
         self.editor_applying = true;
         defer {
             self.editor_applying = false;
             if (directory_ready and self.editor_open) sessionDirectoryBrowseClicked(self.session_create_browse.?, self);
         }
         const d = view.draft;
+        if(self.editor.prepare_tools) |button| {
+            button.as(gtk.Widget).setVisible(@intFromBool(view.prepare_label!=null));
+            button.as(gtk.Widget).setSensitive(@intFromBool(view.can_prepare));
+            const caption=self.allocator.dupeZ(u8,view.prepare_label orelse "Prepare tools") catch return;defer self.allocator.free(caption);button.setLabel(caption);
+        }
+        const next_endpoints=std.json.Stringify.valueAlloc(self.allocator,view.endpoints,.{}) catch return;defer self.allocator.free(next_endpoints);
+        const old_endpoints=if(self.session_create_endpoints) |old| std.json.Stringify.valueAlloc(self.allocator,old.value,.{}) catch return else self.allocator.dupe(u8,"[]") catch return;defer self.allocator.free(old_endpoints);
+        if(!std.mem.eql(u8,next_endpoints,old_endpoints)) {
+            const parsed=std.json.parseFromSlice([]control.CodexEndpoint,self.allocator,next_endpoints,.{.allocate=.alloc_always,.ignore_unknown_fields=true}) catch return;
+            if(self.session_create_endpoints) |old| old.deinit();self.session_create_endpoints=parsed;
+            const choices=gtk.StringList.new(null);defer choices.unref();
+            for(view.endpoints) |endpoint| if(std.mem.eql(u8,endpoint.execution_target_id,d.target)) {
+                const name=self.allocator.dupeZ(u8,endpoint.id) catch continue;defer self.allocator.free(name);choices.append(name);
+            };
+            self.session_create_endpoint.?.setModel(choices.as(@import("gio").ListModel));
+        }
+
         if(self.editor.start_server) |button| {
             button.as(gtk.Widget).setVisible(@intFromBool(view.can_start_local_server or view.server_starting));
             button.as(gtk.Widget).setSensitive(@intFromBool(view.can_start_local_server));

@@ -421,7 +421,15 @@ final class PolarStationLgpWorkspace: NSObject {
                 showError("Invalid shared LGP response"); continue
             }
             guard object["ok"] as? Bool == true else { showError(object["error"] as? String ?? "LGP operation failed"); continue }
-            for effect in object["effects"] as? [[String: Any]] ?? [] { consume(effect) }
+            let effects = object["effects"] as? [[String:Any]] ?? []
+            for e in effects where e["type"] as? String == "inquiry" {
+                if let id=e["window_id"] as? String, let view=e["view"] as? [String:Any], view["active"] as? Bool == true,
+                   let composer=effects.last(where:{$0["type"] as? String == "composer" && $0["window_id"] as? String == id}), let text=composer["text"] as? String {
+                    composers[id]?.setInquiryText(text)
+                }
+                consume(e)
+            }
+            for e in effects where e["type"] as? String != "inquiry" { consume(e) }
         }
     }
     private func markComposerTarget(_ window:String,selected:String?) {
