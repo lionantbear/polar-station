@@ -81,3 +81,15 @@ Current exported-source trial: [source and full-app rebuild/relink directions](d
 Fresh source compilation passed on Linux and macOS in [run 43099862938](https://github.com/lionantbear/polar-station/actions/runs/43099862938). The complete native App and original DMG launch/terminal checks passed in [run 43099863954](https://github.com/lionantbear/polar-station/actions/runs/43099863954).
 
 The separate [current reviewed-trial publisher](.github/workflows/macos-current-trial-publish.yml) verifies the immutable plan/review, preserves the launched signed app, packages full original notices and publishes exactly the trial DMG and SHA256SUMS. Its independent public-download installation/signature/launch result is recorded in [run 43112245187](https://github.com/lionantbear/polar-station/actions/runs/43112245187); this document does not replace that result. These are limited macOS CI checks, distinct from clean-machine GUI/TCC/voice acceptance.
+
+## Microphone signature correction
+
+User testing of the previous trial found that the final hardened-runtime main
+signature lacked `com.apple.security.device.audio-input`, which blocked the OS
+prompt. The final signer now restores audio input and verifies the actual signed
+capability and microphone usage description. The existing signature-only repair
+packager accepts an explicit reviewed base digest and missing-capability key,
+preserves nested signatures/resources/all original notices, checks the mounted
+final image and runs native LaunchServices plus terminal tests before publishing.
+The new microphone workflow reuses this existing route; it does not claim a full
+source recompilation or a physical microphone grant from a startup test.

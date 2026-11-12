@@ -445,6 +445,10 @@ def app_plist(app):
     need(isinstance(executable,str) and re.fullmatch(r'[A-Za-z0-9 _.-]+',executable)
          and executable not in ('.','..'),'invalid_bundle_executable')
     need(value.get('CFBundleIdentifier')=='com.polarealm.polar-station','unexpected_bundle_identifier')
+    usage=value.get('NSMicrophoneUsageDescription')
+    need(isinstance(usage,str) and usage.strip(),'microphone_usage_description_missing')
+    entitlements=plistlib.loads(run('/usr/bin/codesign','-d','--entitlements',':-',str(app)))
+    need(entitlements.get('com.apple.security.device.audio-input') is True,'final_main_microphone_entitlement_missing')
     return value
 
 def macho_versions(app):

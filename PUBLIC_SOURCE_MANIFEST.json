@@ -2118,7 +2118,8 @@
     "vendor/grammers-tl-gen/src/lib.rs": "100644",
     "vendor/grammers-tl-gen/src/metadata.rs": "100644",
     "vendor/grammers-tl-gen/src/rustifier.rs": "100644",
-    "vendor/grammers-tl-gen/src/structs.rs": "100644"
+    "vendor/grammers-tl-gen/src/structs.rs": "100644",
+    ".github/workflows/macos-microphone-fix.yml": "100644"
   },
   "files": {
     ".github/workflows/build.yml": "43bbf99f8d7e627dcf3f2452c2800d2744326257c85545a7fe656becdc0651bf",
@@ -2131,7 +2132,7 @@
     ".github/workflows/native-macos.yml": "bf9789fbbf2f79d832fa234ae2474de90abdfd250c32db043fc96699b907f558",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_MACOS.md": "17ddd47e8025e645f5e455911030dd694ba6b7f58f60bd905caea1216916d95e",
-    "CI.md": "b46a052ce4e13a03c0cf4f7acd79f8658c8a42f3043f2b239e6467badacbd1cc",
+    "CI.md": "ef425167b455a8b8b6c311e4afd6a37f459ecd044d6cb028523dae98cbc3a5de",
     "Cargo.lock": "1c290985fdd314c2b908a234ab4fca4bd5e41096cc1dea08d7661140e79affb7",
     "Cargo.toml": "cdd969f63567ca7d3f1e25d2908fc8fc2a0dd742356b3b6086017388ab2e43ca",
     "LICENSE": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
@@ -2411,7 +2412,7 @@
     "automation/polar_station/license_policy.json": "a9b3e4bc197f3b32d886357d7a8bb686a64e260526e29fd6e3f28d7adb705064",
     "automation/polar_station/macos_binary_inventory.py": "39a24e575b94260577b7c75e4928dfc5acd2f637d3d4beee5ea9fd0fdb5bca04",
     "automation/polar_station/native_action_overlay.py": "a26047442d7a61405fa013a61f3f99b14bfd0be66e5bf915f2c2f2ffc3e9bafd",
-    "automation/polar_station/package_launch_fix.py": "5207c781b3661768043a6c7dc448dfa5d62b561f57c6fe8c3e02fa57f96875de",
+    "automation/polar_station/package_launch_fix.py": "6bd7c69940d1eac00f0a843a0f13665afa41232f2cf0f9c0369818fd7a7dcc76",
     "automation/polar_station/package_macos_free.sh": "fca526dcebd53b33a045d7e881d176c9c429cc9fa9ccfa6d0fbeb67951b5b677",
     "automation/polar_station/public_build_cleanup.json": "6d8a6f170c4b2e4ec9dcfea3fc344b787763ae70a0236972759f96686a35c516",
     "automation/polar_station/public_native_cleanup.json": "f9bbdd8736de0b521ee8fe3abe84e1c4266e5915e9e08b57c5ac281d2c6223da",
@@ -2438,7 +2439,7 @@
     "automation/polar_station/trial-release/documents/READ-ME-FIRST.txt": "67b5f35888e625d7de1945318c1a06455e5311bd5cdf1f041d068b83e58fefd7",
     "automation/polar_station/trial-release/documents/SOURCE-ACCESS-current.txt": "5c030d3a62a10e0d6fd62863f9f901557a5d0343840b824e8565afe202d5df9a",
     "automation/polar_station/trial-release/documents/SOURCE-ACCESS.txt": "a5fe17a5ff177451f53885362c62bfa60b6d0a9b9a2713d9a5462c9599743c10",
-    "automation/polar_station/trial-release/finalize_trial_release.py": "6d68f2421bc04c4f003212ded2ee76c5a59838387308699ce4ba41fcad013ef5",
+    "automation/polar_station/trial-release/finalize_trial_release.py": "8a57a04947ddedd74c8c4a68a35f6dda256540c24b79ade0a632cdb80f43821d",
     "automation/polar_station/trial-release/notices/COMPONENTS-current.txt": "a877d1e672f98463ba85e5f788b75159159e9be7afc3287a9f5ec51d7bf8035e",
     "automation/polar_station/trial-release/notices/COMPONENTS.txt": "2f7261db7afd03a8007e497cc66b683b7a8596b445837a47aebc42a872b71619",
     "automation/polar_station/trial-release/notices/terms/GPL-3.0-only.txt": "fb981668c18a279e285fc4d83fba1e836cc84dd4daa73c9697d3cfd2d8aca6e0",
@@ -4153,7 +4154,8 @@
     "vendor/grammers-tl-gen/src/lib.rs": "46767dcf9dc1b3cc15d5cb80bf284887a26c6c85b8f572fa6f452b2bee73532f",
     "vendor/grammers-tl-gen/src/metadata.rs": "e625828bf9a6d46b33c9271bc1360cc8ecda524d3c4a80a9035121ab2af044e1",
     "vendor/grammers-tl-gen/src/rustifier.rs": "0b5181ce39d8ee78fca9b3c355d24546516f9d4a75b81afd87bac5f27daf86d4",
-    "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86"
+    "vendor/grammers-tl-gen/src/structs.rs": "cef36a57c685c60b0591332d0696b587bce4e880a914baf5d1969b4fa60aeb86",
+    ".github/workflows/macos-microphone-fix.yml": "ac14687f18017c341a309b225034487622b1e7e0e3489644e17fee674464b403"
   },
   "license_present": true,
   "missing_inputs": [],
