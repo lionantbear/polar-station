@@ -14,3 +14,7 @@ but omits the full license text; LICENSE includes the standard Apache-2.0 text.
 This crate's curve dependencies are isolated from Polar identity's existing
 Ed25519 implementation. Only 32-byte results cross the adapter. Importing this
 library does not change Polar root generation or apply BIP-0039 PBKDF2.
+
+Modified production files: `src/xkey/core/mod.rs` and `src/xkey/slip10.rs`.
+Both carry prominent per-file Polar modification notices. The added notice
+comments do not alter the derivation implementation.

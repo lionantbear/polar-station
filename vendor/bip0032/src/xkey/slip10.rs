@@ -1,3 +1,5 @@
+// Modified by Polar: zeroize SLIP-0010 seed copies and retry buffers.
+// Origin and change details: POLAR-PATCHES.md at this crate root.
 #![doc = include_str!("../../SLIP-0010.md")]
 
 #[cfg(not(feature = "std"))]

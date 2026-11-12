@@ -1,3 +1,5 @@
+// Modified by Polar: wipe the temporary HMAC output after splitting its halves.
+// Origin and change details: POLAR-PATCHES.md at this crate root.
 //! Shared extended key functionality.
 
 use hmac::{Hmac, KeyInit, Mac};
