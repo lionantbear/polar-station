@@ -1,12 +1,9 @@
 {
   "artifact_review_summary": {
-    "additional_original_terms": [
-      "flatbuffers exact VCS root Apache text matches existing notice",
-      "objc2-security exact VCS root statement and MIT option match retained full texts",
-      "half additional original MIT template retained alongside elected Apache option"
-    ],
-    "cargo_compiler_candidates": 1123,
-    "inspection_report_sha256": "76b20fe11f6b966707c8741fba35d8c49bddba82028c6191d988d1b1f2202fcb",
+    "application_source": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
+    "cargo_compiler_candidates": 1138,
+    "corresponding_notice_source": "e0fac8dfa7b84153b327861789360fc139075ed0",
+    "inspection_report_sha256": "033f2992acfa3976e41eee809c7211939b7010eb441ea3f69caf369462907d6f",
     "native_components": 26,
     "native_recipe_sha256": {
       "homebrew/gettext/1.0/.brew/gettext.rb": "74dbc9cbf1c427c148b5d5247adfb43957b5d02be20a4e1d162aa903f0dd614e",
@@ -16,92 +13,66 @@
       "homebrew/libtool/2.6.2/.brew/libtool.rb": "725532b53263fa67aa5e9a660bcd498b312c13da54d34d42788e073ced587031",
       "homebrew/pcre2/10.49/.brew/pcre2.rb": "94c19a0d869da4990a8f3f371e37c986ad72124d2d94032e061c4a9019f9e174"
     },
-    "native_run": 43099863954,
+    "native_run": 43174962658,
+    "native_versions_zig_keys_sparkle_and_mpl_unchanged": true,
+    "new_compiled_registry_packages": 20,
     "new_legal_texts_read": [
-      "gix-trace MIT tracing-forest attribution",
-      "libbz2-rs-sys full Bzip2 grant and original authors",
-      "sha1dc full MIT notice and original authors",
-      "GTS AUTHORS original512 bytes and README original2756 bytes"
+      "3b4f73047906835fba5005acdf68f25a460b9ee298dae710f22b435d335a6f7b",
+      "403c53069750101aeb9df7e15f127056ceaf7e4e92d0b919a1f4c084afd5f1d4",
+      "42d3bf7e7d4d49d72c0555d14ed99c3ee7ce9ce3cbffbc38bbafe8c103f50969",
+      "4621bda86773a67b5645bbd25cf1bf8b6820d4fcec3885b23b9ceec612007f63",
+      "9aa4f92bfcde293ebeca9e2379fa18d1d61f000977da144c7b74c2986c9b6466",
+      "c1c9d5ca65122bab96e368709f8cfe9b92b443a3c21306c3260fc98eaac7e5fc",
+      "d8c4ab431f20da8452c9a217084163822e5fd9d134e1343903c929f2859fc8fd"
     ],
-    "notice_rows": 798,
+    "new_unrepresented_legal_gap_identities": 0,
+    "new_vendored_packages": [
+      "bip0032 0.2.2"
+    ],
+    "notice_rows": 806,
+    "physical_acceptance": "First TCC prompt, actual microphone capture, Codex/tmux setup and complete GUI acceptance remain separate, not claimed.",
     "proofs": [
       {
-        "path": "source-ci-488ca31.json",
-        "sha256": "584524572e601fac376df09f66ed31b98d0e906a0b9df3a0b317b64ddfee8e1d"
+        "path": "source-ci-evidence.json",
+        "sha256": "9437bb40b905ac0c2dab34ccb26be7e5411b262039f7f68419e85924d576f356"
       },
       {
-        "path": "native-ci-488ca31.json",
-        "sha256": "b9063b4df9b6fcd8b9e1229de36bc269d1cf8ddbdc17db88ebc0eb5c2db5e114"
+        "path": "native-ci-evidence.json",
+        "sha256": "fa410dbc6ce7667202ee8c266b40b5e90f49fed93b278306b36b5325b8c9109a"
       },
       {
-        "path": "current-compiled-package-identities.json",
-        "sha256": "693baabf806e1dfab94d7622021efec6167cf39e5d6cb6c26f0386600a297e2e"
+        "path": "artifact-review-audit.json",
+        "sha256": "d8bc3b54c2b98c0be92901eb95a25a2802ca947acbaca9d941c13d7bf31ee12b"
       },
       {
-        "path": "current-git-source-availability.json",
-        "sha256": "da53d817fa480910729d2e2afcea9c637b3d8154a73cddf578769aa0d5d41234"
+        "path": "current-source-availability.json",
+        "sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e"
       },
       {
-        "path": "current-first-party-source-availability.json",
-        "sha256": "595721ddb5e6b184a5381766dda71b597ce5f8ff7fe3ef330a529dfd115dd617"
+        "path": "new-compiled-registry-source-availability.json",
+        "sha256": "d3b2ef9f2953189741ac24ad4a4b178dbce7d4de92a3aaef8ad840827ea5ddd2"
       },
       {
-        "path": "native-source-availability.json",
-        "sha256": "8d0a91344caae1eca48d73e8e53de20f6e24800b8811d59a608a569a2e47bcde"
+        "path": "bip0032-source-review.json",
+        "sha256": "96f2c57e3314b803774101c2c80e3afe7fed2d7303e668f17f7e194a449e4534"
       },
       {
-        "path": "new-registry-source-checksums.json",
-        "sha256": "c8f7e109feb8d9ce8bcfc35220b5ef0b1f5f8ca72fec9348573c345fb9d726ba"
+        "path": "directions-verification.json",
+        "sha256": "63757ac68004eb179d1fb0835462d592324075d36afc7af10d4ece1f345e16ba"
       },
       {
-        "path": "new-git-license-commit-verification.json",
-        "sha256": "edd0d20cf0baab93e18d6e0625e58f528fa41b8b9a97fd8a84945279a120315d"
-      },
-      {
-        "path": "current-notice-decisions.json",
-        "sha256": "e8f71c6233472469dbd44acce30df83890100bc2ab6017650d5fa830d5af45c0"
-      },
-      {
-        "path": "current-notice-symlink-dispositions.json",
-        "sha256": "64a1b12d274ce89bbf2c566f2b54b25b697f36ec6a056ba4ac01f05c56c48d48"
-      },
-      {
-        "path": "flatbuffers-current-license-verification.json",
-        "sha256": "3b02a4a6cf8eb8b11681cb148c4b76e1f3e3767e0c7b21ff734cb0b5a6ec6ca3"
-      },
-      {
-        "path": "objc2-current-license-verification.json",
-        "sha256": "461510489d8b85d2d31f9c1c1a7f0d488e7c64ac98e4f78934d5b52533b424ca"
-      },
-      {
-        "path": "current-directions-verification.json",
-        "sha256": "90c9456577e10e4c02f36e1d5119c4b6af093f40127a721ab99a3addabd9c6e9"
-      },
-      {
-        "path": "native-license-integration-boundaries.json",
-        "sha256": "fb37280fff503f735563063d43e779fa4e9fe4267222c52449e090a0831df246"
+        "path": "notice-packet-proposal-43174962658.json",
+        "sha256": "0218b67006cb7a15cf8522b537705f2258b78c9a2ffb32f3b9ae44cdefd44a0e"
       }
     ],
     "remaining_mandatory_execution_gates": [
-      "Final mounted-app copyright condition empty/absent",
-      "Unchanged app/signature/launch hash binding and final DMG verification",
-      "Actual publication and separate public-download installation/signature/launch check"
+      "Final mounted app copyright condition and audio-input/usage verification",
+      "Preserve original signed app byte inventory",
+      "Final notice/source hashes and exact public assets",
+      "Independent public-download signature and launch"
     ],
-    "reviewed_at": "2026-11-11T22:27:12Z",
-    "scope": "Artifact-specific trial review; not human review, notarization or clean-machine/GUI/TCC acceptance",
-    "signing_disposition": "Intermediate Graphviz packaging hashes precede final nested signing. The source-bound collector validated original-to-copy-to-before/after-signing associations and reports no provenance gaps. Finalizer must preserve the entire launched signed app unchanged.",
-    "signing_observation": {
-      "asset": "build-evidence.zip",
-      "bytes": 7784,
-      "origin": "Build/macos-signing.json",
-      "path": "station-evidence/build-provenance/texts/d28592cbbe41de3904e26c8008bd46d4dcb4b45caaae108bf1068e41f7968c03.txt",
-      "sha256": "d28592cbbe41de3904e26c8008bd46d4dcb4b45caaae108bf1068e41f7968c03"
-    },
-    "source_checksum_limit": "Cargo1.95 package-local checksum manifests are absent for942 registry candidates. Exact lock identities, retained inventories and declared original archive checksums are used; the new63 cached original archives and files were checked separately. This is not an assertion of independent upstream equivalence for every compiled file.",
-    "source_commit": "488ca31d32321a4aa070607ac7330a8aba23bc8f",
-    "unchanged_native_versions_and_dependencies": true,
-    "unmapped_components": [],
-    "unresolved_legal_or_source_items": []
+    "reviewed_at": "2026-11-12T09:09:23Z",
+    "source_checksum_limit": "Newly observed registry originals match public Cargo.lock digests; compiler/source capture is integrity checked. Full pristine-file comparison and an exact static-link composition are not claimed. All observed candidate grants are retained conservatively."
   },
   "attestations": {
     "actual_capture_and_source_identity": true,
@@ -118,64 +89,68 @@
   "gap_dispositions": [
     {
       "evidence": {
-        "sha256": "068d14f86ecf7f3b617f52230b05499d5cbe6779bc5189e784b44cd68a8c39fa"
+        "sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e"
       },
-      "gap": "Actual source, compiler candidates and native inputs",
-      "resolution": "Exact current source and all1123 compiler package candidates bound; native versions, all6 installed recipes, Zig package keys and Sparkle pin match prior reviewed inputs. Preserve all observed candidates conservatively without claiming a precise static-link map."
+      "gap": "Collector source omissions and GTS upstream exclusion",
+      "resolution": "Full exact public native archives, patch and resource bytes verified; unchanged native pins and six source recipe hashes reviewed. Missing collector source files remain publicly available at exact commits."
     },
     {
       "evidence": {
-        "sha256": "068d14f86ecf7f3b617f52230b05499d5cbe6779bc5189e784b44cd68a8c39fa"
+        "sha256": "d8bc3b54c2b98c0be92901eb95a25a2802ca947acbaca9d941c13d7bf31ee12b"
       },
-      "gap": "Missing package-local checksum metadata and omitted source paths",
-      "resolution": "Cargo lock and exact public source/archive routes retain complete corresponding inputs.942 missing checksum manifests are recorded as collector limits, not as a claim of file-by-file upstream equivalence. Three filtered public tracked files remain available in immutable Git source; GTS README is additionally supplied verbatim."
+      "gap": "Cargo source checks and static composition",
+      "resolution": "All1138 observed compiler candidates mapped to retained full grants. New20 registry originals publicly downloaded and matched to current lock checksums. The source checksum and exact static-link limits are explicit; candidate supersets are not presented as exact shipped composition."
     },
     {
       "evidence": {
-        "sha256": "90c9456577e10e4c02f36e1d5119c4b6af093f40127a721ab99a3addabd9c6e9"
+        "sha256": "96f2c57e3314b803774101c2c80e3afe7fed2d7303e668f17f7e194a449e4534"
       },
-      "gap": "Native source, patch, resource and relink fulfillment",
-      "resolution": "All9 original native archives/patch/resources were downloaded and hash-verified, and match unchanged current versions and recipes. Immutable public directions provide full source, SDK/toolchain, overlay, complete-app build and static gettext modification/relink routes."
+      "gap": "New locally modified bip0032 source",
+      "resolution": "Original archive and change record verified. Two source files receive prominent modification notices; their remaining bytes equal compiled inputs. Corrected corresponding source is separately identified from actual app source7cdfd4a, and the full change record is included in the notice packet."
     },
     {
       "evidence": {
-        "sha256": "e8f71c6233472469dbd44acce30df83890100bc2ab6017650d5fa830d5af45c0"
+        "sha256": "0218b67006cb7a15cf8522b537705f2258b78c9a2ffb32f3b9ae44cdefd44a0e"
       },
-      "gap": "Full notice associations and omitted legal candidates",
-      "resolution": "All1123 observed packages mapped. Original root grants for flatbuffers and objc2-security verified at crate VCS commits. All4 symlink targets already retained. Additional half MIT text included. Non-UTF8 GTS author bytes and full README restored directly; collector JSON envelope excluded. Nine code/header suffix candidates are not notice files; original Godot LICENSE/COPYRIGHT/AUTHORS terms remain retained."
+      "gap": "Legal directory exclusions, binary author encoding and symlinks",
+      "resolution": "No new unrepresented legal-gap byte identities. Known required grants are retained by hash, original GTS author bytes are decoded without a collector envelope, and unchanged upstream Git roots supply the four license symlink targets. Unknown grant associations are rejected."
     },
     {
       "evidence": {
-        "sha256": "d28592cbbe41de3904e26c8008bd46d4dcb4b45caaae108bf1068e41f7968c03"
+        "bytes": 15697,
+        "path": "docs/releases/macos-trial-7cdfd4a-source-and-relink.md",
+        "repository_commit": "bee8309edfc24d864aff859fbd2f9226e7dee118",
+        "sha256": "99c03e048765ce27aad8a41236540701552d3e9775d225108d7b0015ac018e00",
+        "url": "https://github.com/lionantbear/polar-station/blob/bee8309edfc24d864aff859fbd2f9226e7dee118/docs/releases/macos-trial-7cdfd4a-source-and-relink.md"
       },
-      "gap": "Copy receipts precede final signing",
-      "resolution": "The source-bound before/after signing recorder and collector validate the current binary inventory with no provenance gaps. Simplified intermediate hashes in inspector output precede nested signing. Finalizer must verify strict signatures and preserve the original launched app contents unchanged."
+      "gap": "Public source and relink directions",
+      "resolution": "Exact immutable directions document read and byte-verified; source routes identify actual app source and the notice-only corrected dependency source."
     },
     {
       "evidence": {
-        "sha256": "6d68f2421bc04c4f003212ded2ee76c5a59838387308699ce4ba41fcad013ef5"
+        "sha256": "d8bc3b54c2b98c0be92901eb95a25a2802ca947acbaca9d941c13d7bf31ee12b"
       },
-      "gap": "LGPL runtime copyright condition",
-      "resolution": "Captured About implementation files match prior reviewed source. Existing finalizer remains unchanged and requires empty/absent NSHumanReadableCopyright in the actual mounted application; publication must stop on any violation. This Linux metadata review does not substitute for that mandatory Mac runtime-package check."
+      "gap": "Original runtime copyright condition",
+      "resolution": "Copyright-related native source candidates are byte-identical to prior reviewed inputs. Final mounted app must still pass the existing empty/absent NSHumanReadableCopyright gate; nonempty values stop publication."
     },
     {
       "evidence": {
-        "sha256": "b9063b4df9b6fcd8b9e1229de36bc269d1cf8ddbdc17db88ebc0eb5c2db5e114"
+        "sha256": "fa410dbc6ce7667202ee8c266b40b5e90f49fed93b278306b36b5325b8c9109a"
       },
-      "gap": "Native launch and final public bytes",
-      "resolution": "Original fresh native installation-copy launch and actual terminal command passed. The plan binds the exact launch member and original DMG. Finalizer must verify those bytes, final package and separate post-publication public-download launch before completion."
+      "gap": "Final binary execution and physical acceptance",
+      "resolution": "Original native DMG installed-copy launch and real terminal execution passed. Final signatures, notice bytes, unchanged app and public-download launch remain mandatory workflow gates. First microphone permission and capture remain separate physical acceptance."
     }
   ],
-  "inspection_report_sha256": "76b20fe11f6b966707c8741fba35d8c49bddba82028c6191d988d1b1f2202fcb",
-  "notice_tree_sha256": "f87b39dc6b58af7a4398ac4b7ac1a83aa9c91a70ea0359aa32893899a1d4f119",
-  "plan_sha256": "c8a5a01f2f60373c2e06f05e9522a7c4ea177a166616bd8ec75d71833fe48666",
-  "program_sha256": "6d68f2421bc04c4f003212ded2ee76c5a59838387308699ce4ba41fcad013ef5",
-  "reviewed_at": "2026-11-11T22:27:12Z",
-  "reviewer": "Codex artifact-specific source and notice review",
+  "inspection_report_sha256": "033f2992acfa3976e41eee809c7211939b7010eb441ea3f69caf369462907d6f",
+  "notice_tree_sha256": "f24a0eb2efb18b8a750ae975472348e966978a0f7374fdcb1563899e9f25752f",
+  "plan_sha256": "1f9676bde484319dffe5947b968b05123c73c334840fdada9d6cb0c0c94ced01",
+  "program_sha256": "2790d23e9493686dc3d28cd50d2869dd3ce0f98e42fb72efad8110d55112d7c7",
+  "reviewed_at": "2026-11-12T09:09:23Z",
+  "reviewer": "Codex artifact-specific source, notice and native-run review",
   "run_attempt": 1,
-  "run_id": 43099863954,
-  "source_access_sha256": "a29b61354526a73502d7a1f6780aba25f79e5294200480dd0ba348669e1c25e9",
-  "source_commit": "488ca31d32321a4aa070607ac7330a8aba23bc8f",
+  "run_id": 43174962658,
+  "source_access_sha256": "55b80b06b09a4fc82d72875d4c021b823d91896ac36df93d84a084e8252f0562",
+  "source_commit": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
   "status": "approved-for-this-trial",
   "unresolved": []
 }
