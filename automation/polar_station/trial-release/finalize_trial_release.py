@@ -288,6 +288,13 @@ class GitHub:
                      and not u.username and not u.password and u.port in (None,443),'unexpected_asset_redirect')
                 return self.opener.open(urllib.request.Request(url,headers={'User-Agent':'polar-station-trial-finalizer'}),timeout=600)
             if method=='GET' and e.code==404: raise Stop('github_not_found') from None
+            # Do not dump headers, tokens or response bodies. Retain the endpoint
+            # and a bounded, token-redacted provider message for actual failures.
+            try:message=json.loads(e.read(4096)).get('message','')
+            except (ValueError,TypeError):message='unavailable'
+            message=re.sub(r'(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+','[redacted]',str(message))[:240]
+            print(json.dumps({'github_api_error':{'method':method,'path':path,'status':e.code,'message':message,
+                  'request_id':e.headers.get('X-GitHub-Request-Id','')}}),file=sys.stderr)
             raise Stop('github_'+method.lower()+'_http_'+str(e.code)) from None
         except Stop: raise
         except Exception: raise Stop('github_'+method.lower()+'_outcome_uncertain_no_automatic_retry') from None
@@ -375,6 +382,13 @@ def selected_member(archive,member):
 
 
 def fetch(plan,base,work,client):
+    try:existing=client.json('/repos/'+REPO+'/releases/tags/'+FINAL_TAG)
+    except Stop as e:
+        if str(e)!='github_not_found':raise
+    else:
+        print(json.dumps({'existing_final_release':{k:existing.get(k) for k in ('id','draft','tag_name','target_commitish')},
+              'assets':[{k:a.get(k) for k in ('id','name','size','state','digest')} for a in existing.get('assets',[])]}))
+        raise Stop('final_release_already_exists_inspect_before_retry')
     need(not work.exists(),'work_directory_already_exists');work.mkdir(parents=True)
     check_run(client);before=asset_state(client,plan)
     download_names={RAW_DMG}
