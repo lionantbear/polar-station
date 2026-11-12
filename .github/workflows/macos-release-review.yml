@@ -1,0 +1,55 @@
+name: Review current exported macOS trial metadata
+on:
+  workflow_dispatch:
+  push:
+    branches: ['release/**']
+    paths:
+      - 'automation/polar_station/release/review-request.json'
+permissions: {}
+concurrency:
+  group: macos-trial-review-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  review:
+    # GitHub draft assets require push access. This trusted inspector uses GET only
+    # and never extracts or executes the retained application or its build inputs.
+    permissions:
+      contents: write
+      actions: read
+    if: github.repository == 'lionantbear/polar-station'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out reviewed inspector only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            automation/polar_station/review_trial_draft.py
+            automation/polar_station/release/review-request.json
+          sparse-checkout-cone-mode: false
+      - name: Inspect exact private draft without executing or extracting it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 automation/polar_station/review_trial_draft.py \
+            --plan automation/polar_station/release/review-request.json \
+            --output "$RUNNER_TEMP/trial-review-public/trial-review-report.json"
+      - name: Upload only the allowlisted metadata report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-trial-review-${{ github.run_id }}-metadata
+          path: ${{ runner.temp }}/trial-review-public/trial-review-report.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+          include-hidden-files: false
+      - name: Record review boundary
+        run: |
+          printf '%s\n' \
+            'One allowlisted report uploaded. No binary or source archive uploaded, no release changed.' \
+            'The report includes installed Homebrew recipes, receipts, SBOMs and bounded third-party legal texts.' \
+            'Integrity review is not license clearance or macOS compatibility certification.' >> "$GITHUB_STEP_SUMMARY"
