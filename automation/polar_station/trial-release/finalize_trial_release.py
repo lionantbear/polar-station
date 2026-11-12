@@ -341,7 +341,7 @@ def check_run(client):
     r=client.json('/repos/'+REPO+'/actions/runs/'+str(RUN))
     need(r.get('id')==RUN and r.get('head_sha')==SOURCE and r.get('run_attempt')==RUN_ATTEMPT
          and r.get('status')=='completed' and r.get('conclusion')=='success'
-         and r.get('path')=='.github/workflows/macos-trial.yml'
+         and r.get('path') in ('.github/workflows/macos-trial.yml', '.github/workflows/macos-release-build.yml')
          and r.get('repository',{}).get('full_name')==REPO
          and r.get('repository',{}).get('private') is False,'source_build_not_successful_or_repository_not_public')
 

@@ -762,7 +762,7 @@ def review(client, plan, output):
     run = client.get(base+'/actions/runs/'+str(plan['run_id']))
     require(run.get('id') == plan['run_id'] and run.get('head_sha') == plan['source_commit'] and run.get('run_attempt') == 1
             and run.get('status') == 'completed' and run.get('conclusion') == 'success'
-            and run.get('path') == '.github/workflows/macos-trial.yml'
+            and run.get('path') in ('.github/workflows/macos-trial.yml', '.github/workflows/macos-release-build.yml')
             and run.get('repository',{}).get('full_name') == REPO, 'build_run_identity_or_success_mismatch')
     tree = client.get(base+'/git/trees/'+plan['source_commit']+'?recursive=1')
     with tempfile.TemporaryDirectory(prefix='private-draft-review-') as temp:

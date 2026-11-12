@@ -5,6 +5,8 @@ on:
     branches: ['release/**']
     paths:
       - 'automation/polar_station/release/review-request.json'
+      - 'automation/polar_station/review_trial_draft.py'
+      - '.github/workflows/macos-release-review.yml'
 permissions: {}
 concurrency:
   group: macos-trial-review-${{ github.ref }}
