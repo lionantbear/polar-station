@@ -93,3 +93,5 @@ preserves nested signatures/resources/all original notices, checks the mounted
 final image and runs native LaunchServices plus terminal tests before publishing.
 The new microphone workflow reuses this existing route; it does not claim a full
 source recompilation or a physical microphone grant from a startup test.
+
+- [Current trial source and rebuild directions](docs/releases/macos-trial-7cdfd4a-source-and-relink.md): exact native run 43174962658, dependency origins, corresponding modified source and full rebuild/relink steps.
