@@ -1,4 +1,5 @@
 {
-  "inputs_sha256": "cd3e05399b4012ab060ab1c18bea695fd2a89fdff763d123f936b3b9bc71b040",
+  "inputs_sha256": "573e3b8fae93823f4a40a1b6efa531c1c7a9e3443430cc036a688926717e8d34",
+  "mono_revision": "595c5252ca4aff4487ab6da960014761de00eb44",
   "repository": "lionantbear/polar-station"
 }

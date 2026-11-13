@@ -9,13 +9,23 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: station-build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  select:
+    name: Select source compilation
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.select.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: select
+        run: python3 automation/polar_station/source_build_gate.py
   rust:
     name: Rust workspace (${{ matrix.os }})
+    needs: select
+    if: needs.select.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:

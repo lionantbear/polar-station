@@ -125,6 +125,7 @@ def check_gate(plan_path, review_path):
     need(plan.get('status') == 'ready-for-reviewed-trial' and review.get('status') == 'approved-for-this-trial',
          'real_review_required')
     bind_identity(plan)
+    if 'release_notes' in plan:release_title(plan)
     need(plan.get('repository') == REPO and plan.get('source_commit') == SOURCE and plan.get('run_id') == RUN
          and plan.get('raw_tag') == RAW_TAG and plan.get('final_tag') == FINAL_TAG, 'plan_identity_mismatch')
     need(review.get('source_commit') == SOURCE and review.get('run_id') == RUN and review.get('run_attempt') == RUN_ATTEMPT
@@ -252,8 +253,50 @@ def verify_source_access(client,plan):
     need(len(data)==doc['bytes'] and sha(data)==doc['sha256'],'repository_source_directions_changed')
 
 
+def parse_release_notes(text):
+    need(isinstance(text,str) and 0 < len(text.encode('utf-8')) <= 32768 and '\0' not in text,
+         'bounded_utf8_release_notes_required')
+    title,sep,body=text.partition('\n')
+    need(title.startswith('# ') and 0 < len(title[2:].strip()) <= 160 and sep,
+         'release_notes_h1_title_required')
+    need(body.strip() and not body.lstrip().startswith('## ') and
+         re.search(r'^## Changes\s*\n\s*\S',body,re.M) and
+         re.search(r'^## Known issues\s*\n\s*\S',body,re.M),
+         'release_notes_summary_changes_and_known_issues_required')
+    return {'title':title[2:].strip(),'markdown':body.strip()+'\n'}
+
+
+def release_title(plan):
+    if 'release_notes' not in plan:return 'Polar Station macOS arm64 trial'
+    notes=plan['release_notes']
+    return parse_release_notes('# '+notes['title']+'\n\n'+notes['markdown'])['title']
+
+
+def installation_steps():
+    return ('1. Download the DMG for **Mac with Apple Silicon**, open it, and drag **Polar Station** into **Applications**.\n'
+            '2. Open Polar Station from Applications. This preview is **not notarized**; macOS may block the first launch. '
+            'If you trust this download, use **System Settings → Privacy & Security → Open Anyway** '
+            '([Apple instructions](https://support.apple.com/en-us/102445)).\n')
+
+
 def release_body(plan):
     access=plan['source_access']
+    if 'release_notes' in plan:
+        release_title(plan)  # Validate embedded prose for both preview and final publication.
+        tag=plan['final_tag'];base='https://github.com/'+REPO
+        return (plan['release_notes']['markdown'].rstrip()+'\n\n## Download and install\n\n'
+            '[Download for Mac with Apple Silicon]('+base+'/releases/download/'+tag+'/'+FINAL_DMG+')\n\n'
+            +installation_steps()+'\nLaunch and packaging checks target macOS 26. Other macOS versions have not been validated.\n\n'
+            '## Feedback\n\n[Report an issue]('+base+'/issues). Include this preview title, macOS version, '
+            'what you did, and what happened. Remove private information from logs and screenshots.\n\n'
+            '<details>\n<summary>Source, licenses and build details</summary>\n\n'
+            '- [SHA-256 checksums]('+base+'/releases/download/'+tag+'/SHA256SUMS)\n'
+            '- [Exact application source]('+access['first_party_url']+')\n'
+            '- [Upstream sources, patches, licenses and rebuild instructions]('+access['directions_document']['url']+')\n'
+            '- [Native build and checks]('+base+'/actions/runs/'+str(plan['run_id'])+')\n'
+            '- Full license and third-party notices are included in the DMG.\n'
+            '- Ad-hoc signed; not Developer ID signed or notarized. Automated launch checks do not establish '
+            'first-use microphone permission, recording, or complete clean-machine setup.\n\n</details>\n')
     return ('Apple Silicon trial. Download '+FINAL_DMG+'; SHA256SUMS contains its SHA-256. '
         'Ad-hoc signed, not notarized. Full license and third-party notice texts are inside the DMG.\n\n'
         'First-party source: '+access['first_party_url']+'\n'+access['release_page_directions']+'\n\n'
@@ -682,7 +725,7 @@ def stage_candidate(plan,work,client):
     verify_tag(client)
     body=release_body(plan)
     release=client.json('/repos/'+REPO+'/releases','POST',{'tag_name':FINAL_TAG,'target_commitish':SOURCE,
-        'name':'Polar Station macOS arm64 trial','body':body,'draft':True,'prerelease':True,'generate_release_notes':False})
+        'name':release_title(plan),'body':body,'draft':True,'prerelease':True,'generate_release_notes':False})
     rid=release.get('id')
     need(type(rid) is int and rid!=plan['raw_release_id'] and release.get('draft') is True
          and release.get('tag_name')==FINAL_TAG,'created_draft_identity_mismatch')
@@ -705,6 +748,7 @@ def stage_candidate(plan,work,client):
     ready=get_created_release(client,rid)
     need(ready.get('draft') is True and ready.get('tag_name')==FINAL_TAG and ready.get('target_commitish')==SOURCE
          and ready.get('prerelease') is True and ready.get('body')==body,'final_draft_changed_before_publication')
+    need(ready.get('name')==release_title(plan),'final_draft_title_changed')
     asset_state(client,plan)
     verify_tag(client)
     write_json(work/'candidate-receipt.json',{'source_commit':SOURCE,'run_id':RUN,'release_id':rid,
@@ -723,6 +767,7 @@ def candidate_state(client,plan,candidate):
     need(release.get('id')==rid and release.get('draft') is True and release.get('published_at') is None
          and release.get('prerelease') is True and release.get('tag_name')==FINAL_TAG and release.get('target_commitish')==SOURCE
          and sha(release.get('body','').encode())==candidate.get('body_sha256'),'private_candidate_identity_mismatch')
+    need(release.get('name')==release_title(plan),'private_candidate_title_mismatch')
     rows=[];page=1
     while True:
         batch=client.json('/repos/'+REPO+'/releases/'+str(rid)+'/assets?per_page=100&page='+str(page));rows.extend(batch)
@@ -840,10 +885,14 @@ def verify_tag(client):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('command',choices=('validate','fetch','package','stage-candidate','verify-publication','publish','fetch-public','launch-public'))
-    p.add_argument('--plan',type=Path,required=True);p.add_argument('--review',type=Path,required=True);p.add_argument('--work',type=Path,required=True)
+    p.add_argument('command',choices=('preview','validate','fetch','package','stage-candidate','verify-publication','publish','fetch-public','launch-public'))
+    p.add_argument('--plan',type=Path,required=True);p.add_argument('--review',type=Path);p.add_argument('--work',type=Path)
     args=p.parse_args();token=os.environ.pop('GH_TOKEN','')
     try:
+        if args.command=='preview':
+            plan=read_json(args.plan);bind_identity(plan)
+            print('# '+release_title(plan)+'\n\n'+release_body(plan));return
+        need(args.review is not None and args.work is not None,'review_and_work_required')
         plan,_=check_gate(args.plan,args.review)
         if args.command=='validate':print('Exact-input plan and explicit review bindings validated. No network, packaging or publication performed.')
         elif args.command=='fetch':fetch(plan,args.plan.parent,args.work,GitHub(token))
