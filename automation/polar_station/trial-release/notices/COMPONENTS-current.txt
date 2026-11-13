@@ -1,6 +1,6 @@
 Polar Station Mac trial - components and full notices
-Application source: 7cdfd4a9da61f9af2687c137f6d499c496a4b19a
-Native build run: 43174962658
+Application source: 63105b965dee5bb6cedb88720382dd17d07aa516
+Native build run: 43373252716
 
 Cargo entries conservatively include all observed compiler packages, including build tools.
 Some prior full notice texts remain conservatively retained; this is not a final static-link map.
