@@ -7,9 +7,17 @@ repository's pinned Rust toolchain and Cargo.lock. Both jobs execute
 `cargo check`). The macOS job additionally executes the Swift package build
 against `target/debug/libpolar_tmux.a`.
 
-A green workflow means these source components compile. It does **not** mean
-the complete native application or release package has been built or tested.
-SwiftPM contains library targets, not the full Ghostty application.
+Read the individual jobs: a successful compilation job confirms compilation
+and linking, while a green metadata-only run supplies no new compilation
+evidence. Neither establishes that the complete native application or release
+package has been built or tested. SwiftPM contains library targets, not the
+full Ghostty application.
+
+Before allocating compilation runners, a lightweight job reads the complete
+Git diff. Pushes changing only release documentation, reports, packet metadata
+and their distribution manifest skip compilation. Mixed changes, unknown paths,
+missing history, pull requests and manual dispatch build normally. The job
+summary explicitly records metadata-only compilation as NOT RUN.
 
 ## Full native-app build gaps
 
@@ -27,8 +35,8 @@ disabled by the public profile. CI neither publishes binaries nor changes the
 source-only release's licensing or legal-release gates.
 
 No secrets are required. Jobs have read-only repository permissions, a
-60-minute timeout and two Cargo build workers. New runs supersede obsolete
-runs on the same branch. Initial build results must be read from Actions;
+60-minute timeout and two Cargo build workers. Source-build runs do not cancel
+other source builds. Initial build results must be read from Actions;
 adding this workflow is not itself evidence of a successful build.
 
 ## Native macOS 26 validation
