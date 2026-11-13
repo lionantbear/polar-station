@@ -422,15 +422,26 @@ impl VaultStore for VaultSqliteStore {
             expected.checked_add(1) == Some(record.revision),
             "invalid directory revision"
         );
-        let expected = i64::try_from(expected)?;
-        let revision = i64::try_from(record.revision)?;
-        Ok(self.runtime.write_with_operation(polar_storage_core::StorageOperationId::new("storage.polar-vault-store-sqlite.commit_key_directory").expect("stable operation"),move|db|{
-            if expected==0 {
-                Ok(db.execute("INSERT INTO vault_key_directory(owner_node_id,revision,nonce,ciphertext) VALUES(?1,?2,?3,?4) ON CONFLICT(owner_node_id) DO NOTHING",rusqlite::params![owner.to_hex(),revision,record.nonce,record.ciphertext])?==1)
-            }else{
-                Ok(db.execute("UPDATE vault_key_directory SET revision=?1,nonce=?2,ciphertext=?3 WHERE owner_node_id=?4 AND revision=?5",rusqlite::params![revision,record.nonce,record.ciphertext,owner.to_hex(),expected])?==1)
-            }
-        }).await?)
+        Ok(self
+            .runtime
+            .write_with_operation(
+                polar_storage_core::StorageOperationId::new(
+                    "storage.polar-vault-store-sqlite.commit_key_directory",
+                )
+                .expect("stable operation"),
+                move |db| uuid_secrets::write_key_directory(db, owner, expected, &record),
+            )
+            .await?)
+    }
+    async fn create_uuid_secret_with_directory(
+        &self,
+        secret: polar_vault::StoredSecret,
+        import: uuid::Uuid,
+        expected_directory: u64,
+        directory: polar_vault::keys::directory::StoredDirectory,
+    ) -> Result<bool> {
+        self.uuid_create_with_directory(secret, import, expected_directory, directory)
+            .await
     }
     async fn put_node_setting(&self, key: String, value: String) -> Result<()> {
         VaultSqliteStore::put_node_setting(self, &key, &value).await

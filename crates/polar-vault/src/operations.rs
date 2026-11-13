@@ -68,6 +68,17 @@ pub trait VaultStore: Send + Sync {
     ) -> Result<bool> {
         anyhow::bail!("key directory unsupported by Vault adapter")
     }
+    /// One transaction: publish a new UUID credential and its authenticated
+    /// directory policy, or publish neither. No plaintext enters this adapter.
+    async fn create_uuid_secret_with_directory(
+        &self,
+        _secret: crate::StoredSecret,
+        _import: uuid::Uuid,
+        _expected_directory: u64,
+        _directory: crate::keys::directory::StoredDirectory,
+    ) -> Result<bool> {
+        anyhow::bail!("atomic credential creation unsupported by Vault adapter")
+    }
     async fn query_uuid_secrets(
         &self,
         _owner: NodeId,

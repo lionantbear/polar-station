@@ -1,6 +1,6 @@
 //! Filesystem validation uses the original Host target and its verified transport.
 use super::*;
-use polar_tmux_resources::{resolve_reference_path, FileAccess, FileOrigin, FileReference};
+use polar_tmux_resources::{FileAccess, FileOrigin, FileReference, PathFlavor, ResolvedFileSource};
 impl ResourceService {
     pub(super) async fn resolve_file_candidates(
         &self,
@@ -21,14 +21,20 @@ impl ResourceService {
                 )
                 .await;
         }
-        let mut paths = BTreeMap::new();
-        for mut reference in candidates {
-            if let Ok(path) = resolve_reference_path(&reference, origin.cwd.as_deref()) {
-                reference.path = path.to_string_lossy().into_owned();
-                paths.entry(reference.path.clone()).or_insert(reference);
+        let source = ResolvedFileSource {
+            target_configuration_revision: self.file_source_revision(&origin.execution_target_id),
+            origin: origin.clone(),
+            flavor: PathFlavor::Posix,
+            home: None,
+        };
+        let refs = match super::file_open::resolve_references(&source, candidates) {
+            Ok(refs) => refs,
+            Err(failure) => {
+                return self
+                    .error_response(request.request_id, "resource_file_invalid", failure.message)
+                    .await
             }
-        }
-        let refs: Vec<FileReference> = paths.into_values().collect();
+        };
         let existing = match self
             .existing_candidate_files(&origin.execution_target_id, &refs)
             .await
@@ -59,26 +65,36 @@ impl ResourceService {
             };
         }
         let reference = existing.into_iter().next().unwrap();
-        let mut response = Box::pin(self.dispatch(ResourcesRequestEnvelopeV1 {
-            command: ResourcesCommandV1::ResolveFile {
-                execution_target_id: origin.execution_target_id,
-                path: reference.path.clone(),
-                cwd: None,
-                source_session: None,
-                client_supports_local_file: true,
-            },
-            ..request
-        }))
-        .await;
-        if let ResourcesResultV1::FileAccess { access } = &mut response.result {
-            *access = FileAccess::Verified {
-                reference,
-                access: Box::new(access.clone()),
-            };
+        match self
+            .access_resolution(polar_tmux_resources::ResolvedFile {
+                source,
+                reference: reference.clone(),
+            })
+            .await
+        {
+            Ok(polar_tmux_resources::FileOpenResolution::Resolved { access_plan, .. }) => {
+                ResourcesResponseEnvelopeV1 {
+                    protocol_version: PROTOCOL_VERSION,
+                    api: request.api,
+                    request_id: request.request_id,
+                    revision: self.catalog.lock().await.revision,
+                    result: ResourcesResultV1::FileAccess {
+                        access: FileAccess::Verified {
+                            reference,
+                            access: Box::new(super::file_open::legacy_access(access_plan)),
+                        },
+                    },
+                }
+            }
+            Err(failure) => {
+                self.error_response(request.request_id, "resource_file_invalid", failure.message)
+                    .await
+            }
+            _ => unreachable!("access planning does not choose files"),
         }
-        response
     }
-    async fn existing_candidate_files(
+
+    pub(super) async fn existing_candidate_files(
         &self,
         target_id: &str,
         candidates: &[FileReference],
@@ -87,12 +103,21 @@ impl ResourceService {
             let candidates = candidates.to_vec();
             return tokio::task::spawn_blocking(move || {
                 let mut existing = Vec::new();
-                for reference in candidates {
+                for mut reference in candidates {
                     match std::fs::metadata(&reference.path) {
                         Ok(metadata) if metadata.is_file() => {
                             std::fs::File::open(&reference.path)
                                 .map_err(|_| "Permission denied while checking a source file.")?;
-                            existing.push(reference);
+                            if has_parent_component(&reference.path) {
+                                reference.path = std::fs::canonicalize(&reference.path)
+                                    .map_err(|_| "Cannot resolve the source file path.")?
+                                    .to_str()
+                                    .ok_or("The source path is not UTF-8.")?
+                                    .to_owned();
+                            }
+                            if !existing.contains(&reference) {
+                                existing.push(reference);
+                            }
                         }
                         Ok(_) => {}
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -137,8 +162,33 @@ impl ResourceService {
                 .await
                 .map_err(|_| "The source connection changed; retry.")?;
         }
+        // Resolve .. on the source filesystem; lexical collapse is wrong when
+        // a preceding component is a symlink. Reuse target directory facts.
+        let mut candidates = candidates.to_vec();
+        for reference in &mut candidates {
+            if has_parent_component(&reference.path) {
+                let path = std::path::Path::new(&reference.path);
+                let directory = path
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .ok_or("Invalid source directory.")?;
+                let name = path
+                    .file_name()
+                    .and_then(|p| p.to_str())
+                    .ok_or("Invalid source file name.")?;
+                let facts = super::super::target_directory::read(
+                    &transport,
+                    target_id,
+                    Some(directory),
+                    false,
+                )
+                .await
+                .map_err(|_| "Cannot resolve the source directory.")?;
+                reference.path = format!("{}/{name}", facts.path.trim_end_matches('/'));
+            }
+        }
         let mut script = String::from("set --");
-        for reference in candidates {
+        for reference in &candidates {
             script.push(' ');
             script.push_str(&quote(&reference.path));
         }
@@ -168,6 +218,12 @@ impl ResourceService {
 }
 fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn has_parent_component(path: &str) -> bool {
+    std::path::Path::new(path)
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
 }
 
 

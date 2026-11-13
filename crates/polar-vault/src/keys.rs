@@ -40,7 +40,7 @@ pub enum KeyRecovery {
     ExternalBackup,
     Unrecoverable,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KeyRecord {
     pub id: SecretId,
@@ -50,6 +50,8 @@ pub struct KeyRecord {
     pub algorithm: KeyAlgorithm,
     pub management: KeyManagement,
     pub protection: SecretProtection,
+    #[serde(default = "crate::policy::SecretPolicy::legacy_ssh")]
+    pub policy: crate::policy::SecretPolicy,
     pub other_copies: Vec<SecretProtection>,
     pub recovery: KeyRecovery,
     pub public_key: Vec<u8>,
@@ -59,6 +61,21 @@ pub struct KeyRecord {
     pub hardware_object: Option<u32>,
 }
 impl KeyRecord {
+    /// A consumer may reuse its executor only while these authenticated fields
+    /// match. Operation permissions are checked separately on every use.
+    pub fn same_ssh_configuration(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.owner == other.owner
+            && self.purpose == other.purpose
+            && self.algorithm == other.algorithm
+            && self.management == other.management
+            && self.protection == other.protection
+            && self.other_copies == other.other_copies
+            && self.recovery == other.recovery
+            && self.public_key == other.public_key
+            && self.scope == other.scope
+            && self.hardware_object == other.hardware_object
+    }
     pub fn validate(&self, owner: NodeId, caps: ProtectionCapabilities) -> Result<()> {
         ensure!(
             self.owner == owner && self.scope.len() <= 253 && !self.scope.contains('\0'),

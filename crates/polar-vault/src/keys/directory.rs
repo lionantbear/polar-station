@@ -54,6 +54,30 @@ pub(crate) struct ManagedKeyDirectory {
 }
 
 impl crate::PolarVault {
+    /// Shared credential-operation gate. Product assembly MUST authenticate
+    /// managed_keys before publishing consumers. An unconfigured standalone
+    /// Vault retains its existing authority model, not a new implicit key policy.
+    pub async fn authorize_secret_operation(
+        &self,
+        authority: &crate::VaultAuthority,
+        id: SecretId,
+        operation: crate::policy::SecretOperation,
+    ) -> Result<()> {
+        if let Some(managed) = self.key_directory.get() {
+            ensure!(
+                managed.owner == authority.owner(),
+                "key policy owner mismatch"
+            );
+            let state = managed.directory.state.lock().await;
+            let snapshot = state
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?;
+            if let Some(key) = snapshot.directory.keys.iter().find(|key| key.id == id) {
+                key.policy.require(operation)?;
+            }
+        }
+        Ok(())
+    }
     /// Startup/authorized management assembly shares this single directory.
     /// Neither authority nor capabilities may come from an SDK request.
     pub async fn managed_keys(
@@ -227,30 +251,81 @@ fn context(owner: NodeId, revision: u64) -> Vec<u8> {
     out
 }
 impl KeyDirectory {
-    /// Authorized management of a proven existing Vault SSH leaf. Only scope
-    /// and residency may change; this never replaces a public identity, source
-    /// or pool slot. Caller must first stop all consumers and prove the key.
-    pub async fn configure_ssh_leaf(
+    /// Check the current authenticated RAM policy. No database or device I/O.
+    /// Trusted callers must also retain their existing owner/purpose checks.
+    pub async fn authorize_ssh_use(&self, id: SecretId, public: NodeId) -> Result<()> {
+        self.authorize_ssh_grant(id, public, None).await
+    }
+    pub async fn authorize_ssh_configuration(&self, expected: &KeyRecord) -> Result<()> {
+        let public = NodeId::from_bytes(
+            expected
+                .public_key
+                .as_slice()
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("invalid SSH verification key"))?,
+        );
+        self.authorize_ssh_grant(expected.id, public, Some(expected))
+            .await
+    }
+    async fn authorize_ssh_grant(
         &self,
-        record: KeyRecord,
-        expected_revision: u64,
+        id: SecretId,
+        public: NodeId,
+        expected: Option<&KeyRecord>,
     ) -> Result<()> {
+        let state = self.state.lock().await;
+        let old = state
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?;
+        let key = old
+            .directory
+            .keys
+            .iter()
+            .find(|k| k.id == id)
+            .ok_or_else(|| anyhow::anyhow!("SSH key unavailable"))?;
+        ensure!(
+            key.owner == self.owner
+                && key.purpose == KeyPurpose::Ssh
+                && key.public_key == public.as_bytes(),
+            "SSH policy identity mismatch"
+        );
+        ensure!(
+            expected.is_none_or(|record| key.same_ssh_configuration(record)),
+            "SSH execution configuration changed"
+        );
+        key.policy.require(crate::policy::SecretOperation::Use)
+    }
+    fn prepare_ssh_leaf(
+        &self,
+        old: &Snapshot,
+        record: KeyRecord,
+    ) -> Result<Option<RecoveryDirectory>> {
         ensure!(
             record.purpose == KeyPurpose::Ssh
                 && record.algorithm == KeyAlgorithm::Ed25519
                 && record.management == KeyManagement::VaultStored
                 && record.recovery == (KeyRecovery::VaultBackup { id: record.id })
-                && record.other_copies.is_empty()
                 && record.hardware_object.is_none(),
             "unsupported SSH leaf configuration"
         );
-        let mut state = self.state.lock().await;
-        let old = state
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?;
+        use crate::protection::{
+            SecretCompute, SecretProtection, SecretRetention, SecretStorage, VaultLocation,
+        };
+        let device_copy = record.protection.vault == Some(VaultLocation::Device);
+        let allowed_backup = SecretProtection {
+            storage: SecretStorage::Vault,
+            compute: SecretCompute::Device,
+            retention: SecretRetention::Operation,
+            vault: Some(VaultLocation::Host),
+        };
         ensure!(
-            old.revision == expected_revision,
-            "directory revision changed"
+            if device_copy {
+                record.protection.compute == SecretCompute::Device
+                    && record.other_copies == [allowed_backup]
+            } else {
+                record.other_copies.is_empty()
+            },
+            "SSH backup policy mismatch"
         );
         let mut next = old.directory.clone();
         ensure!(
@@ -265,16 +340,123 @@ impl KeyDirectory {
                     && existing.public_key == record.public_key
                     && existing.management == record.management
                     && existing.recovery == record.recovery
-                    && existing.other_copies == record.other_copies
+                    && (existing.other_copies == record.other_copies
+                        || (existing.other_copies.is_empty() && device_copy))
                     && existing.hardware_object == record.hardware_object,
                 "cannot replace SSH key identity or recovery"
             );
+            if existing.policy == record.policy
+                && existing.protection == record.protection
+                && existing.scope == record.scope
+                && existing.other_copies == record.other_copies
+            {
+                return Ok(None);
+            }
+            // Protection, backups and scope are policy changes too. Keeping the
+            // permissions field identical must not bypass its own change lock.
+            existing
+                .policy
+                .require(crate::policy::SecretOperation::PolicyChange)?;
             *existing = record;
         } else {
             next.keys.push(record);
         }
         next.validate(self.owner, self.caps)?;
-        self.commit(&mut state, next).await
+        Ok(Some(next))
+    }
+    pub async fn preflight_ssh_leaf(
+        &self,
+        record: KeyRecord,
+        expected_revision: u64,
+    ) -> Result<()> {
+        let state = self.state.lock().await;
+        let old = state
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?;
+        ensure!(
+            old.revision == expected_revision,
+            "directory revision changed"
+        );
+        self.prepare_ssh_leaf(old, record)?;
+        Ok(())
+    }
+    pub async fn configure_ssh_leaf(
+        &self,
+        record: KeyRecord,
+        expected_revision: u64,
+    ) -> Result<()> {
+        let mut state = self.state.lock().await;
+        let old = state
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?;
+        ensure!(
+            old.revision == expected_revision,
+            "directory revision changed"
+        );
+        if let Some(next) = self.prepare_ssh_leaf(old, record)? {
+            self.commit(&mut state, next).await?;
+        }
+        Ok(())
+    }
+    /// An exact private-input retry can authenticate an uncertain committed
+    /// directory without restarting the host. Never publish an empty/older or
+    /// differently configured directory merely because a commit was unknown.
+    pub(crate) async fn recover_created_ssh(
+        &self,
+        expected: &KeyRecord,
+        previous_revision: u64,
+    ) -> Result<()> {
+        let mut state = self.state.lock().await;
+        if state.is_some() {
+            return Ok(());
+        }
+        let minimum = previous_revision
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("directory revision exhausted"))?;
+        let mut fresh = Self::open(
+            self.owner,
+            self.caps,
+            self.store.clone(),
+            self.cipher.clone(),
+        )
+        .await?;
+        let snapshot = fresh
+            .state
+            .get_mut()
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("directory recovery unavailable"))?;
+        ensure!(
+            snapshot.revision >= minimum
+                && snapshot.directory.keys.iter().any(|key| key == expected),
+            "SSH creation recovery does not match committed policy"
+        );
+        *state = Some(snapshot);
+        Ok(())
+    }
+    pub(crate) async fn create_ssh_leaf(
+        &self,
+        record: KeyRecord,
+        secret: crate::StoredSecret,
+        import: Uuid,
+        expected: u64,
+    ) -> Result<()> {
+        let mut state = self.state.lock().await;
+        let old = state
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?;
+        ensure!(old.revision == expected, "directory revision changed");
+        ensure!(
+            secret.metadata.id == record.id
+                && secret.metadata.owner == self.owner
+                && secret.metadata.kind == crate::SecretKind::GitSshPrivateKey
+                && !old.directory.keys.iter().any(|k| k.id == record.id),
+            "invalid new SSH credential"
+        );
+        let next = self
+            .prepare_ssh_leaf(old, record)?
+            .ok_or_else(|| anyhow::anyhow!("SSH creation must add a new key"))?;
+        self.commit_with_secret(&mut state, next, Some((secret, import)))
+            .await
     }
     pub async fn open(
         owner: NodeId,
@@ -437,6 +619,14 @@ impl KeyDirectory {
         Ok(key)
     }
     async fn commit(&self, state: &mut Option<Snapshot>, next: RecoveryDirectory) -> Result<()> {
+        self.commit_with_secret(state, next, None).await
+    }
+    async fn commit_with_secret(
+        &self,
+        state: &mut Option<Snapshot>,
+        next: RecoveryDirectory,
+        secret: Option<(crate::StoredSecret, Uuid)>,
+    ) -> Result<()> {
         let revision = state
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("directory requires reload"))?
@@ -453,18 +643,20 @@ impl KeyDirectory {
         // Take state BEFORE the await. Cancellation/unknown commit status must
         // not leave stale free keys usable; reopening authenticates durable state.
         *state = None;
-        let updated = self
-            .store
-            .compare_exchange_key_directory(
-                self.owner,
-                revision,
-                StoredDirectory {
-                    revision: next_revision,
-                    nonce: nonce.to_vec(),
-                    ciphertext,
-                },
-            )
-            .await?;
+        let record = StoredDirectory {
+            revision: next_revision,
+            nonce: nonce.to_vec(),
+            ciphertext,
+        };
+        let updated = if let Some((secret, import)) = secret {
+            self.store
+                .create_uuid_secret_with_directory(secret, import, revision, record)
+                .await?
+        } else {
+            self.store
+                .compare_exchange_key_directory(self.owner, revision, record)
+                .await?
+        };
         ensure!(updated, "directory changed concurrently; reload required");
         *state = Some(Snapshot {
             revision: next_revision,

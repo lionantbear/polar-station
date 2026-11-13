@@ -133,6 +133,14 @@ pub const Window = struct {
         auxiliary.present(self.app, self.window.?);
     }
 
+    pub fn presentFileMapping(self: *Window, parent: *gtk.Window, projection: ?*const resource.Projection, target: []const u8, directory: []const u8) void {
+        self.ensureWindow();
+        self.window.?.as(gtk.Window).setTransientFor(parent);
+        if (projection) |value| self.render(value, false);
+        self.applyBackendAvailability();
+        self.prefillFile(target, directory);
+    }
+
     pub fn prefillFile(self:*Window,target:[]const u8,remote:[]const u8) void {
         self.ensureWindow();
         const id=newId(self.allocator) catch return;defer self.allocator.free(id);

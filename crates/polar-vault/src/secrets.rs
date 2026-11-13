@@ -1,5 +1,5 @@
 //! UUID credentials. Authorities are trusted assembly handles, not wire DTOs.
-use crate::PolarVault;
+use crate::{policy::SecretOperation, PolarVault};
 use anyhow::{ensure, Result};
 use async_trait::async_trait;
 use polar_identity::NodeId;
@@ -8,8 +8,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+mod creation;
+pub use creation::{SecretImportPort, SshSecretCreation, VaultSecretImporter};
 mod device;
-pub use device::Ed25519SecretExecutor;
+pub use device::{DeviceSecretInfo, DeviceSecretMutation, Ed25519SecretExecutor};
 mod cache;
 pub use cache::{SecretUseSession, SecretUseTiming};
 
@@ -219,6 +221,13 @@ impl CredentialResolver for BoundCredentialResolver {
         Some(self.vault.secret_changes.subscribe())
     }
     async fn current_version(&self, id: SecretId) -> Result<u64> {
+        self.vault
+            .authorize_secret_operation(
+                &VaultAuthority::for_authorized_owner(self.owner),
+                id,
+                SecretOperation::Use,
+            )
+            .await?;
         let record = self.vault.authorized_secret(self.owner, id).await?;
         ensure!(
             !record.metadata.revoked
@@ -229,13 +238,21 @@ impl CredentialResolver for BoundCredentialResolver {
         Ok(record.metadata.version)
     }
     async fn resolve_for_use(&self, id: SecretId) -> Result<SecretLease> {
+        let authority = VaultAuthority::for_authorized_owner(self.owner);
+        self.vault
+            .authorize_secret_operation(&authority, id, SecretOperation::Use)
+            .await?;
         let record = self.vault.authorized_secret(self.owner, id).await?;
         ensure!(!record.metadata.revoked, "credential unavailable");
         ensure!(
             record.metadata.kind == self.kind,
             "credential kind mismatch"
         );
-        self.vault.open_uuid_secret(record).await
+        let lease = self.vault.open_uuid_secret(record).await?;
+        self.vault
+            .authorize_secret_operation(&authority, id, SecretOperation::Use)
+            .await?;
+        Ok(lease)
     }
 }
 
@@ -388,6 +405,26 @@ impl PolarVault {
                 .check_import(authority, id, name, kind, &input, device)
                 .await;
         }
+        let record = self
+            .prepare_import_record(authority, name, kind, &input, device)
+            .await?;
+        let id = record.metadata.id;
+        let inserted = self.store.insert_uuid_secret(record, import_id).await?;
+        if inserted != id {
+            return self
+                .check_import(authority, inserted, name, kind, &input, device)
+                .await;
+        }
+        Ok(id)
+    }
+    async fn prepare_import_record(
+        &self,
+        authority: &VaultAuthority,
+        name: &str,
+        kind: SecretKind,
+        input: &SecretInput,
+        device: Option<&dyn Ed25519SecretExecutor>,
+    ) -> Result<StoredSecret> {
         let id = SecretId(polar_identity::generation::new_uuid_v7());
         let mut record = StoredSecret {
             metadata: SecretMetadata {
@@ -412,15 +449,9 @@ impl PolarVault {
         record.nonce = nonce.to_vec();
         record.ciphertext = ciphertext;
         if let Some(executor) = device {
-            verify_device_import(&record, &input, executor).await?;
+            verify_device_import(&record, input, executor).await?;
         }
-        let inserted = self.store.insert_uuid_secret(record, import_id).await?;
-        if inserted != id {
-            return self
-                .check_import(authority, inserted, name, kind, &input, device)
-                .await;
-        }
-        Ok(id)
+        Ok(record)
     }
     async fn check_import(
         &self,
@@ -458,6 +489,8 @@ impl PolarVault {
         expected_version: u64,
         input: SecretInput,
     ) -> Result<u64> {
+        self.authorize_secret_operation(authority, id, SecretOperation::Rotate)
+            .await?;
         let mut record = self.authorized_secret(authority.owner, id).await?;
         ensure!(!record.metadata.revoked, "credential unavailable");
         ensure!(
@@ -486,6 +519,8 @@ impl PolarVault {
         record.nonce = nonce.to_vec();
         record.ciphertext = ciphertext;
         let version = record.metadata.version;
+        self.authorize_secret_operation(authority, id, SecretOperation::Rotate)
+            .await?;
         ensure!(
             self.store.rotate_uuid_secret(record, revision).await?,
             "secret version conflict"
@@ -499,11 +534,15 @@ impl PolarVault {
         id: SecretId,
         expected_revision: u64,
     ) -> Result<()> {
+        self.authorize_secret_operation(authority, id, SecretOperation::Revoke)
+            .await?;
         let record = self.authorized_secret(authority.owner, id).await?;
         ensure!(
             !record.metadata.revoked && record.metadata.revision == expected_revision,
             "secret revision conflict"
         );
+        self.authorize_secret_operation(authority, id, SecretOperation::Revoke)
+            .await?;
         ensure!(
             self.store
                 .revoke_uuid_secret(id, authority.owner, expected_revision)
@@ -524,6 +563,8 @@ pub struct SecretImportMetadata {
     pub kind: SecretKind,
     #[serde(default)]
     pub device_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<SshSecretCreation>,
 }
 
 async fn verify_device_import(

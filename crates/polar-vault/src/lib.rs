@@ -82,11 +82,16 @@ pub struct ManagementRequestRecord {
 mod credential_bundle;
 mod inhouse_identity;
 mod operations;
+pub mod policy;
 mod secrets;
 pub use credential_bundle::{CredentialBundle, CredentialBundleResolver, CredentialBundleStore};
 pub use operations::VaultStore;
 pub use secrets::{
-    CredentialResolver, SecretId, SecretImportMetadata, SecretInput, SecretKind, SecretLease,
-    SecretMetadata, SecretPage, SecretQuery, StoredSecret, VaultAuthority,
+    CredentialResolver, DeviceSecretInfo, DeviceSecretMutation, SecretId, SecretImportMetadata,
+    SecretInput, SecretKind, SecretLease, SecretMetadata, SecretPage, SecretQuery, StoredSecret,
+    VaultAuthority,
 };
-pub use secrets::{Ed25519SecretExecutor, SecretUseSession, SecretUseTiming};
+pub use secrets::{
+    Ed25519SecretExecutor, SecretImportPort, SecretUseSession, SecretUseTiming, SshSecretCreation,
+    VaultSecretImporter,
+};

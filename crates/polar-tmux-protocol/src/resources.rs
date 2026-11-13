@@ -92,6 +92,13 @@ impl ResourcesRequestEnvelopeV1 {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourcesCommandV1 {
     GetProjection,
+    ResolveFileOpen {
+        origin: polar_tmux_resources::FileOrigin,
+        input: polar_tmux_resources::FileReferenceInput,
+    },
+    PlanFileAccess {
+        file: polar_tmux_resources::ResolvedFile,
+    },
     ResolveFileCandidates {
         origin: polar_tmux_resources::FileOrigin,
         candidates: Vec<polar_tmux_resources::FileReference>,
@@ -125,12 +132,24 @@ impl ResourcesCommandV1 {
     pub fn is_mutation(&self) -> bool {
         !matches!(
             self,
-            Self::GetProjection | Self::GetLogTail { .. } | Self::ResolveFile { .. } | Self::ResolveFileCandidates { .. }
+            Self::GetProjection | Self::GetLogTail { .. } | Self::ResolveFile { .. } | Self::ResolveFileCandidates { .. } | Self::ResolveFileOpen { .. } | Self::PlanFileAccess { .. }
         )
     }
 
     fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
+            Self::ResolveFileOpen { origin, input } => {
+                validate_stable_identifier(&origin.execution_target_id, "execution target")?;
+                if origin.terminal_session_id.as_ref().is_some_and(|s| s.is_empty() || s.len() > 256 || s.chars().any(char::is_control)) {
+                    return Err(ProtocolValidationError::InvalidResourcesCommand);
+                }
+                input.validate().map_err(|_| ProtocolValidationError::InvalidResourcesCommand)
+            }
+            Self::PlanFileAccess { file } => {
+                validate_stable_identifier(&file.source.origin.execution_target_id, "execution target")?;
+                polar_tmux_resources::SourcePath::new(file.source.flavor, &file.reference.path)
+                    .map(|_| ()).map_err(|_| ProtocolValidationError::InvalidResourcesCommand)
+            }
             Self::ResolveFileCandidates { origin, candidates } => {
                 validate_stable_identifier(&origin.execution_target_id, "execution target")?;
                 if candidates.is_empty() || candidates.len() > polar_tmux_resources::MAX_FILE_CANDIDATES
@@ -205,6 +224,7 @@ impl ResourcesResponseEnvelopeV1 {
             }
             ResourcesResultV1::LogTail { tail } => tail.validate(),
             ResourcesResultV1::FileAccess { .. } => Ok(()),
+            ResourcesResultV1::FileOpen { .. } => Ok(()),
             ResourcesResultV1::Error { error, projection } => {
                 error.validate_sanitized()?;
                 if let Some(projection) = projection {
@@ -219,6 +239,9 @@ impl ResourcesResponseEnvelopeV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourcesResultV1 {
+    FileOpen {
+        resolution: polar_tmux_resources::FileOpenResolution,
+    },
     FileAccess {
         access: polar_tmux_resources::FileAccess,
     },

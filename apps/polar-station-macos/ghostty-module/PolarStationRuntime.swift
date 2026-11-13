@@ -893,10 +893,13 @@
         }
         func openResourceFile(_ value:String,surface:Ghostty.SurfaceView)->Bool {
             let bytes=Array(value.utf8)
-            guard let result=bytes.withUnsafeBufferPointer({polar_station_resource_file_path($0.baseAddress,$0.count)}) else{return false}
-            defer{polar_station_desktop_string_free(result)}
+            guard bytes.withUnsafeBufferPointer({polar_station_file_input_valid($0.baseAddress,$0.count)}) else{return false}
             guard let window=surface.window,let context=context(for:window),let source=context.executor.resourceFileSource(surface:surface) else{return false}
-            model.requestFileMapping={ [weak self] in self?.requestAuxiliaryPresentation(.resources) }
+            model.bindResourceFileWindow(window)
+            model.requestFileMapping={ [weak self, weak window] in
+                guard let self, let window, self.context(for:window) != nil else{return}
+                self.showAuxiliary(.resources, on: window.screen)
+            }
             model.loadResources()
             model.openResourceFile(target:source.target,path:value,cwd:source.cwd,terminalSessionID:source.session)
             return true
@@ -1486,7 +1489,7 @@
             }
         }
 
-        private func showAuxiliary(_ surface: AuxiliarySurfaceIDV1) {
+        private func showAuxiliary(_ surface: AuxiliarySurfaceIDV1, on sourceScreen: NSScreen? = nil) {
             let projectedDescriptor: AuxiliarySurfaceProjectionV1?
             switch surface {
             case .resources:
@@ -1500,7 +1503,7 @@
             }
             auxiliaryWindows.show(
                 projectedDescriptor ?? fallbackAuxiliaryDescriptor(surface),
-                on: preferredAuxiliaryScreen()
+                on: sourceScreen ?? preferredAuxiliaryScreen()
             )
         }
 

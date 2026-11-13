@@ -118,6 +118,7 @@ pub const LogTail = struct {
 
 pub const FileAccess=struct {state:[]const u8,reference:?std.json.Value=null,access:?std.json.Value=null,origin:?std.json.Value=null,candidates:?std.json.Value=null,resource_id:?[]const u8=null,local_path:?[]const u8=null,execution_target_id:?[]const u8=null,remote_directory:?[]const u8=null,source_path:?[]const u8=null};
 const Result = struct {
+    resolution:?std.json.Value=null,
     access:?FileAccess=null,
     type: []const u8,
     projection: ?Projection = null,
@@ -138,7 +139,7 @@ const Frame = struct {
     response: Response,
 };
 
-pub const ResponseKind = enum { projection, command_accepted, log_tail, file_access, @"error" };
+pub const ResponseKind = enum { projection, command_accepted, log_tail, file_access, file_open, @"error" };
 
 pub const Outcome = struct {
     request_id: []u8,
@@ -179,6 +180,7 @@ pub const Model = struct {
         return null;
     }
 
+    pub fn fileOpenResolution(self:*const Model) ?std.json.Value {return if(self.last_file) |value| value.value.response.result.resolution else null;}
     pub fn fileAccess(self:*const Model) ?FileAccess {return if(self.last_file) |value| value.value.response.result.access else null;}
     pub fn logTail(self: *const Model) ?*const LogTail {
         if (self.last_log) |*current| {
@@ -221,7 +223,7 @@ pub const Model = struct {
         if (parsed.value.response.result.projection != null) {
             if (self.current) |*current| current.deinit();
             self.current = parsed;
-        } else if(parsed.value.response.result.access!=null) {
+        } else if(parsed.value.response.result.access!=null or parsed.value.response.result.resolution!=null) {
             if(self.last_file) |*value| value.deinit();self.last_file=parsed;
         } else if (parsed.value.response.result.tail != null) {
             if (self.last_log) |*current| current.deinit();
@@ -232,6 +234,13 @@ pub const Model = struct {
         return outcome;
     }
 };
+
+pub fn encodeResolveFileOpen(allocator:std.mem.Allocator,request_id:[]const u8,origin:std.json.Value,input:std.json.Value) ![]u8 {
+    return encodeRead(allocator,request_id,.{.type="resolve_file_open",.origin=origin,.input=input});
+}
+pub fn encodePlanFileAccess(allocator:std.mem.Allocator,request_id:[]const u8,file:std.json.Value) ![]u8 {
+    return encodeRead(allocator,request_id,.{.type="plan_file_access",.file=file});
+}
 
 pub fn encodeGetProjection(
     allocator: std.mem.Allocator,

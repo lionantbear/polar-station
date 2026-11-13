@@ -84,6 +84,9 @@ install -m 0644 \
     "$repo_root/apps/polar-station-macos/ghostty-module/NativeWorkspaceLayout.swift" \
     "$source_dir/macos/Sources/PolarStation/NativeWorkspaceLayout.swift"
 install -m 0644 \
+    "$repo_root/apps/polar-station-macos/ghostty-module/PolarStationFileOpenPresentation.swift" \
+    "$source_dir/macos/Sources/PolarStation/PolarStationFileOpenPresentation.swift"
+install -m 0644 \
     "$repo_root/apps/polar-station-macos/ghostty-module/ControlCenterStore.swift" \
     "$source_dir/macos/Sources/PolarStation/ControlCenterStore.swift"
 install -m 0644 \

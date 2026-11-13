@@ -53,6 +53,45 @@ fn write_version(tx: &rusqlite::Transaction<'_>, r: &StoredSecret) -> rusqlite::
         params![r.metadata.id.to_string(),sql_integer(r.metadata.version)?,r.vault_id.to_string(),sql_integer(r.key_generation)?,r.nonce,r.ciphertext])?;
     Ok(())
 }
+pub(super) fn write_key_directory(
+    db: &rusqlite::Connection,
+    owner: NodeId,
+    expected: u64,
+    record: &polar_vault::keys::directory::StoredDirectory,
+) -> rusqlite::Result<bool> {
+    let expected = sql_integer(expected)?;
+    let revision = sql_integer(record.revision)?;
+    if expected == 0 {
+        Ok(db.execute("INSERT INTO vault_key_directory(owner_node_id,revision,nonce,ciphertext) VALUES(?1,?2,?3,?4) ON CONFLICT(owner_node_id) DO NOTHING",params![owner.to_hex(),revision,record.nonce,record.ciphertext])?==1)
+    } else {
+        Ok(db.execute("UPDATE vault_key_directory SET revision=?1,nonce=?2,ciphertext=?3 WHERE owner_node_id=?4 AND revision=?5",params![revision,record.nonce,record.ciphertext,owner.to_hex(),expected])?==1)
+    }
+}
+fn write_initial(
+    tx: &rusqlite::Transaction<'_>,
+    record: &StoredSecret,
+    import: Uuid,
+) -> rusqlite::Result<()> {
+    let m = &record.metadata;
+    tx.execute("INSERT INTO vault_secret(secret_id,owner_node_id,kind,current_version,revision,revoked,name,device_only) VALUES(?1,?2,?3,1,1,0,?4,?5)",params![m.id.to_string(),m.owner.to_hex(),m.kind as u16,m.name,m.device_only])?;
+    write_version(tx, record)?;
+    tx.execute(
+        "INSERT INTO vault_secret_import(owner_node_id,import_id,secret_id) VALUES(?1,?2,?3)",
+        params![m.owner.to_hex(), import.to_string(), m.id.to_string()],
+    )?;
+    Ok(())
+}
+fn validate_initial(record: &StoredSecret, import: Uuid) -> Result<()> {
+    anyhow::ensure!(
+        record.metadata.version == 1
+            && record.metadata.revision == 1
+            && !record.metadata.revoked
+            && !import.is_nil(),
+        "invalid initial credential record"
+    );
+    record.authenticated_context()?;
+    Ok(())
+}
 impl VaultSqliteStore {
     pub(super) async fn uuid_query(
         &self,
@@ -103,26 +142,38 @@ impl VaultSqliteStore {
         }).await?)
     }
     pub(super) async fn uuid_insert(&self, record: StoredSecret, import: Uuid) -> Result<SecretId> {
-        anyhow::ensure!(
-            record.metadata.version == 1
-                && record.metadata.revision == 1
-                && !record.metadata.revoked
-                && !import.is_nil(),
-            "invalid initial credential record"
-        );
-        record.authenticated_context()?;
+        validate_initial(&record, import)?;
         Ok(self.runtime.transaction_with_operation(operation("insert_uuid_secret"), move |tx| {
             let m = &record.metadata;
             let existing = tx.query_row("SELECT secret_id FROM vault_secret_import WHERE owner_node_id=?1 AND import_id=?2",
                 params![m.owner.to_hex(),import.to_string()], |row| read_id(row.get(0)?)).optional()?;
             if let Some(id) = existing { return Ok(id); }
-            tx.execute("INSERT INTO vault_secret(secret_id,owner_node_id,kind,current_version,revision,revoked,name,device_only) VALUES(?1,?2,?3,1,1,0,?4,?5)",
-                params![m.id.to_string(),m.owner.to_hex(),m.kind as u16,m.name,m.device_only])?;
-            write_version(tx, &record)?;
-            tx.execute("INSERT INTO vault_secret_import(owner_node_id,import_id,secret_id) VALUES(?1,?2,?3)",
-                params![m.owner.to_hex(),import.to_string(),m.id.to_string()])?;
+            write_initial(tx,&record,import)?;
             Ok(m.id)
         }).await?)
+    }
+    pub(super) async fn uuid_create_with_directory(
+        &self,
+        secret: StoredSecret,
+        import: Uuid,
+        expected: u64,
+        directory: polar_vault::keys::directory::StoredDirectory,
+    ) -> Result<bool> {
+        validate_initial(&secret, import)?;
+        anyhow::ensure!(
+            expected.checked_add(1) == Some(directory.revision),
+            "invalid directory revision"
+        );
+        Ok(self
+            .runtime
+            .transaction_with_operation(operation("create_uuid_secret_with_directory"), move |tx| {
+                if !write_key_directory(tx, secret.metadata.owner, expected, &directory)? {
+                    return Ok(false);
+                }
+                write_initial(tx, &secret, import)?;
+                Ok(true)
+            })
+            .await?)
     }
     pub(super) async fn uuid_rotate(&self, record: StoredSecret, expected: u64) -> Result<bool> {
         record.authenticated_context()?;

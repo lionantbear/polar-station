@@ -312,6 +312,11 @@ final class ControlCenterStore: ObservableObject {
     @Published var resourceFilePrefill:ResourceFileAccessV1?
     var requestFileMapping:(()->Void)?
     private let resourceFileFlow = SharedResourceFileOpen()
+    private let resourceFilePresentation = PolarStationFileOpenPresentation()
+    func bindResourceFileWindow(_ window:NSWindow) {
+        resourceFilePresentation.bind(to:window)
+        resourceFilePresentation.sendInput = { [weak self] input in self?.fileOpenInput(input) }
+    }
     func openResourceFile(target:String,path:String,cwd:String?,terminalSessionID:String?=nil) {
         fileOpenInput(["type":"open","request_id":requestID(),"text":path,"origin":["execution_target_id":target,"cwd":cwd as Any? ?? NSNull(),"terminal_session_id":terminalSessionID as Any? ?? NSNull()]])
     }
@@ -319,55 +324,37 @@ final class ControlCenterStore: ObservableObject {
     private func resolveResourceFile(){fileOpenInput(["type":"refresh","request_id":requestID()])}
     private func fileOpenInput(_ value:[String:Any]) {
         for effect in resourceFileFlow.dispatch(value) {
+            if resourceFilePresentation.present(effect) {continue}
             switch effect["type"] as? String {
-            case "resolve":
-                guard let id=effect["request_id"] as? String,let path=effect["path"] as? String,
-                      let origin=effect["origin"] as? [String:Any],let target=origin["execution_target_id"] as? String else{continue}
-                let command:ResourcesCommandV1
-                if let candidates=effect["candidates"] as? [[String:Any]],
-                   let originData=try? JSONSerialization.data(withJSONObject:origin),
-                   let candidateData=try? JSONSerialization.data(withJSONObject:candidates),
-                   let source=try? JSONDecoder().decode(ResourceFileOriginV1.self,from:originData),
-                   let references=try? JSONDecoder().decode([ResourceFileReferenceV1].self,from:candidateData) {
-                    command = .resolveFileCandidates(origin:source,candidates:references)
-                } else if let session=origin["terminal_session_id"] as? String {
-                    command = .resolveSessionFile(session:.init(executionTarget:target,tmuxSessionID:session),path:path,cwd:origin["cwd"] as? String)
-                } else { command = .resolveFile(target:target,path:path,cwd:origin["cwd"] as? String) }
-                Task {
-                    do {
-                        try await ensureBackendSession()
-                        let response=try await backendSession.requestResources(.init(requestID:id,expectedRevision:nil,command:command))
-                        switch response.result {
-                        case .fileAccess(let access):
-                            let data=try JSONEncoder().encode(access)
-                            fileOpenInput(["type":"resolved","request_id":id,"access":try JSONSerialization.jsonObject(with:data)])
-                        case .error(let error,_):fileOpenInput(["type":"failed","request_id":id,"message":error.message])
-                        default:fileOpenInput(["type":"failed","request_id":id,"message":"Unexpected file access response."])
-                        }
-                    }catch{fileOpenInput(["type":"failed","request_id":id,"message":error.localizedDescription])}
-                }
-            case "choose_file":
-                guard let id=effect["request_id"] as? String,let candidates=effect["candidates"] as? [[String:Any]],!candidates.isEmpty else {continue}
-                let picker=NSPopUpButton(frame:NSRect(x:0,y:0,width:520,height:28))
-                for item in candidates {picker.addItem(withTitle:item["path"] as? String ?? "")}
-                let alert=NSAlert();alert.messageText="Choose a file"
-                alert.informativeText="Several matching files exist on the source machine."
-                alert.accessoryView=picker;alert.addButton(withTitle:"Open");alert.addButton(withTitle:"Cancel")
-                guard let window=NSApp.keyWindow ?? NSApp.mainWindow else {
-                    fileOpenInput(["type":"choose","request_id":id,"index":NSNull()]);continue
-                }
-                alert.beginSheetModal(for:window) { [weak self] result in
-                    self?.fileOpenInput(["type":"choose","request_id":id,"index":result == .alertFirstButtonReturn ? picker.indexOfSelectedItem as Any : NSNull()])
-                }
+            case "resolve_open", "plan_access":
+                guard let id=effect["request_id"] as? String else{continue}
+                do {
+                    let command:ResourcesCommandV1
+                    if effect["type"] as? String == "resolve_open" {
+                        let source=try JSONDecoder().decode(ResourceFileOriginV1.self,from:JSONSerialization.data(withJSONObject:effect["origin"] as Any))
+                        let input=try JSONDecoder().decode(PolarTmuxJSONValue.self,from:JSONSerialization.data(withJSONObject:effect["input"] as Any))
+                        command = .resolveFileOpen(origin:source,input:input)
+                    } else {
+                        let file=try JSONDecoder().decode(PolarTmuxJSONValue.self,from:JSONSerialization.data(withJSONObject:effect["file"] as Any))
+                        command = .planFileAccess(file:file)
+                    }
+                    Task {
+                        do {
+                            try await ensureBackendSession()
+                            let response=try await backendSession.requestResources(.init(requestID:id,expectedRevision:nil,command:command))
+                            switch response.result {
+                            case .fileOpen(let resolution):
+                                let data=try JSONEncoder().encode(resolution)
+                                fileOpenInput(["type":"resolved","request_id":id,"resolution":try JSONSerialization.jsonObject(with:data)])
+                            case .error(let error,_):fileOpenInput(["type":"failed","request_id":id,"message":error.message])
+                            default:fileOpenInput(["type":"failed","request_id":id,"message":"Unexpected file-open response."])
+                            }
+                        }catch{fileOpenInput(["type":"failed","request_id":id,"message":error.localizedDescription])}
+                    }
+                }catch{fileOpenInput(["type":"failed","request_id":id,"message":error.localizedDescription])}
             case "start_resource":if let id=effect["resource_id"] as? String{restartResource(id)}
             case "create_mapping":
                 if let access=effect["access"],let data=try? JSONSerialization.data(withJSONObject:access),let prefill=try? JSONDecoder().decode(ResourceFileAccessV1.self,from:data){resourceFilePrefill=prefill;requestFileMapping?()}
-            case "open_local_file":
-                guard let path=effect["path"] as? String else{continue}
-                let url=URL(fileURLWithPath:(path as NSString).expandingTildeInPath)
-                if effect["strategy"] as? String == "reveal" {NSWorkspace.shared.activateFileViewerSelecting([url])}
-                else if !NSWorkspace.shared.open(url){fileOpenInput(["type":"viewer_failed","path":path])}
-            case "show_error":resourcesError=effect["message"] as? String;requestFileMapping?()
             default:break
             }
         }
@@ -1360,7 +1347,7 @@ final class ControlCenterStore: ObservableObject {
             resourcesProjection = projection
             resourcesError = nil
             resolveResourceFile()
-        case .fileAccess:break
+        case .fileAccess, .fileOpen:break
         case let .logTail(tail):
             resourceLogTail = tail
             resourcesError = nil

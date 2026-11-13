@@ -1446,8 +1446,7 @@ async fn recover_owned_file_mapping(
     remove_ownership_receipt(&receipt_path)
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn configured_mount_path(configured: &str) -> Result<PathBuf, ResourceProviderError> {
+pub(super) fn configured_mount_path(configured: &str) -> Result<PathBuf, ResourceProviderError> {
     let path = if let Some(relative) = configured.strip_prefix("~/") {
         let user_home = env::var_os("HOME").ok_or_else(ResourceProviderError::ownership)?;
         PathBuf::from(user_home).join(relative)

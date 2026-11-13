@@ -27,6 +27,15 @@ pub unsafe extern "C" fn polar_station_resource_file_path(bytes:*const u8,len:us
     value.and_then(|value| polar_tmux_resources::file_open_candidates(value).into_iter().next())
         .and_then(|r|CString::new(r.path).ok()).map_or(std::ptr::null_mut(),CString::into_raw)
 }
+/// Capture validation only; filesystem syntax and source resolution run in Host.
+/// # Safety
+/// `bytes` contains `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_file_input_valid(bytes: *const u8, len: usize) -> bool {
+    if bytes.is_null() || len == 0 || len > 65536 { return false; }
+    let Ok(text) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes, len) }) else { return false; };
+    polar_tmux_resources::FileReferenceInput::from_capture(text.into()).is_ok()
+}
 /// Test whether native clicked text has bounded filesystem candidates. No IO.
 /// # Safety
 /// `bytes` must contain `len` readable bytes; `hit` is a UTF-8 byte offset.

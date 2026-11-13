@@ -30,6 +30,8 @@ impl PolarVault {
             message.len() <= 32_768,
             "secret signing message exceeds capacity"
         );
+        self.authorize_secret_operation(authority, id, SecretOperation::Use)
+            .await?;
         let record = self.authorized_secret(authority.owner, id).await?;
         ensure!(
             !record.metadata.revoked && record.metadata.kind == SecretKind::GitSshPrivateKey,
@@ -50,11 +52,54 @@ impl PolarVault {
         );
         let signature = executor.sign_record(&record, public, message).await?;
         NodeIdSignatureVerifier.verify_signature(&public, message, &signature)?;
+        self.authorize_secret_operation(authority, id, SecretOperation::Use)
+            .await?;
         let current = self.authorized_secret(authority.owner, id).await?;
         ensure!(
             !current.metadata.revoked && current.metadata.version == record.metadata.version,
             "credential changed during use"
         );
         Ok(signature)
+    }
+}
+
+/// Public device directory view; no private material or ciphertext.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceSecretInfo {
+    pub id: SecretId,
+    pub vault_id: uuid::Uuid,
+    #[serde(with = "polar_trust::serde_value::node_id")]
+    pub owner: NodeId,
+    #[serde(with = "polar_trust::serde_value::node_id")]
+    pub public_key: NodeId,
+    pub version: u64,
+    pub ttl_ms: u32,
+    pub revoked: bool,
+    pub envelope_digest: [u8; 32],
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum DeviceSecretMutation {
+    Pending { request_token: String },
+    Complete { info: DeviceSecretInfo },
+}
+impl PolarVault {
+    /// Trusted management assembly only; deliberately not a serializable SDK
+    /// record or a plaintext resolver. Reuses the same UUID authorization.
+    pub async fn device_secret_record(
+        &self,
+        authority: &VaultAuthority,
+        id: SecretId,
+    ) -> Result<StoredSecret> {
+        let record = self.authorized_secret(authority.owner, id).await?;
+        ensure!(
+            record.metadata.device_only && record.metadata.kind == SecretKind::GitSshPrivateKey,
+            "device SSH record required"
+        );
+        ensure!(
+            record.nonce.len() == 12 && record.ciphertext.len() == 48,
+            "invalid device envelope"
+        );
+        Ok(record)
     }
 }

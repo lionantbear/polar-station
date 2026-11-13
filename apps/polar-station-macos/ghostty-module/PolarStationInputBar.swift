@@ -914,24 +914,17 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         // SurfaceView is an accessibility text-area leaf. A native sibling
         // exposes the annotation controls without exposing terminal contents.
         parent.addSubview(box, positioned: .above, relativeTo: canvas)
-        let viewport = NSScrollView()
-        viewport.drawsBackground = false; viewport.hasVerticalScroller = true
-        viewport.borderType = .noBorder; viewport.translatesAutoresizingMaskIntoConstraints = false
-        viewport.documentView = editor; box.addSubview(viewport)
-        let fillHeight = editor.heightAnchor.constraint(equalTo: viewport.contentView.heightAnchor)
-        fillHeight.priority = .defaultHigh
+        box.addSubview(editor)
         ideaAnchorX = box.leadingAnchor.constraint(equalTo: canvas.leadingAnchor)
         ideaAnchorTop = box.topAnchor.constraint(equalTo: canvas.topAnchor)
         ideaAnchorWidth = box.widthAnchor.constraint(equalToConstant: 1)
         ideaAnchorHeight = box.heightAnchor.constraint(equalToConstant: 1)
         NSLayoutConstraint.activate([
             ideaAnchorX!, ideaAnchorTop!, ideaAnchorWidth!, ideaAnchorHeight!,
-            viewport.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 10),
-            viewport.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -10),
-            viewport.topAnchor.constraint(equalTo: box.topAnchor, constant: 10),
-            viewport.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -10),
-            editor.widthAnchor.constraint(equalTo: viewport.contentView.widthAnchor),
-            editor.heightAnchor.constraint(greaterThanOrEqualTo: viewport.contentView.heightAnchor), fillHeight,
+            editor.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
+            editor.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12),
+            editor.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
+            editor.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
         ])
         ideaDetailBox = box; ideaDetailEditor = editor; ideaDetailCanvas = canvas
         updateInstructionPresentation(rect: ideaEditorRect, style: ideaInstructionStyle)
@@ -1502,28 +1495,33 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
         nodeID = block["node_uuid"] ?? ""; nodeTitle = block["title"] ?? "Node"; self.detail = detail
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        let title = NSTextField(labelWithString: detail ? "\(nodeTitle)\n\(nodeID)" : "\(nodeTitle) · \(nodeID)")
-        titleLabel = title
-        title.isSelectable = true; title.lineBreakMode = .byTruncatingMiddle
-        title.maximumNumberOfLines = detail ? 2 : 1
-        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        title.toolTip = title.stringValue
-        let locate = NSButton(title: "Locate", target: self, action: #selector(locatePressed))
-        let remove = NSButton(title: "×", target: self, action: #selector(removePressed))
-        remove.setAccessibilityLabel("Remove instruction for \(nodeTitle)")
-        flatButtons = [locate, remove]
-        header.addArrangedSubview(title)
         if detail {
-            header.addArrangedSubview(locate);header.addArrangedSubview(remove)
-        } else {
-            let actions=NSPopUpButton(frame:.zero,pullsDown:true);actions.addItem(withTitle:"⋯")
-            actions.setAccessibilityLabel("Node actions")
-            for (label,action) in [("Locate",#selector(locatePressed)),("Remove",#selector(removePressed))] {
-                let item=NSMenuItem(title:label,action:action,keyEquivalent:"");item.target=self;actions.menu?.addItem(item)
+            let spacer = NSView(); header.addArrangedSubview(spacer)
+            let remove = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete instruction")!, target: self, action: #selector(removePressed))
+            let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close instruction")!, target: self, action: #selector(closePressed))
+            flatButtons = [remove, close]
+            for (button, name) in [(remove, "Delete instruction"), (close, "Close instruction")] {
+                button.toolTip = name; button.setAccessibilityLabel(name)
+                button.imagePosition = .imageOnly; button.bezelStyle = .rounded
+                button.widthAnchor.constraint(equalToConstant: 28).isActive = true
+                button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+                header.addArrangedSubview(button)
             }
-            actions.widthAnchor.constraint(equalToConstant:28).isActive=true;header.addArrangedSubview(actions)
+            header.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        } else {
+            let title = NSTextField(labelWithString: "\(nodeTitle) · \(nodeID)")
+            titleLabel = title; title.isSelectable = true; title.lineBreakMode = .byTruncatingMiddle
+            title.maximumNumberOfLines = 1
+            title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            title.toolTip = title.stringValue; header.addArrangedSubview(title)
+            let actions = NSPopUpButton(frame: .zero, pullsDown: true); actions.addItem(withTitle: "⋯")
+            actions.setAccessibilityLabel("Node actions")
+            for (label, action) in [("Locate", #selector(locatePressed)), ("Remove", #selector(removePressed))] {
+                let item = NSMenuItem(title: label, action: action, keyEquivalent: ""); item.target = self; actions.menu?.addItem(item)
+            }
+            actions.widthAnchor.constraint(equalToConstant: 28).isActive = true; header.addArrangedSubview(actions)
         }
-        header.orientation = .horizontal; header.spacing = 6
+        header.orientation = .horizontal; header.spacing = detail ? 12 : 6; header.distribution = .fill
         editor.isRichText = false; editor.allowsUndo = true; editor.delegate = self
         editor.drawsBackground = false; editor.textContainer?.widthTracksTextView = true
         editor.isVerticallyResizable = detail; editor.isHorizontallyResizable = false
@@ -1545,14 +1543,6 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
         }
         editorHeight.isActive = true
         let column = NSStackView(views: [header, input]); column.orientation = .vertical; column.alignment = .leading; column.spacing = 4
-        if detail {
-            let review = NSButton(title: "Review in Idea Bar", target: self, action: #selector(reviewPressed))
-            let close = NSButton(title: "Close", target: self, action: #selector(closePressed))
-            flatButtons += [review, close]
-            let footer = NSStackView(views: [review, close]); footer.orientation = .horizontal
-            footer.setContentHuggingPriority(.required, for: .vertical)
-            column.addArrangedSubview(footer)
-        }
         column.translatesAutoresizingMaskIntoConstraints = false; addSubview(column)
         NSLayoutConstraint.activate([
             column.leadingAnchor.constraint(equalTo: leadingAnchor), column.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -1560,15 +1550,13 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
             header.widthAnchor.constraint(equalTo: column.widthAnchor), input.widthAnchor.constraint(equalTo: column.widthAnchor)
         ])
         if detail {
-            title.font = .systemFont(ofSize: 11)
+            column.distribution = .fill; column.spacing = 8
             header.setContentHuggingPriority(.required, for: .vertical)
-            editor.font = .systemFont(ofSize: 14)
-            editor.drawsBackground = false
-            detailScroll?.drawsBackground = false
+            editor.font = .systemFont(ofSize: 16)
+            editor.textContainerInset = NSSize(width: 12, height: 12)
+            detailScroll?.drawsBackground = true
+            detailScroll?.wantsLayer = true; detailScroll?.layer?.cornerRadius = 6
             detailScroll?.borderType = .noBorder
-            for button in flatButtons {
-                button.isBordered = false; button.font = .systemFont(ofSize: 11, weight: .medium)
-            }
         }
         update(block)
     }
@@ -1587,6 +1575,7 @@ final class IdeaNodeInstructionEditor: NSView, NSTextViewDelegate {
         editor.textColor = Self.color(style["text"])
         editor.insertionPointColor = Self.color(style["text"]) ?? .labelColor
         titleLabel?.textColor = Self.color(style["muted"])
+        if let card = Self.color(style["card"]) { detailScroll?.backgroundColor = card }
         if let selection = Self.color(style["selection"]) {
             editor.selectedTextAttributes = [.backgroundColor: selection]
         }

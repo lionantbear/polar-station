@@ -30,6 +30,7 @@ StationShortcutView polar_station_shortcut_hint_at(StationShortcutHintContext, s
 size_t polar_station_shortcut_count(void);
 char *polar_station_resource_image_path(const uint8_t *bytes, size_t len);
 char *polar_station_resource_file_path(const uint8_t *bytes, size_t len);
+bool polar_station_file_input_valid(const uint8_t *bytes, size_t len);
 size_t polar_station_resource_file_rule_count(void);
 const char *polar_station_resource_file_rule_at(size_t index);
 typedef struct ResourceFileOpenHandle ResourceFileOpenHandle;

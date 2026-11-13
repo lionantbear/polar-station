@@ -320,6 +320,8 @@ public struct ResourceFileAccessV1:Codable,Equatable,Sendable {
 }
 public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     case getProjection
+    case resolveFileOpen(origin:ResourceFileOriginV1,input:PolarTmuxJSONValue)
+    case planFileAccess(file:PolarTmuxJSONValue)
     case resolveFileCandidates(origin:ResourceFileOriginV1,candidates:[ResourceFileReferenceV1])
     case resolveFile(target:String,path:String,cwd:String?)
     case resolveSessionFile(session:PolarTmuxSessionKey,path:String,cwd:String?)
@@ -329,7 +331,7 @@ public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     case openMirror(resourceID: String)
 
     private enum CodingKeys: String, CodingKey {
-        case type, catalog, path, cwd, origin, candidates, sourceSession="source_session"
+        case type, catalog, path, cwd, origin, candidates, input, file, sourceSession="source_session"
         case clientSupportsLocalFile="client_supports_local_file"
         case target="execution_target_id"
         case resourceID = "resource_id"
@@ -338,6 +340,10 @@ public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(String.self, forKey: .type) {
+        case "resolve_file_open":
+            self = try .resolveFileOpen(origin:container.decode(ResourceFileOriginV1.self,forKey:.origin),input:container.decode(PolarTmuxJSONValue.self,forKey:.input))
+        case "plan_file_access":
+            self = try .planFileAccess(file:container.decode(PolarTmuxJSONValue.self,forKey:.file))
         case "resolve_file_candidates":
             self = try .resolveFileCandidates(origin:container.decode(ResourceFileOriginV1.self,forKey:.origin),candidates:container.decode([ResourceFileReferenceV1].self,forKey:.candidates))
         case "resolve_file":
@@ -385,6 +391,10 @@ public enum ResourcesCommandV1: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case let .resolveFileOpen(origin,input):
+            try container.encode("resolve_file_open",forKey:.type);try container.encode(origin,forKey:.origin);try container.encode(input,forKey:.input)
+        case let .planFileAccess(file):
+            try container.encode("plan_file_access",forKey:.type);try container.encode(file,forKey:.file)
         case let .resolveFileCandidates(origin,candidates):
             try container.encode("resolve_file_candidates",forKey:.type)
             try container.encode(origin,forKey:.origin)
@@ -447,6 +457,7 @@ public struct ResourcesRequestEnvelopeV1:
 }
 
 public enum ResourcesResultV1: Codable, Equatable, Sendable {
+    case fileOpen(PolarTmuxJSONValue)
     case fileAccess(ResourceFileAccessV1)
     case projection(ResourcesControlProjectionV1)
     case commandAccepted(ResourcesControlProjectionV1)
@@ -457,12 +468,13 @@ public enum ResourcesResultV1: Codable, Equatable, Sendable {
     )
 
     private enum CodingKeys: String, CodingKey {
-        case type, projection, error, tail, access
+        case type, projection, error, tail, access, resolution
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(String.self, forKey: .type) {
+        case "file_open":self = try .fileOpen(container.decode(PolarTmuxJSONValue.self,forKey:.resolution))
         case "file_access":self = try .fileAccess(container.decode(ResourceFileAccessV1.self,forKey:.access))
         case "projection":
             self = try .projection(
@@ -505,6 +517,7 @@ public enum ResourcesResultV1: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .fileOpen(let resolution):try container.encode("file_open",forKey:.type);try container.encode(resolution,forKey:.resolution)
         case .fileAccess(let access):try container.encode("file_access",forKey:.type);try container.encode(access,forKey:.access)
         case .projection(let projection):
             try container.encode("projection", forKey: .type)

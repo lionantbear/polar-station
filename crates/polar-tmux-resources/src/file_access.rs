@@ -6,11 +6,70 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+/// Pure access planning for an already resolved source file. Only the Host
+/// supplies locality; frontend opt-in flags do not determine machine identity.
+pub fn plan_file_access(
+    file: &crate::ResolvedFile,
+    catalog: &ResourceCatalog,
+    statuses: &BTreeMap<ResourceId, ResourceRuntimeStatus>,
+    source_is_desktop_local: bool,
+) -> Result<crate::FileAccessPlan, String> {
+    use crate::FileAccessPlan;
+    if file.source.flavor != crate::PathFlavor::Posix {
+        return Err("File access on a Windows source is not supported by this Host.".into());
+    }
+    if source_is_desktop_local {
+        return Ok(FileAccessPlan::NativeLocal {
+            local_path: file.reference.path.clone(),
+        });
+    }
+    match resolve_file(
+        catalog,
+        statuses,
+        &file.source.origin.execution_target_id,
+        &file.reference.path,
+        None,
+    )? {
+        FileAccess::Ready {
+            resource_id,
+            local_path,
+        } => Ok(FileAccessPlan::MappedReady {
+            resource_id,
+            local_path,
+        }),
+        FileAccess::StartResource { resource_id } => {
+            if let Some(status) = statuses
+                .get(&resource_id)
+                .filter(|s| s.state == ResourceRuntimeState::NeedsAttention)
+            {
+                return Err(status.message.clone());
+            }
+            Ok(FileAccessPlan::StartExistingMapping { resource_id })
+        }
+        FileAccess::CreateMapping {
+            execution_target_id,
+            remote_directory,
+            source_path,
+        } => Ok(FileAccessPlan::NeedMapping {
+            execution_target_id,
+            remote_directory,
+            source_path,
+        }),
+        _ => Err("Unexpected file access plan".into()),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum FileAccess {
-    Verified { reference: crate::FileReference, access: Box<FileAccess> },
-    ChooseFile { origin: crate::FileOrigin, candidates: Vec<crate::FileReference> },
+    Verified {
+        reference: crate::FileReference,
+        access: Box<FileAccess>,
+    },
+    ChooseFile {
+        origin: crate::FileOrigin,
+        candidates: Vec<crate::FileReference>,
+    },
     LocalFile {
         local_path: String,
     },

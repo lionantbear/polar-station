@@ -103,6 +103,7 @@ const State = struct {
     number_badges_visible: bool = false,
     pending_unbound_windows: usize = 0,
     resource_file_flow: @import("resource_file_open.zig").Adapter = .{},
+    resource_file_presentation: @import("file_open_presentation.zig").Presentation = .{},
     repairing_native_transfer: bool = false,
 
     fn executorForWindow(self: *State, window: *Window) ?*presentation_executor.Executor {
@@ -201,6 +202,8 @@ const State = struct {
 
     fn deinit(self: *State) void {
         self.closing = true;
+        clearResourceFile(self);
+        self.resource_file_presentation.deinit();
         for (self.controllers.items) |controller| controller.deinit();
         self.controllers.deinit(self.allocator);
         // Retirement hooks must run before their borrowed LGP controller is freed.
@@ -216,7 +219,6 @@ const State = struct {
         self.controller_model.deinit();
         self.attention_engine.deinit();
         self.session_cache.deinit();
-        clearResourceFile(self);
         self.resource_file_flow.deinit();
         self.resources_model.deinit();
         self.resources_window.deinit();
@@ -2700,62 +2702,40 @@ fn clearResourceFile(current:*State) void {
     result.deinit();
 }
 fn resourceFileInput(current:*State,input:anytype) void {
-    resourceFileTrace("dispatch");
     var result=current.resource_file_flow.dispatch(current.allocator,input) orelse return;
     defer result.deinit();
     const dict=@import("dictate.zig");const effects=dict.field(result.value,"effects");
     if(effects!=.array)return;
     for(effects.array.items)|effect|{
+        if(current.resource_file_presentation.present(effect))continue;
         const kind=dict.string(effect,"type");
-        resourceFileTrace(kind);
-        if(std.mem.eql(u8,kind,"resolve")){
-            const origin=dict.field(effect,"origin");
-            const bytes=(if(dict.field(effect,"candidates")==.array) resources.encodeResolveFileCandidates(current.allocator,dict.string(effect,"request_id"),origin,dict.field(effect,"candidates")) else resources.encodeResolveFile(current.allocator,dict.string(effect,"request_id"),dict.string(origin,"execution_target_id"),dict.string(effect,"path"),if(dict.string(origin,"cwd").len>0)dict.string(origin,"cwd")else null,if(dict.string(origin,"terminal_session_id").len>0)dict.string(origin,"terminal_session_id")else null)) catch continue;
+        if(std.mem.eql(u8,kind,"resolve_open") or std.mem.eql(u8,kind,"plan_access")){
+            const bytes=(if(std.mem.eql(u8,kind,"resolve_open")) resources.encodeResolveFileOpen(current.allocator,dict.string(effect,"request_id"),dict.field(effect,"origin"),dict.field(effect,"input")) else resources.encodePlanFileAccess(current.allocator,dict.string(effect,"request_id"),dict.field(effect,"file"))) catch continue;
             defer current.allocator.free(bytes);
-            current.client.sendJson(bytes) catch {resourceFileInput(current,.{.type="failed",.request_id=dict.string(effect,"request_id"),.message="Could not resolve the source file."});};
-        }else if(std.mem.eql(u8,kind,"choose_file")){
-            presentFileChoices(current,effect);
+            current.client.sendJson(bytes) catch {resourceFileInput(current,.{.type="failed",.request_id=dict.string(effect,"request_id"),.message="Could not contact the source Host."});};
         }else if(std.mem.eql(u8,kind,"start_resource")){
             resourceAction(current,.{.restart=dict.string(effect,"resource_id")});
         }else if(std.mem.eql(u8,kind,"create_mapping")){
+            const window=current.resource_file_presentation.sourceWindow() orelse continue;
             const access=dict.field(effect,"access");
-            current.resources_window.present(current.resources_model.projection());
-            current.resources_window.prefillFile(dict.string(access,"execution_target_id"),dict.string(access,"remote_directory"));
+            current.resources_window.presentFileMapping(window.as(gtk.Window),current.resources_model.projection(),dict.string(access,"execution_target_id"),dict.string(access,"remote_directory"));
         }else if(std.mem.eql(u8,kind,"open_local_file")){
+            const id=dict.string(effect,"request_id");
+            if(current.resource_file_presentation.sourceWindow()==null){resourceFileInput(current,.{.type="cancel_request",.request_id=id});continue;}
             const path=dict.string(effect,"path");
-            const opened=if(std.mem.eql(u8,dict.string(effect,"strategy"),"reveal")) resources_window.revealLocalFile(current.allocator,path) else resources_window.openLocalPath(current.allocator,path);
-            if(!opened)resourceFileInput(current,.{.type="viewer_failed",.path=path});
-        }else if(std.mem.eql(u8,kind,"show_error")){
-            current.resources_window.present(current.resources_model.projection());
-            current.resources_window.showError(dict.string(effect,"message"));
+            const accepted=if(std.mem.eql(u8,dict.string(effect,"strategy"),"reveal")) resources_window.revealLocalFile(current.allocator,path) else resources_window.openLocalPath(current.allocator,path);
+            resourceFileInput(current,.{.type="viewer_finished",.request_id=id,.accepted=accepted});
         }
     }
 }
-const FileChoiceDialog = struct { request_id: []u8, picker: *gtk.DropDown };
-fn presentFileChoices(current:*State,effect:std.json.Value) void {
-    const dict=@import("dictate.zig");
-    const window=activeGhosttyWindow(current.app) orelse return;
-    const choices=dict.field(effect,"candidates");if(choices!=.array)return;
-    const names=gtk.StringList.new(null);
-    for(choices.array.items)|item|{
-        const label=current.allocator.dupeZ(u8,dict.string(item,"path")) catch return;
-        defer current.allocator.free(label);names.append(label);
+fn filePresentationAction(action:@import("file_open_presentation.zig").Action) void {
+    const current=if(state)|*v|v else return;
+    switch(action){
+        .cancel=>|id|resourceFileInput(current,.{.type="cancel_request",.request_id=id}),
+        .retry=>|id|resourceFileInput(current,.{.type="retry",.request_id=id}),
+        .choose=>|choice|resourceFileInput(current,.{.type="choose",.request_id=choice.id,.index=choice.index}),
+        .mapping=>|choice|resourceFileInput(current,.{.type="mapping_decision",.request_id=choice.id,.confirmed=choice.confirmed}),
     }
-    const picker=gtk.DropDown.new(names.as(gio.ListModel),null);
-    const data=current.allocator.create(FileChoiceDialog) catch return;
-    data.*=.{.request_id=current.allocator.dupe(u8,dict.string(effect,"request_id")) catch {current.allocator.destroy(data);return;},.picker=picker};
-    const dialog=adw.MessageDialog.new(window.as(gtk.Window),"Choose a file","Several matching files exist on the source machine.");
-    dialog.setExtraChild(picker.as(gtk.Widget));dialog.addResponse("cancel","Cancel");dialog.addResponse("open","Open");
-    dialog.setCloseResponse("cancel");dialog.setDefaultResponse("cancel");
-    _=adw.MessageDialog.signals.response.connect(dialog,*FileChoiceDialog,fileChoiceResponse,data,.{});
-    dialog.as(gtk.Window).present();
-}
-fn fileChoiceResponse(dialog:*adw.MessageDialog,response:[*:0]const u8,data:*FileChoiceDialog) callconv(.c) void {
-    defer dialog.as(gtk.Window).destroy();
-    const current=if(state)|*value|value else return;
-    defer {current.allocator.free(data.request_id);current.allocator.destroy(data);}
-    const index:?usize=if(std.mem.eql(u8,std.mem.span(response),"open")) @intCast(data.picker.getSelected()) else null;
-    resourceFileInput(current,.{.type="choose",.request_id=data.request_id,.index=index});
 }
 
 pub fn openSelectedFile(app:*Application) void {
@@ -2776,7 +2756,7 @@ pub fn openResourceFile(value:[]const u8,source:?*@import("../class/surface.zig"
     resourceFileTrace("native-reference");
     const current=if(state) |*v| v else return false;
     const c=@cImport({@cInclude("polar_station_desktop_client.h");});
-    const path=c.polar_station_resource_file_path(value.ptr,value.len);if(path==null)return false;defer c.polar_station_desktop_string_free(path);
+    if(!c.polar_station_file_input_valid(value.ptr,value.len))return false;
     resourceFileTrace("reference-parsed");
     const surface=source orelse return false;
     const root=surface.as(gtk.Widget).getRoot() orelse return false;
@@ -2789,6 +2769,7 @@ pub fn openResourceFile(value:[]const u8,source:?*@import("../class/surface.zig"
     resourceFileTrace("source-bound");
     const cwd: ?[]const u8=surface.getPwd();
     const id=nextRequestId(current) orelse return true;defer current.allocator.free(id);
+    current.resource_file_presentation.bind(current.allocator,window,surface.as(gtk.Widget),filePresentationAction);
     resourceFileInput(current,.{.type="open",.request_id=id,.text=value,.origin=.{.execution_target_id=pane.execution_target_id,.cwd=cwd,.terminal_session_id=pane.tmux_session_id}});
     requestResourcesProjection(current);return true;
 }
@@ -2804,8 +2785,8 @@ fn requestResourceFile(current:*State) void {
 fn handleResourcesResponse(current: *State, payload: []const u8) void {
     var outcome = current.resources_model.applyResponse(payload) catch return;
     defer outcome.deinit(current.allocator);
-    if(outcome.kind==.file_access){
-        if(current.resources_model.fileAccess())|access|resourceFileInput(current,.{.type="resolved",.request_id=outcome.request_id,.access=access});
+    if(outcome.kind==.file_open){
+        if(current.resources_model.fileOpenResolution())|resolution|resourceFileInput(current,.{.type="resolved",.request_id=outcome.request_id,.resolution=resolution});
     }else if(outcome.kind==.@"error"){
         resourceFileInput(current,.{.type="failed",.request_id=outcome.request_id,.message=outcome.error_message orelse "The file Resource is unavailable."});
     }

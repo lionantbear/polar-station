@@ -20,13 +20,22 @@ pub fn parse_selected_file_reference(value: &str) -> Option<FileReference> {
     if value.len() > 16384 {
         return None;
     }
-    let joined: String = value.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
+    let joined: String = value
+        .chars()
+        .filter(|c| !matches!(c, '\r' | '\n'))
+        .collect();
     parse_file_reference(&joined)
 }
 
 /// Parse one candidate selected by the native link engine or by the user.
 /// URI authorities never select an execution target.
 pub fn parse_file_reference(value: &str) -> Option<FileReference> {
+    parse_file_reference_for_flavor(value, crate::PathFlavor::Posix)
+}
+pub(crate) fn parse_file_reference_for_flavor(
+    value: &str,
+    flavor: crate::PathFlavor,
+) -> Option<FileReference> {
     if value.len() > 16384 || value.chars().any(char::is_control) {
         return None;
     }
@@ -85,7 +94,15 @@ pub fn parse_file_reference(value: &str) -> Option<FileReference> {
     }
     // A leading URI scheme is not a filesystem path. Colons inside explicit
     // POSIX paths and quoted filenames remain literal.
-    if !path.contains('/') && !literal && path.contains(':') {
+    let drive_prefix = flavor == crate::PathFlavor::Windows
+        && path.as_bytes().get(1) == Some(&b':')
+        && path.as_bytes().first().is_some_and(u8::is_ascii_alphabetic);
+    if !path.contains('/')
+        && !path.contains('\\')
+        && !literal
+        && path.contains(':')
+        && !drive_prefix
+    {
         return None;
     }
     // Candidate detection belongs to the native link rules. A user-selected

@@ -707,36 +707,45 @@ pub const InputBar = struct {
             const self=try a.create(NodeEditor);
             const box=gtk.Box.new(.vertical,4);
             _=box.as(gobject.Object).refSink();
-            const heading=gtk.Box.new(.horizontal,4);
-            const label_text=try std.fmt.allocPrintSentinel(a,"{s} · {s}",.{title,uuid},0);defer a.free(label_text);
-            const label=gtk.Label.new(label_text);label.setSelectable(1);label.setXalign(0);label.as(gtk.Widget).setHexpand(1);
-            label.setEllipsize(.middle);label.setMaxWidthChars(1);label.as(gtk.Widget).setTooltipText(label_text);
-            // A UUID is one unbroken token to Pango's default WORD wrapping.
-            // Permit character wrapping so the native heading cannot enlarge
-            // the scene-owned editor rectangle to its token's minimum width.
-            if(detail) {label.setWrap(1);label.setLines(2);label.setWrapMode(.word_char);label.as(gtk.Widget).addCssClass("instruction-heading");}
-            heading.append(label.as(gtk.Widget));box.append(heading.as(gtk.Widget));
-            const editor=gtk.TextView.new();editor.setWrapMode(.word_char);editor.getBuffer().setEnableUndo(1);
-            editor.setTopMargin(6);editor.setBottomMargin(6);editor.setLeftMargin(8);editor.setRightMargin(8);
-            editor.as(gtk.Widget).setTooltipText("Node instruction");box.append(editor.as(gtk.Widget));
-            self.*=.{.composer=cview,.uuid=try a.dupe(u8,uuid),.title=try a.dupe(u8,title),.view_id=try a.dupe(u8,string(cview.metadata.?.value,"view_id") orelse ""),.box=box,.text=editor,.detail=detail};
-            const node_actions=gtk.Box.new(.vertical,4);
+            const heading=gtk.Box.new(.horizontal,if(detail) 12 else 4);
             if(!detail) {
+                const label_text=try std.fmt.allocPrintSentinel(a,"{s} · {s}",.{title,uuid},0);defer a.free(label_text);
+                const label=gtk.Label.new(label_text);label.setSelectable(1);label.setXalign(0);label.as(gtk.Widget).setHexpand(1);
+                label.setEllipsize(.middle);label.setMaxWidthChars(1);label.as(gtk.Widget).setTooltipText(label_text);
+                heading.append(label.as(gtk.Widget));
+            } else {
+                const spacer=gtk.Box.new(.horizontal,0);spacer.as(gtk.Widget).setHexpand(1);heading.append(spacer.as(gtk.Widget));
+                heading.as(gtk.Widget).setSizeRequest(-1,32);
+            }
+            box.append(heading.as(gtk.Widget));
+            const editor=gtk.TextView.new();editor.setWrapMode(.word_char);editor.getBuffer().setEnableUndo(1);
+            editor.setTopMargin(if(detail) 12 else 6);editor.setBottomMargin(if(detail) 12 else 6);
+            editor.setLeftMargin(if(detail) 12 else 8);editor.setRightMargin(if(detail) 12 else 8);
+            editor.as(gtk.Widget).setTooltipText("Node instruction");
+            if(detail) {
+                const body=gtk.ScrolledWindow.new();body.setPolicy(.never,.automatic);
+                body.as(gtk.Widget).setVexpand(1);body.setChild(editor.as(gtk.Widget));box.append(body.as(gtk.Widget));
+                box.as(gtk.Widget).setVexpand(1);
+            } else box.append(editor.as(gtk.Widget));
+            self.*=.{.composer=cview,.uuid=try a.dupe(u8,uuid),.title=try a.dupe(u8,title),.view_id=try a.dupe(u8,string(cview.metadata.?.value,"view_id") orelse ""),.box=box,.text=editor,.detail=detail};
+            if(detail) {
+                const remove=gtk.Button.newFromIconName("user-trash-symbolic");
+                remove.as(gtk.Widget).setTooltipText("Delete instruction");remove.as(gtk.Widget).setSizeRequest(28,28);
+                heading.append(remove.as(gtk.Widget));
+                _=gtk.Button.signals.clicked.connect(remove,*NodeEditor,actionClicked,self,.{});
+                const close=gtk.Button.newFromIconName("window-close-symbolic");
+                close.as(gtk.Widget).setTooltipText("Close instruction");close.as(gtk.Widget).setSizeRequest(28,28);
+                heading.append(close.as(gtk.Widget));
+                _=gtk.Button.signals.clicked.connect(close,*NodeEditor,closeClicked,self,.{});
+            } else {
+                const node_actions=gtk.Box.new(.vertical,4);
                 const menu=gtk.MenuButton.new();menu.setLabel("⋯");menu.as(gtk.Widget).setTooltipText("Node actions");
                 const popup=gtk.Popover.new();popup.setChild(node_actions.as(gtk.Widget));menu.setPopover(popup);heading.append(menu.as(gtk.Widget));
                 const locate=gtk.Button.newWithLabel("Locate");node_actions.append(locate.as(gtk.Widget));
                 _=gtk.Button.signals.clicked.connect(locate,*NodeEditor,locateClicked,self,.{});
+                const remove=gtk.Button.newWithLabel("Remove");node_actions.append(remove.as(gtk.Widget));
+                _=gtk.Button.signals.clicked.connect(remove,*NodeEditor,actionClicked,self,.{});
             }
-            const action=gtk.Button.newWithLabel(if(detail) "Review" else "Remove");
-            if(detail) {
-                action.as(gtk.Widget).setTooltipText("Review in Idea Bar");
-                const actions=gtk.Box.new(.horizontal,4);
-                actions.append(action.as(gtk.Widget));
-                const close=gtk.Button.newWithLabel("Close");actions.append(close.as(gtk.Widget));
-                _=gtk.Button.signals.clicked.connect(close,*NodeEditor,closeClicked,self,.{});
-                box.append(actions.as(gtk.Widget));
-            } else node_actions.append(action.as(gtk.Widget));
-            _=gtk.Button.signals.clicked.connect(action,*NodeEditor,actionClicked,self,.{});
             _=gtk.TextBuffer.signals.changed.connect(editor.getBuffer(),*NodeEditor,edited,self,.{});
             _=gtk.TextView.signals.preedit_changed.connect(editor,*NodeEditor,preedit,self,.{});
             const focus=gtk.EventControllerFocus.new();
@@ -793,7 +802,6 @@ pub const InputBar = struct {
         }
         fn closeClicked(_: *gtk.Button,self:*NodeEditor) callconv(.c) void {self.composer.dismissDetail();}
         fn actionClicked(_: *gtk.Button,self:*NodeEditor) callconv(.c) void {
-            if(self.detail) {self.review();return;}
             const cview=self.composer;
             cview.owner.input(.{.type="idea_node_instruction",.window_id=cview.id,.view_id=self.view_id,.node_uuid=self.uuid,.title=self.title,.text="",.remove=true});
             cview.owner.saveSoon();
@@ -879,7 +887,7 @@ pub const InputBar = struct {
         const editor=NodeEditor.create(self,uuid,string(selected,"title") orelse "",true) catch return;
         self.detail_editor=editor;
         const scroll=gtk.ScrolledWindow.new();self.detail_scroll=scroll;self.detail_overlay=overlay;
-        scroll.setPolicy(.never,.automatic);scroll.setPropagateNaturalWidth(0);scroll.setPropagateNaturalHeight(0);
+        scroll.setPolicy(.never,.never);scroll.setPropagateNaturalWidth(0);scroll.setPropagateNaturalHeight(0);
         const widget=scroll.as(gtk.Widget);widget.setHalign(.start);widget.setValign(.start);widget.setOverflow(.hidden);
         const name=std.fmt.allocPrintSentinel(self.owner.allocator,"station-instruction-{x}",.{@intFromPtr(self)},0) catch return;
         defer self.owner.allocator.free(name);widget.setName(name);
@@ -905,11 +913,11 @@ pub const InputBar = struct {
         const css=self.detail_css orelse return;
         const id=@intFromPtr(self);
         const value=std.fmt.allocPrintSentinel(self.owner.allocator,
-            "#station-instruction-{x} {{ background: {s}; color: {s}; border: 1px solid {s}; border-radius: 8px; padding: 8px; box-shadow: inset 0 1px rgba(255,255,255,0.10), 0 3px 8px rgba(0,0,0,0.25); }} " ++
+            "#station-instruction-{x} {{ background: {s}; color: {s}; border: 1px solid {s}; border-radius: 10px; padding: 12px; box-shadow: inset 0 1px rgba(255,255,255,0.10), 0 3px 8px rgba(0,0,0,0.25); }} " ++
             "#station-instruction-{x} .instruction-heading {{ color: {s}; font-size: 12px; }} " ++
-            "#station-instruction-{x} textview, #station-instruction-{x} textview text {{ background: transparent; color: {s}; font-size: 14px; caret-color: {s}; }} " ++
+            "#station-instruction-{x} textview, #station-instruction-{x} textview text {{ background: transparent; color: {s}; font-size: 16px; caret-color: {s}; }} " ++
             "#station-instruction-{x} textview text selection {{ background: {s}; }} " ++
-            "#station-instruction-{x} button {{ background: transparent; background-image: none; color: {s}; border: none; box-shadow: none; min-height: 22px; padding: 2px 8px; font-size: 12px; }} " ++
+            "#station-instruction-{x} button {{ background: transparent; background-image: none; color: {s}; border: none; box-shadow: none; min-height: 28px; min-width: 28px; padding: 0; font-size: 12px; }} " ++
             "#station-instruction-{x} button:hover {{ background: {s}; }}",
             .{id,themeColor(style,"card","#132731ee"),themeColor(style,"text","#e4eef5ff"),themeColor(style,"border","#6b8796ff"),
               id,themeColor(style,"muted","#a9bfcdff"),id,id,themeColor(style,"text","#e4eef5ff"),themeColor(style,"text","#e4eef5ff"),
