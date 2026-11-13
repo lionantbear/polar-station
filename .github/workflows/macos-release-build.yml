@@ -30,7 +30,7 @@ jobs:
           mkdir -p "$clean"
           git archive HEAD | tar -x -C "$clean"
           python3 "$clean/automation/polar_station/public_release.py" verify --destination "$clean"
-      - name: Prove private create, upload, read-back and anonymous denial
+      - name: Prove draft create, upload and authorized read-back
         id: retain
         env:
           GH_TOKEN: ${{ github.token }}
@@ -63,7 +63,7 @@ jobs:
           python3 automation/polar_station/retain_private_draft.py \
             --kind verify-probe --probe-metadata "$PROBE_METADATA" \
             --receipt "$RUNNER_TEMP/station-private-read-probe/receipt.json"
-          echo "The trusted GET-only verifier used contents:write authorization to verify the exact private probe; anonymous access was denied. No application was executed." >> "$GITHUB_STEP_SUMMARY"
+          echo "The trusted GET-only verifier used contents:write authorization to verify the exact draft probe. No anonymous visibility probe or application execution was performed." >> "$GITHUB_STEP_SUMMARY"
   native:
     needs: [private-retention-probe, private-retention-read-probe]
     runs-on: macos-26

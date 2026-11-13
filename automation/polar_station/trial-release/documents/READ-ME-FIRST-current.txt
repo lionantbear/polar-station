@@ -1,0 +1,7 @@
+Polar Station Preview · 2026-11-13 · macOS Apple Silicon
+
+1. Download the DMG for **Mac with Apple Silicon**, open it, and drag **Polar Station** into **Applications**.
+2. Open Polar Station from Applications. This preview is **not notarized**; macOS may block the first launch. If you trust this download, use **System Settings → Privacy & Security → Open Anyway** ([Apple instructions](https://support.apple.com/en-us/102445)).
+
+This preview is ad-hoc signed and not notarized. Launch checks target macOS 26; other versions are unvalidated.
+Full license texts are at this image root and in THIRD-PARTY-NOTICES. See SOURCE-ACCESS.txt for exact source and rebuild instructions.

@@ -1,81 +1,4 @@
 {
-  "artifact_review_summary": {
-    "application_source": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
-    "cargo_compiler_candidates": 1138,
-    "corresponding_notice_source": "e0fac8dfa7b84153b327861789360fc139075ed0",
-    "inspection_report_sha256": "033f2992acfa3976e41eee809c7211939b7010eb441ea3f69caf369462907d6f",
-    "native_components": 26,
-    "native_recipe_sha256": {
-      "homebrew/gettext/1.0/.brew/gettext.rb": "74dbc9cbf1c427c148b5d5247adfb43957b5d02be20a4e1d162aa903f0dd614e",
-      "homebrew/glib/2.90.1/.brew/glib.rb": "7352a67a6a1a15554d996d38886812e858bebbbcbf3985901724cab444ee3b3b",
-      "homebrew/graphviz/16.1.0/.brew/graphviz.rb": "6bfbd0cfd4781e5f3242e9c4b6a4fd00d540d34d6c9d16f37495a9089c2b6265",
-      "homebrew/gts/0.7.6_4/.brew/gts.rb": "5ea32681a81c5217dc2e8f09094afc887a218565b7be62f3b4af98a712e3d39a",
-      "homebrew/libtool/2.6.2/.brew/libtool.rb": "725532b53263fa67aa5e9a660bcd498b312c13da54d34d42788e073ced587031",
-      "homebrew/pcre2/10.49/.brew/pcre2.rb": "94c19a0d869da4990a8f3f371e37c986ad72124d2d94032e061c4a9019f9e174"
-    },
-    "native_run": 43174962658,
-    "native_versions_zig_keys_sparkle_and_mpl_unchanged": true,
-    "new_compiled_registry_packages": 20,
-    "new_legal_texts_read": [
-      "3b4f73047906835fba5005acdf68f25a460b9ee298dae710f22b435d335a6f7b",
-      "403c53069750101aeb9df7e15f127056ceaf7e4e92d0b919a1f4c084afd5f1d4",
-      "42d3bf7e7d4d49d72c0555d14ed99c3ee7ce9ce3cbffbc38bbafe8c103f50969",
-      "4621bda86773a67b5645bbd25cf1bf8b6820d4fcec3885b23b9ceec612007f63",
-      "9aa4f92bfcde293ebeca9e2379fa18d1d61f000977da144c7b74c2986c9b6466",
-      "c1c9d5ca65122bab96e368709f8cfe9b92b443a3c21306c3260fc98eaac7e5fc",
-      "d8c4ab431f20da8452c9a217084163822e5fd9d134e1343903c929f2859fc8fd"
-    ],
-    "new_unrepresented_legal_gap_identities": 0,
-    "new_vendored_packages": [
-      "bip0032 0.2.2"
-    ],
-    "notice_rows": 806,
-    "physical_acceptance": "First TCC prompt, actual microphone capture, Codex/tmux setup and complete GUI acceptance remain separate, not claimed.",
-    "proofs": [
-      {
-        "path": "source-ci-evidence.json",
-        "sha256": "9437bb40b905ac0c2dab34ccb26be7e5411b262039f7f68419e85924d576f356"
-      },
-      {
-        "path": "native-ci-evidence.json",
-        "sha256": "fa410dbc6ce7667202ee8c266b40b5e90f49fed93b278306b36b5325b8c9109a"
-      },
-      {
-        "path": "artifact-review-audit.json",
-        "sha256": "d8bc3b54c2b98c0be92901eb95a25a2802ca947acbaca9d941c13d7bf31ee12b"
-      },
-      {
-        "path": "current-source-availability.json",
-        "sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e"
-      },
-      {
-        "path": "new-compiled-registry-source-availability.json",
-        "sha256": "d3b2ef9f2953189741ac24ad4a4b178dbce7d4de92a3aaef8ad840827ea5ddd2"
-      },
-      {
-        "path": "bip0032-source-review.json",
-        "sha256": "96f2c57e3314b803774101c2c80e3afe7fed2d7303e668f17f7e194a449e4534"
-      },
-      {
-        "path": "directions-verification.json",
-        "sha256": "63757ac68004eb179d1fb0835462d592324075d36afc7af10d4ece1f345e16ba"
-      },
-      {
-        "path": "notice-packet-proposal-43174962658.json",
-        "sha256": "0218b67006cb7a15cf8522b537705f2258b78c9a2ffb32f3b9ae44cdefd44a0e"
-      }
-    ],
-    "publication_prerequisite": "Promote exact reviewed native source into public main through a normal SSH fast-forward before the Actions release API; inspect existing candidates before retries",
-    "publication_transport": "Exact lightweight native-source tag prepared and verified through owner SSH; existing releases and mismatched tags rejected",
-    "remaining_mandatory_execution_gates": [
-      "Final mounted app copyright condition and audio-input/usage verification",
-      "Preserve original signed app byte inventory",
-      "Final notice/source hashes and exact public assets",
-      "Independent public-download signature and launch"
-    ],
-    "reviewed_at": "2026-11-12T09:09:23Z",
-    "source_checksum_limit": "Newly observed registry originals match public Cargo.lock digests; compiler/source capture is integrity checked. Full pristine-file comparison and an exact static-link composition are not claimed. All observed candidate grants are retained conservatively."
-  },
   "attestations": {
     "actual_capture_and_source_identity": true,
     "cargo_and_zig_notices": true,
@@ -90,69 +13,51 @@
   },
   "gap_dispositions": [
     {
-      "evidence": {
-        "sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e"
-      },
-      "gap": "Collector source omissions and GTS upstream exclusion",
-      "resolution": "Full exact public native archives, patch and resource bytes verified; unchanged native pins and six source recipe hashes reviewed. Missing collector source files remain publicly available at exact commits."
+      "evidence": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
+      "gap": "Capture excludes GTS and Homebrew upstream archives/patches",
+      "resolution": "Online-source fulfillment uses exact original source archives, native recipes, GLib patch and build resource plus complete application rebuild/relink directions. Nine full archive/patch/resource hashes and eleven exact public Git revisions verified."
     },
     {
-      "evidence": {
-        "sha256": "d8bc3b54c2b98c0be92901eb95a25a2802ca947acbaca9d941c13d7bf31ee12b"
-      },
-      "gap": "Cargo source checks and static composition",
-      "resolution": "All1138 observed compiler candidates mapped to retained full grants. New20 registry originals publicly downloaded and matched to current lock checksums. The source checksum and exact static-link limits are explicit; candidate supersets are not presented as exact shipped composition."
+      "evidence": "ffaf457f4a0f2eb0b445d8c075c7994ef7113d36aac6c141e6ed213e2654aa7c",
+      "gap": "Fresh legal collector gaps and binary AUTHORS envelope",
+      "resolution": "All 45 omitted candidate identities match the immediately previous artifact. The current 806-row notice proposal preserves previously reviewed original notice bytes, including decoded binary AUTHORS; zero unknown components or new notice hashes."
     },
     {
-      "evidence": {
-        "sha256": "96f2c57e3314b803774101c2c80e3afe7fed2d7303e668f17f7e194a449e4534"
-      },
-      "gap": "New locally modified bip0032 source",
-      "resolution": "Original archive and change record verified. Two source files receive prominent modification notices; their remaining bytes equal compiled inputs. Corrected corresponding source is separately identified from actual app source7cdfd4a, and the full change record is included in the notice packet."
+      "evidence": "e7c469fe29038d783f3bb0d6baa8d24bcab36eb3e2ba22037935c43707a2ef18",
+      "gap": "Registry checksum manifests absent and final static-link composition unknown",
+      "resolution": "Current 1138 compiler candidates and 1200 resolved package identities match prior reviewed versions and grants; locked original archive identities unchanged. Reuse prior original-archive checks by exact identity, retain conservative candidate notices; no pristine-file or exact static-link composition claim."
     },
     {
-      "evidence": {
-        "sha256": "0218b67006cb7a15cf8522b537705f2258b78c9a2ffb32f3b9ae44cdefd44a0e"
-      },
-      "gap": "Legal directory exclusions, binary author encoding and symlinks",
-      "resolution": "No new unrepresented legal-gap byte identities. Known required grants are retained by hash, original GTS author bytes are decoded without a collector envelope, and unchanged upstream Git roots supply the four license symlink targets. Unknown grant associations are rejected."
+      "evidence": "e7c469fe29038d783f3bb0d6baa8d24bcab36eb3e2ba22037935c43707a2ef18",
+      "gap": "Native source differs from pristine upstream and earlier application",
+      "resolution": "Ghostty changes are five current application/overlay integration paths in the published application source; upstream pin, licenses and Zig keys unchanged. Godot patched-source content unchanged. Current compiled source already carries the bip0032 per-file modification notices and change record."
     },
     {
-      "evidence": {
-        "bytes": 15697,
-        "path": "docs/releases/macos-trial-7cdfd4a-source-and-relink.md",
-        "repository_commit": "bee8309edfc24d864aff859fbd2f9226e7dee118",
-        "sha256": "99c03e048765ce27aad8a41236540701552d3e9775d225108d7b0015ac018e00",
-        "url": "https://github.com/lionantbear/polar-station/blob/bee8309edfc24d864aff859fbd2f9226e7dee118/docs/releases/macos-trial-7cdfd4a-source-and-relink.md"
-      },
-      "gap": "Public source and relink directions",
-      "resolution": "Exact immutable directions document read and byte-verified; source routes identify actual app source and the notice-only corrected dependency source."
+      "evidence": "native run 43373252716; mandatory finalizer and separate public-download job",
+      "gap": "Linux metadata inspection does not mount or execute the final DMG",
+      "resolution": "Exact native original already passed signature, installed-copy launch and real terminal checks. Publication workflow must independently mount/inspect the final DMG, enforce audio-input and usage declarations, copyright/license condition and unchanged signed-app inventory, then verify the actual public download on macOS. First microphone permission/capture and complete fresh-machine GUI setup remain unclaimed."
     },
     {
-      "evidence": {
-        "sha256": "d8bc3b54c2b98c0be92901eb95a25a2802ca947acbaca9d941c13d7bf31ee12b"
-      },
-      "gap": "Original runtime copyright condition",
-      "resolution": "Copyright-related native source candidates are byte-identical to prior reviewed inputs. Final mounted app must still pass the existing empty/absent NSHumanReadableCopyright gate; nonempty values stop publication."
+      "evidence": "a00a3d68603d47b570a153d19f2b07cee7766a4dd2419ba243c6316d5fffc6e5",
+      "gap": "Public source and reconstruction directions must match this artifact",
+      "resolution": "New immutable public directions identify exact application source 63105b9 and native run 43373252716, current upstream versions, original license choices and full-app/library modification/relink routes. Public directions bytes match the locally reviewed document."
     },
     {
-      "evidence": {
-        "sha256": "fa410dbc6ce7667202ee8c266b40b5e90f49fed93b278306b36b5325b8c9109a"
-      },
-      "gap": "Final binary execution and physical acceptance",
-      "resolution": "Original native DMG installed-copy launch and real terminal execution passed. Final signatures, notice bytes, unchanged app and public-download launch remain mandatory workflow gates. First microphone permission and capture remain separate physical acceptance."
+      "evidence": "e1962acddcc7dedc3c48f2296421cec9c96ac99a6fab93e87b8b60f450f9e2bb",
+      "gap": "Release prose and installation instructions need current-artifact review",
+      "resolution": "User-facing prose describes actual compiled file-opening and instruction-card changes, includes limitations, and is bound by the approved plan digest. Preview and final publication share one renderer; all version-specific content is input data."
     }
   ],
-  "inspection_report_sha256": "033f2992acfa3976e41eee809c7211939b7010eb441ea3f69caf369462907d6f",
-  "notice_tree_sha256": "f24a0eb2efb18b8a750ae975472348e966978a0f7374fdcb1563899e9f25752f",
-  "plan_sha256": "0df231b553a8b79a68c3508b95f8682f8930a69653cf1ed6536cf8221ac3f9e1",
-  "program_sha256": "a678c2572536a8165cc4160aab110b0ee5b37ad80568ac8245816950a7878525",
-  "reviewed_at": "2026-11-12T09:27:57Z",
-  "reviewer": "Codex artifact-specific source, notice and native-run review",
+  "inspection_report_sha256": "1731d8279e31f03b7c80b1833fc9d8a35449470c4211fab96f8176b32db55146",
+  "notice_tree_sha256": "f72b5776f8a6f3eb268e92401a3503732e12c4764be3ea675d07ab80f4ece5bc",
+  "plan_sha256": "0026c4b0009e5b4e0540d4c177fc4dd413963bac9f275cf8f585d32e5347f5f2",
+  "program_sha256": "7e6b2600c322943d505a00cfc9a3ad6558adf7d785b65b346c8567de8c4ee83f",
+  "reviewed_at": "2026-11-13T07:08:57Z",
+  "reviewer": "Codex artifact-specific release review, explicitly authorized by repository owner",
   "run_attempt": 1,
-  "run_id": 43174962658,
-  "source_access_sha256": "55b80b06b09a4fc82d72875d4c021b823d91896ac36df93d84a084e8252f0562",
-  "source_commit": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
+  "run_id": 43373252716,
+  "source_access_sha256": "46b7f667c15dce9e5424093b1b54095445aad741a3f60fe3217a0ab86b7a81f8",
+  "source_commit": "63105b965dee5bb6cedb88720382dd17d07aa516",
   "status": "approved-for-this-trial",
   "unresolved": []
 }

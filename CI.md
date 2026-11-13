@@ -64,6 +64,10 @@ be confirmed by the new native run, not assumed from the previous source CI.
 
 ## Private trial retention
 
+Current retention uses authorized upload and download/hash verification. At the
+owner's request, it does not probe anonymous visibility or require anonymous
+HTTP 404 responses. Staging in a draft is not a privacy certification.
+
 The current exported-source native pipeline compiles the app and verifies its
 signatures, installed-copy launch and real terminal child before retaining a
 private draft. Run 43084976157 passed those product checks; retention stopped

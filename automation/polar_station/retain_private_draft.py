@@ -144,8 +144,7 @@ class Retainer:
                 if method != 'GET' or index == self.attempts - 1:
                     raise
             else:
-                # A rate-limited anonymous request proves nothing about privacy.
-                # Retry GETs only, respecting explicit GitHub reset information.
+                # Retry authorized GETs only, respecting GitHub reset information.
                 delay = None
                 if method == 'GET' and response.status in (403, 429):
                     after = response.headers.get('Retry-After', '')
@@ -195,18 +194,13 @@ class Retainer:
                 release.get('draft') is not True or release.get('prerelease') is not True or
                 release.get('published_at') is not None or release.get('tag_name') != self.tag or
                 release.get('target_commitish') != self.source or release.get('body') != self.body):
-            raise RetentionError('Draft privacy or exact run/source identity changed')
+            raise RetentionError('Draft state or exact run/source identity changed')
         if self.upload_url(release) != self.upload_url(self.state['create_response']):
             raise RetentionError('Upload endpoint changed')
         return release
 
     def read_release(self):
         return self.check_release(self.json_request('GET', self.release_url))
-
-    def anonymous_404(self, url, binary=False):
-        with self.request('GET', url, authenticated=False, binary=binary) as response:
-            if response.status != 404:
-                raise RetentionError(f'Anonymous denial not established (HTTP {response.status}); stopped')
 
     def assets(self):
         found = []
@@ -238,7 +232,7 @@ class Retainer:
                 self.pause(index)
         raise RetentionError('Asset not visible under recorded draft ID; do not retry upload blindly')
 
-    def verify_asset(self, asset, expected_name, *, defer_anonymous=False):
+    def verify_asset(self, asset, expected_name):
         aid = positive_id(asset.get('id'))
         api = f'{self.api}/releases/assets/{aid}'
         actual = self.json_request('GET', api)
@@ -250,8 +244,6 @@ class Retainer:
                 raise RetentionError('Asset ID/name/state/size mismatch')
             if value.get('digest') not in (None, 'sha256:' + entry['sha256']):
                 raise RetentionError('Asset digest metadata mismatch')
-        if not defer_anonymous:
-            self.verify_asset_anonymous(actual, expected_name)
         # Download from the numeric asset endpoint; never log signed redirect URLs.
         response = self.request('GET', api, authenticated=True, binary=True)
         try:
@@ -284,19 +276,6 @@ class Retainer:
         self.state.setdefault('verified_assets', {})[expected_name] = {
             'id': aid, 'bytes': size, 'sha256': digest.hexdigest()}
         self.save()
-
-    def verify_asset_anonymous(self, asset, expected_name):
-        api = f'{self.api}/releases/assets/{positive_id(asset.get("id"))}'
-        browser = asset.get('browser_download_url', '')
-        parsed = urllib.parse.urlsplit(browser)
-        prefix = f'/{self.repo}/releases/download/'
-        if (parsed.scheme != 'https' or parsed.netloc != 'github.com' or parsed.query or
-                parsed.fragment or not parsed.path.startswith(prefix) or
-                urllib.parse.unquote(parsed.path.rsplit('/', 1)[-1]) != expected_name):
-            raise RetentionError('Unsafe browser download URL')
-        self.anonymous_404(api)
-        self.anonymous_404(api, binary=True)
-        self.anonymous_404(browser, binary=True)
 
     def probe_metadata(self):
         name = 'private-retention-probe.txt'
@@ -338,12 +317,10 @@ class Retainer:
             if index == self.attempts - 1:
                 raise RetentionError('Exact probe asset not bound to numeric draft ID')
             self.pause(index)
-        self.anonymous_404(self.release_url)
         asset = self.json_request('GET', f'{self.api}/releases/assets/{aid}')
         self.verify_asset(asset, name)
         self.read_release()
-        self.anonymous_404(self.release_url)
-        self.state['phase'] = 'verified-private-read-only'
+        self.state['phase'] = 'verified-draft-read-only'
         self.save()
         return {'release_id': rid, 'asset_id': aid, 'source_commit': self.source,
                 'assets_verified': 1, 'read_only_verification': True,
@@ -375,7 +352,6 @@ class Retainer:
         self.release_url = f'{self.api}/releases/{rid}'
         self.check_release(self.state['create_response'])
         self.read_release()
-        self.anonymous_404(self.release_url)
         known = set(self.state['uploads_pending']) | set(self.state.get('verified_assets', {}))
         current = self.settled_assets(known)
         for name, entry in self.expected.items():
@@ -423,7 +399,7 @@ class Retainer:
                 current = self.settled_assets(set(self.state['uploads_pending']))
                 if created_id is not None and current[name].get('id') != created_id:
                     raise RetentionError('Uploaded asset ID differs from numeric draft listing')
-            self.verify_asset(current[name], name, defer_anonymous=True)
+            self.verify_asset(current[name], name)
             print(json.dumps({'byte_verified_retained_asset': name, **self.state['verified_assets'][name]}, sort_keys=True), flush=True)
             if name in self.state['uploads_pending']:
                 self.state['uploads_pending'].remove(name)
@@ -437,15 +413,8 @@ class Retainer:
                     asset.get('state') != 'uploaded' or
                     asset.get('digest') not in (None, 'sha256:' + verified['sha256'])):
                 raise RetentionError('Final asset identity changed')
-        # All selected bytes are durably retained before any per-asset anonymous
-        # delay or failure. The successful result still requires every old check.
-        self.state['phase'] = 'bytes-verified-privacy-pending'
-        self.save()
-        for name, asset in current.items():
-            self.verify_asset_anonymous(asset, name)
         self.read_release()
-        self.anonymous_404(self.release_url)
-        self.state['phase'] = 'verified-private'
+        self.state['phase'] = 'verified-draft'
         self.save()
         for name in current:
             print(json.dumps({'verified_retained_asset': name, **self.state['verified_assets'][name]}, sort_keys=True), flush=True)

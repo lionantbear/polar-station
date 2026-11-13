@@ -1,11 +1,11 @@
 Polar Station Apple Silicon trial - complete source and modification access
 
 Exact first-party source, lockfile, native modules and build scripts:
-https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a
+https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516
 
 Exact upstream source archives, Git revisions, recipes, patches, license choices
 and complete app rebuild/relink directions:
-https://github.com/lionantbear/polar-station/blob/bee8309edfc24d864aff859fbd2f9226e7dee118/docs/releases/macos-trial-7cdfd4a-source-and-relink.md
+https://github.com/lionantbear/polar-station/blob/40642d8733be40bda930c34e5bf3fdf5122eb839/docs/releases/macos-trial-63105b9-source-and-relink.md
 
 Full original third-party terms and notices are in THIRD-PARTY-NOTICES.
 First-party AGPL-3.0 text is LICENSE-AGPL-3.0.txt at this image's root.
@@ -18,7 +18,3 @@ signing of a modified app without publisher keys or notarization credentials.
 Source is available at the exact public links above using the online-source
 method, not a written promise of future delivery. Preserve applicable upstream
 notices and comply with the relevant licenses when redistributing changes.
-
-Vendored bip0032 corresponding source with per-file modification notices:
-https://github.com/lionantbear/polar-station/tree/e0fac8dfa7b84153b327861789360fc139075ed0/vendor/bip0032
-Only notice comments and their change record differ from the actual compiled library source. The original signed application is preserved unchanged.

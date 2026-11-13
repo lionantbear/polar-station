@@ -1,70 +1,70 @@
 {
   "assets": [
     {
-      "bytes": 75568384,
-      "id": 738667864,
+      "bytes": 76829984,
+      "id": 742626173,
       "name": "Polar-Station-macOS-arm64-UNNOTARIZED.dmg",
-      "sha256": "93559118a66f6292f4bc744e33e37ec7a3bff33fa235018934a59364a8e5acec"
+      "sha256": "c9321989ddf007ca0074a84a767069c716304e41a124a0e2a57d2332d26a7e32"
     },
     {
-      "bytes": 4345311,
-      "id": 738669147,
+      "bytes": 4374390,
+      "id": 742627479,
       "name": "application-source-001.tar.gz",
-      "sha256": "840f3d9b7eea4bbdf9c1f1522f66a2b116fe9ee3798ee97ffc0a523dff4aea7f"
+      "sha256": "ea524a3e93792df9a8b13b8a8efe59108879fea2ea42906d18bdbd98389fa8a9"
     },
     {
-      "bytes": 1693045,
-      "id": 738668963,
+      "bytes": 1693238,
+      "id": 742627208,
       "name": "build-evidence.zip",
-      "sha256": "cac449c2ecf86236d08d2f2b5b2a5cf02163cf5b183a54e1e65a2cdb17c1c12c"
+      "sha256": "f861bb62e67b88a8b7c9ca160409788a59f4bb636943dec3049381239504eb27"
     },
     {
-      "bytes": 137216495,
-      "id": 738669256,
+      "bytes": 137216284,
+      "id": 742627546,
       "name": "cargo-compiled-sources-001.tar.gz",
-      "sha256": "b76d62dbbc230ca47ca1019f0c8379335179b728d0d1c00606e254ff317ff751"
+      "sha256": "057f90fa00733c5b3ede855a7b297fb8fcea4c82f012181c411d6903a11e9647"
     },
     {
-      "bytes": 38329439,
-      "id": 738668151,
+      "bytes": 38330958,
+      "id": 742626526,
       "name": "ghostty-built-source.tar.gz",
-      "sha256": "66273a0260b92bcb77c484d780ce297d299fb9af02bd694cba1027b1591f0d75"
+      "sha256": "477d69f269a4083967375f937e69d76a8b9d3e9315181a65e98e51f3c1d9310a"
     },
     {
-      "bytes": 74059238,
-      "id": 738668298,
+      "bytes": 74059233,
+      "id": 742626660,
       "name": "godot-built-source.tar.gz",
-      "sha256": "7a88b606b331a51f2dfc05a0f30404bef3b7e33027cf9e0018eccde6b781bc02"
+      "sha256": "4a394c7b45bf6c886beff258afc8b9a38fc09da7dbc1cde28215771b54b81175"
     },
     {
-      "bytes": 26283,
-      "id": 738669874,
+      "bytes": 26272,
+      "id": 742628216,
       "name": "homebrew-installed-metadata-001.tar.gz",
-      "sha256": "a297ed725433e50bbc2bcc24e33a351984e12d1c30ca07c708d60cdb9fe0fc91"
+      "sha256": "5cec5fc51bcb8f8c32fa31bc313bb6421328187853121d8f9f7762e7911be7d2"
     },
     {
-      "bytes": 20018014,
-      "id": 738669058,
+      "bytes": 20021901,
+      "id": 742627314,
       "name": "trial-inputs-manifest.json",
-      "sha256": "c70d471de6ba4e11916de68ae62e17172773558aa5dfad6d94b8c28581c0e280"
+      "sha256": "9b9ea1e981632155e0776441a7ce7a9d1ee732bcdf0701d710f661a7132637bd"
     },
     {
       "bytes": 81725233,
-      "id": 738669617,
+      "id": 742627942,
       "name": "zig-package-sources-001.tar.gz",
-      "sha256": "6853905ca22f58d598b0b78d4e971b76fef38e13bad7ad0f6c9b8789fbf0bf0b"
+      "sha256": "1193351af5c8439278cdd78d5b324d2c1901e6dc92d56d616eb36218a066b7b8"
     },
     {
       "bytes": 1921,
-      "id": 738668752,
+      "id": 742626987,
       "name": "draft-build-index.json",
-      "sha256": "cdcef7122ae8325f38b46e0c4ab86da6ad02ed1a01f42c0f561af131d2203b4b"
+      "sha256": "558cb0c1879302cfc6273de57f3b77e2ed30c6ff01884fcb125270646672766d"
     },
     {
       "bytes": 870,
-      "id": 738668850,
+      "id": 742627076,
       "name": "SHA256SUMS",
-      "sha256": "22d222d436eef861d48e1aa6ddc8110f3da312db0bd696100203337b03158231"
+      "sha256": "242e1b7338ca6c50c89e4a45d1c24f9ea7f4437f7cb2af47cc1c58c23e916236"
     }
   ],
   "captured_notices": [
@@ -5124,22 +5124,22 @@
       "sha256": "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef"
     },
     "READ-ME-FIRST.txt": {
-      "bytes": 635,
-      "path": "documents/READ-ME-FIRST.txt",
-      "sha256": "67b5f35888e625d7de1945318c1a06455e5311bd5cdf1f041d068b83e58fefd7"
+      "bytes": 684,
+      "path": "documents/READ-ME-FIRST-current.txt",
+      "sha256": "8b7ea530bb21d5df92957c013dda4f5a6db6311a1ce6c496db7e8131552811f1"
     },
     "SOURCE-ACCESS.txt": {
-      "bytes": 1533,
+      "bytes": 1203,
       "path": "documents/SOURCE-ACCESS-current.txt",
-      "sha256": "4d3426511ce612fb3ece27369586cc9c7fd35113ce841c8bbd605526ca3f74e5"
+      "sha256": "3549f02f83ded3d1efebefe986ad3d8f5b56722ffca51a4cbee93e20be6ca3b5"
     }
   },
-  "final_tag": "macos-arm64-trial-43174962658-1",
+  "final_tag": "macos-arm64-trial-43373252716-1",
   "native_launch_evidence": {
     "asset": "build-evidence.zip",
     "bytes": 595,
     "member": "station-evidence/installation-launch.json",
-    "sha256": "753fe248f11f0585eff3348bf10dd78af660fb0d1971609dceff00f1c30c0e58"
+    "sha256": "efbbf6f695a2185377142988eac08ffd22e2617a4707a607ba6eb24b43b4ac65"
   },
   "notice_files": [
     {
@@ -5674,60 +5674,64 @@
       "bytes": 144774,
       "destination": "COMPONENTS.txt",
       "path": "notices/COMPONENTS-current.txt",
-      "sha256": "5915cea084c300e6443c841af80e65c751db8bf44cfc21b9e6d904e6266763a4"
+      "sha256": "72302a793dc559a87ab37c27f3328368b8375c7dd0050acf798c94129e6e655d"
     }
   ],
   "packaging_authorized": true,
   "publication_authorized": true,
-  "raw_release_id": 442663029,
-  "raw_tag": "macos-arm64-trial-build-43174962658-1",
+  "raw_release_id": 443892270,
+  "raw_tag": "macos-arm64-trial-build-43373252716-1",
+  "release_notes": {
+    "markdown": "This preview improves opening files from terminal output and makes instruction cards more compact.\n\n## Changes\n\n- Improve opening file paths that wrap onto another terminal line.\n- Fix file opening through directory mappings, including Windows-style paths shown inside wrapped terminal output.\n- Keep file-availability updates during opening, and explain failed directory mappings when a file cannot be opened.\n- Make instruction cards more compact, with separate delete and close controls.\n\n## Known issues\n\n- Recording and setup on a fresh Mac still need interactive validation, including the first microphone permission prompt.\n- The iPhone Companion is unavailable in this public build.\n",
+    "title": "Polar Station Preview \u00b7 2026-11-13 \u00b7 macOS Apple Silicon"
+  },
   "repository": "lionantbear/polar-station",
   "run_attempt": 1,
-  "run_id": 43174962658,
+  "run_id": 43373252716,
   "source_access": {
-    "directions_availability_checked_at": "2026-11-12T08:52:53Z",
+    "directions_availability_checked_at": "2026-11-13T07:06:13Z",
     "directions_document": {
-      "bytes": 15697,
-      "path": "docs/releases/macos-trial-7cdfd4a-source-and-relink.md",
-      "repository_commit": "bee8309edfc24d864aff859fbd2f9226e7dee118",
-      "sha256": "99c03e048765ce27aad8a41236540701552d3e9775d225108d7b0015ac018e00",
-      "url": "https://github.com/lionantbear/polar-station/blob/bee8309edfc24d864aff859fbd2f9226e7dee118/docs/releases/macos-trial-7cdfd4a-source-and-relink.md"
+      "bytes": 14769,
+      "path": "docs/releases/macos-trial-63105b9-source-and-relink.md",
+      "repository_commit": "40642d8733be40bda930c34e5bf3fdf5122eb839",
+      "sha256": "0a3851aef70e71a55d26d5adc7c28c08bb7d49faf6066d9b331d7afb0d6c225c",
+      "url": "https://github.com/lionantbear/polar-station/blob/40642d8733be40bda930c34e5bf3fdf5122eb839/docs/releases/macos-trial-63105b9-source-and-relink.md"
     },
-    "directions_verification_sha256": "63757ac68004eb179d1fb0835462d592324075d36afc7af10d4ece1f345e16ba",
-    "first_party_url": "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
-    "inspection_report_sha256": "033f2992acfa3976e41eee809c7211939b7010eb441ea3f69caf369462907d6f",
+    "directions_verification_sha256": "a00a3d68603d47b570a153d19f2b07cee7766a4dd2419ba243c6316d5fffc6e5",
+    "first_party_url": "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516",
+    "inspection_report_sha256": "1731d8279e31f03b7c80b1833fc9d8a35449470c4211fab96f8176b32db55146",
     "license_route": [
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "Polar Station application",
         "elected_version": "AGPL-3.0",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "AGPL-3.0",
         "patch_recipe_urls": [
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a/automation/polar_station"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/automation/polar_station"
         ],
         "source_urls": [
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516"
         ],
         "terms_paths": [
           "LICENSE-AGPL-3.0.txt"
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "GNU gettext 0.24 static libintl",
         "elected_version": "LGPL-3.0 under upstream later-version grant",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "LGPL-2.1-or-later in all 30 selected C files",
         "patch_recipe_urls": [
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a/apps/polar-station-macos/ghostty-overlay",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a/automation/polar_station"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/apps/polar-station-macos/ghostty-overlay",
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/automation/polar_station"
         ],
         "source_urls": [
           "https://deps.files.ghostty.org/gettext-0.24.tar.gz",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516",
           "https://github.com/ghostty-org/ghostty/tree/332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28"
         ],
         "terms_paths": [
@@ -5737,18 +5741,18 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "gettext 1.0",
         "elected_version": "LGPL-3.0 for LGPL-covered parts under upstream later-version grant",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "LGPL-2.1-or-later for runtime libintl",
         "patch_recipe_urls": [
           "https://github.com/Homebrew/homebrew-core/blob/ffc79088768f59d49d304f3ff00de576b4ea8f69/Formula/g/gettext.rb"
         ],
         "source_urls": [
           "https://ftpmirror.gnu.org/gettext/gettext-1.0.tar.gz",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516"
         ],
         "terms_paths": [
           "THIRD-PARTY-NOTICES/terms/GPL-3.0-only.txt",
@@ -5757,11 +5761,11 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "glib 2.90.1",
         "elected_version": "LGPL-3.0 for LGPL-covered parts under upstream later-version grant",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "LGPL-2.1-or-later for GLib/gmodule/gthread; retain per-file exceptions",
         "patch_recipe_urls": [
           "https://github.com/Homebrew/homebrew-core/blob/ffc79088768f59d49d304f3ff00de576b4ea8f69/Formula/g/glib.rb",
@@ -5770,7 +5774,7 @@
         ],
         "source_urls": [
           "https://download.gnome.org/sources/glib/2.90/glib-2.90.1.tar.xz",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516"
         ],
         "terms_paths": [
           "THIRD-PARTY-NOTICES/terms/GPL-3.0-only.txt",
@@ -5779,18 +5783,18 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "gts 0.7.6_4",
         "elected_version": "LGPL-3.0 for LGPL-covered parts under upstream later-version grant",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "LGPL-2.0-or-later; retain other per-file grants",
         "patch_recipe_urls": [
           "https://github.com/Homebrew/homebrew-core/blob/ffc79088768f59d49d304f3ff00de576b4ea8f69/Formula/g/gts.rb"
         ],
         "source_urls": [
           "https://downloads.sourceforge.net/project/gts/gts/0.7.6/gts-0.7.6.tar.gz",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516"
         ],
         "terms_paths": [
           "THIRD-PARTY-NOTICES/terms/GPL-3.0-only.txt",
@@ -5799,18 +5803,18 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "libtool 2.6.2",
         "elected_version": "LGPL-3.0 for LGPL-covered parts under upstream later-version grant",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "LGPL-2.0-or-later for libltdl, with original special exception",
         "patch_recipe_urls": [
           "https://github.com/Homebrew/homebrew-core/blob/ffc79088768f59d49d304f3ff00de576b4ea8f69/Formula/lib/libtool.rb"
         ],
         "source_urls": [
           "https://ftpmirror.gnu.org/libtool/libtool-2.6.2.tar.xz",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516"
         ],
         "terms_paths": [
           "THIRD-PARTY-NOTICES/terms/GPL-3.0-only.txt",
@@ -5819,11 +5823,11 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "Graphviz 16.1.0",
         "elected_version": "EPL-2.0",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "EPL-2.0 in actual upstream source (recipe label is stale)",
         "patch_recipe_urls": [
           "https://github.com/Homebrew/homebrew-core/blob/ffc79088768f59d49d304f3ff00de576b4ea8f69/Formula/g/graphviz.rb"
@@ -5838,14 +5842,14 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "23 MPL-covered Cargo package versions identified in source directions",
         "elected_version": "MPL-2.0",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "MPL-2.0",
         "patch_recipe_urls": [
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a/Cargo.lock"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/Cargo.lock"
         ],
         "source_urls": [
           "https://github.com/helix-editor/nucleo/tree/4253de9faabb4e5c6d81d946a5e35a90f87347ee",
@@ -5876,18 +5880,18 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "Ghostty and Godot native integrations",
         "elected_version": "Original offered grants with notices retained",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "MIT and retained third-party per-file grants",
         "patch_recipe_urls": [
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a/apps/polar-station-macos/ghostty-overlay",
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a/automation/polar_station/build_macos_graphics.sh"
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/apps/polar-station-macos/ghostty-overlay",
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/automation/polar_station/build_macos_graphics.sh"
         ],
         "source_urls": [
-          "https://github.com/lionantbear/polar-station/tree/7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516",
           "https://github.com/ghostty-org/ghostty/tree/332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
           "https://github.com/godotengine/godot/tree/ed1daf0bf001b61586d9930840f2f1394092c079"
         ],
@@ -5896,11 +5900,11 @@
         ]
       },
       {
-        "availability_basis": "Current artifact match and Git GET verification; native archives were hash-verified at the original timestamps in the bound availability record.",
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "Sparkle 2.9.0",
         "elected_version": "Original offered grants",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "Full upstream distribution LICENSE and contained third-party grants",
         "patch_recipe_urls": [],
         "source_urls": [
@@ -5911,10 +5915,11 @@
         ]
       },
       {
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "flatbuffers 25.12.19",
         "elected_version": "Apache-2.0",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "Apache-2.0",
         "patch_recipe_urls": [],
         "source_urls": [
@@ -5926,10 +5931,11 @@
         ]
       },
       {
-        "availability_checked_at": "2026-11-12T08:55:13Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "objc2-security 0.3.2",
         "elected_version": "MIT option expressly offered by original trio grant",
-        "evidence_sha256": "671820ec09f78973b06293d685ebb378034f1e19c2a161c5ff59e40caf0ad93e",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "Zlib OR Apache-2.0 OR MIT",
         "patch_recipe_urls": [],
         "source_urls": [
@@ -5942,10 +5948,11 @@
         ]
       },
       {
-        "availability_checked_at": "2026-11-12T08:58:42Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "Newly observed compiled Cargo registry candidates",
         "elected_version": "Retain offered Apache/MIT terms; BSD-3-Clause for applicable Dalek packages",
-        "evidence_sha256": "d3b2ef9f2953189741ac24ad4a4b178dbce7d4de92a3aaef8ad840827ea5ddd2",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "Original Apache-2.0, MIT and BSD-3-Clause declarations and per-file notices",
         "patch_recipe_urls": [],
         "source_urls": [
@@ -5999,16 +6006,17 @@
         ]
       },
       {
-        "availability_checked_at": "2026-11-12T08:55:07Z",
+        "availability_basis": "Current native report matches reviewed native versions, recipe hashes and conservative candidate notices. Exact source archives and public Git pins freshly checked; current first-party source and rebuild directions verified by public GET.",
+        "availability_checked_at": "2026-11-13T06:33:20Z",
         "component": "bip0032 0.2.2 with Polar modifications",
         "elected_version": "Apache-2.0",
-        "evidence_sha256": "96f2c57e3314b803774101c2c80e3afe7fed2d7303e668f17f7e194a449e4534",
+        "evidence_sha256": "7170754370022ff8afeb822084bbca39fd10c56909fc4277e2b2faf5030c5a18",
         "offered_grant": "Apache-2.0",
         "patch_recipe_urls": [
-          "https://github.com/lionantbear/polar-station/blob/e0fac8dfa7b84153b327861789360fc139075ed0/vendor/bip0032/POLAR-PATCHES.md"
+          "https://github.com/lionantbear/polar-station/blob/63105b965dee5bb6cedb88720382dd17d07aa516/vendor/bip0032/POLAR-PATCHES.md"
         ],
         "source_urls": [
-          "https://github.com/lionantbear/polar-station/tree/e0fac8dfa7b84153b327861789360fc139075ed0/vendor/bip0032",
+          "https://github.com/lionantbear/polar-station/tree/63105b965dee5bb6cedb88720382dd17d07aa516/vendor/bip0032",
           "https://static.crates.io/crates/bip0032/bip0032-0.2.2.crate"
         ],
         "terms_paths": [
@@ -6017,13 +6025,13 @@
         ]
       }
     ],
-    "rebuild_instructions_path": "docs/releases/macos-trial-7cdfd4a-source-and-relink.md",
-    "release_page_directions": "Exact upstream sources, patches, recipes and full-app rebuild/relink directions: https://github.com/lionantbear/polar-station/blob/bee8309edfc24d864aff859fbd2f9226e7dee118/docs/releases/macos-trial-7cdfd4a-source-and-relink.md",
-    "source_commit": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
+    "rebuild_instructions_path": "docs/releases/macos-trial-63105b9-source-and-relink.md",
+    "release_page_directions": "Exact upstream sources, patches, recipes and full-app rebuild/relink directions: https://github.com/lionantbear/polar-station/blob/40642d8733be40bda930c34e5bf3fdf5122eb839/docs/releases/macos-trial-63105b9-source-and-relink.md",
+    "source_commit": "63105b965dee5bb6cedb88720382dd17d07aa516",
     "status": "reviewed-for-this-trial",
     "unresolved": []
   },
-  "source_commit": "7cdfd4a9da61f9af2687c137f6d499c496a4b19a",
+  "source_commit": "63105b965dee5bb6cedb88720382dd17d07aa516",
   "status": "ready-for-reviewed-trial",
   "tag_prepared_via_ssh": true
 }
