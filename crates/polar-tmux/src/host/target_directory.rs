@@ -139,21 +139,12 @@ pub(super) fn target_command(target:&TmuxTarget,script:&str,interactive:bool)->R
             destination,
             control_socket,
         } => {
-            let mut c = Command::new("ssh");
-            c.args([
-                if interactive {"-tt"} else {"-T"},
-                "-S",
-                control_socket,
-                "-o",
-                "ControlMaster=no",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ProxyCommand=/usr/bin/false",
-                destination,
-                &format!("/bin/sh -c {}", quote(script)),
-            ]);
-            c
+            let endpoint = polar_ssh::SshEndpoint::managed(destination, control_socket)?;
+            let pty = if interactive { polar_ssh::RemotePty::Required } else { polar_ssh::RemotePty::None };
+            let spec = endpoint.command(format!("/bin/sh -c {}", polar_ssh::quote_posix(script)), pty);
+            let mut command = Command::new(spec.program);
+            command.args(spec.args);
+            command
         }
         TmuxTarget::Wsl { distribution } => {
             let mut c = Command::new("wsl.exe");

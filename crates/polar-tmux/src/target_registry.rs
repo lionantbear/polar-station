@@ -82,7 +82,7 @@ impl RegisteredTarget {
                     .current_or_acquire_lease(ssh_connections, destination)
                     .await?;
                 Ok(self.command_client(
-                    self.client.clone().with_target(lease.tmux_target()?),
+                    self.client.clone().with_target(polar_tmux_core::TmuxTarget::from(lease.endpoint())),
                     Some(&ssh_connections.transport_generation_for_lease(&lease)),
                 ))
             }
@@ -198,7 +198,7 @@ impl RegisteredTarget {
                 let transport_generation =
                     Some(ssh_connections.transport_generation_for_lease(&lease));
                 Ok(ManagedAttachClient {
-                    client: self.client.clone().with_target(lease.tmux_target()?),
+                    client: self.client.clone().with_target(polar_tmux_core::TmuxTarget::from(lease.endpoint())),
                     transport_generation,
                 })
             }

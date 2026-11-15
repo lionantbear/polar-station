@@ -1,3 +1,4 @@
+mod pty;
 mod lifetime;
 pub(crate) use lifetime::TerminalLifetimes;
 mod control;
@@ -12,7 +13,7 @@ pub(crate) use bridge::{serve_bridge, TerminalServices};
 
 // Host-owned terminal Consumer state and backend PTY process.
 
-use crate::terminal_io::AsyncTerminalFd;
+
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -20,13 +21,13 @@ use std::sync::{
 use tracing::Instrument;
 
 use anyhow::{Context, Result};
-use polar_tmux_core::{TmuxClient, TmuxTerminalAttachPlan, TmuxTerminalClient};
+use polar_tmux_core::{TmuxClient, TmuxTerminalAttachPlan, TmuxTerminalClient, TmuxTerminalRequest};
 use polar_tmux_protocol::{
     PaneContentBindingV1, ProtocolError, ProtocolValidationError, SshTransportGenerationV1,
     TerminalBridgeHelloV1, TerminalConsumerLifecycleV1, TerminalConsumerStatusV1, TerminalSizeV1,
-    TmuxAttachPlan, TMUX_EXECUTION_PATH,
+    TMUX_EXECUTION_PATH,
 };
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{CommandBuilder, PtySize};
 use rand_core::RngCore;
 use tokio::sync::{mpsc, watch};
 
@@ -115,7 +116,7 @@ pub(crate) async fn attach_terminal(
     let speculative = if let Some(identity) = previous {
         let plan = attach
             .client
-            .prepare_attach_known_session(&identity.session_id)?;
+            .prepare_terminal_session(&identity.session_id)?;
         tracing::info!(target: "polar_station_operation", component="Terminal", event="terminal_speculative_started");
         Some((
             spawn_backend(&consumer, plan, Some(identity.clone()), false, &lifetimes).await?,
@@ -126,9 +127,8 @@ pub(crate) async fn attach_terminal(
     };
     let mut prepared = if attach.transport_generation.is_some() && !current && speculative.is_none()
     {
-        // The placeholder only builds the existing SSH argv. No command may
-        // attach it: the remote shell waits for the exact observed identity.
-        let plan = attach.client.prepare_attach_known_session("$0")?;
+        // Prepare transport without inventing a tmux session.
+        let plan = attach.client.prepare_terminal_channel()?;
         Some(spawn_backend(&consumer, plan, None, true, &lifetimes).await?)
     } else {
         None
@@ -174,7 +174,7 @@ pub(crate) async fn attach_terminal(
     };
     let plan = attach
         .client
-        .prepare_attach_known_session(&identity.session_id)?;
+        .prepare_terminal_session(&identity.session_id)?;
     anyhow::ensure!(
         attach.transport_generation
             == ssh
@@ -256,7 +256,7 @@ async fn attachment_confirmed_remotely(
 /// only its owned child, including when spawn finishes after cancellation.
 async fn spawn_backend(
     consumer: &TerminalConsumerState,
-    plan: TmuxAttachPlan,
+    plan: TmuxTerminalRequest,
     binding: Option<polar_tmux_core::TmuxSessionBinding>,
     deferred: bool,
     lifetimes: &TerminalLifetimes,
@@ -776,7 +776,7 @@ impl BackendPty {
 
     #[allow(clippy::too_many_arguments)]
     fn spawn_inner(
-        plan: &TmuxAttachPlan,
+        plan: &TmuxTerminalRequest,
         binding: Option<&polar_tmux_core::TmuxSessionBinding>,
         size: TerminalSizeV1,
         terminal_type: &str,
@@ -789,13 +789,13 @@ impl BackendPty {
         while nonce == 0 {
             nonce = rand_core::OsRng.next_u64();
         }
-        let mut guarded = match binding {
+        let guarded = match binding {
             Some(binding) => TmuxTerminalAttachPlan::new_bound(plan, nonce, binding),
             None => TmuxTerminalAttachPlan::new(plan, nonce),
         }
         .context("Host produced an invalid attach plan")?;
         let expected_preparation = if deferred {
-            Some(guarded.defer_until_binding()?)
+            Some(guarded.preparation_receipt().context("expected prepared SSH channel")?)
         } else {
             None
         };
@@ -804,11 +804,6 @@ impl BackendPty {
         size.validate().context("terminal dimensions are invalid")?;
         let trace_operation_id = format!("terminal-{nonce:016x}");
         tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_pty_open_begin",
-            consumer_id=trace_consumer_id, operation_id=trace_operation_id.as_str());
-        let pair = native_pty_system()
-            .openpty(pty_size(size))
-            .context("failed to open Host terminal PTY")?;
-        tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_pty_open_end",
             consumer_id=trace_consumer_id, operation_id=trace_operation_id.as_str());
         let mut command = CommandBuilder::new(&guarded.program);
         command.args(&guarded.args);
@@ -819,21 +814,13 @@ impl BackendPty {
         command.env("PATH", TMUX_EXECUTION_PATH);
         tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_child_spawn_begin",
             consumer_id=trace_consumer_id, operation_id=trace_operation_id.as_str());
-        // All fallible descriptor setup precedes child creation.
-        let reader = Arc::new(AsyncTerminalFd::duplicate(
-            pair.master
-                .as_raw_fd()
-                .context("Host PTY descriptor is missing")?,
-        )?);
-        let mut child = pair
-            .slave
-            .spawn_command(command)
-            .context("failed to start Host terminal child")?;
+        let pty::SpawnedPty { master, mut child, io: reader } = pty::spawn(command, pty_size(size))?;
+        tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_pty_open_end",
+            consumer_id=trace_consumer_id, operation_id=trace_operation_id.as_str());
         ticket.child_started();
         let child_pid = child.process_id().unwrap_or(0);
         tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_child_spawned",
             child_pid, consumer_id=trace_consumer_id, operation_id=trace_operation_id.as_str());
-        drop(pair.slave);
         let killer = child.clone_killer();
         let writer = reader.clone();
         let retirement_reader = reader.clone();
@@ -1015,7 +1002,7 @@ impl BackendPty {
             },
         });
         drop(event_sender);
-        let master = Arc::new(std::sync::Mutex::new(Some(pair.master)));
+        let master = Arc::new(std::sync::Mutex::new(Some(master)));
         let master_handle = Arc::downgrade(&master);
         let (stop, exited, completion) = lifetime::Owner {
             master,
@@ -1071,10 +1058,10 @@ impl BackendPty {
 
     async fn complete_preparation(
         &mut self,
-        plan: &TmuxAttachPlan,
+        plan: &TmuxTerminalRequest,
         binding: &polar_tmux_core::TmuxSessionBinding,
     ) -> Result<()> {
-        let guarded = TmuxTerminalAttachPlan::new_bound(plan, self.identity_nonce, binding)?;
+        let guarded = polar_tmux_core::TmuxTerminalCommand::new_bound(plan, self.identity_nonce, binding)?;
         let bytes = guarded.deferred_binding_command()?;
         let span = tracing::info_span!(target: "polar_station_operation", "terminal_binding_write", component="PTY", outcome="cancelled");
         self.input

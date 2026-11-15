@@ -217,6 +217,17 @@ pub struct SshTransportGenerationV1 {
     pub generation: u64,
 }
 
+impl From<polar_ssh::SshTransportGeneration> for SshTransportGenerationV1 {
+    fn from(value: polar_ssh::SshTransportGeneration) -> Self {
+        Self { supervisor_instance_id: value.supervisor_instance_id, generation: value.generation }
+    }
+}
+impl From<SshTransportGenerationV1> for polar_ssh::SshTransportGeneration {
+    fn from(value: SshTransportGenerationV1) -> Self {
+        Self { supervisor_instance_id: value.supervisor_instance_id, generation: value.generation }
+    }
+}
+
 impl SshTransportGenerationV1 {
     pub fn supervisor_instance_id(&self) -> u64 {
         self.supervisor_instance_id
@@ -304,36 +315,7 @@ pub fn is_canonical_tmux_socket_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
-pub fn is_canonical_ssh_destination(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    (1..=255).contains(&bytes.len())
-        && bytes[0] != b'-'
-        && bytes.iter().any(u8::is_ascii_alphanumeric)
-        && bytes.iter().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(
-                    byte,
-                    b'.' | b'_' | b'-' | b'@' | b':' | b'%' | b'+' | b'[' | b']'
-                )
-        })
-}
-
-/// Validate the Unix-domain socket identity used by a Host-owned OpenSSH
-/// ControlMaster. The bounded absolute grammar keeps the path representable in
-/// `sockaddr_un` and prevents a frontend from substituting a relative path.
-pub fn is_canonical_ssh_control_socket(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    (2..=103).contains(&bytes.len())
-        && bytes[0] == b'/'
-        && !value.ends_with('/')
-        && !value.contains("//")
-        && !value
-            .split('/')
-            .any(|component| matches!(component, "." | ".."))
-        && bytes
-            .iter()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'_' | b'-'))
-}
+pub use polar_ssh::{is_canonical_ssh_destination, is_canonical_ssh_control_socket};
 
 fn is_user_tmux_program(program: &str) -> bool {
     program == "tmux" || (program.starts_with('/') && program.ends_with("/.local/bin/tmux")

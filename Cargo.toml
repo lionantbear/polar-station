@@ -33,6 +33,7 @@ members = [
     "crates/polar-protocol",
     "crates/polar-runtime-paths",
     "crates/polar-sqlite-runtime",
+    "crates/polar-ssh",
     "crates/polar-station-client",
     "crates/polar-station-desktop-ffi",
     "crates/polar-station-inbox",
@@ -110,6 +111,7 @@ polar-pki = { path = "crates/polar-pki" }
 polar-protocol = { path = "crates/polar-protocol" }
 polar-runtime-paths = { path = "crates/polar-runtime-paths" }
 polar-sqlite-runtime = { path = "crates/polar-sqlite-runtime" }
+polar-ssh = { path = "crates/polar-ssh" }
 polar-station-client = { path = "crates/polar-station-client" }
 polar-station-inbox = { path = "crates/polar-station-inbox" }
 polar-station-input = { path = "crates/polar-station-input" }

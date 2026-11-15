@@ -1,12 +1,11 @@
 //! One owned streamlocal forward on the existing managed SSH master.
+
 use crate::ssh_connection_manager::{
     platform_ssh_runtime_root, SshConnectionLease, SshConnectionManager, SshConnectionStatus,
 };
 use crate::target_registry::TargetRegistry;
 use std::{
     path::{Path, PathBuf},
-    process::Stdio,
-    time::Duration,
 };
 
 #[derive(Clone)]
@@ -129,22 +128,9 @@ async fn change_forward(
     cancel: bool,
     rule: &str,
 ) -> Result<(), &'static str> {
-    let mut command = tokio::process::Command::new("/usr/bin/ssh");
-    command
-        .args(lease.forward_control_args(cancel, rule))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    let status = tokio::time::timeout(Duration::from_secs(5), command.status())
-        .await
-        .map_err(|_| "ssh_forward_timeout")?
-        .map_err(|_| "ssh_forward_failed")?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("ssh_forward_failed")
-    }
+    lease.change_forward(cancel, rule).await.map_err(|error| {
+        if error.kind() == std::io::ErrorKind::TimedOut { "ssh_forward_timeout" } else { "ssh_forward_failed" }
+    })
 }
 
 impl Drop for SshSocketForward {

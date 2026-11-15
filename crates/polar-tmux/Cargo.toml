@@ -14,6 +14,7 @@ codex-control = ["dep:codex-app-server-client", "dep:codex-app-server-protocol"]
 telegram-channel = ["codex-control", "dep:polar-telegram", "dep:polar-vault"]
 
 [dependencies]
+polar-ssh = { workspace = true, features = ["runtime"] }
 polar-station-client.workspace = true
 polar-station-session.workspace = true
 time.workspace = true

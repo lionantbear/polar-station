@@ -1,0 +1,22 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-ssh"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = []
+runtime = ["dep:polar-local-access-runtime", "dep:futures-util", "dep:libc", "dep:serde_json", "dep:sha2", "dep:tokio", "dep:tracing"]
+test-support = ["runtime"]
+
+[dependencies]
+polar-local-access-runtime = { workspace = true, optional = true }
+futures-util = { version = "0.3", optional = true }
+libc = { version = "0.2", optional = true }
+serde.workspace = true
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+

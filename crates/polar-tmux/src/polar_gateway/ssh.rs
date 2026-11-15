@@ -1,8 +1,8 @@
 //! Private StreamLocal forwarding over the existing Station SSH supervisor.
 //! This module never starts another SSH master or sends shell commands remotely.
-use std::{path::PathBuf, process::Stdio, sync::{Arc, Mutex}, time::Duration};
+use std::{path::PathBuf, sync::{Arc, Mutex}, time::Duration};
 use anyhow::{ensure, Context, Result};
-use tokio::{process::Command, sync::{oneshot, watch}, task::JoinSet};
+use tokio::{sync::{oneshot, watch}, task::JoinSet};
 use crate::{local_extensions::LocalExtensionContext, local_ipc,
     ssh_connection_manager::{platform_ssh_runtime_root, SshConnectionManager, SshConnectionLease, SshConnectionStatus},
     target_registry::TargetRegistry};
@@ -132,10 +132,6 @@ impl ForwardOwner {
     }
 }
 async fn change_forward(lease: &SshConnectionLease, rule: &str, cancel: bool) -> Result<()> {
-    let mut command = Command::new("/usr/bin/ssh");
-    command.args(lease.forward_control_args(cancel, rule)).kill_on_drop(true)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-    let status = tokio::time::timeout(Duration::from_secs(5), command.status()).await??;
-    ensure!(status.success(), "SSH StreamLocal operation failed");
+    lease.change_forward(cancel, rule).await?;
     Ok(())
 }

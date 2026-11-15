@@ -1,11 +1,39 @@
 //! Native tmux primitives for a Host-owned, initially passive terminal.
 
-use polar_tmux_types::{TmuxAttachPlan, REMOTE_TMUX_PATH_ASSIGNMENT};
+use polar_tmux_types::REMOTE_TMUX_PATH_ASSIGNMENT;
 
 use crate::{
-    target::{quote_posix, remote_tmux_command},
+    target::{quote_posix, tmux_command_sequence},
     TmuxClient, TmuxError, TmuxResult, TmuxTarget,
 };
+
+/// Internal typed request. A prepared SSH channel has no invented session.
+#[derive(Debug, Clone)]
+pub struct TmuxTerminalRequest {
+    client: TmuxClient,
+    session: Option<String>,
+}
+
+impl TmuxClient {
+    pub fn prepare_terminal_session(&self, session: &str) -> TmuxResult<TmuxTerminalRequest> {
+        crate::validate_stable_session_id(session)?;
+        Ok(TmuxTerminalRequest {
+            client: self.clone(),
+            session: Some(session.into()),
+        })
+    }
+    pub fn prepare_terminal_channel(&self) -> TmuxResult<TmuxTerminalRequest> {
+        if !matches!(self.target, TmuxTarget::MultiplexedSsh { .. }) {
+            return Err(TmuxError::invalid_input(
+                "prepared channel requires managed SSH",
+            ));
+        }
+        Ok(TmuxTerminalRequest {
+            client: self.clone(),
+            session: None,
+        })
+    }
+}
 
 /// Private post-attach receipt, never a frontend-provided client selector.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +67,7 @@ pub struct TmuxTerminalAttachPlan {
     pub identity_prefix: String,
     pub client: TmuxClient,
     pub session_id: String,
+    preparation: bool,
 }
 
 /// Verified Session identity from the shared target observation. The private
@@ -88,80 +117,50 @@ impl TmuxSessionBinding {
     }
 }
 
-impl TmuxTerminalAttachPlan {
-    /// Open the existing SSH/PTY channel before the shared observation finishes.
-    /// The shell executes no tmux work until Host supplies the generated bound
-    /// command. Readiness is private metadata, never terminal content.
-    pub fn defer_until_binding(&mut self) -> TmuxResult<Vec<u8>> {
-        if self.program != "ssh" || self.args.len() != 8 {
-            return Err(TmuxError::invalid_input("deferred attachment requires SSH"));
-        }
-        let ready = format!("{}READY\n", self.identity_prefix);
-        self.args[7] = format!(
-            "{REMOTE_TMUX_PATH_ASSIGNMENT}; stty raw -echo || exit 1; printf '{}READY\\n'; IFS= read -r station_attach || exit 1; exec /bin/sh -c \"$station_attach\"",
-            self.identity_prefix
-        );
-        Ok(ready.into_bytes())
-    }
-
-    /// One trusted generated command line, not frontend or terminal input.
-    pub fn deferred_binding_command(&self) -> TmuxResult<Vec<u8>> {
-        if self.program != "ssh" || self.args.len() != 8 || self.args[7].contains(['\n', '\r']) {
-            return Err(TmuxError::invalid_input("invalid deferred binding command"));
-        }
-        Ok(format!("{}\n", self.args[7]).into_bytes())
-    }
-
-    pub fn new(plan: &TmuxAttachPlan, nonce: u64) -> TmuxResult<Self> {
-        Self::build(plan, nonce, None)
-    }
-
+/// A complete tmux operation, before local/SSH process wrapping.
+/// The same value is either executed once or submitted to an already-prepared channel.
+pub struct TmuxTerminalCommand {
+    pub client: TmuxClient,
+    pub session_id: String,
+    pub identity_prefix: String,
+    script: String,
+}
+impl TmuxTerminalCommand {
     pub fn new_bound(
-        plan: &TmuxAttachPlan,
+        request: &TmuxTerminalRequest,
         nonce: u64,
         binding: &TmuxSessionBinding,
     ) -> TmuxResult<Self> {
-        Self::build(plan, nonce, Some(binding))
+        Self::build(request, nonce, Some(binding))
     }
-
     fn build(
-        plan: &TmuxAttachPlan,
+        request: &TmuxTerminalRequest,
         nonce: u64,
         binding: Option<&TmuxSessionBinding>,
     ) -> TmuxResult<Self> {
-        plan.validate()
-            .map_err(|_| TmuxError::invalid_input("invalid terminal attach plan"))?;
         if nonce == 0 {
             return Err(TmuxError::invalid_input("terminal identity nonce is zero"));
         }
-        let (target, mut tmux_args) = if plan.program == "tmux" {
-            (TmuxTarget::Local, plan.args.clone())
-        } else {
-            let words = plan.args[7].split(' ').collect::<Vec<_>>();
-            let words = if words[0] == REMOTE_TMUX_PATH_ASSIGNMENT {
-                &words[1..]
-            } else {
-                &words[..]
-            };
-            let args = words[1..]
-                .iter()
-                .map(|word| word.trim_matches('\'').to_owned())
-                .collect();
-            (
-                TmuxTarget::multiplexed_ssh(&plan.args[6], &plan.args[2])?,
-                args,
-            )
-        };
-        let mut client = TmuxClient::new(target);
-        if tmux_args.first().is_some_and(|arg| arg == "-L") {
-            client = client.with_socket_name(&tmux_args[1]);
+        let mut client = request.client.clone();
+        if matches!(client.target, TmuxTarget::Local) {
+            client.tmux_executable = crate::target::local_executable(&client.tmux_executable);
         }
-        let session_id = plan.attached_session_id().unwrap().to_owned();
+        let session_id = request
+            .session
+            .clone()
+            .ok_or_else(|| TmuxError::invalid_input("tmux operation requires a session"))?;
+        let identity_prefix = format!("POLAR_STATION_CLIENT_{nonce:016x}:");
+        crate::validate_stable_session_id(&session_id)?;
+        let executable = quote_posix(&client.tmux_executable);
+        let mut tmux_args = Vec::new();
+        if let Some(socket) = &client.socket_name {
+            tmux_args.extend(["-L".into(), socket.clone()]);
+        }
+        tmux_args.extend(["attach-session".into(), "-t".into(), session_id.clone()]);
         tmux_args.extend(["-f".to_owned(), "ignore-size".to_owned()]);
         // tty_start_tty flushes pending terminal output. Emit identity only after
         // attach returns, using the command queue's now-attached exact client.
         // This is one tmux/SSH invocation, with no additional network round trip.
-        let identity_prefix = format!("POLAR_STATION_CLIENT_{nonce:016x}:");
         tmux_args.extend([
             ";".into(),
             "run-shell".into(),
@@ -174,7 +173,7 @@ impl TmuxTerminalAttachPlan {
             // -c alone does not select the format's Session context.
             // Redirect the compound command, rather than exec: POSIX shells
             // may exit immediately when exec cannot open a vanished tty.
-            format!("{REMOTE_TMUX_PATH_ASSIGNMENT}; station_tty=#{{q:client_tty}}; test -n \"$station_tty\" || exit 0; {{ test \"$(tmux -S #{{q:socket_path}} display-message -p -c \"$station_tty\" -t '{session_id}' '##{{client_pid}}' 2>/dev/null)\" = '#{{client_pid}}' && printf '{identity_prefix}%s\\t%s\\n' '#{{client_pid}}' '#{{client_tty}}' >&3; }} 2>/dev/null 3>\"$station_tty\"; exit 0"),
+            format!("{REMOTE_TMUX_PATH_ASSIGNMENT}; station_tty=#{{q:client_tty}}; test -n \"$station_tty\" || exit 0; {{ test \"$({executable} -S #{{q:socket_path}} display-message -p -c \"$station_tty\" -t '{session_id}' '##{{client_pid}}' 2>/dev/null)\" = '#{{client_pid}}' && printf '{identity_prefix}%s\\t%s\\n' '#{{client_pid}}' '#{{client_tty}}' >&3; }} 2>/dev/null 3>\"$station_tty\"; exit 0"),
         ]);
         if let Some(binding) = binding {
             if binding.session_id != session_id {
@@ -190,17 +189,7 @@ impl TmuxTerminalAttachPlan {
             let attach = tmux_args.split_off(prefix);
             // argv command separators become grammar in if-shell's command
             // string, not quoted literal arguments to attach-session.
-            let quoted = attach
-                .split(|arg| arg == ";")
-                .map(|command| {
-                    remote_tmux_command("tmux", command)
-                        .strip_prefix(&format!("{REMOTE_TMUX_PATH_ASSIGNMENT} tmux "))
-                        .unwrap()
-                        .to_owned()
-                })
-                .collect::<Vec<_>>()
-                .join(" ; ");
-            let attach_command = quoted;
+            let attach_command = tmux_command_sequence(&attach);
             tmux_args.extend([
                 "-N".into(),
                 "if-shell".into(),
@@ -212,24 +201,85 @@ impl TmuxTerminalAttachPlan {
             ]);
         }
         let command = format!(
-            "{REMOTE_TMUX_PATH_ASSIGNMENT}; exec {}",
-            remote_tmux_command("tmux", &tmux_args)
-                .strip_prefix(&format!("{REMOTE_TMUX_PATH_ASSIGNMENT} "))
-                .unwrap()
+            "{REMOTE_TMUX_PATH_ASSIGNMENT}; exec {executable} {}",
+            polar_ssh::shell_arguments(&tmux_args)
         );
-        let (program, args) = if plan.program == "tmux" {
-            ("/bin/sh".to_owned(), vec!["-c".to_owned(), command])
-        } else {
-            let mut args = plan.args[..7].to_vec();
-            args.push(command);
-            ("ssh".to_owned(), args)
-        };
+        Ok(Self {
+            client,
+            session_id,
+            identity_prefix,
+            script: command,
+        })
+    }
+    pub fn deferred_binding_command(&self) -> TmuxResult<Vec<u8>> {
+        if !matches!(self.client.target, TmuxTarget::MultiplexedSsh { .. })
+            || self.script.contains(['\n', '\r'])
+        {
+            return Err(TmuxError::invalid_input("invalid deferred binding command"));
+        }
+        Ok(format!("{}\n", self.script).into_bytes())
+    }
+}
+
+impl TmuxTerminalAttachPlan {
+    /// Open the existing SSH/PTY channel before the shared observation finishes.
+    /// The shell executes no tmux work until Host supplies the generated bound
+    /// command. Readiness is private metadata, never terminal content.
+    pub fn preparation_receipt(&self) -> Option<Vec<u8>> {
+        self.preparation
+            .then(|| format!("{}READY\n", self.identity_prefix).into_bytes())
+    }
+
+    pub fn new(plan: &TmuxTerminalRequest, nonce: u64) -> TmuxResult<Self> {
+        Self::build(plan, nonce, None)
+    }
+
+    pub fn new_bound(
+        plan: &TmuxTerminalRequest,
+        nonce: u64,
+        binding: &TmuxSessionBinding,
+    ) -> TmuxResult<Self> {
+        Self::build(plan, nonce, Some(binding))
+    }
+
+    fn build(
+        plan: &TmuxTerminalRequest,
+        nonce: u64,
+        binding: Option<&TmuxSessionBinding>,
+    ) -> TmuxResult<Self> {
+        if nonce == 0 {
+            return Err(TmuxError::invalid_input("terminal identity nonce is zero"));
+        }
+        let client = plan.client.clone();
+        let identity_prefix = format!("POLAR_STATION_CLIENT_{nonce:016x}:");
+        if plan.session.is_none() {
+            if binding.is_some() {
+                return Err(TmuxError::invalid_input(
+                    "prepared channel cannot carry a session binding",
+                ));
+            }
+            let command = polar_ssh::prepared_terminal_script(&identity_prefix)
+                .map_err(|_| TmuxError::invalid_input("invalid prepared terminal marker"))?;
+            let (program, args) = client.target.terminal_command(command)?;
+            return Ok(Self {
+                program,
+                args,
+                identity_prefix,
+                client,
+                session_id: String::new(),
+                preparation: true,
+            });
+        }
+
+        let operation = TmuxTerminalCommand::build(plan, nonce, binding)?;
+        let (program, args) = operation.client.target.terminal_command(operation.script)?;
         Ok(Self {
             program,
             args,
-            identity_prefix,
-            client,
-            session_id,
+            identity_prefix: operation.identity_prefix,
+            client: operation.client,
+            session_id: operation.session_id,
+            preparation: false,
         })
     }
 }

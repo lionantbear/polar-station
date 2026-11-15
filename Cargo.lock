@@ -10513,6 +10513,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "polar-ssh"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "libc",
+ "polar-local-access-runtime",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "polar-station-client"
 version = "0.1.0"
 dependencies = [
@@ -10704,6 +10718,7 @@ dependencies = [
  "polar-local-access-contract",
  "polar-local-access-runtime",
  "polar-runtime-paths",
+ "polar-ssh",
  "polar-station-client",
  "polar-station-inbox",
  "polar-station-input",
@@ -10742,6 +10757,7 @@ dependencies = [
 name = "polar-tmux-core"
 version = "0.1.0"
 dependencies = [
+ "polar-ssh",
  "polar-tmux-types",
  "tokio",
  "tracing",
@@ -10786,6 +10802,7 @@ name = "polar-tmux-types"
 version = "0.1.0"
 dependencies = [
  "polar-local-access-contract",
+ "polar-ssh",
  "serde",
 ]
 

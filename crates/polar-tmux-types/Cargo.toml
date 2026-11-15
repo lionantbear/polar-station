@@ -6,6 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+polar-ssh.workspace = true
 polar-local-access-contract.workspace = true
 
 serde.workspace = true

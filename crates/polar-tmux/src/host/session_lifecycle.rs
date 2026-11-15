@@ -1750,34 +1750,13 @@ async fn ensure_cli_launcher(target: &polar_tmux_core::TmuxTarget, directory: Op
             c.args(["-lc", &probe]);
             c
         }
-        TmuxTarget::Ssh { destination } => {
-            let mut c = tokio::process::Command::new("ssh");
-            c.args([
-                "-T",
-                "-o",
-                "BatchMode=yes",
-                destination,
-                &remote,
-            ]);
-            c
-        }
-        TmuxTarget::MultiplexedSsh {
-            destination,
-            control_socket,
-        } => {
-            let mut c = tokio::process::Command::new("ssh");
-            c.args([
-                "-T",
-                "-S",
-                control_socket,
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ProxyCommand=/usr/bin/false",
-                destination,
-                &remote,
-            ]);
-            c
+        TmuxTarget::Ssh { .. } => anyhow::bail!("A verified shared SSH lease is required"),
+        TmuxTarget::MultiplexedSsh { destination, control_socket } => {
+            let spec = polar_ssh::SshEndpoint::managed(destination, control_socket)?
+                .command(remote, polar_ssh::RemotePty::None);
+            let mut command = tokio::process::Command::new(spec.program);
+            command.args(spec.args);
+            command
         }
         TmuxTarget::Wsl { distribution } => {
             let mut c = tokio::process::Command::new("wsl.exe");

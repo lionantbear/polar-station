@@ -8,11 +8,15 @@ fn local_execution_path() -> String {
         Err(_) => TMUX_EXECUTION_PATH.to_owned(),
     }
 }
-fn local_executable(executable: &str) -> String {
-    if executable == "tmux" && !std::env::split_paths(TMUX_EXECUTION_PATH).any(|dir| dir.join("tmux").is_file()) {
+pub(crate) fn local_executable(executable: &str) -> String {
+    if executable == "tmux"
+        && !std::env::split_paths(TMUX_EXECUTION_PATH).any(|dir| dir.join("tmux").is_file())
+    {
         if let Ok(home) = std::env::var("HOME") {
             let path = std::path::Path::new(&home).join(".local/bin/tmux");
-            if path.is_file() { return path.to_string_lossy().into_owned(); }
+            if path.is_file() {
+                return path.to_string_lossy().into_owned();
+            }
         }
     }
     executable.to_owned()
@@ -34,6 +38,15 @@ pub enum TmuxTarget {
     Wsl {
         distribution: Option<String>,
     },
+}
+
+impl From<polar_ssh::SshEndpoint> for TmuxTarget {
+    fn from(endpoint: polar_ssh::SshEndpoint) -> Self {
+        Self::MultiplexedSsh {
+            destination: endpoint.destination().into(),
+            control_socket: endpoint.control_socket().into(),
+        }
+    }
 }
 
 impl TmuxTarget {
@@ -84,36 +97,13 @@ impl TmuxTarget {
                 command.args(tmux_args);
                 Ok(command)
             }
-            Self::Ssh { destination } => {
-                if !polar_tmux_types::is_canonical_ssh_destination(destination) {
-                    return Err(TmuxError::invalid_input("SSH destination is not canonical"));
-                }
-                let mut command = Command::new("ssh");
-                command.arg(destination);
-                command.arg(remote_tmux_command_with_locale(tmux_executable, tmux_args));
-                Ok(command)
-            }
-            Self::MultiplexedSsh {
-                destination,
-                control_socket,
-            } => {
-                if !polar_tmux_types::is_canonical_ssh_destination(destination)
-                    || !polar_tmux_types::is_canonical_ssh_control_socket(control_socket)
-                {
-                    return Err(TmuxError::invalid_input(
-                        "managed SSH target identity is invalid",
-                    ));
-                }
-                let mut command = Command::new("ssh");
-                command.args([
-                    "-q",
-                    "-S",
-                    control_socket,
-                    "-o",
-                    "ProxyCommand=/usr/bin/false",
-                ]);
-                command.arg(destination);
-                command.arg(remote_tmux_command_with_locale(tmux_executable, tmux_args));
+            Self::Ssh { .. } | Self::MultiplexedSsh { .. } => {
+                let spec = self.ssh_command(
+                    remote_tmux_command_with_locale(tmux_executable, tmux_args),
+                    polar_ssh::RemotePty::None,
+                )?;
+                let mut command = Command::new(spec.program);
+                command.args(spec.args);
                 Ok(command)
             }
             Self::Wsl { distribution } => {
@@ -141,51 +131,15 @@ impl TmuxTarget {
                 tmux_args.to_vec(),
                 vec![
                     ("LC_ALL".to_owned(), TMUX_UTF8_LOCALE.to_owned()),
-                    (
-                        "PATH".to_owned(),
-                        local_execution_path(),
-                    ),
+                    ("PATH".to_owned(), local_execution_path()),
                 ],
             ),
-            Self::Ssh { destination } => {
-                if !polar_tmux_types::is_canonical_ssh_destination(destination) {
-                    return Err(TmuxError::invalid_input("SSH destination is not canonical"));
-                }
-                (
-                    "ssh".to_owned(),
-                    vec![
-                        "-tt".to_owned(),
-                        destination.clone(),
-                        remote_tmux_command_with_locale(tmux_executable, tmux_args),
-                    ],
-                    Vec::new(),
-                )
-            }
-            Self::MultiplexedSsh {
-                destination,
-                control_socket,
-            } => {
-                if !polar_tmux_types::is_canonical_ssh_destination(destination)
-                    || !polar_tmux_types::is_canonical_ssh_control_socket(control_socket)
-                {
-                    return Err(TmuxError::invalid_input(
-                        "managed SSH target identity is invalid",
-                    ));
-                }
-                (
-                    "ssh".to_owned(),
-                    vec![
-                        "-tt".to_owned(),
-                        "-q".to_owned(),
-                        "-S".to_owned(),
-                        control_socket.clone(),
-                        "-o".to_owned(),
-                        "ProxyCommand=/usr/bin/false".to_owned(),
-                        destination.clone(),
-                        remote_tmux_command_with_locale(tmux_executable, tmux_args),
-                    ],
-                    Vec::new(),
-                )
+            Self::Ssh { .. } | Self::MultiplexedSsh { .. } => {
+                let spec = self.ssh_command(
+                    remote_tmux_command_with_locale(tmux_executable, tmux_args),
+                    polar_ssh::RemotePty::Required,
+                )?;
+                (spec.program, spec.args, Vec::new())
             }
             Self::Wsl { distribution } => {
                 let mut args = Vec::new();
@@ -204,6 +158,39 @@ impl TmuxTarget {
             environment,
             initial_commands,
         })
+    }
+
+    fn ssh_command(
+        &self,
+        command: String,
+        pty: polar_ssh::RemotePty,
+    ) -> TmuxResult<polar_ssh::SshCommand> {
+        let result = match self {
+            Self::MultiplexedSsh {
+                destination,
+                control_socket,
+            } => polar_ssh::SshEndpoint::managed(destination, control_socket)
+                .map(|endpoint| endpoint.command(command, pty)),
+            Self::Ssh { destination } => polar_ssh::direct_command(destination, command, pty),
+            _ => return Err(TmuxError::invalid_input("not an SSH target")),
+        };
+        result.map_err(|_| TmuxError::invalid_input("invalid SSH endpoint"))
+    }
+
+    pub(crate) fn terminal_command(&self, command: String) -> TmuxResult<(String, Vec<String>)> {
+        match self {
+            Self::Local => Ok(("/bin/sh".into(), vec!["-c".into(), command])),
+            Self::MultiplexedSsh { .. } => {
+                let spec = self.ssh_command(command, polar_ssh::RemotePty::Required)?;
+                Ok((spec.program, spec.args))
+            }
+            Self::Ssh { .. } => Err(TmuxError::invalid_input(
+                "terminal requires verified SSH master",
+            )),
+            Self::Wsl { .. } => Err(TmuxError::unsupported_target(
+                "WSL terminal remains deferred",
+            )),
+        }
     }
 
     pub(crate) fn kind(&self) -> &'static str {
@@ -233,29 +220,13 @@ impl TmuxTarget {
                 destination,
                 control_socket,
             } => {
-                if !polar_tmux_types::is_canonical_ssh_destination(destination)
-                    || !polar_tmux_types::is_canonical_ssh_control_socket(control_socket)
-                {
-                    return Err(TmuxError::invalid_input(
-                        "managed SSH target identity is invalid",
-                    ));
-                }
-                // An interactive tmux attach requires a remote pseudo-terminal.
-                // The exact control socket and fail-closed ProxyCommand force
-                // this channel through the Host-owned master.
-                let mut args = vec![
-                    "-q".to_string(),
-                    "-S".to_string(),
-                    control_socket.clone(),
-                    "-o".to_string(),
-                    "ProxyCommand=/usr/bin/false".to_string(),
-                    "-tt".to_string(),
-                ];
-                args.push(destination.clone());
-                args.push(remote_tmux_command(tmux_executable, tmux_args));
+                let endpoint = polar_ssh::SshEndpoint::managed(destination, control_socket)
+                    .map_err(|_| TmuxError::invalid_input("invalid managed SSH endpoint"))?;
+                let spec = endpoint
+                    .legacy_attach_metadata(remote_tmux_command(tmux_executable, tmux_args));
                 TmuxAttachPlan {
-                    program: "ssh".to_string(),
-                    args,
+                    program: spec.program,
+                    args: spec.args,
                 }
             }
             Self::Wsl { .. } => {
@@ -310,15 +281,20 @@ pub(crate) fn quote_tmux_argument(value: &str) -> String {
     quoted
 }
 
-pub(crate) fn quote_posix(value: &str) -> String {
-    if !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"_@%+=:,./-".contains(&byte))
-    {
-        return value.to_string();
-    }
-    format!("'{}'", value.replace('\'', "'\\''"))
+pub(crate) use polar_ssh::quote_posix;
+
+/// tmux command grammar is distinct from the surrounding POSIX shell.
+pub(crate) fn tmux_command_sequence(args: &[String]) -> String {
+    args.split(|arg| arg == ";")
+        .map(|command| {
+            command
+                .iter()
+                .map(|arg| quote_tmux_argument(arg))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join(" ; ")
 }
 
 

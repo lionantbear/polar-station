@@ -48,7 +48,7 @@ impl ResourceService {
                     .await
                     .map_err(|_| unavailable())?;
                 let transport = if let Some(lease) = &lease {
-                    lease.tmux_target().map_err(|_| unavailable())?
+                    polar_tmux_core::TmuxTarget::from(lease.endpoint())
                 } else {
                     target.configured_target().clone()
                 };

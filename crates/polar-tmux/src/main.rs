@@ -240,9 +240,6 @@ async fn run_cli() -> Result<()> {
                     "Host execution targets must come from --target-config; global --ssh/--wsl-distribution are one-shot CLI options"
                 );
             }
-            if cli.tmux_executable != "tmux" {
-                bail!("Host mode requires the canonical tmux executable name \"tmux\"");
-            }
             if cli
                 .socket_name
                 .as_deref()

@@ -151,9 +151,7 @@ impl ResourceService {
             .await
             .map_err(|_| "Cannot connect to the source machine.")?;
         let transport = if let Some(lease) = &lease {
-            lease
-                .tmux_target()
-                .map_err(|_| "The source connection changed; retry.")?
+            polar_tmux_core::TmuxTarget::from(lease.endpoint())
         } else {
             target.configured_target().clone()
         };

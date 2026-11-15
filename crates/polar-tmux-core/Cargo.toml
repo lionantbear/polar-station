@@ -6,6 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+polar-ssh.workspace = true
 polar-tmux-types.workspace = true
 tokio.workspace = true
 tracing.workspace = true

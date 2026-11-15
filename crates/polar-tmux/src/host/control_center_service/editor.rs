@@ -17,7 +17,7 @@ impl ControlCenterService {
                 let target=self.targets.get(&execution_target_id).ok_or_else(||control_error("target_missing","Selected machine is unavailable."))?;
                 let gate=target.operation_gate();let _guard=gate.read().await;
                 let lease=target.resource_ssh_lease(&self.ssh_connections).await.map_err(|_|control_error("ssh_unavailable","Check the selected machine SSH connection."))?;
-                let transport=if let Some(lease)=&lease {lease.tmux_target().map_err(|_|control_error("ssh_changed","SSH connection changed; retry."))?}else{target.configured_target().clone()};
+                let transport=if let Some(lease)=&lease {polar_tmux_core::TmuxTarget::from(lease.endpoint())}else{target.configured_target().clone()};
                 #[cfg(not(feature="codex-control"))]
                 if codex {return Err(control_error("codex_unsupported","This Host does not support Codex."))}
                 #[cfg(feature="codex-control")]
@@ -185,7 +185,7 @@ impl ControlCenterService {
             let result=tokio::time::timeout(std::time::Duration::from_secs(3),async {
                 let target=self.targets.get(&id)?;
                 let lease=target.resource_ssh_lease(&self.ssh_connections).await.ok()?;
-                let transport=if let Some(lease)=&lease{lease.tmux_target().ok()?}else{target.configured_target().clone()};
+                let transport=if let Some(lease)=&lease{polar_tmux_core::TmuxTarget::from(lease.endpoint())}else{target.configured_target().clone()};
                 let client=target.configured_client().clone().with_target(transport);
                 let facts=super::super::target_tools::inspect(&client,&id,enabled).await;
                 if let Some(lease)=&lease{self.ssh_connections.validate(lease).await.ok()?;}
@@ -221,9 +221,7 @@ impl ControlCenterService {
                 )
             })?;
         let transport = if let Some(lease) = &lease {
-            lease
-                .tmux_target()
-                .map_err(|_| control_error("ssh_unavailable", "The SSH connection changed."))?
+            polar_tmux_core::TmuxTarget::from(lease.endpoint())
         } else {
             target.configured_target().clone()
         };

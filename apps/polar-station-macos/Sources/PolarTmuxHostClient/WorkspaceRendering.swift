@@ -673,20 +673,9 @@ public enum PolarTmuxLocalHostFrame:
                 forKey: .snapshot
             )
             switch (action, attachPlan, snapshot) {
-            case (
-                .openSession(let session),
-                .some(let plan),
-                .none
-            ):
-                guard try plan.attachedSessionID() == session
-                else {
-                    throw DecodingError.dataCorruptedError(
-                        forKey: .attachPlan,
-                        in: container,
-                        debugDescription:
-                            "open_session attach plan targets another session"
-                    )
-                }
+            case (.openSession, .some, .none):
+                // Session identity comes from the typed action, never parsed argv.
+                break
             case (.openSession, .none, .none):
                 throw DecodingError.dataCorruptedError(
                     forKey: .attachPlan,

@@ -40,7 +40,7 @@ pub use control_mode::{
 };
 pub use error::{TmuxError, TmuxErrorKind, TmuxResult};
 pub use target::TmuxTarget;
-pub use terminal_attach::{TmuxSessionBinding, TmuxTerminalAttachPlan, TmuxTerminalClient};
+pub use terminal_attach::{TmuxSessionBinding, TmuxTerminalAttachPlan, TmuxTerminalClient, TmuxTerminalRequest, TmuxTerminalCommand};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const SESSION_FORMAT: &str =
@@ -235,20 +235,7 @@ impl TmuxClient {
         if let Some(binding) = binding {
             let prefix = if self.socket_name.is_some() { 3 } else { 1 };
             let attach = tmux_args.split_off(prefix);
-            let command = attach
-                .split(|arg| arg == ";")
-                .map(|args| {
-                    let command = target::remote_tmux_command("tmux", args);
-                    command
-                        .strip_prefix(&format!(
-                            "{} tmux ",
-                            polar_tmux_types::REMOTE_TMUX_PATH_ASSIGNMENT
-                        ))
-                        .unwrap()
-                        .to_owned()
-                })
-                .collect::<Vec<_>>()
-                .join(" ; ");
+            let command = target::tmux_command_sequence(&attach);
             tmux_args.extend([
                 "-N".into(),
                 "if-shell".into(),

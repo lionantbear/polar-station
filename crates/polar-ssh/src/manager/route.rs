@@ -3,7 +3,7 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SshRouteKind {
+pub enum SshRouteKind {
     Opaque,
     Lan,
     Wan,
@@ -62,7 +62,7 @@ impl SshRoute {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum DohProvider {
+pub enum DohProvider {
     Google,
     Cloudflare,
 }
@@ -73,14 +73,14 @@ pub(super) fn default_doh_providers() -> Vec<DohProvider> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct SshRouteProfile {
-    pub(crate) lan_address: Ipv4Addr,
+pub struct SshRouteProfile {
+    pub lan_address: Ipv4Addr,
     #[serde(default = "default_ssh_port")]
-    pub(crate) lan_port: u16,
-    pub(crate) wan_host: String,
-    pub(crate) wan_port: u16,
+    pub lan_port: u16,
+    pub wan_host: String,
+    pub wan_port: u16,
     #[serde(default = "default_doh_providers")]
-    pub(crate) doh_providers: Vec<DohProvider>,
+    pub doh_providers: Vec<DohProvider>,
 }
 
 const fn default_ssh_port() -> u16 {
@@ -88,7 +88,7 @@ const fn default_ssh_port() -> u16 {
 }
 
 impl SshRouteProfile {
-    pub(crate) fn validate(&self) -> bool {
+    pub fn validate(&self) -> bool {
         self.lan_port != 0
             && self.wan_port != 0
             && !self.doh_providers.is_empty()

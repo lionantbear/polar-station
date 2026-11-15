@@ -364,7 +364,7 @@ impl SystemResourceProvider {
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     async fn verify_source_directory(&self, spec: &FileMappingSpec, lease: &SshConnectionLease) -> Result<(), ResourceProviderError> {
-        let transport = lease.tmux_target().map_err(|_| ResourceProviderError::ssh())?;
+        let transport = polar_tmux_core::TmuxTarget::from(lease.endpoint());
         super::target_directory::read(&transport, &spec.execution_target_id, Some(&spec.remote_path), false)
             .await.map_err(|_| ResourceProviderError::new(
                 "resource_source_directory_unavailable",

@@ -7,7 +7,6 @@
 //! details and returns only a logical render receipt.
 
 const std = @import("std");
-const attach_argv = @import("attach_argv.zig");
 const protocol = @import("protocol.zig");
 
 pub const schema_version: u32 = 2;
@@ -412,10 +411,7 @@ fn parsePane(
         .program = try requireString(attach_object, "program"),
         .args = try parseStringArray(allocator, attach_object, "args"),
     };
-    try attach_argv.validate(.{
-        .program = attach_plan.program,
-        .args = attach_plan.args,
-    }, session_id);
+    // Legacy inert metadata; only Rust validates and executes terminal intent.
     return .{
         .id = try requireIdentifier(object, "id"),
         .execution_target_id = try requireIdentifier(
