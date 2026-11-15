@@ -1,8 +1,8 @@
 name: Polar Station release
-run-name: ${{ inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '56bb1f8af2547dfbe159e0db750b6c4d9a12b329d844d4e877b332df8eb94295' }}
+run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '56bb1f8af2547dfbe159e0db750b6c4d9a12b329d844d4e877b332df8eb94295' }}
 on:
   push:
-    tags: ['station-build-*']
+    tags: ['station-build-*', 'station-operator-*']
   workflow_dispatch:
     inputs:
       phase:
@@ -21,7 +21,25 @@ concurrency:
   group: station-release-${{ inputs.phase || 'build' }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  operator:
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'station-operator-') && github.repository == 'lionantbear/polar-station' && github.actor == 'lionantbear'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Owner SSH release operations
+        uses: owenthereal/action-upterm@6c2d60e09009f59cb4c45c88767c78701f14d121
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          limit-access-to-users: lionantbear
+          full-access: true
+          upterm-version: v0.41.1
+          wait-timeout-minutes: 5
   native:
+    if: github.event_name != 'push' || startsWith(github.ref_name, 'station-build-')
     runs-on: macos-26
     timeout-minutes: 180
     permissions:
