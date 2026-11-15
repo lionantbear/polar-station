@@ -30,6 +30,7 @@ jobs:
       actions: write
     steps:
       - name: Owner SSH release operations
+        id: ssh
         uses: owenthereal/action-upterm@6c2d60e09009f59cb4c45c88767c78701f14d121
         env:
           GH_TOKEN: ${{ github.token }}
@@ -38,6 +39,18 @@ jobs:
           full-access: true
           upterm-version: v0.41.1
           wait-timeout-minutes: 5
+          detached: true
+      - name: Record SSH connection address
+        env:
+          SSH_CONFIG: ${{ steps.ssh.outputs.ssh-config }}
+        run: printf '%s\n' "$SSH_CONFIG" > "$RUNNER_TEMP/station-ssh-config"
+      - name: Retain SSH connection address
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: station-ssh-connection
+          path: ${{ runner.temp }}/station-ssh-config
+          retention-days: 1
+          if-no-files-found: error
   native:
     if: github.event_name != 'push' || startsWith(github.ref_name, 'station-build-')
     runs-on: macos-26
