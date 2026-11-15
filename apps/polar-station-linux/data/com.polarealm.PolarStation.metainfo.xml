@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.polarealm.PolarStation</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>Polar Station</name>
+  <summary>Your terminal workspaces, resources, and connections</summary>
+  <developer id="com.polarealm">
+    <name>Polar Realm</name>
+  </developer>
+  <url type="homepage">https://github.com/polarealm/polarinfra</url>
+  <description>
+    <p>
+      Polar Station combines terminal Workspaces, Resources, Connections, and
+      Companion control through the per-user Rust Host. Its Linux application
+      opens as a managed Ghostty terminal and exposes the Control Center from
+      Ghostty's native menu.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.polarealm.PolarStation.desktop</launchable>
+  <provides>
+    <binary>polarstation</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-07-26">
+      <description>
+        <p>Initial GTK4/libadwaita Host frontend.</p>
+      </description>
+    </release>
+  </releases>
+</component>

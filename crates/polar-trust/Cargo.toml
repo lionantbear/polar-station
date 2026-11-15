@@ -1,0 +1,15 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-trust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+polar-identity = { workspace = true }
+polar-pki = { workspace = true }
+polar-transport = { workspace = true }
+sha2 = { workspace = true }
+serde = { workspace = true }
+hex = { workspace = true }
+anyhow = { workspace = true }

@@ -1,0 +1,611 @@
+{
+  "schema_version": 1,
+  "scope": "Exact source archive and explicitly identified excerpt research; not proof of binary composition or completed compliance",
+  "release_ready": false,
+  "components": [
+    {
+      "formula": "gettext",
+      "version": "1.0",
+      "library_basenames": [
+        "libintl.8.dylib"
+      ],
+      "source_url": "https://ftpmirror.gnu.org/gettext/gettext-1.0.tar.gz",
+      "source_archive_sha256": "85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a",
+      "source_texts": [
+        {
+          "archive_path": "gettext-1.0/gettext-runtime/intl/COPYING.LIB",
+          "path": "licenses/native-source-texts/20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95.txt",
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+          "role": "license_text"
+        },
+        {
+          "archive_path": "gettext-1.0/gettext-runtime/intl/dcigettext.c",
+          "path": "licenses/native-source-texts/943eeb75e26d1f3a22ed89ce8e1b497005d6e08a6a6f8b84bf82594792beb242.txt",
+          "sha256": "943eeb75e26d1f3a22ed89ce8e1b497005d6e08a6a6f8b84bf82594792beb242",
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "45207e8ae3149af68a73de267e46ec05a996d6b0ca0fee0ed8f9e56f7e5de6b4",
+          "archive_member_raw_bytes": 45904,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 783,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256"
+        }
+      ],
+      "finding": "The intl/dcigettext.c header declares LGPL-2.1-or-later; the copied libintl must not be labeled solely from the formula-wide GPL/LGPL aggregate.",
+      "approved_attribution": false,
+      "obligations_pending": [
+        "Audit exact library source/build inputs, including bundled third-party files and modifications",
+        "Ship applicable license texts and notices in the signed app",
+        "Provide corresponding library sources and build/patch instructions through an applicable license-compliant method",
+        "Validate dynamic replacement/relink procedure, including ad-hoc re-signing on macOS; do not restrict permitted reverse engineering"
+      ]
+    },
+    {
+      "formula": "glib",
+      "version": "2.90.1",
+      "library_basenames": [
+        "libglib-2.0.0.dylib",
+        "libgmodule-2.0.0.dylib",
+        "libgthread-2.0.0.dylib"
+      ],
+      "source_url": "https://download.gnome.org/sources/glib/2.90/glib-2.90.1.tar.xz",
+      "source_archive_sha256": "93c941aa17d5eb1d53fe838365f29a8b4e539c222a256d974ec8f30fc413e396",
+      "source_texts": [
+        {
+          "archive_path": "glib-2.90.1/LICENSES/LGPL-2.1-or-later.txt",
+          "path": "licenses/native-source-texts/fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb.txt",
+          "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb",
+          "role": "license_text"
+        },
+        {
+          "archive_path": "glib-2.90.1/glib/gmain.c",
+          "path": "licenses/native-source-texts/cb970dec97a776a3a90a464af4eb59e89d87d95ffa4c2b975d7629ca7c557149.txt",
+          "sha256": "cb970dec97a776a3a90a464af4eb59e89d87d95ffa4c2b975d7629ca7c557149",
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "c8e3de300452cb3be4668fcf38a72c1ae825bd85824891427b804fda64faf344",
+          "archive_member_raw_bytes": 203234,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 952,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256"
+        },
+        {
+          "archive_path": "glib-2.90.1/gmodule/gmodule.c",
+          "path": "licenses/native-source-texts/07f737c1e1ffd471fbbd2b17b2989786558716338a77cfa1dc8ed2f778f4db38.txt",
+          "sha256": "07f737c1e1ffd471fbbd2b17b2989786558716338a77cfa1dc8ed2f778f4db38",
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "392afb14f9a2a43e35696c50b816720b1c3fa486560c1f80a16dbc0242597a72",
+          "archive_member_raw_bytes": 27001,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 813,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256"
+        },
+        {
+          "archive_path": "glib-2.90.1/gthread/gthread-impl.c",
+          "path": "licenses/native-source-texts/00df9e35677a5f68671ae78576578ce60e46624f8ba807e72afa7e67c253e8d9.txt",
+          "sha256": "00df9e35677a5f68671ae78576578ce60e46624f8ba807e72afa7e67c253e8d9",
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "c0246090e7ea8805a0df372ccf410c44cc8a1135c7d4c9faa41d4f08574543fe",
+          "archive_member_raw_bytes": 1576,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 959,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256"
+        }
+      ],
+      "finding": "Library source headers declare LGPL-2.1-or-later. This is not a file-complete composition audit.",
+      "approved_attribution": false,
+      "obligations_pending": [
+        "Audit exact library source/build inputs, including bundled third-party files and modifications",
+        "Ship applicable license texts and notices in the signed app",
+        "Provide corresponding library sources and build/patch instructions through an applicable license-compliant method",
+        "Validate dynamic replacement/relink procedure, including ad-hoc re-signing on macOS; do not restrict permitted reverse engineering"
+      ]
+    },
+    {
+      "formula": "libtool",
+      "version": "2.6.2",
+      "library_basenames": [
+        "libltdl.7.dylib"
+      ],
+      "source_url": "https://ftpmirror.gnu.org/libtool/libtool-2.6.2.tar.xz",
+      "source_archive_sha256": "2ef1067c16c97db930fd740cc9bc3d3ba9a583804ae5ac42cc3e8719e49e191e",
+      "source_texts": [
+        {
+          "archive_path": "libtool-2.6.2/libltdl/COPYING.LIB",
+          "path": "licenses/native-source-texts/20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95.txt",
+          "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+          "role": "license_text"
+        },
+        {
+          "archive_path": "libtool-2.6.2/libltdl/ltdl.c",
+          "path": "licenses/native-source-texts/dd695873cfd4d74c69122a9b92f62ed4ff6ac4219422d80330e5cd21296c55a1.txt",
+          "sha256": "dd695873cfd4d74c69122a9b92f62ed4ff6ac4219422d80330e5cd21296c55a1",
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "7bd76ba2bb784c8e2750d239c307a6d61256993802e4c3d1c3db13b9450d6e7c",
+          "archive_member_raw_bytes": 55246,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 1200,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256"
+        }
+      ],
+      "finding": "libltdl/ltdl.c declares GNU Lesser GPL version 2 or later and a file-level Libtool exception; COPYING.LIB contains LGPL 2.1. Do not infer the formula-wide GPL license, or apply the exception to the complete dylib without component review.",
+      "approved_attribution": false,
+      "obligations_pending": [
+        "Audit exact library source/build inputs, including bundled third-party files and modifications",
+        "Ship applicable license texts and notices in the signed app",
+        "Provide corresponding library sources and build/patch instructions through an applicable license-compliant method",
+        "Validate dynamic replacement/relink procedure, including ad-hoc re-signing on macOS; do not restrict permitted reverse engineering"
+      ]
+    },
+    {
+      "formula": "graphviz",
+      "version": "16.1.0",
+      "library_basenames": [
+        "dot.bin",
+        "libpathplan.4.dylib",
+        "libgvplugin_neato_layout.8.dylib",
+        "libxdot.5.dylib",
+        "libgvc.7.dylib",
+        "libgvplugin_core.8.dylib",
+        "libcdt.6.dylib",
+        "libgvplugin_dot_layout.8.dylib",
+        "libcgraph.10.dylib"
+      ],
+      "source_url": "https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.0/graphviz-16.1.0.tar.xz",
+      "source_archive_sha256": "0f661718f3e5268dc3bad0fb53ab646605d26db70f4080799aff1dc2f61783c3",
+      "source_archive_checksum_verified": true,
+      "source_texts": [
+        {
+          "archive_path": "graphviz-16.1.0/COPYING",
+          "path": "licenses/native-source-texts/0becf16567beb77fa252b7664631dd177c8f9a1889e48995b45379c7130e5303.txt",
+          "sha256": "0becf16567beb77fa252b7664631dd177c8f9a1889e48995b45379c7130e5303",
+          "raw_bytes": 14198,
+          "role": "license_text"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/AUTHORS",
+          "path": "licenses/native-source-texts/182eaf397edc803d0e44a25708ba70ecafc143c0f610ea7048c6b9687a939ff0.txt",
+          "sha256": "182eaf397edc803d0e44a25708ba70ecafc143c0f610ea7048c6b9687a939ff0",
+          "raw_bytes": 694,
+          "role": "source_notice_evidence"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/pathplan/shortest.c",
+          "path": "licenses/native-source-texts/d0ca5abec1e2d803c10be6f52eb65642c9dbe5c2795de2a23158d362a5832873.txt",
+          "sha256": "d0ca5abec1e2d803c10be6f52eb65642c9dbe5c2795de2a23158d362a5832873",
+          "raw_bytes": 517,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "6b8dd871fc98e2f49f5be5fadcae03ec60fc95357ef1047f06d0f32adcade9e3",
+          "archive_member_raw_bytes": 12692,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 517,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/gvc/gvc.c",
+          "path": "licenses/native-source-texts/d0ca5abec1e2d803c10be6f52eb65642c9dbe5c2795de2a23158d362a5832873.txt",
+          "sha256": "d0ca5abec1e2d803c10be6f52eb65642c9dbe5c2795de2a23158d362a5832873",
+          "raw_bytes": 517,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "f156543c84de1c92ba8b1db6580329fa94631859bc8159a85531a2442ae05f6a",
+          "archive_member_raw_bytes": 6771,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 517,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/cdt/dtopen.c",
+          "path": "licenses/native-source-texts/469cb5c69ac167478ec7452651535fd6f089b81a86fd3986ea219903bd9edfec.txt",
+          "sha256": "469cb5c69ac167478ec7452651535fd6f089b81a86fd3986ea219903bd9edfec",
+          "raw_bytes": 69,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "f7abcb8ab322f71ce479417824e40dbeb593a14665439a3b6cd5ff9c7b99fc3e",
+          "archive_member_raw_bytes": 615,
+          "excerpt_byte_start": 65,
+          "excerpt_byte_end_exclusive": 134,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Authorship comment"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/cdt/cdt.h",
+          "path": "licenses/native-source-texts/7d09fba7dec0fc1865b0c269655770d5307890a83c6920e1ae70b17d29da9828.txt",
+          "sha256": "7d09fba7dec0fc1865b0c269655770d5307890a83c6920e1ae70b17d29da9828",
+          "raw_bytes": 85,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "5b0bc33c564a1290bfe47635f9018ab789d686519d3d538c5a6a8be1a991dea6",
+          "archive_member_raw_bytes": 6949,
+          "excerpt_byte_start": 335,
+          "excerpt_byte_end_exclusive": 420,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Authorship comment"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/cgraph/refstr.c",
+          "path": "licenses/native-source-texts/f2c40fe3bc42c588e282ce36d339357d65190f78f160d5eb719fdee740a2629d.txt",
+          "sha256": "f2c40fe3bc42c588e282ce36d339357d65190f78f160d5eb719fdee740a2629d",
+          "raw_bytes": 592,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "242e01992fe455d3bd70d597e8c8977f2e150004b86bf4ecf111afccd19dc820",
+          "archive_member_raw_bytes": 12408,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 592,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/xdot/xdot.c",
+          "path": "licenses/native-source-texts/49360311d338280114fa442e36aaf4f505d6a02c0b78891634e721b23376f9e2.txt",
+          "sha256": "49360311d338280114fa442e36aaf4f505d6a02c0b78891634e721b23376f9e2",
+          "raw_bytes": 516,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "44cdd2b900f5f285c7bc1e185ec4fb2db16d58bcb902722c681fb989d036f537",
+          "archive_member_raw_bytes": 22269,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 516,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/rbtree/LICENSE",
+          "path": "licenses/native-source-texts/fcb423209a3a3909f41e629a4973eab3995ceb93136dd72485fb12ad3de29dfc.txt",
+          "sha256": "fcb423209a3a3909f41e629a4973eab3995ceb93136dd72485fb12ad3de29dfc",
+          "raw_bytes": 1048,
+          "role": "license_text"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/rbtree/red_black_tree.c",
+          "path": "licenses/native-source-texts/48cf76889c821dad88aea66dfcbbb5aff47580406e9e6edd19cb28b8072cc73f.txt",
+          "sha256": "48cf76889c821dad88aea66dfcbbb5aff47580406e9e6edd19cb28b8072cc73f",
+          "raw_bytes": 182,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "f0966287fbca1567bce8671d870b8e7bcf80c19ff42e48ae0394b9e092c9c95c",
+          "archive_member_raw_bytes": 17086,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 182,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/neatogen/randomkit.c",
+          "path": "licenses/native-source-texts/63690f47ffd8bd800fe4a87fd7c2c3e641d35a95c3d982e50053474689e30e9f.txt",
+          "sha256": "63690f47ffd8bd800fe4a87fd7c2c3e641d35a95c3d982e50053474689e30e9f",
+          "raw_bytes": 3133,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "f92ca7f67b6f1a972fc5b95581772b1df8482608fbbb40e1d0cbe6e616ee1dc3",
+          "archive_member_raw_bytes": 5758,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 3133,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/neatogen/randomkit.h",
+          "path": "licenses/native-source-texts/8b74dca7174b0e3115587e8e2e0f1b20501ab57e474b88d75f1ffc8e39bfaee7.txt",
+          "sha256": "8b74dca7174b0e3115587e8e2e0f1b20501ab57e474b88d75f1ffc8e39bfaee7",
+          "raw_bytes": 1909,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "2e014ee4903ab1c6270a5f27c678ddcb357ebd0c49635f9a7ebcdb2edb661d4e",
+          "archive_member_raw_bytes": 2599,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 1909,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/common/ellipse.c",
+          "path": "licenses/native-source-texts/04e12e8f1b50a4d8b3c5efaa032eddb15010dd2869a9ff778900e34263f6b919.txt",
+          "sha256": "04e12e8f1b50a4d8b3c5efaa032eddb15010dd2869a9ff778900e34263f6b919",
+          "raw_bytes": 2259,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "b17d0b7670a4e046b345ac283772f32ae483b928956e95064f82248e4fd21aa7",
+          "archive_member_raw_bytes": 9505,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 2259,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/common/htmlparse.c",
+          "path": "licenses/native-source-texts/e4b163e4052ac5d612d633187449c78d14484df49c258d3507f169c7224614b1.txt",
+          "sha256": "e4b163e4052ac5d612d633187449c78d14484df49c258d3507f169c7224614b1",
+          "raw_bytes": 1534,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "3004295044c446ce4c47ea74a457ce1f82c7908b6c9c1d89c8a0b80fe364f183",
+          "archive_member_raw_bytes": 69548,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 1534,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Bison copyright, license and special exception"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/cgraph/grammar.c",
+          "path": "licenses/native-source-texts/e4b163e4052ac5d612d633187449c78d14484df49c258d3507f169c7224614b1.txt",
+          "sha256": "e4b163e4052ac5d612d633187449c78d14484df49c258d3507f169c7224614b1",
+          "raw_bytes": 1534,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "cff31863b4dc52caddd4c43c09c3bdd75e18691cb6cc4e0158b2e7399e080a8f",
+          "archive_member_raw_bytes": 65401,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 1534,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Bison copyright, license and special exception"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/neatogen/Makefile.am",
+          "path": "licenses/native-source-texts/6072a13484e32dc4175b2d1e262a1405a8fcc44b063a9a301c6bd594b82efad6.txt",
+          "sha256": "6072a13484e32dc4175b2d1e262a1405a8fcc44b063a9a301c6bd594b82efad6",
+          "raw_bytes": 1427,
+          "role": "build_composition_evidence"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/plugin/neato_layout/Makefile.am",
+          "path": "licenses/native-source-texts/ad591a1033c706feccf0c45e9ba1d94683908487826d7e6d0c9497fb4ee39f61.txt",
+          "sha256": "ad591a1033c706feccf0c45e9ba1d94683908487826d7e6d0c9497fb4ee39f61",
+          "raw_bytes": 1798,
+          "role": "build_composition_evidence"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/common/Makefile.am",
+          "path": "licenses/native-source-texts/88c0cf3d14f85a2c17f2f69af3ae1b7ce8ea288d792efbfef8b778606a51859a.txt",
+          "sha256": "88c0cf3d14f85a2c17f2f69af3ae1b7ce8ea288d792efbfef8b778606a51859a",
+          "raw_bytes": 2261,
+          "role": "build_composition_evidence"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/lib/gvc/Makefile.am",
+          "path": "licenses/native-source-texts/1a18c799626a6f8bd81acb173cb2e075e7b4eb45c7de26974abfc371bc1db516.txt",
+          "sha256": "1a18c799626a6f8bd81acb173cb2e075e7b4eb45c7de26974abfc371bc1db516",
+          "raw_bytes": 1813,
+          "role": "build_composition_evidence"
+        },
+        {
+          "archive_path": "graphviz-16.1.0/libltdl/COPYING.LIB",
+          "path": "licenses/native-source-texts/dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551.txt",
+          "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+          "raw_bytes": 26530,
+          "role": "license_text"
+        }
+      ],
+      "missing_requested_paths": [],
+      "finding": "Verified 16.1.0 root COPYING and sampled core/pathplan headers specify EPL-2.0, contradicting captured Homebrew EPL-1.0 declaration. Do not approve EPL-1.0 mapping. Source composition also includes Random kit MIT-style and Mersenne Twister BSD-3-Clause notices, Luc Maisonobe BSD-3-Clause notice in common/ellipse.c, Emin Martinian custom permissive rbtree license, and generated Bison GPL skeleton with its explicit larger-work exception. plugin/neato_layout/Makefile.am links neatogen and rbtree convenience libraries; neatogen/Makefile.am lists randomkit.c. These are source/build recipe evidence, not exact bottle link-map proof. Archive libltdl is not evidence of its incorporation; bundled separately copied libltdl remains independently reviewed.",
+      "approved_attribution": false,
+      "obligations_pending": [
+        "Reconcile source EPL-2.0 versus captured Homebrew EPL-1.0 and approve exact per-binary mapping only after review",
+        "Confirm bottle build inputs, generated parser provenance, compile options, patches and link composition for every copied Graphviz binary",
+        "Include applicable EPL and third-party copyright, conditions, disclaimers and exceptions; do not flatten nested notices",
+        "Provide required source availability information and corresponding source under applicable EPL section 3 terms; review commercial distribution responsibilities",
+        "Determine whether vendored libltdl or optional code contributes to binaries; archive presence alone does not prove inclusion"
+      ]
+    },
+    {
+      "formula": "gts",
+      "version": "0.7.6_4",
+      "library_basenames": [
+        "libgts-0.7.5.dylib"
+      ],
+      "source_url": "https://downloads.sourceforge.net/project/gts/gts/0.7.6/gts-0.7.6.tar.gz",
+      "source_archive_sha256": "059c3e13e3e3b796d775ec9f96abdce8f2b3b5144df8514eda0cc12e13e8b81e",
+      "source_archive_checksum_verified": true,
+      "source_texts": [
+        {
+          "archive_path": "gts-0.7.6/COPYING",
+          "path": "licenses/native-source-texts/d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5.txt",
+          "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+          "raw_bytes": 25292,
+          "role": "license_text"
+        },
+        {
+          "archive_path": "gts-0.7.6/AUTHORS",
+          "path": "licenses/native-source-texts/674d02b4f2a38d99362159b71ae0410046fa5ad261ab21118e320c544c7cabe9.txt",
+          "sha256": "674d02b4f2a38d99362159b71ae0410046fa5ad261ab21118e320c544c7cabe9",
+          "raw_bytes": 512,
+          "role": "source_notice_evidence"
+        },
+        {
+          "archive_path": "gts-0.7.6/src/object.c",
+          "path": "licenses/native-source-texts/317fe797dabaafb385a8e40ecae3c0ff260bccf4e5d483f5d6f9f469501ecd0a.txt",
+          "sha256": "317fe797dabaafb385a8e40ecae3c0ff260bccf4e5d483f5d6f9f469501ecd0a",
+          "raw_bytes": 851,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "0f871b57efb85942b83a886479dcc39e7603e904a05d8450c737ebb7c5c2d268",
+          "archive_member_raw_bytes": 9745,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 851,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "gts-0.7.6/src/predicates.c",
+          "path": "licenses/native-source-texts/777e07756e0a2a4d00728874e9af9db901e0c491daabf9baecaa6c5a593eadbc.txt",
+          "sha256": "777e07756e0a2a4d00728874e9af9db901e0c491daabf9baecaa6c5a593eadbc",
+          "raw_bytes": 2401,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "01c891a82398b7dfafb11e997cd70c04a84f1e8ac7964f2cfccffcc84a1051a3",
+          "archive_member_raw_bytes": 113212,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 2401,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Public-domain dedication and authorship"
+        },
+        {
+          "archive_path": "gts-0.7.6/src/Makefile.am",
+          "path": "licenses/native-source-texts/51b6876134cd09eb62382535928addb8cb3df42457e8d9e569ea8ad999a75061.txt",
+          "sha256": "51b6876134cd09eb62382535928addb8cb3df42457e8d9e569ea8ad999a75061",
+          "raw_bytes": 1665,
+          "role": "build_composition_evidence"
+        },
+        {
+          "archive_path": "gts-0.7.6/README",
+          "path": "licenses/native-source-texts/335bd1faa1da929676d0aa10095b2b7aed5c5d8f8825c3baa343720da324cf9e.txt",
+          "sha256": "335bd1faa1da929676d0aa10095b2b7aed5c5d8f8825c3baa343720da324cf9e",
+          "raw_bytes": 2756,
+          "role": "distribution_license_scope_evidence"
+        }
+      ],
+      "missing_requested_paths": [],
+      "finding": "Verified GTS 0.7.6 root README says the GTS library is distributed under Library GPL; COPYING supplies version 2, and src/object.c grants version 2 or later. README explicitly identifies Shewchuk predicates.c as public domain. src/Makefile.am lists predicates.c and tribox3.c in libgts_la_SOURCES. The tribox3.c header records Tomas Akenine-Moller authorship and Popinet modifications without a file-local grant; root licensing is relevant scope evidence, so this is a provenance clarification, not a conclusion of incompatibility or absence of permission. Exact shipped bottle inclusion still needs build/link evidence. Formula revision _4 patches and exact bottle build are not captured by the upstream archive.",
+      "approved_attribution": false,
+      "obligations_pending": [
+        "Review root README license scope alongside tribox3.c authorship and any revision-4 patches; obtain provenance clarification if needed, and verify shipped binary inclusion before a definitive component conclusion",
+        "Supply applicable LGPL text, library copyright notices, exact corresponding library sources including revision-4 patches and build instructions through compliant method",
+        "Choose and document applicable LGPL version and fulfillment route; validate replacement/relink rights and macOS signing procedure, without restricting permitted reverse engineering",
+        "Retain separate authorship/public-domain evidence for predicates.c and verify complete library source composition"
+      ],
+      "source_member_references": [
+        {
+          "archive_path": "gts-0.7.6/src/tribox3.c",
+          "sha256": "704a76eae6db22207e2ae787632d38c3a2142c9b7804390317bbd4cb271610d1",
+          "raw_bytes": 6409,
+          "scope": "Exact archive member referenced for authorship/scope review; implementation and historical header are not republished in this evidence set"
+        }
+      ]
+    },
+    {
+      "formula": "pcre2",
+      "version": "10.49",
+      "library_basenames": [
+        "libpcre2-8.0.dylib"
+      ],
+      "source_url": "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.bz2",
+      "source_archive_sha256": "53c156e1ba416a20da8e65395daa132da0d80e76910424caca3fcdae7831d384",
+      "source_archive_checksum_verified": true,
+      "source_texts": [
+        {
+          "archive_path": "pcre2-10.49/LICENCE.md",
+          "path": "licenses/native-source-texts/197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811.txt",
+          "sha256": "197d8a73ffee0d6b09adba2f9c677b5f5aede24edf89258a68e48248d010d811",
+          "raw_bytes": 4011,
+          "role": "license_text"
+        },
+        {
+          "archive_path": "pcre2-10.49/COPYING",
+          "path": "licenses/native-source-texts/99272c55f3dcfa07a8a7e15a5c1a33096e4727de74241d65fa049fccfdd59507.txt",
+          "sha256": "99272c55f3dcfa07a8a7e15a5c1a33096e4727de74241d65fa049fccfdd59507",
+          "raw_bytes": 97,
+          "role": "license_text"
+        },
+        {
+          "archive_path": "pcre2-10.49/AUTHORS.md",
+          "path": "licenses/native-source-texts/412ace3355a4d6a4d835c350a7df172903811eafda7b13500dacf58429ee757e.txt",
+          "sha256": "412ace3355a4d6a4d835c350a7df172903811eafda7b13500dacf58429ee757e",
+          "raw_bytes": 4232,
+          "role": "source_notice_evidence"
+        },
+        {
+          "archive_path": "pcre2-10.49/deps/sljit/LICENSE",
+          "path": "licenses/native-source-texts/5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb.txt",
+          "sha256": "5f216505c0f6ea3273caec89e766eef93cdeb7bbb0c429f9360116d7c938feeb",
+          "raw_bytes": 1444,
+          "role": "license_text"
+        },
+        {
+          "archive_path": "pcre2-10.49/deps/sljit/sljit_src/sljitLir.c",
+          "path": "licenses/native-source-texts/bcc6b561eab520f5da83e675f6bb0b9e420c20a783c16feaac1f3932b3a0b8cf.txt",
+          "sha256": "bcc6b561eab520f5da83e675f6bb0b9e420c20a783c16feaac1f3932b3a0b8cf",
+          "raw_bytes": 1445,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "a8ab301281e18970ee7459e484cfb83f07abb673fdac3aafc81393ddcd8f104a",
+          "archive_member_raw_bytes": 137370,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 1445,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "pcre2-10.49/src/pcre2_compile.c",
+          "path": "licenses/native-source-texts/8afb8c5f7d37160deb1c610a9e73899f3d4c97bd0f5482bec64217ceb221ff0c.txt",
+          "sha256": "8afb8c5f7d37160deb1c610a9e73899f3d4c97bd0f5482bec64217ceb221ff0c",
+          "raw_bytes": 2129,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "01f7e90e6ccea23097911b35e33a1b6ea567887216d2695a24fcd27fbcf35223",
+          "archive_member_raw_bytes": 378024,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 2129,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "pcre2-10.49/src/pcre2_jit_compile.c",
+          "path": "licenses/native-source-texts/4fa3d87bd20811075d596221384540baf4a09c380594f18a9df090fdccf18215.txt",
+          "sha256": "4fa3d87bd20811075d596221384540baf4a09c380594f18a9df090fdccf18215",
+          "raw_bytes": 2178,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "32b4f057cc8ac9a15c9c837121112329e866c1bc1d98acce148ceeff4525c587",
+          "archive_member_raw_bytes": 444767,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 2178,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "pcre2-10.49/src/pcre2_jit_compile.c",
+          "path": "licenses/native-source-texts/d552ba75aece0c0352f3b152b191a4056637f3ab5260fde9aee48a2c7eea4ae5.txt",
+          "sha256": "d552ba75aece0c0352f3b152b191a4056637f3ab5260fde9aee48a2c7eea4ae5",
+          "raw_bytes": 161,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "32b4f057cc8ac9a15c9c837121112329e866c1bc1d98acce148ceeff4525c587",
+          "archive_member_raw_bytes": 444767,
+          "excerpt_byte_start": 2390,
+          "excerpt_byte_end_exclusive": 2551,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Conditional JIT compilation and all-in-one inclusion explanation"
+        },
+        {
+          "archive_path": "pcre2-10.49/src/pcre2_jit_compile.c",
+          "path": "licenses/native-source-texts/964fe563233ced7fd9ec83cdde4eda03af7b07e613f23edef260bf9ade77cb1c.txt",
+          "sha256": "964fe563233ced7fd9ec83cdde4eda03af7b07e613f23edef260bf9ade77cb1c",
+          "raw_bytes": 46,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "32b4f057cc8ac9a15c9c837121112329e866c1bc1d98acce148ceeff4525c587",
+          "archive_member_raw_bytes": 444767,
+          "excerpt_byte_start": 3226,
+          "excerpt_byte_end_exclusive": 3272,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "SLJIT source inclusion within SUPPORT_JIT"
+        },
+        {
+          "archive_path": "pcre2-10.49/src/pcre2_ucd.c",
+          "path": "licenses/native-source-texts/abfdd5e1f856c588b5311d41ef080c70ce6fdb44ba4f9d6411adbcce03a5e3f9.txt",
+          "sha256": "abfdd5e1f856c588b5311d41ef080c70ce6fdb44ba4f9d6411adbcce03a5e3f9",
+          "raw_bytes": 2803,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "cfa8bcb3ad316e09ebfdf3e4b07d708a9d4e53795cc7c0bf04ce5156d7695adc",
+          "archive_member_raw_bytes": 359377,
+          "excerpt_byte_start": 0,
+          "excerpt_byte_end_exclusive": 2803,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Leading copyright and license comments"
+        },
+        {
+          "archive_path": "pcre2-10.49/src/pcre2_ucd.c",
+          "path": "licenses/native-source-texts/6b863f9ba3726977e367b3fd145c28275bfba741fa5705addc59827b48c8494f.txt",
+          "sha256": "6b863f9ba3726977e367b3fd145c28275bfba741fa5705addc59827b48c8494f",
+          "raw_bytes": 494,
+          "role": "source_header_excerpt_evidence",
+          "archive_member_sha256": "cfa8bcb3ad316e09ebfdf3e4b07d708a9d4e53795cc7c0bf04ce5156d7695adc",
+          "archive_member_raw_bytes": 359377,
+          "excerpt_byte_start": 2306,
+          "excerpt_byte_end_exclusive": 2800,
+          "sha256_scope": "exact excerpt bytes; full member hash is archive_member_sha256",
+          "excerpt_purpose": "Generated Unicode-table provenance explanation"
+        },
+        {
+          "archive_path": "pcre2-10.49/Makefile.am",
+          "path": "licenses/native-source-texts/487613fbfff9ed01d218986fae6e056d36bff41577e2344ff121675d2fbc04d5.txt",
+          "sha256": "487613fbfff9ed01d218986fae6e056d36bff41577e2344ff121675d2fbc04d5",
+          "raw_bytes": 33218,
+          "role": "build_composition_evidence"
+        }
+      ],
+      "missing_requested_paths": [],
+      "finding": "Verified 10.49 LICENCE.md explicitly declares BSD-3-Clause WITH PCRE2-exception and separate 2-clause BSD JIT compiler licensing; deps/sljit/LICENSE provides actual SLJIT notice. src/pcre2_jit_compile.c retains BSD-3-Clause header and conditionally includes SLJIT source when SUPPORT_JIT is set. Root aggregate label alone misses this distinction. Source header University of Cambridge year ranges differ from root summary, so preserve both candidate notices. Unicode-derived generated tables warrant build/data provenance review; archive does not contain referenced maint/GenerateUcd.py. Do not assume binary-package exception applies to this bundle without review.",
+      "approved_attribution": false,
+      "obligations_pending": [
+        "Determine JIT and Unicode configuration from exact bottle build evidence",
+        "Reproduce applicable BSD copyright notices, conditions and disclaimers, including SLJIT when compiled in",
+        "Review binary-library-like package exception applicability; do not use it to omit notices by default",
+        "Audit Unicode-generated data provenance and source/header copyright variations; obtain exact patches/build inputs"
+      ]
+    }
+  ]
+}

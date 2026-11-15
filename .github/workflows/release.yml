@@ -1,0 +1,122 @@
+name: Polar Station release
+run-name: ${{ inputs.phase }} ${{ inputs.tools_sha256 }}
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        type: choice
+        options: [build, review, publish]
+        default: build
+        required: true
+      tools_asset:
+        description: Exact private draft tool archive asset ID
+        required: true
+      tools_sha256:
+        description: Reviewed tool archive SHA-256
+        required: true
+permissions: {}
+concurrency:
+  group: station-release-${{ inputs.phase }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      actions: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      CARGO_BUILD_JOBS: '3'
+      POLAR_GRAPHICS_JOBS: '3'
+      PYTHONDONTWRITEBYTECODE: '1'
+    outputs:
+      release_metadata: ${{ steps.publish.outputs.release_metadata }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Load exact private release tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL_ASSET: ${{ inputs.tools_asset }}
+          TOOL_SHA: ${{ inputs.tools_sha256 }}
+        run: |
+          set -euo pipefail
+          export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
+          echo "POLAR_STATION_RELEASE_TOOLS=$POLAR_STATION_RELEASE_TOOLS" >> "$GITHUB_ENV"
+          [[ "$TOOL_ASSET" =~ ^[1-9][0-9]*$ && "$TOOL_SHA" =~ ^[a-f0-9]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/assets/$TOOL_ASSET" -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/tools.tar.gz"
+          printf '%s  %s\n' "$TOOL_SHA" "$RUNNER_TEMP/tools.tar.gz" | shasum -a 256 --check
+          mkdir "$POLAR_STATION_RELEASE_TOOLS"
+          python3 -c 'import os,tarfile; tarfile.open(os.environ["RUNNER_TEMP"]+"/tools.tar.gz").extractall(os.environ["POLAR_STATION_RELEASE_TOOLS"],filter="data")'
+      - name: Verify exact application source
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" verify
+      - name: Prepare pinned build dependencies
+        if: inputs.phase == 'build'
+        run: bash "$POLAR_STATION_RELEASE_TOOLS/prepare.sh"
+      - name: Build through public entry and collect private observations
+        if: inputs.phase == 'build'
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" build
+      - name: Check application and package actual inputs
+        if: inputs.phase == 'build'
+        run: bash "$POLAR_STATION_RELEASE_TOOLS/collect.sh"
+      - name: Retain build in an unpublished draft
+        if: inputs.phase == 'build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash "$POLAR_STATION_RELEASE_TOOLS/retain.sh"
+      - name: Inspect current artifact and retain private report
+        if: inputs.phase == 'review'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" review
+      - name: Validate exact publication approval
+        if: inputs.phase == 'publish'
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" validate
+      - name: Fetch approved artifact
+        if: inputs.phase == 'publish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" fetch
+      - name: Package and statically verify approved artifact
+        if: inputs.phase == 'publish'
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" package
+      - name: Publish approved candidate
+        id: publish
+        if: inputs.phase == 'publish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" publish
+  public-download:
+    if: inputs.phase == 'publish'
+    needs: native
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      # GitHub requires draft-capable access to load the private tool attachment.
+      # The finalizer's public download operation uses its GET-only client.
+      contents: write
+      actions: read
+    steps:
+      - name: Load the same exact private release tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL_ASSET: ${{ inputs.tools_asset }}
+          TOOL_SHA: ${{ inputs.tools_sha256 }}
+        run: |
+          set -euo pipefail
+          export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
+          echo "POLAR_STATION_RELEASE_TOOLS=$POLAR_STATION_RELEASE_TOOLS" >> "$GITHUB_ENV"
+          [[ "$TOOL_ASSET" =~ ^[1-9][0-9]*$ && "$TOOL_SHA" =~ ^[a-f0-9]{64}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/assets/$TOOL_ASSET" -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/tools.tar.gz"
+          printf '%s  %s\n' "$TOOL_SHA" "$RUNNER_TEMP/tools.tar.gz" | shasum -a 256 --check
+          mkdir "$POLAR_STATION_RELEASE_TOOLS"
+          python3 -c 'import os,tarfile; tarfile.open(os.environ["RUNNER_TEMP"]+"/tools.tar.gz").extractall(os.environ["POLAR_STATION_RELEASE_TOOLS"],filter="data")'
+      - name: Download and verify published bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_METADATA: ${{ needs.native.outputs.release_metadata }}
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" fetch-public
+      - name: Check installed copy without credentials
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" launch-public

@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Build Polar Station for Apple Silicon. See BUILD_MACOS.md for prerequisites."""
+import argparse
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def run(*command, **kwargs):
+    subprocess.run([str(arg) for arg in command], check=True, **kwargs)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ghostty', type=Path, required=True, help='Ghostty v1.3.1 checkout (read only)')
+    parser.add_argument('--godot', type=Path, required=True, help='pinned Godot checkout (read only)')
+    parser.add_argument('--editor', type=Path, required=True, help='Godot 4.7.2 editor executable')
+    parser.add_argument('--graphviz', type=Path, required=True, help='Graphviz installation prefix')
+    parser.add_argument('--sdk', type=Path, required=True, help='Zig-compatible macOS 15 SDK')
+    parser.add_argument('--zig', default='zig', help='Zig 0.15.2 executable')
+    parser.add_argument('--jobs', type=int, default=3)
+    parser.add_argument('--debug', action='store_true')
+    args = parser.parse_args()
+    if sys.platform != 'darwin' or os.uname().machine != 'arm64':
+        parser.error('macOS on Apple Silicon is required')
+    for tool in ('cargo', 'rustup', 'git', 'scons', 'xcodebuild', 'msgfmt', args.zig):
+        if not shutil.which(tool):
+            parser.error(f'missing {tool}; see BUILD_MACOS.md')
+    if args.jobs < 1 or not args.sdk.is_dir():
+        parser.error('a positive --jobs value and an existing --sdk are required')
+    if subprocess.check_output([args.zig, 'version'], text=True).strip() != '0.15.2':
+        parser.error('Zig 0.15.2 is required')
+    if 'v4.9.1' not in subprocess.check_output(['scons', '--version'], text=True):
+        parser.error('SCons 4.9.1 is required')
+    root = Path(__file__).resolve().parent
+    sys.path[:0] = [str(root / 'apps/polar-tmux-shared/ghostty'),
+                   str(root / 'apps/polar-graphics-native')]
+    from overlay import install as apply_display
+    from resources_macos import package as package_graphics
+    configuration = 'Debug' if args.debug else 'Release'
+    profile = 'debug' if args.debug else 'release'
+    optimize = 'Debug' if args.debug else 'ReleaseFast'
+    target = root / 'target'
+    target.mkdir(exist_ok=True)
+    (target / 'deps').mkdir(exist_ok=True)
+    env = os.environ.copy()
+    env.update(SDKROOT=str(args.sdk.resolve()), MACOSX_DEPLOYMENT_TARGET='15.0')
+    # Keep dependency edits/build outputs in this checkout's target directory.
+    with tempfile.TemporaryDirectory(prefix='station-', dir=target) as temporary:
+        work = Path(temporary)
+        for name, source, pin in (
+            ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
+            ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
+        ):
+            destination = target / 'deps/godot' if name == 'godot' else work / name
+            if not destination.exists():
+                run('git', 'clone', '--no-checkout', '--', source.resolve(), destination)
+                run('git', '-C', destination, 'checkout', '--detach', pin)
+            elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
+                raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
+        ghostty, godot = work / 'ghostty', target / 'deps/godot'
+        overlay = root / 'apps/polar-station-macos/ghostty-overlay/ghostty-v1.3.1.patch'
+        run('git', '-C', ghostty, 'apply', overlay)
+        project = ghostty / 'macos/Ghostty.xcodeproj/project.pbxproj'
+        text = project.read_text()
+        marker = 'relativePath = ../../../polarinfrav1/apps/polar-station-macos;'
+        if text.count(marker) != 1:
+            raise ValueError('pinned Swift package reference changed')
+        import json
+        relative = os.path.relpath(root / 'apps/polar-station-macos', ghostty / 'macos')
+        project.write_text(text.replace(marker, 'relativePath = ' + json.dumps(relative) + ';'))
+        apply_display(ghostty, 'macos')
+        module = ghostty / 'macos/Sources/PolarStation'
+        module.mkdir(parents=True, exist_ok=True)
+        for path in (root / 'apps/polar-station-macos/ghostty-module').iterdir():
+            if path.is_file():
+                shutil.copy2(path, module / path.name)
+        for path in (root / 'apps/polar-station-macos/Resources').iterdir():
+            if path.is_file():
+                shutil.copy2(path, module / path.name)
+        entry = godot / 'platform/macos/libgodot_macos.mm'
+        text = entry.read_text()
+        if text.count('new OS_MacOS_NSApp(') == 1:
+            entry.write_text(text.replace('new OS_MacOS_NSApp(', 'new OS_MacOS_Headless('))
+        elif text.count('new OS_MacOS_Headless(') != 1:
+            raise ValueError('pinned libgodot entry changed')
+        run('scons', '-C', godot, '-j', args.jobs, 'platform=macos', 'arch=arm64',
+            'target=template_release', 'library_type=shared_library', 'generate_bundle=no',
+            'vulkan=no', 'metal=yes', 'angle=no', 'opengl3=yes', 'debug_symbols=no',
+            'optimize=speed', 'disable_path_overrides=no', 'module_jolt_physics_enabled=no',
+            'module_godot_physics_2d_enabled=no', 'module_godot_physics_3d_enabled=no',
+            'custom_modules=' + str(root / 'apps/polar-graphics-native/godot-modules'), env=env)
+        cargo = ['cargo', 'build', '--locked', '--manifest-path', root / 'Cargo.toml',
+                 '--target-dir', target, '--target', 'aarch64-apple-darwin']
+        if not args.debug:
+            cargo.append('--release')
+        # Separate invocations prevent Host features from entering the desktop archive.
+        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', '--lib', env=env)
+        run(*cargo, '-p', 'polar-station-desktop-ffi', '--lib', env=env)
+        run(*cargo, '-p', 'polar-graphics-godot', '--lib', env=env)
+        rust = target / 'aarch64-apple-darwin' / profile
+        client = target / 'polar-station-client/current'
+        client.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(rust / 'libpolar_station_desktop_ffi.a', client)
+        env['POLAR_STATION_CLIENT_LIB_DIR'] = str(client)
+        # The pinned Zig SDK query needs macOS 15 even when Xcode uses a newer SDK.
+        wrapper = work / 'tools'
+        wrapper.mkdir()
+        (wrapper / 'xcrun').write_text('#!/bin/sh\nif [ "$*" = "--sdk macosx --show-sdk-path" ]; then\n'
+                                     '  printf "%s\\n" "$SDKROOT"\nelse\n  exec /usr/bin/xcrun "$@"\nfi\n')
+        (wrapper / 'xcrun').chmod(0o755)
+        env['PATH'] = str(wrapper) + os.pathsep + env['PATH']
+        run(args.zig, 'build', '-Dpolar-tmux=true', '-Demit-macos-app=false',
+            '-Dxcframework-target=native', '-Doptimize=' + optimize, cwd=ghostty, env=env)
+        xcode_env = {key: os.environ[key] for key in ('HOME', 'DEVELOPER_DIR') if key in os.environ}
+        xcode_env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin'
+        run('xcodebuild', '-project', 'macos/Ghostty.xcodeproj', '-scheme', 'Ghostty',
+            '-configuration', configuration, 'SYMROOT=' + str(work / 'xcode'),
+            'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=YES', 'MACOSX_DEPLOYMENT_TARGET=15.0',
+            'ENABLE_CODE_COVERAGE=NO', 'CLANG_ENABLE_CODE_COVERAGE=NO',
+            'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO', 'CODE_SIGN_IDENTITY=',
+            'build', cwd=ghostty, env=xcode_env)
+        app = work / 'xcode' / configuration / 'Polar Station.app'
+        resources = app / 'Contents/Resources'
+        package_graphics(root, godot / 'bin/libgodot.macos.template_release.arm64.dylib',
+                         args.editor.resolve(), rust / 'libpolar_graphics_godot.dylib',
+                         args.graphviz.resolve(), resources / 'graphics')
+        helpers = app / 'Contents/Helpers'
+        helpers.mkdir(exist_ok=True)
+        shutil.copy2(rust / 'polar-tmux', helpers)
+        info = app / 'Contents/Info.plist'
+        data = plistlib.loads(info.read_bytes())
+        data.update(PolarStationBuildConfiguration=configuration, PolarStationSourceCommit='local',
+                    PolarStationDesktopContract=1,
+                    NSAppleEventsUsageDescription='Send enabled Codex completion notifications through Messages.')
+        if not data.get('NSMicrophoneUsageDescription', '').strip():
+            raise ValueError('application is missing NSMicrophoneUsageDescription')
+        info.write_bytes(plistlib.dumps(data))
+        host_entitlements = root / 'apps/polar-station-macos/host.entitlements'
+        run('codesign', '--force', '--identifier', 'com.polarealm.polar-station.host',
+            '--options', 'runtime', '--entitlements', host_entitlements, '--sign', '-', helpers / 'polar-tmux')
+        for path in (resources / 'graphics').rglob('*'):
+            if path.is_file() and 'Mach-O' in subprocess.check_output(['file', '-b', str(path)], text=True):
+                run('codesign', '--force', '--options', 'runtime', '--sign', '-', path)
+        name = 'GhosttyDebug.entitlements' if args.debug else 'Ghostty.entitlements'
+        entitlements = plistlib.loads((ghostty / 'macos' / name).read_bytes())
+        entitlements.update({'com.apple.security.device.audio-input': True,
+                             'com.apple.security.cs.disable-library-validation': True})
+        main_entitlements = work / 'main.entitlements'
+        main_entitlements.write_bytes(plistlib.dumps(entitlements))
+        run('codesign', '--force', '--deep', '--options', 'runtime', '--preserve-metadata=identifier',
+            '--entitlements', main_entitlements, '--sign', '-', app)
+        actual = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)]))
+        if actual.get('com.apple.security.device.audio-input') is not True:
+            raise ValueError('final application signature is missing microphone permission')
+        host_actual = plistlib.loads(subprocess.check_output([
+            'codesign', '-d', '--entitlements', ':-', str(helpers / 'polar-tmux')]))
+        if host_actual.get('com.apple.security.automation.apple-events') is not True:
+            raise ValueError('final Host signature is missing Messages permission')
+        output = target / 'macos' / configuration / app.name
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if output.exists():
+            shutil.rmtree(output)
+        run('ditto', '--rsrc', '--extattr', app, output)
+        run('codesign', '--verify', '--deep', '--strict', output)
+        print(output)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,14 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-lgp-store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1"
+polar-identity = { workspace = true }
+polar-lgp-model = { workspace = true }
+polar-storage-core = { workspace = true }
+polar-tools-model = { workspace = true }
+tokio = { workspace = true }

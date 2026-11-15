@@ -1,0 +1,7 @@
+{
+  "uuid": "shortcuts@polarstation.polarealm.com",
+  "name": "Polar Station shortcuts",
+  "description": "Forward only the configured Polar Station shortcut edges to the shared shortcut interpreter.",
+  "shell-version": ["50"],
+  "version": 1
+}

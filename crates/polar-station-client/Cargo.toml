@@ -1,0 +1,25 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-station-client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+futures-util = "0.3"
+polar-local-access-runtime.workspace = true
+polar-local-access-contract.workspace = true
+polar-runtime-paths.workspace = true
+polar-tmux-protocol.workspace = true
+polar-tmux-types.workspace = true
+polar-station-session.workspace = true
+polar-dictate.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tempfile = "3"
+polar-identity.workspace = true
+libc = "0.2"

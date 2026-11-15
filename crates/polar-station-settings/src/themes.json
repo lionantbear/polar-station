@@ -1,0 +1,68 @@
+[
+  {
+    "id": "catppuccin_mocha",
+    "name": "Catppuccin Mocha",
+    "dark": true,
+    "background": "#1e1e2e",
+    "foreground": "#cdd6f4",
+    "surface": "#28293a",
+    "accent": "#89b4fa",
+    "selection_background": "#585b70",
+    "selection_foreground": "#cdd6f4"
+  },
+  {
+    "id": "catppuccin_latte",
+    "name": "Catppuccin Latte",
+    "dark": false,
+    "background": "#eff1f5",
+    "foreground": "#4c4f69",
+    "surface": "#ffffff",
+    "accent": "#1e66f5",
+    "selection_background": "#acb0be",
+    "selection_foreground": "#4c4f69"
+  },
+  {
+    "id": "nord",
+    "name": "Nord",
+    "dark": true,
+    "background": "#2e3440",
+    "foreground": "#d8dee9",
+    "surface": "#383e4a",
+    "accent": "#81a1c1",
+    "selection_background": "#eceff4",
+    "selection_foreground": "#4c566a"
+  },
+  {
+    "id": "tokyonight",
+    "name": "TokyoNight",
+    "dark": true,
+    "background": "#1a1b26",
+    "foreground": "#c0caf5",
+    "surface": "#242632",
+    "accent": "#7aa2f7",
+    "selection_background": "#33467c",
+    "selection_foreground": "#c0caf5"
+  },
+  {
+    "id": "gruvbox_dark",
+    "name": "Gruvbox Dark",
+    "dark": true,
+    "background": "#282828",
+    "foreground": "#ebdbb2",
+    "surface": "#343330",
+    "accent": "#458588",
+    "selection_background": "#665c54",
+    "selection_foreground": "#ebdbb2"
+  },
+  {
+    "id": "dracula",
+    "name": "Dracula",
+    "dark": true,
+    "background": "#282a36",
+    "foreground": "#f8f8f2",
+    "surface": "#343641",
+    "accent": "#bd93f9",
+    "selection_background": "#44475a",
+    "selection_foreground": "#ffffff"
+  }
+]

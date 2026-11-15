@@ -1,0 +1,471 @@
+{
+  "nodes": {
+    "filter-clear": {
+      "properties": {
+        "clauses": [],
+        "title": "Clear"
+      },
+      "type": "polar.explorer.filter.v1"
+    },
+    "filter-tasks": {
+      "properties": {
+        "clauses": [
+          {
+            "field": "node.type",
+            "operator": "one_of",
+            "values": [
+              "polar.development.task.v1",
+              "polar.station.task.v1"
+            ]
+          }
+        ],
+        "title": "Tasks"
+      },
+      "type": "polar.explorer.filter.v1"
+    },
+    "grouping-business": {
+      "properties": {
+        "algorithm": "semantic_anchors",
+        "anchor_node_types": [
+          "polar.document.group.v1",
+          "polar.development.tree.v1",
+          "polar.request.tree.v1",
+          "polar.decision.tree.v1"
+        ],
+        "title": "Hierarchical Topics"
+      },
+      "type": "polar.explorer.grouping-rule.v1"
+    },
+    "grouping-task-follow-up": {
+      "properties": {
+        "algorithm": "semantic_anchors",
+        "anchor_node_types": [
+          "polar.document.group.v1",
+          "polar.development.tree.v1",
+          "polar.request.tree.v1",
+          "polar.decision.tree.v1",
+          "polar.development.task.v1",
+          "polar.station.task.v1"
+        ],
+        "title": "Projects, Topics and Tasks"
+      },
+      "type": "polar.explorer.grouping-rule.v1"
+    },
+    "organization-decisions": {
+      "properties": {
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "direction": "outgoing",
+            "relation": "polar.contains.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.derived-from.v1"
+          },
+          {
+            "direction": "incoming",
+            "relation": "polar.applies.v1"
+          }
+        ],
+        "title": "Decisions Organization"
+      },
+      "type": "polar.explorer.organization-rule.v1"
+    },
+    "organization-development": {
+      "properties": {
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "direction": "outgoing",
+            "relation": "polar.contains.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.implements.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.uses.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.produces.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.observes.v1"
+          },
+          {
+            "direction": "incoming",
+            "relation": "polar.station.verifies.v1"
+          }
+        ],
+        "title": "Development Organization"
+      },
+      "type": "polar.explorer.organization-rule.v1"
+    },
+    "organization-ideas": {
+      "properties": {
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "direction": "outgoing",
+            "relation": "polar.contains.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.context.v1"
+          }
+        ],
+        "title": "Ideas Organization"
+      },
+      "type": "polar.explorer.organization-rule.v1"
+    },
+    "organization-requirements": {
+      "properties": {
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "direction": "outgoing",
+            "relation": "polar.contains.v1"
+          },
+          {
+            "direction": "incoming",
+            "relation": "polar.implements.v1"
+          },
+          {
+            "direction": "incoming",
+            "relation": "polar.station.satisfies.v1"
+          }
+        ],
+        "title": "Requirements Organization"
+      },
+      "type": "polar.explorer.organization-rule.v1"
+    },
+    "organization-system": {
+      "properties": {
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "direction": "outgoing",
+            "relation": "polar.contains.v1"
+          }
+        ],
+        "title": "System Organization"
+      },
+      "type": "polar.explorer.organization-rule.v1"
+    },
+    "organization-task-follow-up": {
+      "properties": {
+        "algorithm": "breadth_first",
+        "relation_policy": [
+          {
+            "direction": "outgoing",
+            "relation": "polar.contains.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.implements.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.station.implements.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.uses.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.produces.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.context.v1"
+          },
+          {
+            "direction": "outgoing",
+            "relation": "polar.observes.v1"
+          },
+          {
+            "direction": "both",
+            "relation": "polar.station.verifies.v1"
+          }
+        ],
+        "title": "Task Traceability"
+      },
+      "type": "polar.explorer.organization-rule.v1"
+    },
+    "perspective-decisions": {
+      "properties": {
+        "business_question": "为什么这样决定，来源是什么，谁采用了它？",
+        "data_support": "available-with-recorded-gaps",
+        "order": 4,
+        "role": "business-perspective",
+        "title": "Decisions"
+      },
+      "relations": {
+        "filter": {
+          "target": {
+            "node": "filter-clear"
+          }
+        },
+        "grouping": {
+          "target": {
+            "node": "grouping-business"
+          }
+        },
+        "organization": {
+          "target": {
+            "node": "organization-decisions"
+          }
+        },
+        "root": {
+          "target": {
+            "node": "roots-decisions"
+          }
+        }
+      },
+      "type": "polar.explorer.view.v1"
+    },
+    "perspective-development": {
+      "properties": {
+        "business_question": "有哪些工作，准备怎么做，还缺哪些验证？",
+        "data_support": "available-with-recorded-gaps",
+        "order": 1,
+        "role": "business-perspective",
+        "title": "Development"
+      },
+      "relations": {
+        "filter": {
+          "target": {
+            "node": "filter-clear"
+          }
+        },
+        "grouping": {
+          "target": {
+            "node": "grouping-business"
+          }
+        },
+        "organization": {
+          "target": {
+            "node": "organization-development"
+          }
+        },
+        "root": {
+          "target": {
+            "node": "roots-development"
+          }
+        }
+      },
+      "type": "polar.explorer.view.v1"
+    },
+    "perspective-ideas": {
+      "properties": {
+        "business_question": "有哪些值得继续想的方向，与已有工作有何关联？",
+        "data_support": "available",
+        "order": 5,
+        "role": "business-perspective",
+        "title": "Ideas"
+      },
+      "relations": {
+        "filter": {
+          "target": {
+            "node": "filter-clear"
+          }
+        },
+        "grouping": {
+          "target": {
+            "node": "grouping-business"
+          }
+        },
+        "organization": {
+          "target": {
+            "node": "organization-ideas"
+          }
+        },
+        "root": {
+          "target": {
+            "node": "roots-ideas"
+          }
+        }
+      },
+      "type": "polar.explorer.view.v1"
+    },
+    "perspective-requirements": {
+      "properties": {
+        "business_question": "用户到底想要什么，哪些方案回应了要求？",
+        "data_support": "available",
+        "order": 0,
+        "role": "business-perspective",
+        "title": "Requirements"
+      },
+      "relations": {
+        "filter": {
+          "target": {
+            "node": "filter-clear"
+          }
+        },
+        "grouping": {
+          "target": {
+            "node": "grouping-business"
+          }
+        },
+        "organization": {
+          "target": {
+            "node": "organization-requirements"
+          }
+        },
+        "root": {
+          "target": {
+            "node": "roots-requirements"
+          }
+        }
+      },
+      "type": "polar.explorer.view.v1"
+    },
+    "perspective-system": {
+      "properties": {
+        "business_question": "已记录的组成是什么，哪些组件／依赖事实还缺？",
+        "data_support": "partial-data-support",
+        "order": 3,
+        "role": "business-perspective",
+        "title": "System Structure"
+      },
+      "relations": {
+        "filter": {
+          "target": {
+            "node": "filter-clear"
+          }
+        },
+        "grouping": {
+          "target": {
+            "node": "grouping-business"
+          }
+        },
+        "organization": {
+          "target": {
+            "node": "organization-system"
+          }
+        },
+        "root": {
+          "target": {
+            "node": "roots-polar"
+          }
+        }
+      },
+      "type": "polar.explorer.view.v1"
+    },
+    "perspective-task-follow-up": {
+      "properties": {
+        "business_question": "任务完成了吗？它对应什么需求、采用什么设计，测试证据在哪里？",
+        "data_support": "available-with-recorded-gaps",
+        "order": 2,
+        "role": "business-perspective",
+        "title": "Task Follow-up"
+      },
+      "relations": {
+        "filter": {
+          "target": {
+            "node": "filter-tasks"
+          }
+        },
+        "grouping": {
+          "target": {
+            "node": "grouping-task-follow-up"
+          }
+        },
+        "organization": {
+          "target": {
+            "node": "organization-task-follow-up"
+          }
+        },
+        "root": {
+          "target": {
+            "node": "roots-development"
+          }
+        }
+      },
+      "type": "polar.explorer.view.v1"
+    },
+    "roots-decisions": {
+      "properties": {
+        "title": "Decisions Root"
+      },
+      "relations": {
+        "root-00": {
+          "target": {
+            "kind": "object",
+            "uuid": "c63bba01-44d9-43fe-90e7-30c974c7d397"
+          }
+        }
+      },
+      "type": "polar.explorer.root-selection.v1"
+    },
+    "roots-development": {
+      "properties": {
+        "title": "Development Root"
+      },
+      "relations": {
+        "root-00": {
+          "target": {
+            "kind": "object",
+            "uuid": "d9fc2b64-c6da-4102-90d1-897a61c60806"
+          }
+        }
+      },
+      "type": "polar.explorer.root-selection.v1"
+    },
+    "roots-ideas": {
+      "properties": {
+        "title": "Ideas Root"
+      },
+      "relations": {
+        "root-00": {
+          "target": {
+            "kind": "object",
+            "uuid": "4eba96e2-031e-4370-919e-c2ea92cda07a"
+          }
+        }
+      },
+      "type": "polar.explorer.root-selection.v1"
+    },
+    "roots-polar": {
+      "properties": {
+        "title": "Polar Root"
+      },
+      "relations": {
+        "root-00": {
+          "target": {
+            "kind": "object",
+            "uuid": "afa778a6-e6d0-5659-974b-b44d6ef896e9"
+          }
+        }
+      },
+      "type": "polar.explorer.root-selection.v1"
+    },
+    "roots-requirements": {
+      "properties": {
+        "title": "Requirements Root"
+      },
+      "relations": {
+        "root-00": {
+          "target": {
+            "kind": "object",
+            "uuid": "5d819f37-a109-448e-af8f-8ed49f2048a9"
+          }
+        }
+      },
+      "type": "polar.explorer.root-selection.v1"
+    },
+    "view-example": {
+      "properties": {
+        "title": "Polar Browsing Configuration"
+      },
+      "type": "polar.document.group.v1"
+    }
+  },
+  "root": "view-example",
+  "schema": "polar.ideacave.itree.v1"
+}

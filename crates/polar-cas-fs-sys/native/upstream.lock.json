@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/erofs/erofs-utils.git",
+  "ref": "1c230a485f25837cb51d6fc79332f30758d9006c",
+  "commit": "1c230a485f25837cb51d6fc79332f30758d9006c",
+  "source_policy": "Every admitted source must hash to the complete pinned Git tree, including symlinks and executable bits. Exports are verified without executing Git hooks or upstream code.",
+  "git_blob_sha1": {
+    "lib/inode.c": "ec96556f500b5ec62d1e6875ecfa93c76003cc52",
+    "lib/compress.c": "8305543c92178b5218adaf0d8b7655ce9b0de824",
+    "lib/liberofs_compress.h": "43227a28c4a8080868edc57653cd7599cb413264",
+    "include/erofs/internal.h": "d905077eecd0aa1e503e2df6ab3907277dc6cbea",
+    "include/erofs/importer.h": "5141965fcfe77180d2bf77f18966907ac9621f59",
+    "include/erofs/io.h": "96309fde96460e41caec20c0d6b420818f1cbc93"
+  },
+  "configuration": "Linux native target; single-threaded upstream importer; raw/LZ4; internal SHA256; no remote/FUSE/experimental backends",
+  "patch_revision": "polar-vfile-v2",
+  "tree": "e79c75603d4dc0b486405a139aeadbb71f57998e",
+  "version_label": "1.9.4-g1c230a48"
+}

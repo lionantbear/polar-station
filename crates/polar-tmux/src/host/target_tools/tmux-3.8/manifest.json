@@ -1,0 +1,32 @@
+{
+  "version": "3.8",
+  "minimum_macos": "15.0",
+  "source": "https://github.com/tmux/tmux-builds/releases/tag/v3.8",
+  "assets": [
+    {
+      "file": "LICENSES.tar.gz",
+      "sha256": "9c2c903970e8245e0c1abd20311534e6eb152bf2bde3e54af77821f09b81effc",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.8/LICENSES.tar.gz"
+    },
+    {
+      "file": "tmux-3.8-linux-arm64.tar.gz",
+      "sha256": "f399311b1159705e69839eaf4f6f68c8b8540dc3a8538b87c30dedb9c3c7fc23",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.8/tmux-3.8-linux-arm64.tar.gz"
+    },
+    {
+      "file": "tmux-3.8-linux-x86_64.tar.gz",
+      "sha256": "147849ff18b62a8aa3d5d8f75dd07c3f9fdfad529f932236afdec838fc1d15e1",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.8/tmux-3.8-linux-x86_64.tar.gz"
+    },
+    {
+      "file": "tmux-3.8-macos-arm64.tar.gz",
+      "sha256": "ec926bbf28ddf55d0dc7c9791d43e03e251ddab392d763f7fbb38d4b8408d051",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.8/tmux-3.8-macos-arm64.tar.gz"
+    },
+    {
+      "file": "tmux-3.8-macos-x86_64.tar.gz",
+      "sha256": "e7b92e51d9e9610ce80d1c477da1e6ff6a6398ea6b6b4d4ff7b19cf60f594555",
+      "url": "https://github.com/tmux/tmux-builds/releases/download/v3.8/tmux-3.8-macos-x86_64.tar.gz"
+    }
+  ]
+}

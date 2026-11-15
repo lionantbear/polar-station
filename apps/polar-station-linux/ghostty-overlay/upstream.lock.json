@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/ghostty-org/ghostty.git",
+    "tag": "v1.3.1",
+    "annotated_tag_object": "22efb0be2bbea73e5339f5426fa3b20edabcaa11",
+    "commit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+    "git_archive_sha256": "401fde83af12b915d7ec86df59d8240a39a35f64bbb85b235315812275a8698f",
+    "minimum_zig_version": "0.15.2"
+  },
+  "build": {
+    "feature": "polar-tmux",
+    "feature_value": true,
+    "app_runtime": "gtk",
+    "gtk_wayland": true,
+    "managed_executable": "polarstation",
+    "managed_application_id": "com.polarealm.PolarStation"
+  },
+  "overlay": {
+    "module_destination": "src/apprt/gtk/polar_tmux",
+    "allowed_upstream_files": [
+      "src/build_config.zig",
+      "src/config/Config.zig",
+      "src/build/Config.zig",
+      "src/build/GhosttyExe.zig",
+      "src/build/GhosttyResources.zig",
+      "src/renderer/link.zig",
+      "src/renderer/generic.zig",
+      "src/apprt/gtk/App.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/apprt/gtk/class/surface.zig",
+      "src/apprt/gtk/class/window.zig",
+      "src/apprt/gtk/ui/1.5/window.blp",
+      "src/apprt/gtk/class/split_tree.zig"
+    ]
+  }
+}
