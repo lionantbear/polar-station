@@ -1,6 +1,8 @@
 name: Polar Station release
-run-name: ${{ inputs.phase }} ${{ inputs.tools_sha256 }}
+run-name: ${{ inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '56bb1f8af2547dfbe159e0db750b6c4d9a12b329d844d4e877b332df8eb94295' }}
 on:
+  push:
+    tags: ['station-build-*']
   workflow_dispatch:
     inputs:
       phase:
@@ -16,7 +18,7 @@ on:
         required: true
 permissions: {}
 concurrency:
-  group: station-release-${{ inputs.phase }}-${{ github.ref }}
+  group: station-release-${{ inputs.phase || 'build' }}-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   native:
@@ -40,12 +42,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ASSET: ${{ inputs.tools_asset }}
-          TOOL_SHA: ${{ inputs.tools_sha256 }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || '56bb1f8af2547dfbe159e0db750b6c4d9a12b329d844d4e877b332df8eb94295' }}
         run: |
           set -euo pipefail
           export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
           echo "POLAR_STATION_RELEASE_TOOLS=$POLAR_STATION_RELEASE_TOOLS" >> "$GITHUB_ENV"
-          [[ "$TOOL_ASSET" =~ ^[1-9][0-9]*$ && "$TOOL_SHA" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$TOOL_SHA" =~ ^[a-f0-9]{64}$ ]]
+          if [[ -z "$TOOL_ASSET" ]]; then
+            TOOL_ASSET=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.draft == true) | .assets[] | select(.name == \"release-tools-$TOOL_SHA.tar.gz\") | .id")
+          fi
+          [[ "$TOOL_ASSET" =~ ^[1-9][0-9]*$ ]]
           gh api "repos/$GITHUB_REPOSITORY/releases/assets/$TOOL_ASSET" -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/tools.tar.gz"
           printf '%s  %s\n' "$TOOL_SHA" "$RUNNER_TEMP/tools.tar.gz" | shasum -a 256 --check
           mkdir "$POLAR_STATION_RELEASE_TOOLS"
@@ -53,16 +59,16 @@ jobs:
       - name: Verify exact application source
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" verify
       - name: Prepare pinned build dependencies
-        if: inputs.phase == 'build'
+        if: github.event_name == 'push' || inputs.phase == 'build'
         run: bash "$POLAR_STATION_RELEASE_TOOLS/prepare.sh"
       - name: Build through public entry and collect private observations
-        if: inputs.phase == 'build'
+        if: github.event_name == 'push' || inputs.phase == 'build'
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" build
       - name: Check application and package actual inputs
-        if: inputs.phase == 'build'
+        if: github.event_name == 'push' || inputs.phase == 'build'
         run: bash "$POLAR_STATION_RELEASE_TOOLS/collect.sh"
       - name: Retain build in an unpublished draft
-        if: inputs.phase == 'build'
+        if: github.event_name == 'push' || inputs.phase == 'build'
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash "$POLAR_STATION_RELEASE_TOOLS/retain.sh"
