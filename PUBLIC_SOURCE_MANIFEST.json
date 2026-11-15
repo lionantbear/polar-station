@@ -2045,7 +2045,7 @@
     "vendor/grammers-tl-gen/src/structs.rs": "100644"
   },
   "files": {
-    ".github/workflows/release.yml": "1fac8b67b9af6de60af81ea3b68b798861c6d603d1a168435ac51f792e719fab",
+    ".github/workflows/release.yml": "567c2db5b871dbba2f9e5b51054278cb1ca07ba0c3d33f4bbc6b7c3b98def224",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_LINUX.md": "a1b74b0b7148e5e76074770adfd19bef4210f2c63bb84bed3abcd7c6beb4c8bb",
     "BUILD_MACOS.md": "711a45fb4e88b26440c87c165408540ae9df3cfa4e9a858451b5f6336293cdc9",

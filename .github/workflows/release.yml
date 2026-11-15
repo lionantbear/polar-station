@@ -60,6 +60,8 @@ jobs:
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" verify
       - name: Prepare pinned build dependencies
         if: github.event_name == 'push' || inputs.phase == 'build'
+        env:
+          POLAR_STATION_ZIG: ${{ runner.temp }}/station-native/zig-aarch64-macos-0.15.2/zig
         run: bash "$POLAR_STATION_RELEASE_TOOLS/prepare.sh"
       - name: Build through public entry and collect private observations
         if: github.event_name == 'push' || inputs.phase == 'build'
