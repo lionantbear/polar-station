@@ -1,5 +1,5 @@
 name: Polar Station release
-run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '14fb7c4bf0fd61706ecb8ad0bda5a895992541d64f6d3740aca081879b2c807b' }}
+run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '059fef6c03183a47f34b48ce806cebef9e634802facbfe71670ae9a0c33112c3' }}
 on:
   push:
     tags: ['station-build-*', 'station-operator-*']
@@ -74,7 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ASSET: ${{ inputs.tools_asset }}
-          TOOL_SHA: ${{ inputs.tools_sha256 || '14fb7c4bf0fd61706ecb8ad0bda5a895992541d64f6d3740aca081879b2c807b' }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || '059fef6c03183a47f34b48ce806cebef9e634802facbfe71670ae9a0c33112c3' }}
         run: |
           set -euo pipefail
           export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
@@ -106,8 +106,23 @@ jobs:
         with:
           key: ${{ steps.godot-key.outputs.key }}
           path: ${{ runner.temp }}/station-godot-cache
+      - name: Restore Cargo downloads and external dependency outputs
+        id: rust-cache
+        if: github.event_name == 'push' || inputs.phase == 'build'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          workspaces: . -> target/rust
+          shared-key: station-macos-arm64-${{ steps.godot-key.outputs.rust_native_key }}
+          env-vars: DEVELOPER_DIR MACOSX_DEPLOYMENT_TARGET SDKROOT
+          cache-bin: 'false'
+          cache-workspace-crates: 'false'
+          cache-all-crates: 'false'
+          cache-on-failure: 'true'
+          save-if: ${{ github.ref == 'refs/heads/release/macos-current' }}
       - name: Build through public entry and collect private observations
         if: github.event_name == 'push' || inputs.phase == 'build'
+        env:
+          POLAR_STATION_RUST_CACHE_EXACT_MATCH: ${{ steps.rust-cache.outputs.cache-hit }}
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" build
       - name: Check application and package actual inputs
         if: github.event_name == 'push' || inputs.phase == 'build'
@@ -194,7 +209,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ASSET: ${{ inputs.tools_asset }}
-          TOOL_SHA: ${{ inputs.tools_sha256 || '14fb7c4bf0fd61706ecb8ad0bda5a895992541d64f6d3740aca081879b2c807b' }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || '059fef6c03183a47f34b48ce806cebef9e634802facbfe71670ae9a0c33112c3' }}
         run: |
           set -euo pipefail
           export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
