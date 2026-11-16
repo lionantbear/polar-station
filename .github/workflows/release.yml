@@ -1,5 +1,5 @@
 name: Polar Station release
-run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '56bb1f8af2547dfbe159e0db750b6c4d9a12b329d844d4e877b332df8eb94295' }}
+run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '14fb7c4bf0fd61706ecb8ad0bda5a895992541d64f6d3740aca081879b2c807b' }}
 on:
   push:
     tags: ['station-build-*', 'station-operator-*']
@@ -65,6 +65,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
     outputs:
       release_metadata: ${{ steps.publish.outputs.release_metadata }}
+      godot_key: ${{ steps.godot-key.outputs.key }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -73,7 +74,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ASSET: ${{ inputs.tools_asset }}
-          TOOL_SHA: ${{ inputs.tools_sha256 || '56bb1f8af2547dfbe159e0db750b6c4d9a12b329d844d4e877b332df8eb94295' }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || '14fb7c4bf0fd61706ecb8ad0bda5a895992541d64f6d3740aca081879b2c807b' }}
         run: |
           set -euo pipefail
           export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
@@ -94,12 +95,29 @@ jobs:
         env:
           POLAR_STATION_ZIG: ${{ runner.temp }}/station-native/zig-aarch64-macos-0.15.2/zig
         run: bash "$POLAR_STATION_RELEASE_TOOLS/prepare.sh"
+      - name: Compute Godot dependency identity
+        id: godot-key
+        if: github.event_name == 'push' || inputs.phase == 'build'
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" godot-key
+      - name: Restore verified Godot dependency
+        id: godot-cache
+        if: github.event_name == 'push' || inputs.phase == 'build'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          key: ${{ steps.godot-key.outputs.key }}
+          path: ${{ runner.temp }}/station-godot-cache
       - name: Build through public entry and collect private observations
         if: github.event_name == 'push' || inputs.phase == 'build'
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" build
       - name: Check application and package actual inputs
         if: github.event_name == 'push' || inputs.phase == 'build'
         run: bash "$POLAR_STATION_RELEASE_TOOLS/collect.sh"
+      - name: Save validated Godot dependency
+        if: inputs.phase == 'build' && github.ref == 'refs/heads/release/macos-current' && steps.godot-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          key: ${{ steps.godot-key.outputs.key }}
+          path: ${{ runner.temp }}/station-godot-cache
       - name: Retain build in an unpublished draft
         if: github.event_name == 'push' || inputs.phase == 'build'
         env:
@@ -159,3 +177,41 @@ jobs:
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" fetch-public
       - name: Check installed copy without credentials
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" launch-public
+  godot-reuse-check:
+    needs: native
+    if: inputs.phase == 'build' && github.ref == 'refs/heads/release/macos-current'
+    runs-on: macos-26
+    permissions:
+      # Private draft attachments require draft-capable access.
+      contents: write
+    env:
+      EXPECTED_GODOT_KEY: ${{ needs.native.outputs.godot_key }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Load exact private release tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOOL_ASSET: ${{ inputs.tools_asset }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || '14fb7c4bf0fd61706ecb8ad0bda5a895992541d64f6d3740aca081879b2c807b' }}
+        run: |
+          set -euo pipefail
+          export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
+          echo "POLAR_STATION_RELEASE_TOOLS=$POLAR_STATION_RELEASE_TOOLS" >> "$GITHUB_ENV"
+          [[ "$TOOL_SHA" =~ ^[a-f0-9]{64}$ ]]
+          if [[ -z "$TOOL_ASSET" ]]; then
+            TOOL_ASSET=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.draft == true) | .assets[] | select(.name == \"release-tools-$TOOL_SHA.tar.gz\") | .id")
+          fi
+          [[ "$TOOL_ASSET" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/assets/$TOOL_ASSET" -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/tools.tar.gz"
+          printf '%s  %s\n' "$TOOL_SHA" "$RUNNER_TEMP/tools.tar.gz" | shasum -a 256 --check
+          mkdir "$POLAR_STATION_RELEASE_TOOLS"
+          python3 -c 'import os,tarfile; tarfile.open(os.environ["RUNNER_TEMP"]+"/tools.tar.gz").extractall(os.environ["POLAR_STATION_RELEASE_TOOLS"],filter="data")'
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          key: ${{ needs.native.outputs.godot_key }}
+          path: ${{ runner.temp }}/station-godot-cache
+          fail-on-cache-miss: true
+      - name: Validate reused native library on a fresh runner
+        run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" verify-godot-reuse
