@@ -1,15 +1,15 @@
 # Polar Station: source, rebuilding and library modifications
 
-This page accompanies the Apple Silicon preview built from 46dc85650ef7aece591357a6de93e62faab39595. The full
+This page accompanies the Apple Silicon preview built from 22948cbd711e150436332bfc34db39a4fda28a96. The full
 application source, Cargo.lock, native modules, patches and build entries are
-[available at that exact commit](https://github.com/lionantbear/polar-station/tree/46dc85650ef7aece591357a6de93e62faab39595).
-The native build is [run 43810179030, attempt 1](https://github.com/lionantbear/polar-station/actions/runs/43810179030).
+[available at that exact commit](https://github.com/lionantbear/polar-station/tree/22948cbd711e150436332bfc34db39a4fda28a96).
+The native build is [run 43855930255, attempt 1](https://github.com/lionantbear/polar-station/actions/runs/43855930255).
 Downloadable release files are the DMG and SHA256SUMS. Complete original license
 texts and the component index are in the DMG's THIRD-PARTY-NOTICES directory.
 
 ## Application and upstream source
 
-Follow [BUILD_MACOS.md](https://github.com/lionantbear/polar-station/blob/46dc85650ef7aece591357a6de93e62faab39595/BUILD_MACOS.md)
+Follow [BUILD_MACOS.md](https://github.com/lionantbear/polar-station/blob/22948cbd711e150436332bfc34db39a4fda28a96/BUILD_MACOS.md)
 for the single complete macOS build command. It builds graphics, Rust, Zig and
 Swift/Xcode, copies resources and signs the result locally. Publisher keys,
 notarization credentials, private automation and a release account are not
@@ -79,7 +79,7 @@ command accepts an explicit `--sdk` path and respects `DEVELOPER_DIR`.
 ```sh
 git clone https://github.com/lionantbear/polar-station.git
 cd polar-station
-git checkout --detach 46dc85650ef7aece591357a6de93e62faab39595
+git checkout --detach 22948cbd711e150436332bfc34db39a4fda28a96
 cargo fetch --locked
 # Prepare the tools and pinned upstream checkouts described in BUILD_MACOS.md.
 export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
@@ -125,7 +125,7 @@ and signs the modified result. No proprietary object-file kit is required.
 
 The application includes unmodified tmux 3.8 tool archives for local and SSH
 targets. Their exact per-platform hashes and upstream release are recorded in
-[`target_tools/tmux-3.8/manifest.json`](https://github.com/lionantbear/polar-station/blob/46dc85650ef7aece591357a6de93e62faab39595/crates/polar-station-runtime/src/services/target_tools/tmux-3.8/manifest.json).
+[`target_tools/tmux-3.8/manifest.json`](https://github.com/lionantbear/polar-station/blob/22948cbd711e150436332bfc34db39a4fda28a96/crates/polar-station-runtime/src/services/target_tools/tmux-3.8/manifest.json).
 The upstream build and release source is [tmux-builds v3.8](https://github.com/tmux/tmux-builds/releases/tag/v3.8).
 The original provided notices for tmux, utf8proc/Unicode data, libevent, ncurses
 and musl accompany the DMG unchanged. The archived binaries and their original
