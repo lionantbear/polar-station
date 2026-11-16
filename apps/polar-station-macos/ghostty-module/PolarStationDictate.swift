@@ -738,7 +738,11 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         referenceLabel.isHidden=referenceLabel.stringValue.isEmpty
         actions.isHidden=panel["phase"] as? String == "failed" && panel["can_copy"] as? Bool != true
         failureActions.isHidden=panel["can_history"] as? Bool != true
-        let height:CGFloat=48 + (referenceLabel.isHidden ? 0 : 24) + (scroll.isHidden ? 0 : textHeight.constant+8) + (actions.isHidden ? 0 : 28) + (failureActions.isHidden ? 0 : 28)
+        var height:CGFloat=48
+        if !referenceLabel.isHidden {height += 24}
+        if !scroll.isHidden {height += textHeight.constant+8}
+        if !actions.isHidden {height += 28}
+        if !failureActions.isHidden {height += 28}
         // Grow upward from the bottom anchor so newly revealed actions stay on screen.
         var origin=frame.origin
         if let visible=(screen ?? NSScreen.main)?.visibleFrame {
