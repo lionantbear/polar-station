@@ -1,6 +1,8 @@
 //! Stable native reader for the shared Dictate history projection.
 const std = @import("std");
 const gtk = @import("gtk");
+const gio=@import("gio");
+const gdk=@import("gdk");
 const glib = @import("glib");
 const gobject = @import("gobject");
 const dictate = @import("dictate.zig");
@@ -39,6 +41,15 @@ pub const History = struct {
     cleanup_requested:bool=false,
     cleanup_confirmation:@import("dictate_cleanup.zig").Confirmation=.{},
     more_button: *gtk.Button,
+    input_button:*gtk.Button,
+    input_controls:*gtk.Box,
+    input_stage:*gtk.DropDown,
+    input_request:*gtk.DropDown,
+    sources_button:*gtk.Button,
+    request_button:*gtk.Button,
+    input_status:*gtk.Label,
+    updating_inputs:bool=false,
+    opening_inputs:bool=false,
     original: bool = false,
     selected_id: ?[]u8 = null,
     rows: std.ArrayListUnmanaged(Row) = .empty,
@@ -67,6 +78,14 @@ pub const History = struct {
         const variants = gtk.Box.new(.horizontal, 6);
         const original = gtk.Button.newWithLabel(""); const refined = gtk.Button.newWithLabel("");
         variants.append(original.as(gtk.Widget)); variants.append(refined.as(gtk.Widget)); detail.append(variants.as(gtk.Widget));
+        const input_button=gtk.Button.newWithLabel("Inputs");variants.append(input_button.as(gtk.Widget));
+        const input_controls=gtk.Box.new(.vertical,4);detail.append(input_controls.as(gtk.Widget));
+        const input_stage=gtk.DropDown.new(null,null);const input_request=gtk.DropDown.new(null,null);
+        input_request.as(gtk.Widget).setSizeRequest(340,-1);
+        input_controls.append(input_stage.as(gtk.Widget));input_controls.append(input_request.as(gtk.Widget));
+        const input_views=gtk.Box.new(.horizontal,4);const sources_button=gtk.Button.newWithLabel("Sources");const request_button=gtk.Button.newWithLabel("Request text");
+        input_views.append(sources_button.as(gtk.Widget));input_views.append(request_button.as(gtk.Widget));input_controls.append(input_views.as(gtk.Widget));
+        const input_status=gtk.Label.new("");input_status.setWrap(1);input_status.setMaxWidthChars(44);input_status.setXalign(0);input_controls.append(input_status.as(gtk.Widget));
         const text = gtk.TextView.new(); text.setEditable(0); text.setCursorVisible(0); text.setWrapMode(.word_char);
         const text_scroll = gtk.ScrolledWindow.new(); text_scroll.setPolicy(.never,.automatic);
         text_scroll.setMinContentHeight(140); text_scroll.setMaxContentHeight(140);
@@ -80,9 +99,14 @@ pub const History = struct {
         root.append(gtk.Separator.new(.horizontal).as(gtk.Widget));
         const cleanup=gtk.Button.newWithLabel("");root.append(cleanup.as(gtk.Widget));
         const settings = gtk.Button.newWithLabel(""); root.append(settings.as(gtk.Widget)); popup.setChild(root.as(gtk.Widget));
-        self.* = .{ .controller=controller,.input_editor=input_editor,.popup=popup,.list=list,.scroll=scroll,.detail=detail,.content=text,.local_shortcut_label=local_shortcut,.global_shortcut_label=global_shortcut,.error_label=errors,.retry_open_button=retry_open,.empty=empty,
+        self.* = .{ .input_button=input_button,.input_controls=input_controls,.input_stage=input_stage,.input_request=input_request,.sources_button=sources_button,.request_button=request_button,.input_status=input_status,.controller=controller,.input_editor=input_editor,.popup=popup,.list=list,.scroll=scroll,.detail=detail,.content=text,.local_shortcut_label=local_shortcut,.global_shortcut_label=global_shortcut,.error_label=errors,.retry_open_button=retry_open,.empty=empty,
             .original_button=original,.refined_button=refined,.copy_button=copy,.insert_button=insert,.retry_button=retry,.dismiss_button=dismiss,.settings_button=settings,.cleanup_button=cleanup,.delete_button=delete,.pin_button=pin,.more_button=more };
         _ = gtk.Widget.signals.map.connect(popup.as(gtk.Widget),*History,opened,self,.{});
+        _=gtk.Button.signals.clicked.connect(input_button,*History,showInputs,self,.{});
+        _=gtk.Button.signals.clicked.connect(sources_button,*History,showSources,self,.{});
+        _=gtk.Button.signals.clicked.connect(request_button,*History,showRequest,self,.{});
+        _=gobject.Object.signals.notify.connect(input_stage,*History,stageChanged,self,.{.detail="selected"});
+        _=gobject.Object.signals.notify.connect(input_request,*History,requestChanged,self,.{.detail="selected"});
         _ = gtk.Button.signals.clicked.connect(original,*History,showOriginal,self,.{});
         _ = gtk.Button.signals.clicked.connect(refined,*History,showRefined,self,.{});
         _ = gtk.Button.signals.clicked.connect(copy,*History,copyText,self,.{});
@@ -123,7 +147,7 @@ pub const History = struct {
         button.as(gtk.Widget).setTooltipText(z);
     }
     fn number(value:Value,key:[]const u8) i64 {const v=field(value,key);return if(v==.integer) v.integer else 0;}
-    fn opened(_: *gtk.Widget,self:*History) callconv(.c) void { self.controller.refreshHistory();self.refresh(); }
+    fn opened(_: *gtk.Widget,self:*History) callconv(.c) void { if(!self.opening_inputs)self.controller.refreshHistory();self.refresh(); }
     fn retryOpen(_: *gtk.Button,self:*History) callconv(.c) void {self.controller.input(.{.type="retry_open"});}
     fn loadOlder(_: *gtk.Button,self:*History) callconv(.c) void {self.controller.input(.{.type="history_more"});}
     fn deleteClicked(_: *gtk.Button,self:*History) callconv(.c) void {
@@ -138,9 +162,44 @@ pub const History = struct {
     fn settingsClicked(_: *gtk.Button,self:*History) callconv(.c) void {
         self.popup.popdown();if(self.controller.show_settings)|show|show(self.controller.settings_context);
     }
-    fn showOriginal(_: *gtk.Button,self:*History) callconv(.c) void {self.original=true;self.refreshText();}
-    fn showRefined(_: *gtk.Button,self:*History) callconv(.c) void {self.original=false;self.refreshText();}
+    fn showOriginal(_: *gtk.Button,self:*History) callconv(.c) void {self.original=true;self.controller.input(.{.type="input_close"});self.refreshText();}
+    fn showRefined(_: *gtk.Button,self:*History) callconv(.c) void {self.original=false;self.controller.input(.{.type="input_close"});self.refreshText();}
+    fn showInputs(_: *gtk.Button,self:*History) callconv(.c) void {self.controller.input(.{.type="history_inputs",.operation_id=self.selected_id orelse return});}
+    fn showSources(_: *gtk.Button,self:*History) callconv(.c) void {self.controller.input(.{.type="input_view",.sources=true});}
+    fn showRequest(_: *gtk.Button,self:*History) callconv(.c) void {self.controller.input(.{.type="input_view",.sources=false});}
+    fn stageChanged(_: *gtk.DropDown,_:*gobject.ParamSpec,self:*History) callconv(.c) void {
+        if(self.updating_inputs)return;
+        const choices=field(field(self.controller.view(),"inputs"),"stages");const i=self.input_stage.getSelected();
+        if(choices==.array and i<choices.array.items.len)self.controller.input(.{.type="input_stage",.stage=string(choices.array.items[i],"id")});
+    }
+    fn requestChanged(_: *gtk.DropDown,_:*gobject.ParamSpec,self:*History) callconv(.c) void {
+        if(self.updating_inputs)return;
+        const choices=field(field(self.controller.view(),"inputs"),"requests");const i=self.input_request.getSelected();
+        if(choices==.array and i<choices.array.items.len)self.controller.input(.{.type="input_request",.key=string(choices.array.items[i],"key")});
+    }
+    fn setChoices(dropdown:*gtk.DropDown,values:Value,key:[]const u8,selected:[]const u8) void {
+        const entries=if(values==.array)values.array.items else &.{};
+        const model=dropdown.getModel();const current=if(model)|m|gobject.ext.cast(gtk.StringList,m.as(gobject.Object)) else null;
+        var same=if(model)|m|m.getNItems()==entries.len else false;
+        var selection:c_uint=0;
+        for(entries,0..)|item,i|{
+            if(std.mem.eql(u8,string(item,key),selected))selection=@intCast(i);
+            if(same){const previous=if(current)|list|list.getString(@intCast(i)) else null;same=if(previous)|text|std.mem.eql(u8,std.mem.span(text),string(item,"label")) else false;}
+        }
+        if(!same){
+            const names=gtk.StringList.new(null);defer names.unref();
+            for(entries)|item|{const z=a.dupeZ(u8,string(item,"label")) catch continue;defer a.free(z);names.append(z);}
+            dropdown.setModel(names.as(gio.ListModel));
+        }
+        if(dropdown.getSelected()!=selection)dropdown.setSelected(selection);
+    }
     fn copyText(_: *gtk.Button,self:*History) callconv(.c) void {
+        const inputs=field(self.controller.view(),"inputs");
+        if(boolean(inputs,"visible")){
+            if(!boolean(inputs,"can_copy"))return;
+            const z=a.dupeZ(u8,string(inputs,"text")) catch return;defer a.free(z);
+            if(gdk.Display.getDefault())|display|display.getClipboard().setText(z);return;
+        }
         const detail=field(self.controller.view(),"history_detail");
         self.controller.input(.{.type="history_copy",.operation_id=string(detail,"operation_id"),.original=self.original});
     }
@@ -208,6 +267,21 @@ pub const History = struct {
         const current=string(field(self.controller.view(),"history_detail"),"operation_id");
         if(completed.len>0 and std.mem.eql(u8,completed,current))self.popup.popdown();
         const view=self.controller.view();const ui=field(view,"history_ui");
+        const inputs=field(view,"inputs");const inspecting=boolean(inputs,"visible");
+        self.input_controls.as(gtk.Widget).setVisible(@intFromBool(inspecting));
+        label(self.input_button,string(inputs,"title"));label(self.sources_button,string(inputs,"sources_label"));label(self.request_button,string(inputs,"request_text_label"));setLabel(self.input_status,string(inputs,"status"));
+        self.updating_inputs=true;
+        setChoices(self.input_stage,field(inputs,"stages"),"id",string(inputs,"stage"));
+        setChoices(self.input_request,field(inputs,"requests"),"key",string(inputs,"selected_key"));
+        self.updating_inputs=false;
+        if(boolean(inputs,"open_requested") and !self.opening_inputs) {
+            if(self.input_editor.as(gtk.Widget).getRoot())|root|if(gobject.ext.cast(gtk.Window,root.as(gobject.Object)))|window| {
+                if(window.getApplication())|app|if(app.getActiveWindow()==window and self.input_editor.as(gtk.Widget).getMapped()!=0){
+                    self.opening_inputs=true;window.present();self.popup.popup();self.opening_inputs=false;
+                };
+            };
+        }
+
         setLabel(self.local_shortcut_label,"Inside Polar Station: Ctrl+Win — tap to keep recording; hold and release or press again to stop");
         label(self.cleanup_button,string(ui,"cleanup"));
         const cleanup=field(view,"cleanup_preview");
@@ -257,11 +331,14 @@ pub const History = struct {
         self.dismiss_button.as(gtk.Widget).setVisible(@intFromBool(boolean(detail,"can_dismiss")));
         label(self.delete_button,string(ui,"delete"));self.delete_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(detail,"can_delete")));
         label(self.pin_button,string(detail,"pin_label"));self.pin_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(detail,"can_pin")));
+        if(inspecting){for([_]*gtk.Button{self.insert_button,self.retry_button,self.dismiss_button})|b|b.as(gtk.Widget).setVisible(0);}
         self.refreshText();self.scroll.getVadjustment().setValue(position);
     }
     fn refreshText(self:*History) void {
-        const detail=field(self.controller.view(),"history_detail");const value=string(detail,if(self.original) "raw" else "text");
+        const inputs=field(self.controller.view(),"inputs");const inspecting=boolean(inputs,"visible");
+        const detail=field(self.controller.view(),"history_detail");const value=if(inspecting)string(inputs,"text") else string(detail,if(self.original) "raw" else "text");
         self.copy_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(detail,if(self.original) "can_copy_original" else "can_copy")));
+        if(inspecting){self.copy_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(inputs,"can_copy")));label(self.copy_button,string(inputs,"copy_label"));}
         const buffer=self.content.getBuffer();var first:gtk.TextIter=undefined;var last:gtk.TextIter=undefined;buffer.getBounds(&first,&last);
         const old=buffer.getText(&first,&last,1);defer glib.free(old);
         if(!std.mem.eql(u8,std.mem.span(old),value)){const z=a.dupeZ(u8,value) catch return;defer a.free(z);buffer.setText(z,@intCast(value.len));}

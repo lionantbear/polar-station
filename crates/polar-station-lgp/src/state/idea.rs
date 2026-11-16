@@ -125,7 +125,7 @@ impl Engine {
                 draft_revision: draft.revision,
                 mode_label: "Idea",
                 placeholder: "Describe the change…",
-                can_send: polar_tmux_protocol::validate_codex_input(&draft.idea_document_text()).is_ok() && draft.idea_submission.is_none() && draft.idea_target.is_some() && self.idea_codex.host.is_some(),
+                can_send: polar_station_protocol::validate_codex_input(&draft.idea_document_text()).is_ok() && draft.idea_submission.is_none() && draft.idea_target.is_some() && self.idea_codex.host.is_some(),
                 binding_id: draft.idea_target.as_ref().map(|b| b.thread_id.clone()),
                 target_label: draft.idea_target.as_ref().map(|b| if b.title.is_empty() { b.thread_id.clone() } else { b.title.clone() }).unwrap_or_else(|| "Bind Codex…".into()),
                 can_open_session: draft.idea_target.is_some() && self.idea_codex.host.is_some(),
@@ -223,7 +223,7 @@ impl Engine {
             if !matches!(key.1,DraftContext::Idea(_)) && !node_blocks.is_empty() {return Err("node blocks require an Idea draft".into());}
             let mut idea_target: Option<super::idea_codex::Target> = serde_json::from_value(row.get("idea_target").cloned().unwrap_or(Value::Null)).map_err(|_| "invalid Idea target")?;
             if idea_target.is_none() {
-                let legacy: Option<polar_tmux_protocol::CodexBindingV1> = serde_json::from_value(row.get("idea_binding").cloned().unwrap_or(Value::Null)).map_err(|_| "invalid Idea binding")?;
+                let legacy: Option<polar_station_protocol::CodexBindingV1> = serde_json::from_value(row.get("idea_binding").cloned().unwrap_or(Value::Null)).map_err(|_| "invalid Idea binding")?;
                 idea_target = legacy.map(|b| super::idea_codex::Target { owner_host_id: b.owner_host_id, endpoint_id: b.endpoint_id, title: b.thread_id.clone(), thread_id: b.thread_id });
             }
             if let Some(target) = &idea_target { target.validate()?; }

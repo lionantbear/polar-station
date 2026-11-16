@@ -246,6 +246,7 @@ impl CodexVoiceProvider {
             } else {
                 transcription_session(&thread_correlation_id, instructions)
             };
+            resources.stream_input = serde_json::json!({"instructions":session.instructions,"instruction_source":if instructions.is_some(){"override"}else{"default"}});
             let call_headers = realtime_call_headers(&session_id, &thread_correlation_id);
             let call =
                 RealtimeCallClient::new(transport, call_provider, Arc::clone(&auth_provider))
@@ -555,6 +556,7 @@ fn provider_api_failure(
 struct ProviderResources {
     auth_scope: Option<Arc<SnapshotAuth>>,
     stream_instructions: Option<String>,
+    stream_input: serde_json::Value,
     peer: Option<ServerMediaPeer>,
     sideband: Option<RealtimeWebsocketConnection>,
 }
@@ -564,6 +566,7 @@ impl ProviderResources {
         Self {
             auth_scope: None,
             stream_instructions: None,
+            stream_input: serde_json::Value::Null,
             peer: Some(peer),
             sideband: None,
         }

@@ -11,10 +11,10 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 polar-station-client.workspace = true
 polar-local-access-runtime.workspace = true
-polar-tmux-workspace.workspace = true
-polar-tmux-protocol.workspace = true
+polar-station-workspace.workspace = true
+polar-station-protocol.workspace = true
 polar-tmux-types.workspace = true
-polar-tmux-resources.workspace = true
+polar-station-resources.workspace = true
 polar-station-input.workspace = true
 polar-station-lgp.workspace = true
 polar-dictate.workspace = true

@@ -408,6 +408,7 @@ pub enum ItemChange {
 /// One event bus for recording progress and durable history invalidation.
 #[derive(Clone, Debug)]
 pub enum DictateEvent {
+    InputsChanged(String),
     Recording(Box<Recording>),
     Item(Box<HistoryItem>),
     Removed(String),

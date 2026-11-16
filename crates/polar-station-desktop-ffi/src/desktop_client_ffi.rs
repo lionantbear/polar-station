@@ -11,7 +11,7 @@ use std::{
     sync::Mutex,
 };
 
-use polar_tmux_protocol::LocalClientFrame;
+use polar_station_protocol::LocalClientFrame;
 
 use crate::desktop_client::{
     DesktopClient, DesktopClientConfig, DesktopContentRequest, DesktopNativeStateRequest,
@@ -203,7 +203,7 @@ pub struct DesktopClientHandle {
 pub extern "C" fn polar_station_terminal_status_unavailable_json() -> *mut c_char {
     catch_unwind(|| {
         let view = polar_tmux_types::terminal_feedback(
-            polar_tmux_protocol::TerminalRecoveryPhaseV1::StatusUnavailable,
+            polar_station_protocol::TerminalRecoveryPhaseV1::StatusUnavailable,
             None,
         );
         CString::new(serde_json::to_string(&view).ok()?)
@@ -301,18 +301,18 @@ pub unsafe extern "C" fn polar_station_desktop_client_send_json_status(
 ) -> u32 {
     catch_unwind(AssertUnwindSafe(|| {
         let Some(handle) = (unsafe { handle.as_ref() }) else {
-            return polar_tmux_protocol::DesktopSendError::Unavailable as u32;
+            return polar_station_protocol::DesktopSendError::Unavailable as u32;
         };
         if frame_json.is_null() {
-            return polar_tmux_protocol::DesktopSendError::InvalidRequest as u32;
+            return polar_station_protocol::DesktopSendError::InvalidRequest as u32;
         }
         // SAFETY: see `polar_station_desktop_client_new`; this call also
         // copies and parses the bytes before returning.
         let Ok(frame_json) = unsafe { CStr::from_ptr(frame_json) }.to_str() else {
-            return polar_tmux_protocol::DesktopSendError::InvalidRequest as u32;
+            return polar_station_protocol::DesktopSendError::InvalidRequest as u32;
         };
         let Ok(frame) = serde_json::from_str::<LocalClientFrame>(frame_json) else {
-            return polar_tmux_protocol::DesktopSendError::InvalidRequest as u32;
+            return polar_station_protocol::DesktopSendError::InvalidRequest as u32;
         };
         handle
             .client
@@ -321,7 +321,7 @@ pub unsafe extern "C" fn polar_station_desktop_client_send_json_status(
             .try_send_detailed(frame)
             .map_or_else(|error| error as u32, |()| 0)
     }))
-    .unwrap_or(polar_tmux_protocol::DesktopSendError::Unavailable as u32)
+    .unwrap_or(polar_station_protocol::DesktopSendError::Unavailable as u32)
 }
 
 /// Detach one native waiter; an admitted Host operation is never replayed.

@@ -3,10 +3,14 @@ pub mod api;
 pub use api::{Request, Response};
 mod model;
 pub mod store;
+pub mod inspection;
+pub use inspection::{InputDetails, InputSnapshot, InputSummary};
 pub use model::*;
 pub use store::DictateStore;
 #[cfg(feature = "runtime")]
 pub mod runtime;
+#[cfg(feature = "runtime")]
+mod input_runtime;
 
 mod settings;
 pub use settings::{

@@ -1,5 +1,5 @@
 //! One correlation ledger for all desktop control APIs. No native/UI ownership.
-use polar_tmux_protocol::{DesktopSendError, LocalClientFrame, LocalHostFrame, SessionEditorRequestV1};
+use polar_station_protocol::{DesktopSendError, LocalClientFrame, LocalHostFrame, SessionEditorRequestV1};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, time::Duration};

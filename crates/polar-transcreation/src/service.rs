@@ -41,6 +41,13 @@ pub async fn edit_in_session(
     input: EditRequest,
     config: ExecutionConfig,
 ) -> Result<EditResult> {
+    edit_in_session_observed(runner,session,input,config,None).await
+}
+
+pub async fn edit_in_session_observed(
+    runner:&mut dyn InhouseAgentRunner,session:&mut EditSession,input:EditRequest,config:ExecutionConfig,
+    mut observer:Option<Box<dyn polar_inhouse_contract::InhouseTurnEventHandler + Send>>,
+)->Result<EditResult> {
     let prompt = match &input.edit {
         EditKind::CleanupTranscript { .. } => config.prompts.cleanup.clone(),
         EditKind::CleanupTranslateEnglish { .. } => config.prompts.english.clone(),
@@ -74,6 +81,12 @@ pub async fn edit_in_session(
         });
     }
     let current_message = prepared.options.canonical_thread_messages.last().cloned();
+    if let Some(observer)=observer.as_mut(){
+        observer.on_input_snapshot(polar_inhouse_contract::InhouseInputSnapshot{
+            request_id:input.operation_id.clone(),channel:"sources".into(),status:"prepared".into(),
+            content:serde_json::json!({"prompt_source":if session.prompt.is_some(){"override"}else{"default"},"edit":input.edit,"original":input.original,"messages":prepared.options.canonical_thread_messages,"prompt":prepared.options.backend_turn_request}),
+        }).await;
+    }
     // Include preflight in the deadline. Dropping this future cannot insert text.
     let output = tokio::time::timeout(config.timeout, async {
         prepared.options.context_budget = runner
@@ -95,7 +108,7 @@ pub async fn edit_in_session(
                 session.backend_session.clone(),
                 prepared.input,
                 prepared.options,
-                None,
+                observer,
                 None,
                 None,
             )

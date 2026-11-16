@@ -3,16 +3,16 @@ use std::{net::SocketAddr, path::PathBuf, time::Duration};
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use polar_tmux_core::{TmuxAvailability, TmuxClient, TmuxTarget};
-use polar_tmux_protocol::is_canonical_tmux_socket_name;
+use polar_station_protocol::is_canonical_tmux_socket_name;
 use serde::Serialize;
 use zeroize::{Zeroize, Zeroizing};
 
 #[cfg(unix)]
 mod channel_cli;
 
-use polar_tmux::{host_identity, host_runtime, ssh_connection_manager};
+use polar_station_host::{host_identity, host_runtime, ssh_connection_manager};
 #[cfg(unix)]
-use polar_tmux::{local_ipc, pane_host};
+use polar_station_host::{local_ipc, pane_host};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -191,7 +191,7 @@ enum ResizeDirectionArg {
     Down,
 }
 
-impl From<ResizeDirectionArg> for polar_tmux_protocol::ResizeDirection {
+impl From<ResizeDirectionArg> for polar_station_protocol::ResizeDirection {
     fn from(value: ResizeDirectionArg) -> Self {
         match value {
             ResizeDirectionArg::Left => Self::Left,
@@ -204,16 +204,16 @@ impl From<ResizeDirectionArg> for polar_tmux_protocol::ResizeDirection {
 
 #[cfg(not(target_os = "macos"))]
 fn main() -> Result<()> {
-    polar_tmux::run_standalone_runtime(run_cli())
+    polar_station_host::run_standalone_runtime(run_cli())
 }
 
 #[cfg(target_os = "macos")]
 fn main() -> Result<()> {
-    polar_tmux::run_with_messages_main_thread(run_cli())
+    polar_station_host::run_with_messages_main_thread(run_cli())
 }
 
 async fn run_cli() -> Result<()> {
-    polar_tmux::operation_trace::init();
+    polar_station_host::operation_trace::init();
     tracing::info!(target: "polar_station_operation", component="Host", event="process_entry");
 
     let cli = Cli::parse();
@@ -404,7 +404,7 @@ async fn run_cli() -> Result<()> {
             "text": client.capture_pane(&target, history).await?
         })),
         Commands::CodexNotify { payload } => {
-            let _ = polar_tmux::record_codex_notify(&payload);
+            let _ = polar_station_host::record_codex_notify(&payload);
             Ok(())
         }
         Commands::SftpChannel {

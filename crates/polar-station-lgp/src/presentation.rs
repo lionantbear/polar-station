@@ -47,7 +47,7 @@ pub struct Origin {
 impl Origin {
     pub fn validate(&self)->Result<(),String> {
         for s in [&self.node_id,&self.owner,&self.thread,&self.sender_id,&self.message_id,&self.attachment_id] {
-            polar_tmux_protocol::validate_stable_identifier(s,"presentation origin").map_err(|e|e.to_string())?;
+            polar_station_protocol::validate_stable_identifier(s,"presentation origin").map_err(|e|e.to_string())?;
         }
         // The digest must come from the authenticated attachment resolver.
         if self.digest.len()!=64 || !self.digest.bytes().all(|b|b.is_ascii_hexdigit()) {return Err("expected a verified SHA-256 digest".into());}

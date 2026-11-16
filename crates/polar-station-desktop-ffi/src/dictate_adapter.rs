@@ -11,7 +11,7 @@ impl DictateSpeech {
     }
     
 }
-use polar_tmux_workspace::dictate::application::{CapturePort, Host, Ports};
+use polar_station_workspace::dictate::application::{CapturePort, Host, Ports};
 use serde_json::Value;
 use std::path::Path;
 

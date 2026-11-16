@@ -142,6 +142,7 @@ impl DictateSpeech {
         *task = Some(runtime.spawn(async move {
             let result = client.observe_history(|event| {
                 let input = if event["settings_changed"]==true {json!({"type":"refresh_settings"})}
+                    else if let Some(id)=event["inputs_changed"].as_str(){json!({"type":"inputs_changed","operation_id":id})}
                     else if event["refresh"] == true { json!({"type":"refresh_history","removed":event["removed"]}) }
                     else if !event["item"].is_null() {json!({"type":"history_item_event","item":event["item"]})}
                     else { json!({"type":"history_event","recording":event["recording"]}) };

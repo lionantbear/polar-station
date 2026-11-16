@@ -49,3 +49,10 @@ graphics resource assembly is in `apps/polar-graphics-native/resources*.py`.
 The local app is ad-hoc signed, including its microphone permission declaration.
 It is not notarized. The command builds an app; it does not install it, create an
 installer, upload it or change system permissions.
+
+If you already have a verified Station Godot dependency directory, add
+`--godot-prebuilt /path/to/directory`. It must contain `libgodot.dylib` and
+`manifest.json` matching this source's Godot pin, patch, modules, build options
+and local toolchain. The entry checks the library hash, arm64 architecture and
+required exports before reuse. The pinned Godot checkout is still required.
+Without this option, the entry builds Godot from source as above.

@@ -46,7 +46,7 @@ const Registration = struct {
     extensions: [1]ExtensionOffer = .{.{}},
     platform: []const u8 = "linux",
     host_control_versions: HostControlVersions = .{ .codex = 2, .notification = 1 },
-    supported_actions: []const []const u8 = &.{"activate"},
+    supported_actions: []const []const u8 = &.{"activate", "show_session"},
     capabilities: []const []const u8 = &.{
         "application_state_events_v1",
         "session_feed_v1",

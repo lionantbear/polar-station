@@ -1,6 +1,6 @@
 //! Generic drafts are independent of transient window selection and delivery credentials.
 use polar_station_session::{SendRequest, SessionReference};
-use polar_tmux_protocol::{CodexBindingV1, CodexCommandV1};
+use polar_station_protocol::{CodexBindingV1, CodexCommandV1};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -228,7 +228,7 @@ impl GenericDrafts {
                             .map(|e| e.to_string())
                     }
                     Destination::Codex(_)
-                        if draft.text.len() > polar_tmux_protocol::CODEX_INPUT_MAX_BYTES =>
+                        if draft.text.len() > polar_station_protocol::CODEX_INPUT_MAX_BYTES =>
                     {
                         Some("Input exceeds the Codex 16 KiB limit; draft retained".into())
                     }
@@ -284,7 +284,7 @@ impl GenericDrafts {
         press_enter: bool,
     ) -> Result<Submission, String> {
         let context = self.validate(lease)?;
-        polar_tmux_protocol::validate_stable_identifier(&intent, "input intent")
+        polar_station_protocol::validate_stable_identifier(&intent, "input intent")
             .map_err(|e| e.to_string())?;
         let text = self
             .drafts
@@ -306,10 +306,10 @@ impl GenericDrafts {
                 }))
             }
             Destination::Codex(binding) => {
-                if text.len()>polar_tmux_protocol::CODEX_INPUT_MAX_BYTES {
+                if text.len()>polar_station_protocol::CODEX_INPUT_MAX_BYTES {
                     return Err("Input exceeds the Codex 16 KiB limit; draft retained".into());
                 }
-                polar_tmux_protocol::validate_codex_input(&text).map_err(|e| e.to_string())?;
+                polar_station_protocol::validate_codex_input(&text).map_err(|e| e.to_string())?;
                 Ok(Submission::Codex {
                     owner_host_id: binding.owner_host_id.clone(),
                     command: CodexCommandV1::SubmitThreadText {

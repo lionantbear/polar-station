@@ -14,9 +14,54 @@ def run(*command, **kwargs):
     subprocess.run([str(arg) for arg in command], check=True, **kwargs)
 
 
+# These component inputs are shared with the private cache adapter.
+GODOT_PIN = 'ed1daf0bf001b61586d9930840f2f1394092c079'
+GODOT_OPTIONS = ('platform=macos', 'arch=arm64', 'target=template_release', 'library_type=shared_library', 'generate_bundle=no', 'vulkan=no', 'metal=yes', 'angle=no', 'opengl3=yes', 'debug_symbols=no', 'optimize=speed', 'disable_path_overrides=no', 'module_jolt_physics_enabled=no', 'module_godot_physics_2d_enabled=no', 'module_godot_physics_3d_enabled=no')
+GODOT_PATCH = ('platform/macos/libgodot_macos.mm', 'new OS_MacOS_NSApp(', 'new OS_MacOS_Headless(')
+
+
+def godot_toolchain(sdk):
+    import hashlib
+    settings = sdk / 'SDKSettings.json'
+    return {'compiler': subprocess.check_output(['xcrun', 'clang', '--version'], text=True).strip(),
+            'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
+            'sdk': hashlib.sha256(settings.read_bytes()).hexdigest(),
+            'scons': subprocess.check_output(['scons', '--version'], text=True).splitlines()[0],
+            'deployment_target': '15.0'}
+
+
+def godot_inputs(root, toolchain):
+    import hashlib
+    modules = root / 'apps/polar-graphics-native/godot-modules'
+    return {'upstream_commit': GODOT_PIN, 'options': list(GODOT_OPTIONS),
+            'patch': list(GODOT_PATCH), 'toolchain': toolchain,
+            'modules': {p.relative_to(modules).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in sorted(modules.rglob('*')) if p.is_file()}}
+
+
+def validate_godot_prebuilt(directory, inputs):
+    import hashlib, json
+    manifest = json.loads((directory / 'manifest.json').read_text())
+    library = directory / 'libgodot.dylib'
+    if (manifest.get('schema_version') != 1 or manifest.get('inputs') != inputs
+            or library.is_symlink() or not library.is_file()
+            or hashlib.sha256(library.read_bytes()).hexdigest() != manifest.get('library_sha256')):
+        raise ValueError('Godot prebuilt inputs or library digest differ')
+    if sys.platform == 'darwin':
+        architectures = subprocess.check_output(['lipo', '-archs', str(library)], text=True).split()
+        if architectures != ['arm64']:
+            raise ValueError('Godot prebuilt must contain only arm64')
+        symbols = subprocess.check_output(['nm', '-gU', str(library)], text=True)
+        for symbol in ('_libgodot_create_godot_instance', '_libgodot_destroy_godot_instance'):
+            if symbol not in {line.split()[-1] for line in symbols.splitlines() if line.split()}:
+                raise ValueError('Godot prebuilt is missing ' + symbol)
+    return library
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ghostty', type=Path, required=True, help='Ghostty v1.3.1 checkout (read only)')
+    parser.add_argument('--godot-prebuilt', type=Path, help='Verified prebuilt Godot directory')
     parser.add_argument('--godot', type=Path, required=True, help='pinned Godot checkout (read only)')
     parser.add_argument('--editor', type=Path, required=True, help='Godot 4.7.2 editor executable')
     parser.add_argument('--graphviz', type=Path, required=True, help='Graphviz installation prefix')
@@ -82,24 +127,25 @@ def main():
         for path in (root / 'apps/polar-station-macos/Resources').iterdir():
             if path.is_file():
                 shutil.copy2(path, module / path.name)
-        entry = godot / 'platform/macos/libgodot_macos.mm'
+        entry = godot / GODOT_PATCH[0]
         text = entry.read_text()
-        if text.count('new OS_MacOS_NSApp(') == 1:
-            entry.write_text(text.replace('new OS_MacOS_NSApp(', 'new OS_MacOS_Headless('))
-        elif text.count('new OS_MacOS_Headless(') != 1:
+        if text.count(GODOT_PATCH[1]) == 1:
+            entry.write_text(text.replace(GODOT_PATCH[1], GODOT_PATCH[2]))
+        elif text.count(GODOT_PATCH[2]) != 1:
             raise ValueError('pinned libgodot entry changed')
-        run('scons', '-C', godot, '-j', args.jobs, 'platform=macos', 'arch=arm64',
-            'target=template_release', 'library_type=shared_library', 'generate_bundle=no',
-            'vulkan=no', 'metal=yes', 'angle=no', 'opengl3=yes', 'debug_symbols=no',
-            'optimize=speed', 'disable_path_overrides=no', 'module_jolt_physics_enabled=no',
-            'module_godot_physics_2d_enabled=no', 'module_godot_physics_3d_enabled=no',
-            'custom_modules=' + str(root / 'apps/polar-graphics-native/godot-modules'), env=env)
+        if args.godot_prebuilt:
+            library = validate_godot_prebuilt(args.godot_prebuilt, godot_inputs(root, godot_toolchain(args.sdk)))
+            (godot / 'bin').mkdir(exist_ok=True)
+            shutil.copy2(library, godot / 'bin/libgodot.macos.template_release.arm64.dylib')
+        else:
+            run('scons', '-C', godot, '-j', args.jobs, *GODOT_OPTIONS,
+                'custom_modules=' + str(root / 'apps/polar-graphics-native/godot-modules'), env=env)
         cargo = ['cargo', 'build', '--locked', '--manifest-path', root / 'Cargo.toml',
                  '--target-dir', target, '--target', 'aarch64-apple-darwin']
         if not args.debug:
             cargo.append('--release')
         # Separate invocations prevent Host features from entering the desktop archive.
-        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', '--lib', env=env)
+        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', env=env)
         run(*cargo, '-p', 'polar-station-desktop-ffi', '--lib', env=env)
         run(*cargo, '-p', 'polar-graphics-godot', '--lib', env=env)
         rust = target / 'aarch64-apple-darwin' / profile
@@ -135,7 +181,7 @@ def main():
         info = app / 'Contents/Info.plist'
         data = plistlib.loads(info.read_bytes())
         data.update(PolarStationBuildConfiguration=configuration, PolarStationSourceCommit='local',
-                    PolarStationDesktopContract=1,
+                    PolarStationDesktopContract=2,
                     NSAppleEventsUsageDescription='Send enabled Codex completion notifications through Messages.')
         if not data.get('NSMicrophoneUsageDescription', '').strip():
             raise ValueError('application is missing NSMicrophoneUsageDescription')

@@ -8,6 +8,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 
 mod history;
+mod inspection;
+const INPUTS_SCHEMA: &str = include_str!("../migrations/005_inputs.sql");
 const DELETED_IMPORTS_SCHEMA: &str = include_str!("../migrations/004_deleted_imports.sql");
 const LEGACY_RETENTION_SCHEMA: &str = include_str!("../migrations/003_legacy_retention.sql");
 const HISTORY_SCHEMA: &str = include_str!("../migrations/002_history.sql");
@@ -84,6 +86,10 @@ impl SqliteDictateStore {
                     sql: DELETED_IMPORTS_SCHEMA,
                     post_apply: None,
                 },
+                SqliteMigration {
+                    descriptor: MigrationDescriptor { backend:StorageBackend::Sqlite, component:"polar-dictate".into(), version:5, name:"inputs".into(), path:"polar-dictate/005_inputs.sql".into(), sha256:format!("{:x}",Sha256::digest(INPUTS_SCHEMA)), transaction_mode:TransactionMode::Required },
+                    sql:INPUTS_SCHEMA, post_apply:None,
+                },
             ],
         )?;
         Ok(Self { db, owner })
@@ -132,6 +138,9 @@ fn all(db: &Connection, owner: &str) -> Result<Vec<Recording>> {
 }
 #[async_trait]
 impl DictateStore for SqliteDictateStore {
+    async fn save_input(&self,id:&str,snapshot:polar_dictate::InputSnapshot)->Result<()> { self.write_input(id,snapshot).await }
+    async fn inputs(&self,id:&str,key:Option<&str>)->Result<polar_dictate::InputDetails> { self.read_inputs(id,key).await }
+
     async fn create(&self, recording: Recording) -> Result<Recording> {
         // Only a fresh, validated record can be inserted through this port.
         let mut fresh = Recording::new(

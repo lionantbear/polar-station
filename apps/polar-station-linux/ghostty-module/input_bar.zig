@@ -1106,7 +1106,7 @@ pub const InputBar = struct {
         defer self.owner.allocator.free(tooltip); self.dictate_button.as(gtk.Widget).setTooltipText(tooltip);
         const history_title = self.owner.allocator.dupeZ(u8,dictate_module.string(presentation,"history_title")) catch return;
         defer self.owner.allocator.free(history_title); self.dictate_menu.as(gtk.Widget).setTooltipText(history_title);
-        if (self.dictate_history.popup.as(gtk.Widget).getVisible()!=0) self.dictate_history.refresh();
+        if (self.dictate_history.popup.as(gtk.Widget).getVisible()!=0 or dictate_module.boolean(dictate_module.field(state.view(),"inputs"),"open_requested")) self.dictate_history.refresh();
     }
     pub fn dictateClicked(_: *gtk.Button,self:*InputBar) callconv(.c) void {
         const state=self.owner.dictate;

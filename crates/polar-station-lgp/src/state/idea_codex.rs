@@ -1,7 +1,7 @@
 //! One-way Idea instructions use the existing Host queue and durable receipts.
 use super::*;
 use polar_ideacave_presentation::controls::NodeReference;
-use polar_tmux_protocol::{
+use polar_station_protocol::{
     ClientApplicationMessage, CodexApiV1, CodexCommandV1, CodexRequestEnvelopeV1, CodexResultV1,
     CodexSubmissionStatusV1, CODEX_INPUT_MAX_BYTES,
 };

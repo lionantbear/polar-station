@@ -36,21 +36,23 @@ members = [
     "crates/polar-ssh",
     "crates/polar-station-client",
     "crates/polar-station-desktop-ffi",
+    "crates/polar-station-host",
     "crates/polar-station-inbox",
     "crates/polar-station-input",
     "crates/polar-station-lgp",
+    "crates/polar-station-protocol",
+    "crates/polar-station-resources",
+    "crates/polar-station-runtime",
     "crates/polar-station-session",
     "crates/polar-station-settings",
     "crates/polar-station-store-sqlite",
+    "crates/polar-station-workspace",
     "crates/polar-storage-core",
     "crates/polar-storage-migration",
     "crates/polar-telegram",
     "crates/polar-tmux",
     "crates/polar-tmux-core",
-    "crates/polar-tmux-protocol",
-    "crates/polar-tmux-resources",
     "crates/polar-tmux-types",
-    "crates/polar-tmux-workspace",
     "crates/polar-tools-model",
     "crates/polar-transcreation",
     "crates/polar-transport",
@@ -113,20 +115,22 @@ polar-runtime-paths = { path = "crates/polar-runtime-paths" }
 polar-sqlite-runtime = { path = "crates/polar-sqlite-runtime" }
 polar-ssh = { path = "crates/polar-ssh" }
 polar-station-client = { path = "crates/polar-station-client" }
+polar-station-host = { path = "crates/polar-station-host", default-features = false }
 polar-station-inbox = { path = "crates/polar-station-inbox" }
 polar-station-input = { path = "crates/polar-station-input" }
 polar-station-lgp = { path = "crates/polar-station-lgp" }
+polar-station-protocol = { path = "crates/polar-station-protocol" }
+polar-station-resources = { path = "crates/polar-station-resources" }
+polar-station-runtime = { path = "crates/polar-station-runtime", default-features = false }
 polar-station-session = { path = "crates/polar-station-session" }
 polar-station-settings = { path = "crates/polar-station-settings" }
 polar-station-store-sqlite = { path = "crates/polar-station-store-sqlite" }
+polar-station-workspace = { path = "crates/polar-station-workspace" }
 polar-storage-core = { path = "crates/polar-storage-core" }
 polar-storage-migration = { path = "crates/polar-storage-migration" }
 polar-telegram = { path = "crates/polar-telegram", default-features = false }
 polar-tmux-core = { path = "crates/polar-tmux-core" }
-polar-tmux-protocol = { path = "crates/polar-tmux-protocol" }
-polar-tmux-resources = { path = "crates/polar-tmux-resources" }
 polar-tmux-types = { path = "crates/polar-tmux-types" }
-polar-tmux-workspace = { path = "crates/polar-tmux-workspace" }
 polar-tools-model = { path = "crates/polar-tools-model" }
 polar-transcreation = { path = "crates/polar-transcreation" }
 polar-transport = { path = "crates/polar-transport" }

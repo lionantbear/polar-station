@@ -11,6 +11,7 @@ pub mod pcm;
 pub mod realtime;
 pub mod transcription;
 mod reference;
+pub mod inspection;
 pub use reference::{TranscriptionReference, TranscriptionReferenceSupport, TranscriptionTerm};
 
 use std::{
@@ -471,6 +472,11 @@ impl Error for VoiceError {}
 
 #[async_trait::async_trait]
 pub trait VoiceTranscriptionProvider: Send + Sync {
+    async fn transcribe_observed(&self,audio:VoicePcm,encoded:Option<buffered::VoiceOpusRecording>,reference:TranscriptionReference,observation:Option<inspection::InputObservation>)->Result<String,VoiceError> {
+        if let Some(o)=observation {o.emit("provider","unsupported",serde_json::json!({"reason":"This provider does not expose request inputs"})).await;}
+        match encoded {Some(encoded)=>self.transcribe_opus_with_reference(encoded,reference).await,None=>self.transcribe_with_reference(audio,reference).await}
+    }
+
     fn reference_support(&self) -> TranscriptionReferenceSupport {
         TranscriptionReferenceSupport::Unsupported
     }
@@ -512,6 +518,11 @@ pub trait VoiceTranscriptionProvider: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait VoiceStreamingTranscriptionProvider: Send + Sync {
+    async fn begin_observed(&self,format:VoiceStreamFormat,reference:TranscriptionReference,instructions:Option<String>,observation:Option<inspection::InputObservation>)->Result<Arc<dyn VoiceStreamingSession>,VoiceError> {
+        if let Some(o)=observation {o.emit("provider","unsupported",serde_json::json!({"reason":"This provider does not expose request inputs"})).await;}
+        self.begin_with_instructions(format,reference,instructions).await
+    }
+
     fn instructions_supported(&self) -> bool { false }
     async fn begin_with_instructions(
         &self, format: VoiceStreamFormat, reference: TranscriptionReference, instructions: Option<String>,
@@ -659,13 +670,14 @@ impl VoiceRuntime {
         &self,
         request: VoiceTranscribeRequest,
     ) -> Result<VoiceTranscribeResult, VoiceError> {
-        self.transcribe_inner(request, None).await
+        self.transcribe_inner(request, None, None).await
     }
 
     async fn transcribe_inner(
         &self,
         mut request: VoiceTranscribeRequest,
         encoded: Option<buffered::VoiceOpusRecording>,
+        observer: Option<inspection::InputObserver>,
     ) -> Result<VoiceTranscribeResult, VoiceError> {
         validate_operation_id(request.operation_id())?;
         validate_audio(request.audio(), self.provider.maximum_audio_bytes())?;
@@ -720,10 +732,8 @@ impl VoiceRuntime {
                         .await
                         .map_err(|_| VoiceError::ProviderUnavailable)?;
                     let provider_call = async {
-                        match encoded {
-                            Some(encoded) => self.provider.transcribe_opus_with_reference(encoded, reference).await,
-                            None => self.provider.transcribe_with_reference(audio, reference).await,
-                        }
+                        let observation=observer.map(|observer|inspection::InputObservation{request_id:operation_id.clone(),observer});
+                        self.provider.transcribe_observed(audio,encoded,reference,observation).await
                     };
                     let text = tokio::time::timeout(self.config.provider_timeout, provider_call)
                         .await
@@ -770,6 +780,9 @@ impl VoiceRuntime {
         &self,
         request: VoiceStreamBeginRequest,
     ) -> Result<VoiceStreamBeginResult, VoiceError> {
+        self.stream_begin_observed(request,None).await
+    }
+    async fn stream_begin_observed(&self,request:VoiceStreamBeginRequest,observer:Option<inspection::InputObserver>)->Result<VoiceStreamBeginResult,VoiceError> {
         validate_operation_id(&request.operation_id)?;
         if !request.format.is_canonical() {
             return Err(VoiceError::InvalidStream);
@@ -801,7 +814,7 @@ impl VoiceRuntime {
             .map_err(|_| VoiceError::ProviderUnavailable)?;
         let provider_session = tokio::time::timeout(
             self.config.provider_timeout,
-            provider.begin_with_instructions(request.format.clone(), request.reference.clone(), request.instructions.clone()),
+            provider.begin_observed(request.format.clone(), request.reference.clone(), request.instructions.clone(), observer.map(|observer|inspection::InputObservation{request_id:request.operation_id.clone(),observer})),
         )
         .await
         .map_err(|_| VoiceError::Timeout)??;

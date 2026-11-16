@@ -1613,6 +1613,22 @@
                 for context in allWindows { context.executor.apply(update) }
                 refreshWindowLayouts()
             }
+            model.frontendActionSink = { [weak self] dispatch in
+                guard let self, case let .unsupported(type, payload) = dispatch.action,
+                      type == "show_session", case let .string(session)? = payload["session"] else {
+                    return .error(.init(code:"unsupported_action",message:"Unsupported client action",retryable:false))
+                }
+                let target = ([self.activeWindow] + self.allWindows.filter { $0 !== self.activeWindow }).first {
+                    $0.executor.hasSessionView(execution:dispatch.executionTarget,session:session)
+                } ?? self.activeWindow
+                do {
+                    let view = try await target.executor.showSession(execution:dispatch.executionTarget,session:session,present: self.presentExplicitly)
+                    refreshWindowLayouts()
+                    return .sessionShown(view)
+                } catch {
+                    return .error(.init(code:"session_view_failed",message:error.localizedDescription,retryable:false))
+                }
+            }
             model.setWorkspaceRelaySink { [weak self] request in
                 guard let self else {
                     return ControlCenterStore

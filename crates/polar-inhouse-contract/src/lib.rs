@@ -138,7 +138,17 @@ pub trait InhouseApprovalHandler: Send + Sync {
     ) -> anyhow::Result<InhouseApprovalDecision>;
 }
 
+/// Private opt-in input observation. Contains text payload only, never credentials.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct InhouseInputSnapshot {
+    pub request_id:String,
+    pub channel:String,
+    pub status:String,
+    pub content:Value,
+}
 pub trait InhouseTurnEventHandler: Send {
+    fn on_input_snapshot(&mut self, _snapshot:InhouseInputSnapshot)->std::pin::Pin<Box<dyn std::future::Future<Output=()> + Send>> {Box::pin(async {})}
+
     /// Await observation persistence before publishing tool activity.
     fn on_tool_started(
         &mut self,

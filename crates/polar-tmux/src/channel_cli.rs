@@ -3,11 +3,11 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use polar_station_settings::CodexControlSettingsV1;
 use polar_station_client::desktop_client::{DesktopClient, DesktopClientConfig, DesktopClientEvent};
-use polar_tmux::{
+use polar_station_host::{
     host_identity::random_uuid_v4,
     local_ipc,
 };
-use polar_tmux_protocol::*;
+use polar_station_protocol::*;
 use serde_json::{json, Value};
 use std::{io::Write, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Notify;

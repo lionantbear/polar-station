@@ -10539,8 +10539,8 @@ dependencies = [
  "polar-local-access-contract",
  "polar-local-access-runtime",
  "polar-runtime-paths",
+ "polar-station-protocol",
  "polar-station-session",
- "polar-tmux-protocol",
  "polar-tmux-types",
  "serde",
  "serde_json",
@@ -10559,13 +10559,76 @@ dependencies = [
  "polar-station-client",
  "polar-station-input",
  "polar-station-lgp",
- "polar-tmux-protocol",
- "polar-tmux-resources",
+ "polar-station-protocol",
+ "polar-station-resources",
+ "polar-station-workspace",
  "polar-tmux-types",
- "polar-tmux-workspace",
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "polar-station-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "base64 0.22.1",
+ "clap",
+ "codex-app-server-client",
+ "codex-app-server-protocol",
+ "codex-config",
+ "codex-http-client",
+ "codex-login",
+ "futures-util",
+ "keyring",
+ "libc",
+ "mdns-sd",
+ "objc2",
+ "objc2-foundation",
+ "polar-dictate",
+ "polar-dictate-store-sqlite",
+ "polar-inhouse-backend-adam",
+ "polar-inhouse-contract",
+ "polar-local-access-contract",
+ "polar-local-access-runtime",
+ "polar-runtime-paths",
+ "polar-ssh",
+ "polar-station-client",
+ "polar-station-inbox",
+ "polar-station-input",
+ "polar-station-lgp",
+ "polar-station-protocol",
+ "polar-station-resources",
+ "polar-station-runtime",
+ "polar-station-session",
+ "polar-station-settings",
+ "polar-station-store-sqlite",
+ "polar-station-workspace",
+ "polar-telegram",
+ "polar-tmux-core",
+ "polar-transcreation",
+ "polar-vault",
+ "polar-voice",
+ "polar-voice-provider-codex",
+ "portable-pty",
+ "rand_core 0.6.4",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "toml 0.8.23",
+ "toml_edit 0.24.1+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]
@@ -10582,8 +10645,8 @@ version = "0.1.0"
 dependencies = [
  "polar-identity",
  "polar-station-lgp",
+ "polar-station-protocol",
  "polar-station-session",
- "polar-tmux-protocol",
  "polar-transcreation",
  "serde",
  "serde_json",
@@ -10601,14 +10664,112 @@ dependencies = [
  "polar-inquiry-graph-model",
  "polar-lgp-presentation",
  "polar-lgp-reader",
+ "polar-station-protocol",
  "polar-station-session",
- "polar-tmux-protocol",
  "serde",
  "serde_json",
  "time",
  "unicode-segmentation",
  "unicode-width 0.2.2",
  "uuid",
+]
+
+[[package]]
+name = "polar-station-protocol"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "polar-local-access-contract",
+ "polar-station-inbox",
+ "polar-station-resources",
+ "polar-station-session",
+ "polar-station-settings",
+ "polar-tmux-types",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "polar-station-resources"
+version = "0.1.0"
+dependencies = [
+ "percent-encoding",
+ "polar-identity",
+ "pulldown-cmark 0.13.4",
+ "serde",
+ "serde_json",
+ "typed-path",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "polar-station-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "base64 0.22.1",
+ "clap",
+ "codex-app-server-client",
+ "codex-app-server-protocol",
+ "codex-config",
+ "codex-http-client",
+ "codex-login",
+ "futures-util",
+ "keyring",
+ "libc",
+ "mdns-sd",
+ "objc2",
+ "objc2-foundation",
+ "polar-dictate",
+ "polar-dictate-store-sqlite",
+ "polar-identity",
+ "polar-inhouse-backend-adam",
+ "polar-inhouse-contract",
+ "polar-local-access-contract",
+ "polar-local-access-runtime",
+ "polar-runtime-paths",
+ "polar-ssh",
+ "polar-station-client",
+ "polar-station-inbox",
+ "polar-station-input",
+ "polar-station-lgp",
+ "polar-station-protocol",
+ "polar-station-resources",
+ "polar-station-session",
+ "polar-station-settings",
+ "polar-station-store-sqlite",
+ "polar-station-workspace",
+ "polar-telegram",
+ "polar-tmux-core",
+ "polar-transcreation",
+ "polar-vault",
+ "polar-voice",
+ "polar-voice-provider-codex",
+ "portable-pty",
+ "rand_core 0.6.4",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "toml 0.8.23",
+ "toml_edit 0.24.1+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]
@@ -10656,6 +10817,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "polar-station-workspace"
+version = "0.1.0"
+dependencies = [
+ "polar-dictate",
+ "polar-identity",
+ "polar-station-protocol",
+ "polar-station-resources",
+ "polar-station-settings",
+ "polar-transcreation",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "polar-storage-core"
 version = "0.1.0"
 dependencies = [
@@ -10695,61 +10871,18 @@ name = "polar-tmux"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "axum 0.7.9",
- "base64 0.22.1",
  "cc",
  "clap",
- "codex-app-server-client",
- "codex-app-server-protocol",
- "codex-config",
- "codex-http-client",
- "codex-login",
- "futures-util",
- "keyring",
  "libc",
- "mdns-sd",
- "objc2",
- "objc2-foundation",
- "polar-dictate",
- "polar-dictate-store-sqlite",
- "polar-inhouse-backend-adam",
- "polar-inhouse-contract",
- "polar-local-access-contract",
- "polar-local-access-runtime",
- "polar-runtime-paths",
- "polar-ssh",
  "polar-station-client",
- "polar-station-inbox",
- "polar-station-input",
- "polar-station-lgp",
- "polar-station-session",
+ "polar-station-host",
+ "polar-station-protocol",
  "polar-station-settings",
- "polar-station-store-sqlite",
- "polar-telegram",
  "polar-tmux-core",
- "polar-tmux-protocol",
- "polar-tmux-resources",
- "polar-tmux-workspace",
- "polar-transcreation",
- "polar-vault",
- "polar-voice",
- "polar-voice-provider-codex",
- "portable-pty",
- "rand_core 0.6.4",
- "reqwest 0.12.28",
- "rusqlite",
  "serde",
  "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "time",
  "tokio",
- "tokio-tungstenite 0.24.0",
- "toml 0.8.23",
- "toml_edit 0.24.1+spec-1.1.0",
  "tracing",
- "tracing-subscriber",
  "zeroize",
 ]
 
@@ -10764,61 +10897,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "polar-tmux-protocol"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chacha20poly1305",
- "hkdf 0.12.4",
- "hmac 0.12.1",
- "polar-local-access-contract",
- "polar-station-inbox",
- "polar-station-settings",
- "polar-tmux-resources",
- "polar-tmux-types",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "uuid",
- "zeroize",
-]
-
-[[package]]
-name = "polar-tmux-resources"
-version = "0.1.0"
-dependencies = [
- "percent-encoding",
- "polar-identity",
- "pulldown-cmark 0.13.4",
- "serde",
- "serde_json",
- "typed-path",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "polar-tmux-types"
 version = "0.1.0"
 dependencies = [
  "polar-local-access-contract",
  "polar-ssh",
  "serde",
-]
-
-[[package]]
-name = "polar-tmux-workspace"
-version = "0.1.0"
-dependencies = [
- "polar-dictate",
- "polar-identity",
- "polar-station-settings",
- "polar-tmux-protocol",
- "polar-tmux-resources",
- "polar-transcreation",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]

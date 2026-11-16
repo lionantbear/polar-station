@@ -87,12 +87,22 @@ const BackendState = enum {
     unavailable,
 };
 
+const PendingSessionShow = struct {
+    dispatch: []const u8, workspace: []const u8, tab: []const u8, pane: []const u8,
+    execution: []const u8, session: []const u8, window: []const u8,
+    generation: u64, deadline: i64, reused: bool,
+    fn deinit(self: PendingSessionShow, a:std.mem.Allocator) void {
+        inline for(.{self.dispatch,self.workspace,self.tab,self.pane,self.execution,self.session,self.window}) |value| a.free(value);
+    }
+};
+
 const State = struct {
     allocator: std.mem.Allocator,
     app: *Application,
     frontend_instance_id: []u8,
     frontend_generation: u64,
     client: ipc_client.Client,
+    pending_session_show: ?PendingSessionShow = null,
     executor: presentation_executor.Executor,
     window_executors: std.ArrayListUnmanaged(*presentation_executor.Executor) = .empty,
     lgp: ?*lgp_workspace.Workspace = null,
@@ -232,6 +242,7 @@ const State = struct {
     }
 
     fn deinit(self: *State) void {
+        if(self.pending_session_show) |pending| pending.deinit(self.allocator);
         clearDiagnosticAttachment(self);
         clearDiagnosticSelection(self);
         self.closing = true;
@@ -581,6 +592,7 @@ pub fn tick(app: *Application) void {
                     }
                     if (current.activeExecutor() != &current.executor) current.executor.applyContentResponse(response) catch {};
                     if (current.lgp) |lgp| lgp.terminalViewsChanged();
+                    completeSessionShow(current);
                     // Focus, retirement and recovery remain Pane-local. Their
                     // accepted status does not change the Workspace View.
                 },
@@ -2050,7 +2062,7 @@ fn handleHostFrame(
         },
         .workspace_relay => handleWorkspaceRelay(current, payload),
         .response => {},
-        .frontend_execute => {},
+        .frontend_execute => beginSessionShow(current, generation, payload),
         .ping => {
             const nonce = protocol.decodePingNonce(current.allocator, payload) catch return;
             const response = protocol.encodePong(current.allocator, nonce) catch return;
@@ -2082,6 +2094,59 @@ fn retireEndedExecutorPanes(current: *State, executor: *presentation_executor.Ex
             continue;
         };
     }
+}
+
+fn sessionShowError(current:*State, dispatch:[]const u8, message:[]const u8) void {
+    const payload=std.json.Stringify.valueAlloc(current.allocator,.{.type="frontend_ack",.dispatch_id=dispatch,.result=.{.type="error",.@"error"=.{.code="session_view_failed",.message=message,.retryable=false}}},.{}) catch return;
+    defer current.allocator.free(payload);current.client.sendJson(payload) catch {};
+}
+fn beginSessionShow(current:*State,generation:u64,payload:[]const u8) void {
+    const Frame=struct{dispatch_id:[]const u8,execution_target:[]const u8,action:struct{type:[]const u8,session:?[]const u8=null}};
+    const parsed=std.json.parseFromSlice(Frame,current.allocator,payload,.{.ignore_unknown_fields=true}) catch return;
+    defer parsed.deinit();const frame=parsed.value;
+    if(!std.mem.eql(u8,frame.action.type,"show_session")) {sessionShowError(current,frame.dispatch_id,"Unsupported client action");return;}
+    const session=frame.action.session orelse {sessionShowError(current,frame.dispatch_id,"Missing Session");return;};
+    if(current.pending_session_show) |pending| {
+        if(pending.deadline>std.time.milliTimestamp()) {sessionShowError(current,frame.dispatch_id,"Another Session view is opening");return;}
+        pending.deinit(current.allocator);current.pending_session_show=null;
+    }
+    var executor=current.activeExecutor();
+    if(!executor.hasSessionView(frame.execution_target,session)) {
+        if(current.executor.hasSessionView(frame.execution_target,session)) {
+            executor=&current.executor;
+        } else {
+            for(current.window_executors.items) |candidate| {
+                if(candidate.hasSessionView(frame.execution_target,session)) {executor=candidate;break;}
+            }
+        }
+    }
+    const view=executor.showSession(frame.execution_target,session) catch |err| {sessionShowError(current,frame.dispatch_id,@errorName(err));return;};
+    const a=current.allocator;
+    // The bounded native transaction lives until an existing content-completion event.
+    var owned:std.ArrayList([]const u8)=.empty; defer owned.deinit(a);
+    inline for(.{frame.dispatch_id,view.workspace,view.tab,view.pane,frame.execution_target,session}) |value| {
+        const copy=a.dupe(u8,value) catch {for(owned.items)|item|a.free(item);return;};
+        owned.append(a,copy) catch {a.free(copy);for(owned.items)|item|a.free(item);return;};
+    }
+    const window=std.fmt.allocPrint(a,"gtk-{d}",.{executor.managed_window.?.as(gtk.ApplicationWindow).getId()}) catch {for(owned.items)|item|a.free(item);return;};
+    current.pending_session_show=.{.dispatch=owned.items[0],.workspace=owned.items[1],.tab=owned.items[2],.pane=owned.items[3],.execution=owned.items[4],.session=owned.items[5],.window=window,.generation=generation,.deadline=std.time.milliTimestamp()+7000,.reused=view.reused};
+    current.native_dirty=true;current.app.wakeup();completeSessionShow(current);
+}
+fn completeSessionShow(current:*State) void {
+    const pending=current.pending_session_show orelse return;
+    if(pending.generation!=current.client.currentGeneration() or pending.deadline<std.time.milliTimestamp()) {
+        pending.deinit(current.allocator);current.pending_session_show=null;return;
+    }
+    const executor=current.executorForWorkspace(pending.workspace) orelse {sessionShowError(current,pending.dispatch,"Window closed");pending.deinit(current.allocator);current.pending_session_show=null;return;};
+    switch(executor.terminalViewState(pending.pane,pending.execution,pending.session)) {
+        .pending=>return,
+        .unavailable=>sessionShowError(current,pending.dispatch,"Terminal view unavailable"),
+        .ready=>{
+            const payload=std.json.Stringify.valueAlloc(current.allocator,.{.type="frontend_ack",.dispatch_id=pending.dispatch,.result=.{.type="session_shown",.view=.{.window_id=pending.window,.tab_id=pending.tab,.pane_id=pending.pane,.reused=pending.reused}}},.{}) catch return;
+            defer current.allocator.free(payload);current.client.sendJson(payload) catch {};
+        },
+    }
+    pending.deinit(current.allocator);current.pending_session_show=null;
 }
 
 fn notificationActivated(_: *gio.SimpleAction, parameter: ?*glib.Variant, app: *Application) callconv(.c) void {
@@ -3574,6 +3639,7 @@ fn backendBecameUnavailable(
     current: *State,
     next_state: BackendState,
 ) void {
+    if(current.pending_session_show) |pending| { pending.deinit(current.allocator); current.pending_session_show=null; }
     const was_ready = current.backend_state == .ready;
     const changed = current.backend_state != next_state;
     current.backend_state = next_state;

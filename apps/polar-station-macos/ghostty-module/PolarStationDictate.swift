@@ -560,6 +560,8 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
     private var currentID:String?
     private var updating=false
     private var editing=false
+    private var following=true
+    private let latest=NSButton(title:"↓ Latest",target:nil,action:nil)
     private var hideTimer:Timer?
     private var hidingID:String?
     override var canBecomeKey:Bool {editing}
@@ -584,7 +586,7 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         textHeight=scroll.heightAnchor.constraint(equalToConstant:20);textHeight.isActive=true
         let header=NSStackView();header.orientation = .horizontal;header.distribution = .fill;header.spacing=6;header.addArrangedSubview(status)
         actions.orientation = .horizontal;actions.spacing=6
-        for (kind,title) in [("stop","Stop"),("cancel","Cancel"),("use_available","Use text now"),("copy","Copy"),("edit","Edit"),("insert_draft","Insert"),("retry_saved","Retry"),("hide_panel","Close")] {
+        for (kind,title) in [("stop","Stop"),("cancel","Cancel"),("use_available","Use text now"),("copy","Copy"),("edit","Edit"),("insert_draft","Insert"),("retry_saved","Retry"),("hide_panel","Close"),("view_inputs","View inputs")] {
             let button=NSButton(title:title,target:self,action:#selector(clicked(_:)))
             button.identifier=NSUserInterfaceItemIdentifier(kind);button.refusesFirstResponder=true
             button.isBordered=false;button.contentTintColor = .white
@@ -594,6 +596,9 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         }
         more.target=self;more.action=#selector(showMore(_:));more.refusesFirstResponder=true
         more.isBordered=false;more.contentTintColor = .white;more.setAccessibilityLabel("More Dictate actions")
+        latest.target=self;latest.action=#selector(followLatest);latest.refusesFirstResponder=true;latest.isBordered=false;latest.contentTintColor = .white;latest.isHidden=true
+        header.addArrangedSubview(latest)
+        NotificationCenter.default.addObserver(self,selector:#selector(userScrolled),name:NSScrollView.didLiveScrollNotification,object:scroll)
         header.addArrangedSubview(more)
         referenceLabel.maximumNumberOfLines=1;referenceLabel.lineBreakMode = .byTruncatingTail;referenceLabel.textColor = .lightGray;referenceLabel.setAccessibilityLabel("Quoted text")
         let column=NSStackView(views:[header,referenceLabel,scroll,actions]);column.orientation = .vertical;column.alignment = .leading;column.spacing=8
@@ -602,9 +607,29 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         column.layer?.cornerRadius=12;contentView=column
         for view in [header,referenceLabel,scroll] {view.widthAnchor.constraint(equalTo:column.widthAnchor,constant:-24).isActive=true}
     }
+    private var atBottom:Bool { scroll.contentView.bounds.maxY >= editor.bounds.maxY - 2 }
+    @objc private func userScrolled() {
+        guard !updating else{return}
+        following = atBottom && !editing && editor.selectedRange().length == 0
+        latest.isHidden=following
+    }
+    func textViewDidChangeSelection(_ notification:Notification) {
+        guard !updating, editor.selectedRange().length > 0 else{return}
+        following=false;latest.isHidden=false
+    }
+    @objc private func followLatest() { following=true;editing=false;editor.isEditable=false;applyFollowing() }
+    private func applyFollowing() {
+        guard following && !editing else {latest.isHidden=false;return}
+        updating=true
+        contentView?.layoutSubtreeIfNeeded()
+        if let container=editor.textContainer {editor.layoutManager?.ensureLayout(for:container)}
+        scroll.contentView.scroll(to:NSPoint(x:0,y:max(0,editor.bounds.height-scroll.contentView.bounds.height)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        updating=false;latest.isHidden=true
+    }
     @objc private func showMore(_ sender:NSButton) {
         let menu=NSMenu()
-        for kind in ["edit","use_available","retry_saved","cancel","hide_panel"] {
+        for kind in ["view_inputs","edit","use_available","retry_saved","cancel","hide_panel"] {
             guard let control=controls[kind],!control.isHidden else {continue}
             let item=NSMenuItem(title:control.title,action:#selector(menuAction(_:)),keyEquivalent:"")
             item.target=self;item.representedObject=kind;menu.addItem(item)
@@ -621,22 +646,24 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
     private func performAction(_ kind:String) {
         switch kind {
         case "copy":action("copy_draft",editor.string)
-        case "edit":editing=true;editor.isEditable=true;makeKeyAndOrderFront(nil);makeFirstResponder(editor)
+        case "edit":following=false;latest.isHidden=false;editing=true;editor.isEditable=true;makeKeyAndOrderFront(nil);makeFirstResponder(editor)
         default:action(kind,nil)
         }
     }
     func update(_ panel:[String:Any]?) {
         guard let panel,let id=panel["operation_id"] as? String else {hideTimer?.invalidate();hideTimer=nil;hidingID=nil;orderOut(nil);return}
-        if currentID != id {currentID=id;editing=false;editor.isEditable=false}
+        if currentID != id {currentID=id;editing=false;following=true;editor.isEditable=false}
         status.stringValue=panel["heading"] as? String ?? "Dictate"
         status.toolTip=panel["status"] as? String
         let text=panel["text"] as? String ?? ""
         if editor.string != text {
             let origin=scroll.contentView.bounds.origin
+            let selection=editor.selectedRange()
             updating=true
             if text.hasPrefix(editor.string) {editor.textStorage?.append(NSAttributedString(string:String(text.dropFirst(editor.string.count)),attributes:[.font:NSFont.systemFont(ofSize:14),.foregroundColor:NSColor.white]))}
             else {editor.string=text}
-            updating=false;scroll.contentView.scroll(to:origin)
+            if !following {editor.setSelectedRange(NSRange(location:min(selection.location,(text as NSString).length),length:min(selection.length,max(0,(text as NSString).length-selection.location))));scroll.contentView.scroll(to:origin)}
+            updating=false
         }
         if let container=editor.textContainer,let layout=editor.layoutManager {
             layout.ensureLayout(for:container)
@@ -644,7 +671,7 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
             textHeight.constant=min(4*lineHeight,max(lineHeight,ceil(layout.usedRect(for:container).height)))
         }
         scroll.isHidden=text.isEmpty && !editing
-        for (kind,key,label) in [("stop","can_stop","stop_label"),("cancel","can_cancel","cancel_label"),("use_available","can_available","available_label"),("copy","can_copy","copy_label"),("edit","can_edit","edit_label"),("insert_draft","can_insert","insert_label"),("retry_saved","can_retry","retry_label")] {
+        for (kind,key,label) in [("view_inputs","can_view_inputs","inputs_label"),("stop","can_stop","stop_label"),("cancel","can_cancel","cancel_label"),("use_available","can_available","available_label"),("copy","can_copy","copy_label"),("edit","can_edit","edit_label"),("insert_draft","can_insert","insert_label"),("retry_saved","can_retry","retry_label")] {
             controls[kind]?.isHidden=panel[key] as? Bool != true
             controls[kind]?.title=panel[label] as? String ?? ""
         }
@@ -663,6 +690,7 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         }
         setFrame(NSRect(origin:origin,size:NSSize(width:360,height:height)),display:true)
         if !isVisible {orderFrontRegardless()}
+        applyFollowing()
         let delay=panel["hide_after_ms"] as? Int ?? 0
         if delay>0 && hidingID != id {
             hideTimer?.invalidate();hidingID=id
@@ -734,7 +762,12 @@ final class StationDictateControls: NSStackView {
     private let list = NSStackView()
     private let listScroll = NSScrollView()
     private let detail = NSStackView()
-    private let variants = NSSegmentedControl(labels: ["Original", "Refined"], trackingMode: .selectOne, target: nil, action: nil)
+    private let variants = NSSegmentedControl(labels: ["Original", "Result", "Inputs"], trackingMode: .selectOne, target: nil, action: nil)
+    private let inputControls=NSStackView()
+    private let inputStage=NSPopUpButton()
+    private let inputRequest=NSPopUpButton()
+    private let inputView=NSSegmentedControl(labels:["Sources","Request text"],trackingMode:.selectOne,target:nil,action:nil)
+    private let inputStatus=NSTextField(wrappingLabelWithString:"")
     private let content = NSTextView()
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
     private let shortcutLabel = NSTextField(wrappingLabelWithString: "")
@@ -789,6 +822,14 @@ final class StationDictateControls: NSStackView {
         column.addArrangedSubview(button("more") { [weak self] in self?.dictate?.historyCommand("history_more") })
         detail.orientation = .vertical; detail.alignment = .leading; detail.spacing = 6
         variants.target = self; variants.action = #selector(variantChanged); detail.addArrangedSubview(variants)
+        inputControls.orientation = .vertical;inputControls.alignment = .leading;inputControls.spacing=4
+        inputStage.target=self;inputStage.action=#selector(stageChanged)
+        inputRequest.target=self;inputRequest.action=#selector(requestChanged)
+        inputView.target=self;inputView.action=#selector(inputViewChanged)
+        inputStatus.font = .systemFont(ofSize:NSFont.smallSystemFontSize);inputStatus.preferredMaxLayoutWidth=340
+        for item in [inputStage as NSView,inputRequest,inputView,inputStatus]{inputControls.addArrangedSubview(item)}
+        detail.addArrangedSubview(inputControls)
+        inputRequest.widthAnchor.constraint(equalToConstant:340).isActive=true
         content.isEditable = false; content.isSelectable = true; content.isRichText = false
         content.font = .systemFont(ofSize: NSFont.systemFontSize)
         content.isHorizontallyResizable = false; content.autoresizingMask = [.width]
@@ -802,7 +843,10 @@ final class StationDictateControls: NSStackView {
         let operations = NSStackView(); operations.spacing = 6
         operations.addArrangedSubview(button("copy") { [weak self] in
             guard let self,let id=self.selectedID else { return }
-            self.dictate?.historyCommand("history_copy",id:id,original:self.variants.selectedSegment==0)
+            if self.variants.selectedSegment==2 {
+                guard let inputs=self.dictate?.view["inputs"] as? [String:Any],inputs["can_copy"] as? Bool == true,let text=inputs["text"] as? String else{return}
+                NSPasteboard.general.clearContents();NSPasteboard.general.setString(text,forType:.string)
+            }else{self.dictate?.historyCommand("history_copy",id:id,original:self.variants.selectedSegment==0)}
         })
         for (key, command) in [("insert","history_insert"),("retry","history_retry"),("dismiss","history_dismiss")] {
             operations.addArrangedSubview(button(key) { [weak self] in
@@ -865,7 +909,11 @@ final class StationDictateControls: NSStackView {
             if ui["can_apply"] as? Bool == true {alert.addButton(withTitle:ui["confirm_label"] as? String ?? "");alert.addButton(withTitle:ui["cancel_label"] as? String ?? "");if alert.runModal() == .alertFirstButtonReturn {dictate.input(["type":"cleanup_apply","confirmation":true])}}
             else {alert.addButton(withTitle:"OK");alert.runModal()}
         }
-        if popover.isShown { updateHistory() }
+        if let inputs=dictate.view["inputs"] as? [String:Any],inputs["open_requested"] as? Bool == true,
+           let window,window === (NSApp.mainWindow ?? NSApp.orderedWindows.first(where:{$0.canBecomeMain && $0.isVisible})),!isHiddenOrHasHiddenAncestor {
+            NSApp.activate(ignoringOtherApps:true);window.makeKeyAndOrderFront(nil)
+            updateHistory();popover.show(relativeTo:bounds,of:self,preferredEdge:.maxY)
+        }else if popover.isShown { updateHistory() }
     }
     @objc private func refinePressed() { refine?() }
     @objc private func toggle() {
@@ -952,7 +1000,17 @@ final class StationDictateControls: NSStackView {
         let value = view["history_detail"] as? [String:Any]
         let nextID = value?["operation_id"] as? String
         if selectedID != nextID { variants.selectedSegment = value?["can_refined"] as? Bool == true ? 1 : 0 }
+        let inputs=view["inputs"] as? [String:Any] ?? [:]
+        let inspecting=inputs["visible"] as? Bool == true && inputs["operation_id"] as? String == nextID
+        if inspecting {variants.selectedSegment=2}
+        else if variants.selectedSegment==2 {variants.selectedSegment=value?["can_refined"] as? Bool == true ? 1 : 0}
         selectedID = nextID; detail.isHidden = value == nil
+        variants.setLabel(ui["inputs"] ?? "Inputs",forSegment:2);variants.setEnabled(nextID != nil,forSegment:2)
+        inputControls.isHidden = !inspecting
+        updateChoices(inputStage,values:inputs["stages"] as? [[String:String]] ?? [],key:"id",selected:inputs["stage"] as? String)
+        updateChoices(inputRequest,values:inputs["requests"] as? [[String:String]] ?? [],key:"key",selected:inputs["selected_key"] as? String)
+        inputView.selectedSegment=inputs["sources"] as? Bool == true ? 0 : 1
+        inputStatus.stringValue=inputs["status"] as? String ?? ""
         for (id,row) in rows { row.select(id == selectedID) }
         variants.setLabel(ui["original"] ?? "",forSegment:0); variants.setLabel(ui["refined"] ?? "",forSegment:1)
         variants.setEnabled(value?["can_original"] as? Bool == true,forSegment:0)
@@ -965,13 +1023,39 @@ final class StationDictateControls: NSStackView {
         buttons["delete"]?.isEnabled = value?["can_delete"] as? Bool == true
         buttons["pin"]?.isEnabled = value?["can_pin"] as? Bool == true
         buttons["pin"]?.title=value?["pin_label"] as? String ?? ""
-        variantChanged()
+        if inspecting {for key in ["insert","retry","dismiss"] {buttons[key]?.isHidden=true}}
+        renderHistoryText()
         list.layoutSubtreeIfNeeded()
         list.setFrameSize(NSSize(width:listScroll.contentSize.width,height:list.fittingSize.height))
         listScroll.contentView.scroll(to: previous); listScroll.reflectScrolledClipView(listScroll.contentView)
         popover.contentSize = popover.contentViewController?.view.fittingSize ?? NSSize(width:360,height:260)
     }
+    private func updateChoices(_ control:NSPopUpButton,values:[[String:String]],key:String,selected:String?) {
+        if control.numberOfItems != values.count || zip(control.itemArray,values).contains(where:{$0.0.title != $0.1["label"] || $0.0.representedObject as? String != $0.1[key]}) {
+            control.removeAllItems()
+            for value in values {control.addItem(withTitle:value["label"] ?? "");control.lastItem?.representedObject=value[key]}
+        }
+        if control.selectedItem?.representedObject as? String != selected {
+            control.select(control.itemArray.first(where:{$0.representedObject as? String == selected}))
+        }
+    }
+    @objc private func stageChanged() {if let stage=inputStage.selectedItem?.representedObject as? String {dictate?.input(["type":"input_stage","stage":stage])}}
+    @objc private func requestChanged() {if let key=inputRequest.selectedItem?.representedObject as? String {dictate?.input(["type":"input_request","key":key])}}
+    @objc private func inputViewChanged() {dictate?.input(["type":"input_view","sources":inputView.selectedSegment==0])}
     @objc private func variantChanged() {
+        if variants.selectedSegment==2 {dictate?.historyCommand("history_inputs",id:selectedID)}
+        else {dictate?.input(["type":"input_close"])}
+        renderHistoryText()
+    }
+    private func renderHistoryText() {
+        if variants.selectedSegment==2 {
+            let inputs=dictate?.view["inputs"] as? [String:Any] ?? [:]
+            buttons["copy"]?.isEnabled=inputs["can_copy"] as? Bool == true
+            buttons["copy"]?.title=inputs["copy_label"] as? String ?? "Copy inputs"
+            let text=inputs["text"] as? String ?? ""
+            if content.string != text {content.string=text}
+            return
+        }
         let value = dictate?.view["history_detail"] as? [String:Any]
         buttons["copy"]?.isEnabled = value?[variants.selectedSegment == 0 ? "can_copy_original" : "can_copy"] as? Bool == true
         let text = value?[variants.selectedSegment == 0 ? "raw" : "text"] as? String ?? ""

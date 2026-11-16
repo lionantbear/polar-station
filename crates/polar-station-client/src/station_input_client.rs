@@ -13,6 +13,7 @@ pub async fn execute(
     let client = SessionClient::new(socket_path, crate::local_ipc::effective_uid(), None);
     let result: anyhow::Result<serde_json::Value> = async {
         match job.request {
+            Request::Show { principal, input } => Ok(serde_json::to_value(client.show(&principal, input).await?)?),
             Request::List { input } => Ok(serde_json::to_value(client.list(input).await?)?),
             Request::Send { principal, input } => {
                 Ok(serde_json::to_value(client.send(&principal, input).await?)?)

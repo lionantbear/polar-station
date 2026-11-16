@@ -18,6 +18,7 @@ pub struct PcmTranscriptionSession {
     runtime: Arc<VoiceRuntime>,
     operation_id: String,
     reference: TranscriptionReference,
+    observer: Option<crate::inspection::InputObserver>,
     mode: PcmTranscriptionMode,
     encoder: PcmOpusEncoder,
     pcm: Zeroizing<Vec<u8>>,
@@ -33,6 +34,7 @@ pub struct PcmTranscriptionJob {
     runtime: Arc<VoiceRuntime>,
     operation_id: String,
     reference: TranscriptionReference,
+    observer: Option<crate::inspection::InputObserver>,
     audio: Option<(Zeroizing<Vec<u8>>, VoiceOpusRecording)>,
     stream: Option<String>,
 }
@@ -54,6 +56,7 @@ impl PcmTranscriptionJob {
             .transcribe_inner(
                 VoiceTranscribeRequest::new(self.operation_id.clone(), std::mem::take(&mut *pcm)).with_reference(self.reference.clone()),
                 Some(opus),
+                self.observer.clone(),
             )
             .await
     }
@@ -96,6 +99,10 @@ impl VoiceRuntime {
         self: &Arc<Self>, operation_id: impl Into<String>, mode: PcmTranscriptionMode,
         start_sample: u64, reference: TranscriptionReference, instructions: Option<String>,
     ) -> Result<PcmTranscriptionSession, VoiceError> {
+        self.open_pcm_observed(operation_id,mode,start_sample,reference,instructions,None).await
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_pcm_observed(self:&Arc<Self>,operation_id:impl Into<String>,mode:PcmTranscriptionMode,start_sample:u64,reference:TranscriptionReference,instructions:Option<String>,observer:Option<crate::inspection::InputObserver>)->Result<PcmTranscriptionSession,VoiceError> {
         if mode == PcmTranscriptionMode::Buffered && instructions.is_some() {
             return Err(VoiceError::InstructionsUnsupported);
         }
@@ -108,12 +115,13 @@ impl VoiceRuntime {
                 &operation_id, VoiceStreamFormat::opus_16khz_mono(),
             ).with_reference(reference.clone());
             if let Some(instructions) = instructions { request = request.with_instructions(instructions); }
-            self.stream_begin(request).await?;
+            self.stream_begin_observed(request,observer.clone()).await?;
         }
         Ok(PcmTranscriptionSession {
             runtime: self.clone(),
             operation_id,
             reference,
+            observer,
             mode,
             encoder,
             pcm: Zeroizing::new(Vec::new()),
@@ -233,6 +241,7 @@ impl PcmTranscriptionSession {
             runtime: self.runtime.clone(),
             operation_id,
             reference: self.reference.clone(),
+            observer: self.observer.clone(),
             audio: Some((original, VoiceOpusRecording::from_packets(packets))),
             stream: None,
         })
@@ -264,6 +273,7 @@ impl PcmTranscriptionSession {
                 runtime: self.runtime.clone(),
                 operation_id,
                 reference: self.reference.clone(),
+            observer: self.observer.clone(),
                 audio: None,
                 stream: Some(self.operation_id.clone()),
             })

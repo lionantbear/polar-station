@@ -90,7 +90,7 @@ impl crate::runtime::DictateRuntime {
         let instructions = self.realtime_instruction()?;
         let mut voice = self
             .voice()
-            .open_pcm_with_instructions(operation, PcmTranscriptionMode::Incremental, 0, reference, instructions)
+            .open_pcm_observed(operation, PcmTranscriptionMode::Incremental, 0, reference, instructions,Some(self.input_recorder(id).voice()))
             .await?;
         let mut updates = voice
             .subscribe()

@@ -86,7 +86,7 @@ def main():
         if not args.debug:
             cargo.append('--release')
         # Keep Host and frontend feature resolution separate.
-        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', '--lib')
+        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux')
         run(*cargo, '-p', 'polar-station-desktop-ffi', '-p', 'polar-station-client', '--lib')
         run(*cargo, '-p', 'polar-graphics-godot', '--lib')
         # Avoid exposing sysroot FreeType headers or absolute library RUNPATHs to Zig.

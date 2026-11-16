@@ -1,5 +1,5 @@
 //! Leaf tmux execution/content DTOs. No Polar identity, SDK, store or UI dependency.
-//! Types moved from polar-tmux-protocol; that crate re-exports the SAME types.
+//! Types moved from polar-station-protocol; that crate re-exports the SAME types.
 use std::fmt;
 use serde::{Deserialize, Serialize};
 mod pane_content;

@@ -15,7 +15,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use polar_tmux_protocol::{
+use polar_station_protocol::{
     DesktopSendError, LocalClientFrame, LocalHostFrame, PaneContentRequestV1, PaneContentResponseV1,
     PaneContentResultV1, ProtocolError, PROTOCOL_VERSION,
 };
@@ -52,9 +52,9 @@ pub enum DesktopClientEvent {
         registration_id: String,
         host_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        host_control_versions: Option<polar_tmux_protocol::HostControlVersionsV1>,
+        host_control_versions: Option<polar_station_protocol::HostControlVersionsV1>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        extensions: Vec<polar_tmux_protocol::LocalExtensionOfferV1>,
+        extensions: Vec<polar_station_protocol::LocalExtensionOfferV1>,
     },
     Frame {
         generation: u64,
@@ -74,8 +74,8 @@ pub struct DesktopClientStateMachine {
     generation: u64,
     registered: bool,
     requests: requests::Requests,
-    offered_extensions: Vec<polar_tmux_protocol::LocalExtensionOfferV1>,
-    negotiated_extensions: Vec<polar_tmux_protocol::LocalExtensionOfferV1>,
+    offered_extensions: Vec<polar_station_protocol::LocalExtensionOfferV1>,
+    negotiated_extensions: Vec<polar_station_protocol::LocalExtensionOfferV1>,
     capacity: usize,
     events: VecDeque<DesktopClientEvent>,
     content_events: VecDeque<DesktopClientEvent>,
@@ -102,9 +102,9 @@ impl DesktopClientStateMachine {
     }
 
     pub fn new_with_extensions(
-        capacity: usize, offered: Vec<polar_tmux_protocol::LocalExtensionOfferV1>,
+        capacity: usize, offered: Vec<polar_station_protocol::LocalExtensionOfferV1>,
     ) -> Result<Self> {
-        polar_tmux_protocol::validate_extension_offers(&offered)?;
+        polar_station_protocol::validate_extension_offers(&offered)?;
         let mut state = Self::new(capacity);
         state.offered_extensions = offered;
         Ok(state)
@@ -181,7 +181,7 @@ impl DesktopClientStateMachine {
                 host_control_versions,
                 extensions,
             } if !self.registered && protocol_version == PROTOCOL_VERSION => {
-                if polar_tmux_protocol::validate_extension_ack(&self.offered_extensions, &extensions).is_err() {
+                if polar_station_protocol::validate_extension_ack(&self.offered_extensions, &extensions).is_err() {
                     return false;
                 }
                 let negotiated = extensions.clone();
@@ -358,12 +358,15 @@ pub struct DesktopClient {
 
 impl DesktopClient {
     pub fn new(
-        config: DesktopClientConfig,
+        mut config: DesktopClientConfig,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self> {
         crate::operation_trace::init();
         tracing::info!(target: "polar_station_operation", component="Desktop", event="desktop_client_created");
         config.validate()?;
+        if let LocalClientFrame::Register { frontend_instance_id, .. } = &mut config.registration {
+            *frontend_instance_id = Some(polar_identity::generation::new_uuid_v4().to_string());
+        }
         Ok(Self {
             state: Arc::new(Mutex::new(DesktopClientStateMachine::new_with_extensions(
                 config.event_capacity,
@@ -528,7 +531,7 @@ impl DesktopClient {
     }
 
     pub fn try_session(&self, request: crate::station_input_client::DesktopSessionRequest) -> Result<()> {
-        polar_tmux_protocol::validate_stable_identifier(&request.request_id,"session operation")?;
+        polar_station_protocol::validate_stable_identifier(&request.request_id,"session operation")?;
         self.content.as_ref().context("desktop client is not started")?
             .try_send(DesktopWorkerRequest::Session(request))
             .map_err(|_|anyhow::anyhow!("desktop worker is busy"))
@@ -662,7 +665,7 @@ async fn run_content_worker(
                         continue;
                     },
                 };
-                use polar_tmux_protocol::PaneContentCommandV1 as C;
+                use polar_station_protocol::PaneContentCommandV1 as C;
                 if matches!(job.request.command, C::UnobserveRecovery) {
                     if let Some((_, task, _)) = current.remove(&(job.request.channel_id.clone(), job.request.channel_generation, 1)) { task.abort(); }
                     continue;
@@ -688,7 +691,7 @@ async fn run_content_worker(
                         protocol_version: PROTOCOL_VERSION, api: job.request.api,
                         request_id: job.request.request_id, channel_id: job.request.channel_id,
                         channel_generation: job.request.channel_generation, content_revision: revision,
-                        result: PaneContentResultV1::Rejected { error: polar_tmux_protocol::ProtocolError::new(
+                        result: PaneContentResultV1::Rejected { error: polar_station_protocol::ProtocolError::new(
                             "content_capacity", "The terminal control queue is full. Retry this operation.", true) },
                     };
                     state.lock().unwrap_or_else(|v| v.into_inner()).content_events.push_back(DesktopClientEvent::ContentCompleted { response });
@@ -809,7 +812,7 @@ async fn observe_content_recovery(
     let mut revision = job.request.content_revision;
     loop {
         let mut unavailable = polar_tmux_types::terminal_feedback(
-            polar_tmux_protocol::TerminalRecoveryPhaseV1::StatusUnavailable,
+            polar_station_protocol::TerminalRecoveryPhaseV1::StatusUnavailable,
             None,
         );
         unavailable.content_generation = revision;
@@ -865,7 +868,7 @@ async fn observe_content_recovery(
                 revision = response.content_revision;
                 view.input_warning = false;
                 view.input_warning_message.clear();
-                if view.phase == polar_tmux_protocol::TerminalRecoveryPhaseV1::Hidden {
+                if view.phase == polar_station_protocol::TerminalRecoveryPhaseV1::Hidden {
                     view.visible = false;
                 }
                 delay = INITIAL_RECONNECT_DELAY;
@@ -880,7 +883,7 @@ async fn observe_content_recovery(
         );
         // Publish failure before the retry delay; stale Ready must never remain displayed.
         let mut view = polar_tmux_types::terminal_feedback(
-            polar_tmux_protocol::TerminalRecoveryPhaseV1::StatusUnavailable,
+            polar_station_protocol::TerminalRecoveryPhaseV1::StatusUnavailable,
             None,
         );
         view.content_generation = revision;
@@ -940,8 +943,8 @@ async fn wait_for_content_publication(
 
 async fn exchange_content(job: &DesktopContentRequest) -> PaneContentResponseV1 {
     let focus = match &job.request.command {
-        polar_tmux_protocol::PaneContentCommandV1::Focus { sequence, focused }
-        | polar_tmux_protocol::PaneContentCommandV1::TerminalControl { sequence, focused, .. } => Some((*sequence, *focused)),
+        polar_station_protocol::PaneContentCommandV1::Focus { sequence, focused }
+        | polar_station_protocol::PaneContentCommandV1::TerminalControl { sequence, focused, .. } => Some((*sequence, *focused)),
         _ => None,
     };
     let span = if let Some((sequence, focused)) = focus {
@@ -1070,7 +1073,11 @@ async fn run_worker(
             }
         };
         let (mut reader, mut writer) = stream.into_split();
-        if let Err(error) = write_desktop_frame(&mut writer, &config.registration).await {
+        if let Err(error) = write_desktop_frame(&mut writer, &{
+            let mut registration = config.registration.clone();
+            if let LocalClientFrame::Register { frontend_generation, .. } = &mut registration { *frontend_generation = generation; }
+            registration
+        }).await {
             publish_unavailable(
                 &state,
                 &wake,
@@ -1140,7 +1147,7 @@ async fn run_worker(
                         break (format!("Host write failed: {error}"), false);
                     }
                     if let LocalClientFrame::ApplicationRequest {
-                        request: polar_tmux_protocol::ClientApplicationMessage::ControlCenterV1(request),
+                        request: polar_station_protocol::ClientApplicationMessage::ControlCenterV1(request),
                     } = &frame {
                         tracing::info!(target:"polar_station_operation", component="Desktop", event="request_sent",
                             request_id=request.request_id.as_str(), generation);
@@ -1148,6 +1155,9 @@ async fn run_worker(
                 }
                 result = incoming.recv() => {
                     match result.unwrap_or(Ok(None)) {
+                        Ok(Some(LocalHostFrame::RegistrationRejected { error })) => {
+                            break (format!("{}: {}", error.code, error.message), false);
+                        }
                         Ok(Some(LocalHostFrame::Ping { nonce })) => {
                             if let Err(error) = write_desktop_frame(
                                 &mut writer,
@@ -1158,7 +1168,7 @@ async fn run_worker(
                         }
                         Ok(Some(frame)) => {
                             if let LocalHostFrame::Registered { host_control_versions, .. } = &frame {
-                                if host_control_versions.and_then(|v| v.desktop) != Some(polar_tmux_protocol::DESKTOP_CONTROL_CONTRACT_VERSION) {
+                                if host_control_versions.and_then(|v| v.desktop) != Some(polar_station_protocol::DESKTOP_CONTROL_CONTRACT_VERSION) {
                                     break ("Desktop/Host IPC contract mismatch. Install the matching Polar Station desktop and managed Host artifacts together.".into(), false);
                                 }
                             }

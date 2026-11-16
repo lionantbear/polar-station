@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use polar_local_access_contract::{LocalExtensionRequestV1, LocalExtensionResultV1};
 use polar_station_session::*;
-use polar_tmux_protocol::{LocalClientFrame, LocalHostFrame};
+use polar_station_protocol::{LocalClientFrame, LocalHostFrame};
 
 use std::{
     os::unix::fs::{FileTypeExt, MetadataExt},
@@ -86,6 +86,10 @@ impl SessionClient {
 }
 #[async_trait::async_trait]
 impl SessionBackend for SessionClient {
+    async fn show(&self, principal: &str, input: polar_station_session::ShowRequest) -> Result<polar_station_session::ShownSession> {
+        self.target(&input.reference.target_id)?;
+        self.call(Request::Show { principal: principal.into(), input }).await
+    }
     async fn list(&self, mut input: ListRequest) -> Result<Catalog> {
         if let Some(id) = &input.target_id {
             self.target(id)?;

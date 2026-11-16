@@ -45,10 +45,11 @@ impl crate::runtime::DictateRuntime {
                 .ok_or_else(|| anyhow::anyhow!("dictate.refinement_disabled"))?,
         };
         let recording_id = record.id.clone();
+        let observer=Box::new(self.input_recorder(&record.id));
         Ok(Some(Box::pin(async move {
             let text = tokio::time::timeout(
                 std::time::Duration::from_secs(8),
-                cleanup.clean_recording(&recording_id, request),
+                cleanup.clean_observed(Some(&recording_id), request,observer),
             )
             .await??;
             let text = if prefix.is_empty() {

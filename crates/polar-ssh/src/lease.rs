@@ -31,20 +31,7 @@ impl PartialEq for SshConnectionLease {
 impl Eq for SshConnectionLease {}
 
 impl SshConnectionLease {
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn resource_test_lease(control_socket: PathBuf, exited: watch::Receiver<bool>) -> Self {
-        Self {
-            target_id: "fixture".into(),
-            generation: 1,
-            master_pid: std::process::id(),
-            destination: "fixture@127.0.0.1".into(),
-            destination_fingerprint: "fixture".into(),
-            control_socket,
-            route: SshRouteKind::Opaque,
-            operation_id: 1,
-            exited,
-        }
-    }
+    
 
     pub fn master_exited(&self) -> bool {
         *self.exited.borrow()

@@ -14,6 +14,11 @@ use tracing::Instrument;
 /// The Host supplies a scoped, tool-free text editor using its trusted owner.
 #[async_trait]
 pub trait TranscriptCleanup: Send + Sync {
+    async fn clean_observed(&self,recording_id:Option<&str>,request:polar_transcreation::EditRequest,mut observer:Box<dyn polar_transcreation::InhouseTurnEventHandler + Send>)->Result<String> {
+        observer.on_input_snapshot(polar_transcreation::InhouseInputSnapshot{request_id:request.operation_id.clone(),channel:"provider".into(),status:"unsupported".into(),content:serde_json::json!({"reason":"This editor does not expose request inputs"})}).await;
+        match recording_id{Some(id)=>self.clean_recording(id,request).await,None=>self.clean(request).await}
+    }
+
     async fn clean(&self, request: polar_transcreation::EditRequest) -> Result<String>;
     async fn clean_recording(
         &self,
@@ -29,7 +34,8 @@ pub trait TranscriptCleanup: Send + Sync {
     }
 }
 pub struct DictateRuntime {
-    store: Arc<dyn DictateStore>,
+    pub(crate) store: Arc<dyn DictateStore>,
+    pub(crate) input_errors:Arc<Mutex<HashSet<String>>>,
     voice: Arc<VoiceRuntime>,
     cleanup: Option<Arc<dyn TranscriptCleanup>>,
     settings: Option<Arc<dyn Fn() -> Result<crate::VoiceSettings> + Send + Sync>>,
@@ -38,7 +44,7 @@ pub struct DictateRuntime {
     inputs: Mutex<HashMap<String, Arc<CaptureInput>>>,
     wake: Notify,
     maintenance_dirty: std::sync::atomic::AtomicBool,
-    events: broadcast::Sender<crate::DictateEvent>,
+    pub(crate) events: broadcast::Sender<crate::DictateEvent>,
 }
 /// Relocated native PCM tail. It owns no durable truth or second audio queue.
 #[derive(Default)]
@@ -108,6 +114,7 @@ impl DictateRuntime {
     pub fn new(store: Arc<dyn DictateStore>, voice: Arc<VoiceRuntime>) -> Self {
         Self {
             store,
+            input_errors:Arc::new(Mutex::new(HashSet::new())),
             voice,
             cleanup: None,
             settings: None,
@@ -307,7 +314,7 @@ impl DictateRuntime {
         self.cleanup
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("dictate.cleanup_not_configured"))?
-            .clean(request)
+            .clean_observed(None,request.clone(),Box::new(self.input_recorder(&request.operation_id)))
             .await
     }
     pub fn with_cleanup(mut self, cleanup: Arc<dyn TranscriptCleanup>) -> Self {
@@ -412,6 +419,18 @@ impl DictateRuntime {
         }
         let context = record.context.clone();
         let record = self.store.create(record).await?;
+        self.input_recorder(&record.id).save(crate::InputSnapshot{
+            request_id:record.id.clone(),stage:"sources".into(),channel:"policy".into(),status:"prepared".into(),
+            content:serde_json::json!({"transcription_mode":record.transcription_mode,"output_mode":record.output_mode,
+                "context_enabled":record.context_enabled,"nearby_context":context,"quote":record.reference,"terminology":record.glossary,
+                "note":"Frozen capture configuration. Empty or disabled inputs were not fetched for inspection."}),
+        }).await;
+        if !record.cleanup_enabled {
+            self.input_recorder(&record.id).save(crate::InputSnapshot{
+                request_id:record.id.clone(),stage:"refine".into(),channel:"policy".into(),status:"not_collected".into(),
+                content:serde_json::json!({"reason":"No Refine selected; no refinement request was prepared"}),
+            }).await;
+        }
         if record.capture == CaptureState::Recording {
             if let Some(context) = context {
                 self.contexts
@@ -572,9 +591,9 @@ impl DictateRuntime {
                     }
                     input.voice_pcm = Some(
                         self.voice
-                            .open_pcm_with_reference(&id, polar_voice::pcm::PcmTranscriptionMode::Buffered, start,
+                            .open_pcm_observed(&id, polar_voice::pcm::PcmTranscriptionMode::Buffered, start,
                                 self.transcription_reference(&record, polar_voice::pcm::PcmTranscriptionMode::Buffered)
-                                    .map_err(|_| polar_voice::VoiceError::InvalidOperation)?)
+                                    .map_err(|_| polar_voice::VoiceError::InvalidOperation)?,None,Some(self.input_recorder(&id).voice()))
                             .await?,
                     );
                 }
@@ -973,11 +992,12 @@ impl DictateRuntime {
                         .await?;
                     let mut voice = self
                         .voice
-                        .open_pcm_with_reference(
+                        .open_pcm_observed(
                             &request_id,
                             polar_voice::pcm::PcmTranscriptionMode::Buffered,
                             segment.start_sample,
                             self.transcription_reference(&running, polar_voice::pcm::PcmTranscriptionMode::Buffered)?,
+                            None,Some(self.input_recorder(id).voice()),
                         )
                         .await?;
                     voice.append_pcm(&pcm).await?;
@@ -1157,7 +1177,7 @@ impl DictateRuntime {
         self.finish_preparation(&record.id).await;
         let response = tokio::time::timeout(std::time::Duration::from_secs(8), async {
             self.cleanup_provider()?
-                .clean_recording(&record.id, request)
+                .clean_observed(Some(&record.id), request,Box::new(self.input_recorder(&record.id)))
                 .await
         });
         tokio::pin!(response);

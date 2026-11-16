@@ -5,7 +5,7 @@
 //! report `delivery: unchanged` without touching the editor. Never replay saved
 //! effects; restore the snapshot through this ABI instead.
 use crate::dictate_adapter::DictateSpeech;
-use polar_tmux_workspace::dictate::{application::MAX_INPUT, Input};
+use polar_station_workspace::dictate::{application::MAX_INPUT, Input};
 use serde_json::{json, Value};
 use std::ffi::{c_char, CString};
 
@@ -24,22 +24,22 @@ pub extern "C" fn polar_station_dictate_shortcut() -> StationDictateShortcut {
     StationDictateShortcut {
         mac_keycode: 63,
         linux_keyval: 0xffeb,
-        label: polar_tmux_workspace::dictate::SHORTCUT_LABEL.as_ptr(),
-        mac_label: polar_tmux_workspace::dictate::SHORTCUT_MAC_LABEL.as_ptr(),
-        linux_label: polar_tmux_workspace::dictate::SHORTCUT_LINUX_LABEL.as_ptr(),
-        xdg_trigger: polar_tmux_workspace::dictate::SHORTCUT_TRIGGER.as_ptr(),
+        label: polar_station_workspace::dictate::SHORTCUT_LABEL.as_ptr(),
+        mac_label: polar_station_workspace::dictate::SHORTCUT_MAC_LABEL.as_ptr(),
+        linux_label: polar_station_workspace::dictate::SHORTCUT_LINUX_LABEL.as_ptr(),
+        xdg_trigger: polar_station_workspace::dictate::SHORTCUT_TRIGGER.as_ptr(),
     }
 }
 
 pub struct DictateHandle {
-    application: polar_tmux_workspace::dictate::application::Application<
+    application: polar_station_workspace::dictate::application::Application<
         crate::dictate_adapter::StationDictateIo,
     >,
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_dictate_new() -> *mut DictateHandle {
     Box::into_raw(Box::new(DictateHandle {
-        application: polar_tmux_workspace::dictate::application::Application::new(
+        application: polar_station_workspace::dictate::application::Application::new(
             crate::dictate_adapter::StationDictateIo::default(),
         ),
     }))
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn polar_station_dictate_service_request(
                 serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, length) })
                     .map_err(|_| "Invalid Voice request")?;
             let service = unsafe { &*handle };
-            polar_tmux_workspace::dictate::application::service_request(service, value)
+            polar_station_workspace::dictate::application::service_request(service, value)
         }))
         .unwrap_or_else(|_| Err("Voice client failed".into()));
     let value = result.unwrap_or_else(|error| json!({"ok":false,"error":error}));

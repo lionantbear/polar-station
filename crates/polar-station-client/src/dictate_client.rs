@@ -1,7 +1,7 @@
 //! The GUI only talks to the authenticated local Host. No credentials/provider.
 use anyhow::{Context, Result};
 use polar_local_access_contract::{LocalExtensionRequestV1, LocalExtensionResultV1};
-use polar_tmux_protocol::{LocalClientFrame, LocalHostFrame};
+use polar_station_protocol::{LocalClientFrame, LocalHostFrame};
 use serde_json::Value;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 #[derive(Clone, Default)]
@@ -40,7 +40,7 @@ impl DictateClient {
         let wait = payload.get("op").and_then(Value::as_str) == Some("wait");
         let frame = LocalClientFrame::ExtensionRequest {
             request: LocalExtensionRequestV1 {
-                extension: polar_tmux_protocol::DICTATE_EXTENSION.into(),
+                extension: polar_station_protocol::DICTATE_EXTENSION.into(),
                 version: 1,
                 request_id: request_id.clone(),
                 timeout_ms: 30_000,
@@ -63,7 +63,7 @@ impl DictateClient {
         };
         response.validate()?;
         anyhow::ensure!(
-            response.extension == polar_tmux_protocol::DICTATE_EXTENSION
+            response.extension == polar_station_protocol::DICTATE_EXTENSION
                 && response.version == 1
                 && response.request_id == request_id,
             "Voice response identity mismatch"
@@ -85,7 +85,7 @@ impl DictateClient {
         let mut stream = self.connect().await?;
         let request_id = polar_identity::generation::new_uuid_v4().to_string();
         let frame = LocalClientFrame::ExtensionRequest { request: LocalExtensionRequestV1 {
-            extension: polar_tmux_protocol::DICTATE_EXTENSION.into(), version:1, request_id:request_id.clone(),
+            extension: polar_station_protocol::DICTATE_EXTENSION.into(), version:1, request_id:request_id.clone(),
             timeout_ms:30_000, payload,
         }};
         frame.validate()?;
@@ -97,11 +97,11 @@ impl DictateClient {
             frame.validate()?;
             match frame {
                 LocalHostFrame::ExtensionResponse { response } => {
-                    anyhow::ensure!(response.extension == polar_tmux_protocol::DICTATE_EXTENSION && response.version == 1 && response.request_id == request_id,"Voice subscription identity mismatch");
+                    anyhow::ensure!(response.extension == polar_station_protocol::DICTATE_EXTENSION && response.version == 1 && response.request_id == request_id,"Voice subscription identity mismatch");
                     anyhow::ensure!(matches!(response.result,LocalExtensionResultV1::Success{..}),"Voice preview subscription rejected");
                 }
                 LocalHostFrame::ExtensionEvent { event } => {
-                    anyhow::ensure!(event.extension == polar_tmux_protocol::DICTATE_EXTENSION && event.version == 1
+                    anyhow::ensure!(event.extension == polar_station_protocol::DICTATE_EXTENSION && event.version == 1
                         && event.subscription_id == request_id && event.sequence > sequence,"Voice preview identity mismatch");
                     sequence=event.sequence;
                     let done=event.payload["done"].as_bool()==Some(true);

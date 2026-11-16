@@ -8,6 +8,7 @@ const dictate=@import("dictate.zig");
 const a=std.heap.c_allocator;
 const Item=struct{kind:[:0]const u8,key:[:0]const u8,label:[:0]const u8};
 const items=[_]Item{
+    .{.kind="view_inputs",.key="can_view_inputs",.label="inputs_label"},
     .{.kind="stop",.key="can_stop",.label="stop_label"},
     .{.kind="cancel",.key="can_cancel",.label="cancel_label"},
     .{.kind="use_available",.key="can_available",.label="available_label"},
@@ -30,6 +31,9 @@ pub const Panel=struct{
     editor:*gtk.TextView,
     scroll:*gtk.ScrolledWindow,
     buttons:[items.len]*gtk.Button,
+    latest:*gtk.Button,
+    current_id:[]const u8="",
+    following:bool=true,
     editing:bool=false,
     updating:bool=false,
     pub fn create(owner:*dictate.Controller,anchor:?*gtk.Widget) !*Panel {
@@ -58,11 +62,22 @@ pub const Panel=struct{
             else extra.append(button.as(gtk.Widget));
             buttons[i]=button;
         }
+        const latest=gtk.Button.newWithLabel("↓ Latest");latest.as(gtk.Widget).setFocusOnClick(0);latest.as(gtk.Widget).setFocusable(0);latest.as(gtk.Widget).addCssClass("flat");latest.as(gtk.Widget).setVisible(0);
+        _=gtk.Button.signals.clicked.connect(latest,*Panel,followLatest,self,.{});header.append(latest.as(gtk.Widget));
         header.append(more.as(gtk.Widget));
         const css=gtk.CssProvider.new();
         css.loadFromString(".station-dictate-window, .station-dictate-popup > contents { background: transparent; box-shadow: none; padding: 0; } .station-dictate-card { background: rgba(24,26,30,0.80); color: #f4f4f6; border-radius: 12px; padding: 12px; } .station-dictate-card textview, .station-dictate-card textview text, .station-dictate-card scrolledwindow { background: transparent; color: #f4f4f6; border: none; } .station-dictate-reference { color: #c9cbd1; font-size: 12px; border-left: 2px solid #a2a5ad; padding-left: 6px; } .station-dictate-card textview { font-size: 14px; } .station-dictate-card scrollbar.vertical slider { min-height: 16px; } .station-dictate-menu > contents { background: #24262a; color: #f4f4f6; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 4px; } .station-dictate-menu button:hover { background: rgba(255,255,255,0.12); } .station-dictate-card button { color: #f4f4f6; min-height: 20px; padding: 2px 6px; }");
         gtk.StyleContext.addProviderForDisplay(box.as(gtk.Widget).getDisplay(),css.as(gtk.StyleProvider),gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+10);
-        self.*=.{.owner=owner,.anchor=anchor,.status=status,.reference=reference,.editor=editor,.scroll=scroll,.buttons=buttons,.css=css,.more=more,.actions=row};
+        self.*=.{.owner=owner,.anchor=anchor,.status=status,.reference=reference,.editor=editor,.scroll=scroll,.buttons=buttons,.css=css,.more=more,.actions=row,.latest=latest};
+        const wheel=gtk.EventControllerScroll.new(.{.vertical=true});wheel.as(gtk.EventController).setPropagationPhase(.capture);
+        _=gtk.EventControllerScroll.signals.scroll.connect(wheel,*Panel,userWheel,self,.{});scroll.as(gtk.Widget).addController(wheel.as(gtk.EventController));
+        const drag=gtk.GestureClick.new();drag.as(gtk.EventController).setPropagationPhase(.capture);
+        _=gtk.GestureClick.signals.pressed.connect(drag,*Panel,scrollPressed,self,.{});
+        _=gtk.GestureClick.signals.released.connect(drag,*Panel,scrollReleased,self,.{});
+        scroll.getVscrollbar().addController(drag.as(gtk.EventController));
+        _=gtk.Adjustment.signals.changed.connect(scroll.getVadjustment(),*Panel,geometryChanged,self,.{});
+        _=gtk.Adjustment.signals.value_changed.connect(scroll.getVadjustment(),*Panel,positionChanged,self,.{});
+        _=gobject.Object.signals.notify.connect(editor.getBuffer().as(gobject.Object),*Panel,selectionChanged,self,.{.detail="has-selection"});
         _=gtk.TextBuffer.signals.changed.connect(editor.getBuffer(),*Panel,edited,self,.{});
         if(anchor) |widget| {
             const popup=gtk.Popover.new();popup.as(gtk.Widget).addCssClass("station-dictate-popup");popup.setAutohide(0);popup.setHasArrow(0);popup.setPosition(.top);
@@ -78,7 +93,35 @@ pub const Panel=struct{
         gtk.StyleContext.removeProviderForDisplay(self.editor.as(gtk.Widget).getDisplay(),self.css.as(gtk.StyleProvider));self.css.unref();
         if(self.popover) |popup| {popup.popdown();popup.as(gtk.Widget).unparent();}
         if(self.window) |window| window.destroy();
+        a.free(self.current_id);
         a.destroy(self);
+    }
+    fn hasSelection(self:*Panel) bool {var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;return self.editor.getBuffer().getSelectionBounds(&start,&end)!=0;}
+    fn geometryChanged(_: *gtk.Adjustment,self:*Panel) callconv(.c) void {self.applyFollowing();}
+    fn atBottom(self:*Panel) bool {const adjustment=self.scroll.getVadjustment();return adjustment.getValue()+adjustment.getPageSize()>=adjustment.getUpper()-2;}
+    fn userWheel(_: *gtk.EventControllerScroll,_:f64,dy:f64,self:*Panel) callconv(.c) c_int {
+        if(dy!=0){self.following=dy>0 and self.atBottom() and !self.editing and !self.hasSelection();self.latest.as(gtk.Widget).setVisible(@intFromBool(!self.following));}
+        return 0;
+    }
+    fn scrollPressed(_: *gtk.GestureClick,_:c_int,_:f64,_:f64,self:*Panel) callconv(.c) void {self.following=false;self.latest.as(gtk.Widget).setVisible(1);}
+    fn scrollReleased(_: *gtk.GestureClick,_:c_int,_:f64,_:f64,self:*Panel) callconv(.c) void {positionChanged(self.scroll.getVadjustment(),self);}
+    fn positionChanged(_: *gtk.Adjustment,self:*Panel) callconv(.c) void {
+        if(self.updating)return;
+        // GTK can move the insertion mark during deferred layout. Only native
+        // user gestures pause following; a programmatic adjustment must not.
+        if(self.following){self.applyFollowing();return;}
+        if(self.atBottom() and !self.editing and !self.hasSelection()){self.following=true;self.latest.as(gtk.Widget).setVisible(0);}
+    }
+    fn selectionChanged(_: *gobject.Object,_:*gobject.ParamSpec,self:*Panel) callconv(.c) void {
+        if(!self.updating and self.hasSelection()){self.following=false;self.latest.as(gtk.Widget).setVisible(1);}
+    }
+    fn followLatest(_: *gtk.Button,self:*Panel) callconv(.c) void {self.following=true;self.editing=false;self.editor.setEditable(0);self.applyFollowing();}
+    fn applyFollowing(self:*Panel) void {
+        if(self.updating)return;
+        if(self.following and !self.editing){
+            self.updating=true;const adjustment=self.scroll.getVadjustment();adjustment.setValue(@max(0,adjustment.getUpper()-adjustment.getPageSize()));self.updating=false;
+        }
+        self.latest.as(gtk.Widget).setVisible(@intFromBool(!self.following));
     }
     fn closed(_: *gtk.Window,self:*Panel) callconv(.c) c_int {self.owner.panelAction("hide_panel");return 1;}
     fn edited(buffer:*gtk.TextBuffer,self:*Panel) callconv(.c) void {
@@ -92,6 +135,7 @@ pub const Panel=struct{
         const kind=std.mem.span(@as([*:0]const u8,@ptrCast(ptr)));
         self.more.popdown();
         if(std.mem.eql(u8,kind,"edit")) {
+            self.following=false;self.latest.as(gtk.Widget).setVisible(1);
             self.editing=true;self.editor.setEditable(1);self.editor.as(gtk.Widget).setFocusable(1);
             if(self.popover) |popup| popup.as(gtk.Widget).setFocusable(1);
             _=self.editor.as(gtk.Widget).grabFocus();return;
@@ -106,6 +150,8 @@ pub const Panel=struct{
     pub fn present(self:*Panel) void {self.refresh();if(self.window) |window| window.present();}
     pub fn refresh(self:*Panel) void {
         const panel=self.owner.panelValue();
+        const id=dictate.string(panel,"operation_id");
+        if(!std.mem.eql(u8,id,self.current_id)){const next=a.dupe(u8,id) catch return;a.free(self.current_id);self.current_id=next;self.following=true;self.editing=false;self.editor.setEditable(0);}
         const quote=a.dupeZ(u8,dictate.string(panel,"reference")) catch return;defer a.free(quote);
         self.reference.setText(quote);self.reference.as(gtk.Widget).setTooltipText(quote);self.reference.as(gtk.Widget).setVisible(@intFromBool(quote.len>0));
         var visible=panel!=.null;
@@ -129,10 +175,17 @@ pub const Panel=struct{
         const existing=buffer.getText(&first,&last,1);defer glib.free(existing);
         if(!std.mem.eql(u8,std.mem.span(existing),text)){
             const adjustment=self.scroll.getVadjustment();const position=adjustment.getValue();
+            var selected_start:gtk.TextIter=undefined;var selected_end:gtk.TextIter=undefined;
+            const selected=buffer.getSelectionBounds(&selected_start,&selected_end)!=0;
+            const from=if(selected)selected_start.getOffset() else 0;const to=if(selected)selected_end.getOffset() else 0;
             self.updating=true;
             if(std.mem.startsWith(u8,text,std.mem.span(existing))) buffer.insert(&last,text.ptr+std.mem.len(existing),@intCast(text.len-std.mem.len(existing)))
             else buffer.setText(text,@intCast(text.len));
-            self.updating=false;adjustment.setValue(position);
+            if(!self.following){
+                if(selected){_=buffer.getIterAtOffset(&selected_start,@min(from,buffer.getCharCount()));_=buffer.getIterAtOffset(&selected_end,@min(to,buffer.getCharCount()));buffer.selectRange(&selected_start,&selected_end);}
+                adjustment.setValue(position);
+            }
+            self.updating=false;
         }
         // Measure the font before realization; GTK supplies the wrapped natural
         // content height once allocated. Pre-layout iterator coordinates can
@@ -150,6 +203,7 @@ pub const Panel=struct{
             self.buttons[i].setLabel(label);self.buttons[i].as(gtk.Widget).setVisible(@intFromBool(item.key.len==0 or dictate.boolean(panel,item.key)));
         }
         if(!dictate.boolean(panel,"can_edit")){self.editing=false;self.editor.setEditable(0);self.editor.as(gtk.Widget).setFocusable(0);}
+        self.applyFollowing();
         if(self.popover) |popup| if(popup.as(gtk.Widget).getMapped()==0) {
             var previous:?*gtk.Widget=null;
             if(self.anchor) |anchor| if(anchor.getRoot()) |root| if(gobject.ext.cast(gtk.Window,root.as(gobject.Object))) |window| {previous=window.getFocus();};

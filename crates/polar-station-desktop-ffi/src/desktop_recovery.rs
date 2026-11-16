@@ -23,7 +23,7 @@ pub extern "C" fn polar_station_recovery_view(
     target_known: bool,
     pending: bool,
 ) -> RecoveryView {
-    let view = polar_tmux_workspace::recovery_view(connected, target_known, pending);
+    let view = polar_station_workspace::recovery_view(connected, target_known, pending);
     RecoveryView {
         can_submit: view.can_submit, local_enabled: view.local_enabled,
         status: view.status.as_ptr(), save_label: view.save_label.as_ptr(),

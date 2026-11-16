@@ -1,5 +1,5 @@
 //! Local-only adapters for shared Station UI semantics. No Host state or geometry.
-use polar_tmux_workspace::{STATION_SHORTCUTS, station_shortcut};
+use polar_station_workspace::{STATION_SHORTCUTS, station_shortcut};
 use std::{
     ffi::{CString, c_char},
     sync::OnceLock,
@@ -13,8 +13,8 @@ use std::{
 pub unsafe extern "C" fn polar_station_diagnostics_project(bytes: *const u8, len: usize) -> *mut c_char {
     if bytes.is_null() || len == 0 || len > 1024 * 1024 { return std::ptr::null_mut(); }
     std::panic::catch_unwind(|| {
-        let facts = serde_json::from_slice::<polar_tmux_workspace::DiagnosticsFacts>(unsafe {std::slice::from_raw_parts(bytes, len)}).ok()?;
-        let projection = polar_tmux_workspace::project_diagnostics(&facts);
+        let facts = serde_json::from_slice::<polar_station_workspace::DiagnosticsFacts>(unsafe {std::slice::from_raw_parts(bytes, len)}).ok()?;
+        let projection = polar_station_workspace::project_diagnostics(&facts);
         CString::new(serde_json::to_vec(&projection).ok()?).ok().map(CString::into_raw)
     }).ok().flatten().unwrap_or(std::ptr::null_mut())
 }
@@ -27,7 +27,7 @@ pub unsafe extern "C" fn polar_station_resource_image_path(bytes:*const u8,len:u
     if bytes.is_null()||len==0||len>16384{return std::ptr::null_mut()}
     std::panic::catch_unwind(|| {
         let value=std::str::from_utf8(unsafe{std::slice::from_raw_parts(bytes,len)}).ok()?;
-        CString::new(polar_tmux_resources::image_path(value)?).ok().map(CString::into_raw)
+        CString::new(polar_station_resources::image_path(value)?).ok().map(CString::into_raw)
     }).ok().flatten().unwrap_or(std::ptr::null_mut())
 }
 
@@ -38,7 +38,7 @@ pub unsafe extern "C" fn polar_station_resource_image_path(bytes:*const u8,len:u
 pub unsafe extern "C" fn polar_station_resource_file_path(bytes:*const u8,len:usize)->*mut c_char {
     if bytes.is_null()||len==0||len>65536{return std::ptr::null_mut()}
     let value=std::str::from_utf8(unsafe {std::slice::from_raw_parts(bytes,len)}).ok();
-    value.and_then(|value| polar_tmux_resources::file_open_candidates(value).into_iter().next())
+    value.and_then(|value| polar_station_resources::file_open_candidates(value).into_iter().next())
         .and_then(|r|CString::new(r.path).ok()).map_or(std::ptr::null_mut(),CString::into_raw)
 }
 /// Capture validation only; filesystem syntax and source resolution run in Host.
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn polar_station_resource_file_path(bytes:*const u8,len:us
 pub unsafe extern "C" fn polar_station_file_input_valid(bytes: *const u8, len: usize) -> bool {
     if bytes.is_null() || len == 0 || len > 65536 { return false; }
     let Ok(text) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes, len) }) else { return false; };
-    polar_tmux_resources::FileReferenceInput::from_capture(text.into()).is_ok()
+    polar_station_resources::FileReferenceInput::from_capture(text.into()).is_ok()
 }
 /// Test whether native clicked text has bounded filesystem candidates. No IO.
 /// # Safety
@@ -57,17 +57,17 @@ pub unsafe extern "C" fn polar_station_file_input_valid(bytes: *const u8, len: u
 pub unsafe extern "C" fn polar_station_file_context_candidate(bytes: *const u8, len: usize, hit: usize) -> bool {
     if bytes.is_null() || len == 0 || len > 16384 { return false; }
     let Ok(text) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes,len) }) else { return false; };
-    !polar_tmux_resources::click_file_candidates(&polar_tmux_resources::FileClickContext { text: text.into(), hit }).is_empty()
+    !polar_station_resources::click_file_candidates(&polar_station_resources::FileClickContext { text: text.into(), hit }).is_empty()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn polar_station_resource_file_rule_count()->usize {polar_tmux_resources::file_link_rules().len()}
+pub extern "C" fn polar_station_resource_file_rule_count()->usize {polar_station_resources::file_link_rules().len()}
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_resource_file_rule_at(index:usize)->*const c_char {
     static RULES:OnceLock<Vec<CString>>=OnceLock::new();
-    RULES.get_or_init(||polar_tmux_resources::file_link_rules().iter().map(|v|CString::new(*v).expect("static file rule")).collect())
+    RULES.get_or_init(||polar_station_resources::file_link_rules().iter().map(|v|CString::new(*v).expect("static file rule")).collect())
         .get(index).map_or(std::ptr::null(),|s|s.as_ptr())
 }
-pub struct ResourceFileOpenHandle(polar_tmux_resources::FileOpenFlow);
+pub struct ResourceFileOpenHandle(polar_station_resources::FileOpenFlow);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_resource_file_open_new()->*mut ResourceFileOpenHandle {
     Box::into_raw(Box::new(ResourceFileOpenHandle(Default::default())))
@@ -78,7 +78,7 @@ pub extern "C" fn polar_station_resource_file_open_new()->*mut ResourceFileOpenH
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_resource_file_open_dispatch(handle:*mut ResourceFileOpenHandle,bytes:*const u8,len:usize)->*mut c_char {
     if handle.is_null()||bytes.is_null()||len>128*1024{return std::ptr::null_mut()}
-    let Ok(input)=serde_json::from_slice::<polar_tmux_resources::FileOpenInput>(unsafe{std::slice::from_raw_parts(bytes,len)}) else {return std::ptr::null_mut()};
+    let Ok(input)=serde_json::from_slice::<polar_station_resources::FileOpenInput>(unsafe{std::slice::from_raw_parts(bytes,len)}) else {return std::ptr::null_mut()};
     let flow=&mut unsafe{&mut *handle}.0;
     let effects=flow.dispatch(input);
     serde_json::to_string(&serde_json::json!({"pending":flow.is_pending(),"effects":effects})).ok()
@@ -104,8 +104,8 @@ fn strings() -> &'static Vec<(CString, CString)> {
     static STRINGS: OnceLock<Vec<(CString, CString)>> = OnceLock::new();
     STRINGS.get_or_init(|| {
         STATION_SHORTCUTS.iter().copied()
-            .chain(polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:2,tabs:2,idea:true}))
-            .chain(polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:2,tabs:2,idea:false}))
+            .chain(polar_station_workspace::shortcuts::shortcut_hints(polar_station_workspace::shortcuts::ShortcutHintContext{panes:2,tabs:2,idea:true}))
+            .chain(polar_station_workspace::shortcuts::shortcut_hints(polar_station_workspace::shortcuts::ShortcutHintContext{panes:2,tabs:2,idea:false}))
             .map(|e| {
                 (
                     CString::new(e.key).expect("static key"),
@@ -156,7 +156,7 @@ pub extern "C" fn polar_station_shortcut_at(index: usize) -> StationShortcutView
 }
 
 /// Process-wide Resource editor handle; callers serialize dispatch/destruction on the UI thread.
-pub struct ResourceEditorHandle(polar_tmux_resources::ResourceEditor);
+pub struct ResourceEditorHandle(polar_station_resources::ResourceEditor);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_resource_editor_new() -> *mut ResourceEditorHandle {
     Box::into_raw(Box::new(ResourceEditorHandle(Default::default())))
@@ -174,7 +174,7 @@ pub unsafe extern "C" fn polar_station_resource_editor_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 {
             return Err("Invalid Resource editor input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_resources::ResourceEditorInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_resources::ResourceEditorInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn polar_station_resource_editor_free(handle: *mut Resourc
 }
 
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
-pub struct SettingsTextHandle(polar_tmux_workspace::SettingsTextEngine);
+pub struct SettingsTextHandle(polar_station_workspace::SettingsTextEngine);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_settings_text_new() -> *mut SettingsTextHandle {
     Box::into_raw(Box::new(SettingsTextHandle(Default::default())))
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn polar_station_settings_text_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 {
             return Err("Invalid Settings text input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::SettingsTextInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::SettingsTextInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -250,7 +250,7 @@ pub unsafe extern "C" fn polar_station_settings_text_free(handle: *mut SettingsT
 }
 
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
-pub struct SettingsNavigationHandle(polar_tmux_workspace::SettingsNavigation);
+pub struct SettingsNavigationHandle(polar_station_workspace::SettingsNavigation);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_settings_navigation_new() -> *mut SettingsNavigationHandle {
     Box::into_raw(Box::new(SettingsNavigationHandle(Default::default())))
@@ -268,7 +268,7 @@ pub unsafe extern "C" fn polar_station_settings_navigation_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 || len > 1024 * 1024 {
             return Err("Invalid Settings navigation input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::SettingsNavigationInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::SettingsNavigationInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -296,7 +296,7 @@ pub unsafe extern "C" fn polar_station_settings_navigation_free(handle: *mut Set
 }
 
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
-pub struct DiagnosticsHandle(polar_tmux_workspace::DiagnosticsEngine);
+pub struct DiagnosticsHandle(polar_station_workspace::DiagnosticsEngine);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_diagnostics_new() -> *mut DiagnosticsHandle {
     Box::into_raw(Box::new(DiagnosticsHandle(Default::default())))
@@ -314,7 +314,7 @@ pub unsafe extern "C" fn polar_station_diagnostics_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 || len > 1024 * 1024 {
             return Err("Invalid Diagnostics input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::DiagnosticsInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::DiagnosticsInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn polar_station_diagnostics_free(handle: *mut Diagnostics
 }
 
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
-pub struct ConnectionsHandle(polar_tmux_workspace::ConnectionsEngine);
+pub struct ConnectionsHandle(polar_station_workspace::ConnectionsEngine);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_connections_new() -> *mut ConnectionsHandle {
     Box::into_raw(Box::new(ConnectionsHandle(Default::default())))
@@ -360,7 +360,7 @@ pub unsafe extern "C" fn polar_station_connections_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 || len > 1024 * 1024 {
             return Err("Invalid Connections input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::ConnectionsInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::ConnectionsInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -389,7 +389,7 @@ pub unsafe extern "C" fn polar_station_connections_free(handle: *mut Connections
 }
 
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
-pub struct SessionEditorHandle(polar_tmux_workspace::SessionEditorEngine);
+pub struct SessionEditorHandle(polar_station_workspace::SessionEditorEngine);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_session_editor_new() -> *mut SessionEditorHandle {
     Box::into_raw(Box::new(SessionEditorHandle(Default::default())))
@@ -407,7 +407,7 @@ pub unsafe extern "C" fn polar_station_session_editor_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 || len > 1024 * 1024 {
             return Err("Invalid SessionEditor input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::SessionEditorInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::SessionEditorInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -447,11 +447,11 @@ pub unsafe extern "C" fn polar_station_agent_catalog_project(
         if bytes.is_null() || len == 0 || len > 16 * 1024 * 1024 {
             return Err("Invalid catalog input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::AgentCatalogInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::AgentCatalogInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
-        serde_json::to_value(polar_tmux_workspace::project_agent_catalog(input))
+        serde_json::to_value(polar_station_workspace::project_agent_catalog(input))
             .map_err(|e| e.to_string())
     })
     .unwrap_or_else(|_| Err("Catalog projection failed".into()));
@@ -475,11 +475,11 @@ pub unsafe extern "C" fn polar_station_workspace_lifecycle(
         if bytes.is_null() || len == 0 || len > 16 * 1024 * 1024 {
             return Err("Invalid catalog input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::WorkspaceLifecycleInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::WorkspaceLifecycleInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
-        serde_json::to_value(polar_tmux_workspace::decide_workspace_lifecycle(input))
+        serde_json::to_value(polar_station_workspace::decide_workspace_lifecycle(input))
             .map_err(|e| e.to_string())
     })
     .unwrap_or_else(|_| Err("Catalog projection failed".into()));
@@ -492,7 +492,7 @@ pub unsafe extern "C" fn polar_station_workspace_lifecycle(
 }
 
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
-pub struct AttentionHandle(polar_tmux_workspace::AttentionEngine);
+pub struct AttentionHandle(polar_station_workspace::AttentionEngine);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_attention_new() -> *mut AttentionHandle {
     Box::into_raw(Box::new(AttentionHandle(Default::default())))
@@ -510,7 +510,7 @@ pub unsafe extern "C" fn polar_station_attention_dispatch(
         if handle.is_null() || bytes.is_null() || len == 0 || len > 1024 * 1024 {
             return Err("Invalid Attention input".to_string());
         }
-        let input = serde_json::from_slice::<polar_tmux_workspace::AttentionInput>(unsafe {
+        let input = serde_json::from_slice::<polar_station_workspace::AttentionInput>(unsafe {
             std::slice::from_raw_parts(bytes, len)
         })
         .map_err(|e| e.to_string())?;
@@ -539,7 +539,7 @@ pub unsafe extern "C" fn polar_station_attention_free(handle: *mut AttentionHand
 }
 
 /// Main-thread shortcut input handle, independent of background Dictate IO.
-pub struct StationShortcutGesture {gesture: polar_tmux_workspace::shortcuts::DictateGesture, clock: std::time::Instant}
+pub struct StationShortcutGesture {gesture: polar_station_workspace::shortcuts::DictateGesture, clock: std::time::Instant}
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_shortcut_gesture_new() -> *mut StationShortcutGesture {
     Box::into_raw(Box::new(StationShortcutGesture{gesture:Default::default(),clock:std::time::Instant::now()}))
@@ -549,7 +549,7 @@ pub extern "C" fn polar_station_shortcut_gesture_new() -> *mut StationShortcutGe
 /// discrete nonrepeat activation=3, cancel=4. Returns none=0/start=1/stop=2/use-original=3.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_shortcut_gesture_event(handle: *mut StationShortcutGesture, event: u32, recording: bool, can_start: bool, can_use_available: bool) -> u32 {
-    use polar_tmux_workspace::shortcuts::ShortcutEvent;
+    use polar_station_workspace::shortcuts::ShortcutEvent;
     let Some(handle) = (unsafe { handle.as_mut() }) else { return 0; };
     let event = match event { 1 => ShortcutEvent::Press, 2 => ShortcutEvent::Release, 3 => ShortcutEvent::Activate, _ => ShortcutEvent::Cancel };
     handle.gesture.interpret(event, handle.clock.elapsed().as_millis().min(u128::from(u64::MAX)) as u64, recording, can_start, can_use_available) as u32
@@ -569,24 +569,24 @@ pub unsafe extern "C" fn polar_station_shortcut_gesture_free(handle: *mut Statio
 pub struct StationShortcutHintContext {pub panes:u32,pub tabs:u32,pub idea:bool}
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_shortcut_hint_count(context:StationShortcutHintContext)->usize {
-    polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:context.panes,tabs:context.tabs,idea:context.idea}).count()
+    polar_station_workspace::shortcuts::shortcut_hints(polar_station_workspace::shortcuts::ShortcutHintContext{panes:context.panes,tabs:context.tabs,idea:context.idea}).count()
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_shortcut_hint_at(context:StationShortcutHintContext,index:usize)->StationShortcutView {
-    let entries=polar_tmux_workspace::shortcuts::shortcut_hints(polar_tmux_workspace::shortcuts::ShortcutHintContext{panes:context.panes,tabs:context.tabs,idea:context.idea});
+    let entries=polar_station_workspace::shortcuts::shortcut_hints(polar_station_workspace::shortcuts::ShortcutHintContext{panes:context.panes,tabs:context.tabs,idea:context.idea});
     match entries.into_iter().nth(index) {Some(entry)=>StationShortcutView{action:entry.action as u32,number:entry.number,repeatable:entry.repeatable,key:static_c_string(entry.key),label:static_c_string(entry.label)},None=>StationShortcutView{action:0,number:0,repeatable:false,key:std::ptr::null(),label:std::ptr::null()}}
 }
 
 /// Shared native setup copy; free with `polar_station_desktop_string_free`.
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_tool_setup_copy() -> *mut c_char {
-    serde_json::to_vec(&polar_tmux_workspace::tool_setup_copy()).ok()
+    serde_json::to_vec(&polar_station_workspace::tool_setup_copy()).ok()
         .and_then(|bytes|CString::new(bytes).ok())
         .map_or(std::ptr::null_mut(),CString::into_raw)
 }
 
 /// Transient edit lease; the original Settings repository remains authoritative.
-pub struct SettingsEditHandle(polar_tmux_workspace::SettingsEditLease);
+pub struct SettingsEditHandle(polar_station_workspace::SettingsEditLease);
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_settings_edit_new()->*mut SettingsEditHandle {
     Box::into_raw(Box::new(SettingsEditHandle(Default::default())))
@@ -597,7 +597,7 @@ pub extern "C" fn polar_station_settings_edit_new()->*mut SettingsEditHandle {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_settings_edit_dispatch(handle:*mut SettingsEditHandle,bytes:*const u8,len:usize)->*mut c_char {
     if handle.is_null()||bytes.is_null()||len>16384{return std::ptr::null_mut()}
-    let Ok(input)=serde_json::from_slice::<polar_tmux_workspace::SettingsEditInput>(unsafe{std::slice::from_raw_parts(bytes,len)}) else {return std::ptr::null_mut()};
+    let Ok(input)=serde_json::from_slice::<polar_station_workspace::SettingsEditInput>(unsafe{std::slice::from_raw_parts(bytes,len)}) else {return std::ptr::null_mut()};
     let view=unsafe{&mut *handle}.0.dispatch(input);
     serde_json::to_string(&view).ok().and_then(|v|CString::new(v).ok()).map_or(std::ptr::null_mut(),CString::into_raw)
 }

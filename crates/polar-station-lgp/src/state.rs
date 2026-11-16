@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use serde::{Serialize,Deserialize};
 use serde_json::{Value,json};
-use polar_tmux_protocol::{DesktopSendError,LocalExtensionRequestV1,LocalExtensionCancelV1,LocalClientFrame,LocalHostFrame,LocalExtensionResultV1,POLAR_ACCESS_EXTENSION};
+use polar_station_protocol::{DesktopSendError,LocalExtensionRequestV1,LocalExtensionCancelV1,LocalClientFrame,LocalHostFrame,LocalExtensionResultV1,POLAR_ACCESS_EXTENSION};
 use crate::{record::Assembler,text::Transcript};
 mod navigation;
 mod activity;
@@ -23,7 +23,7 @@ pub struct Scope {
 impl Scope {
     pub fn validate(&self)->Result<(),String>{
         for value in [&self.target_id,&self.node_id,&self.owner,&self.thread,&self.actor]{
-            polar_tmux_protocol::validate_stable_identifier(value,"LGP scope").map_err(|e|e.to_string())?;
+            polar_station_protocol::validate_stable_identifier(value,"LGP scope").map_err(|e|e.to_string())?;
         }Ok(())
     }
 }
@@ -676,14 +676,14 @@ impl Engine {
     fn frame(&mut self,frame:Value,out:&mut Vec<Effect>)->Result<(),String>{
         let frame:LocalHostFrame=serde_json::from_value(frame).map_err(|_|"invalid Host frame")?;
         match frame {
-            LocalHostFrame::ApplicationResponse{response:polar_tmux_protocol::HostApplicationMessage::CodexV1(response)}=>{
+            LocalHostFrame::ApplicationResponse{response:polar_station_protocol::HostApplicationMessage::CodexV1(response)}=>{
                 let owner_matches=self.pending.get(&response.request_id).is_some_and(|p|matches!(&p.purpose,Purpose::IdeaCodex(op) if self.idea_operation_owner(op)==Some(response.owner_host_id.as_str())));
                 if !owner_matches{return Ok(());}
                 if let Some(p)=self.pending.remove(&response.request_id) {
                     if let Purpose::IdeaCodex(op)=p.purpose {self.idea_codex_result(op,response.result,out)?;}
                 }
             },
-            LocalHostFrame::ApplicationStateChanged{api:polar_tmux_protocol::ApplicationStateApiV1::CodexV1,..}=>{},
+            LocalHostFrame::ApplicationStateChanged{api:polar_station_protocol::ApplicationStateApiV1::CodexV1,..}=>{},
             LocalHostFrame::ExtensionResponse{response}=>{
                 if response.extension!=POLAR_ACCESS_EXTENSION||response.version!=1{return Ok(());}
                 if self.pending.get(&response.request_id).is_some_and(|p|!p.sent){return Err("response for an undispatched request".into());}
@@ -1052,7 +1052,7 @@ fn catalog_projection(items:&Value,name_field:&str,empty_label:&str)->Value{
     }}
     items
 }
-fn validate_id(id:&str)->Result<(),String>{polar_tmux_protocol::validate_stable_identifier(id,"native identifier").map_err(|e|e.to_string())}
+fn validate_id(id:&str)->Result<(),String>{polar_station_protocol::validate_stable_identifier(id,"native identifier").map_err(|e|e.to_string())}
 fn apply_event(scope:&Scope,t:&mut ThreadState,sequence:u64,p:&Value)->Result<bool,String>{
     if Some(sequence)!=t.sequence.checked_add(1){return Err("subscription sequence gap".into());}t.sequence=sequence;
     let boot=p["boot_epoch"].as_str().ok_or("event has no boot epoch")?;

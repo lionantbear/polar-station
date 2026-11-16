@@ -138,6 +138,9 @@ impl VoiceStreamingTranscriptionProvider for CodexVoiceProvider {
         self.begin_with_instructions(format, reference, None).await
     }
     async fn begin_with_instructions(&self, format: VoiceStreamFormat, reference: TranscriptionReference, instructions: Option<String>) -> Result<Arc<dyn VoiceStreamingSession>, VoiceError> {
+        self.begin_observed(format,reference,instructions,None).await
+    }
+    async fn begin_observed(&self,format:VoiceStreamFormat,reference:TranscriptionReference,instructions:Option<String>,observation:Option<polar_voice::inspection::InputObservation>)->Result<Arc<dyn VoiceStreamingSession>,VoiceError> {
         reference.validate()?;
         if format != VoiceStreamFormat::opus_16khz_mono() {
             return Err(VoiceError::InvalidStream);
@@ -158,16 +161,20 @@ impl VoiceStreamingTranscriptionProvider for CodexVoiceProvider {
             }
             None => self.connect_transcription_session(instructions.as_deref()).await?,
         };
+        if let Some(o)=&observation { o.emit("session.instructions","submitted",resources.stream_input.clone()).await; }
         // A prepared transport has no recording reference. Bind this recording
         // once, before handing a packet inlet to the caller; never add a sleep.
         let context = recognition_reference_message(&reference)?;
         if let Some(text) = context {
+            let actual=serde_json::json!({"role":"developer","channel":"commentary","text":text,"reference":reference});
+            if let Some(o)=&observation{o.emit("session.context.append","prepared",actual.clone()).await;}
             let result = tokio::time::timeout(
                 TRANSCRIPT_WAIT,
                 resources.sideband().writer()
                     .with_context_append_channel(RealtimeContextAppendChannel::Commentary)
                     .send_conversation_item_create(text, ConversationTextRole::Developer),
             ).await;
+            if let Some(o)=&observation{o.emit("session.context.append",if matches!(result,Ok(Ok(()))){"submitted"}else{"failed"},actual).await;}
             if !matches!(result, Ok(Ok(()))) {
                 resources.close_all().await;
                 return Err(if result.is_err() { VoiceError::Timeout } else { VoiceError::TranscriptionFailed });

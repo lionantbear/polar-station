@@ -834,15 +834,27 @@ public struct PolarTmuxProtocolError: Codable, Equatable, Sendable {
     }
 }
 
+public struct PolarTmuxShownSession: Codable, Equatable, Sendable {
+    public let window_id: String
+    public let tab_id: String
+    public let pane_id: String
+    public let reused: Bool
+    public init(windowID: String, tabID: String, paneID: String, reused: Bool) {
+        self.window_id=windowID; self.tab_id=tabID; self.pane_id=paneID; self.reused=reused
+    }
+}
+
 public enum PolarTmuxFrontendAcknowledgement:
     Encodable,
     Equatable,
     Sendable
 {
+    case sessionShown(PolarTmuxShownSession)
     case accepted
     case error(PolarTmuxProtocolError)
 
     private enum CodingKeys: String, CodingKey {
+        case view
         case type
         case error
     }
@@ -850,6 +862,9 @@ public enum PolarTmuxFrontendAcknowledgement:
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .sessionShown(let view):
+            try container.encode("session_shown", forKey: .type)
+            try container.encode(view, forKey: .view)
         case .accepted:
             try container.encode("accepted", forKey: .type)
         case .error(let error):

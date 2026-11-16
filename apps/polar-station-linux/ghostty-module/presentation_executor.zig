@@ -596,9 +596,44 @@ pub const Executor = struct {
         return self.applyWorkspaceAction(action);
     }
 
+    pub fn hasSessionView(self: *const Executor, execution: []const u8, session: []const u8) bool {
+        const snapshot=self.nativeWorkspaceSnapshot() orelse return false;
+        for(snapshot.tabs) |tab| for(tab.panes) |pane| {
+            if(std.mem.eql(u8,pane.execution_target_id,execution) and std.mem.eql(u8,pane.tmux_session_id,session)) return true;
+        };
+        return false;
+    }
+    pub const ShownView = struct { workspace: []const u8, tab: []const u8, pane: []const u8, reused: bool };
+    pub fn showSession(self: *Executor, execution: []const u8, session: []const u8) !ShownView {
+        const before=self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        const selected=self.nativeSelectedTabId() orelse return error.SourceTabUnavailable;
+        var arena=std.heap.ArenaAllocator.init(self.allocator); defer arena.deinit();
+        const a=arena.allocator();
+        var chosen=selected;
+        var source:[]const u8="";
+        var reused=false;
+        for(before.tabs) |tab| {
+            for(tab.panes) |pane| {
+                if(std.mem.eql(u8,pane.execution_target_id,execution) and std.mem.eql(u8,pane.tmux_session_id,session)) {
+                    chosen=tab.id;source=pane.id;reused=true;break;
+                }
+            }
+            if(reused and std.mem.eql(u8,tab.id,selected)) break;
+        }
+        if(!reused) { const tab=before.tab(selected) orelse return error.SourceTabUnavailable; if(tab.panes.len>0) source=tab.panes[0].id; }
+        const tab_id=try a.dupe(u8,chosen);const source_id=try a.dupe(u8,source);
+        _=try self.applyNativeWorkspaceAction(.{.select_tab=.{.tab_id=tab_id}});
+        const pane=try self.ensureTerminalVisible(source_id,execution,session);
+        const after=self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        try self.focusTerminal(after,pane);
+        if(self.managed_window) |window| window.as(gtk.Window).present();
+        return .{.workspace=after.workspace_id,.tab=after.selected_tab_id,.pane=pane,.reused=reused};
+    }
+
     pub fn ensureTerminalVisible(self: *Executor, source_pane: []const u8, execution: []const u8, session: []const u8) ![]const u8 {
         const before = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
         const tab_id = blk: {
+            if(source_pane.len==0) break :blk self.nativeSelectedTabId() orelse return error.SourceTabUnavailable;
             for (before.tabs) |tab| for (tab.panes) |pane| {
                 if (std.mem.eql(u8,pane.id,source_pane)) break :blk tab.id;
             };
@@ -619,7 +654,7 @@ pub const Executor = struct {
         }
         // Preserving the editor widget alone does not preserve Ghostty's
         // active Surface; native selection adoption would clear the Chat scope.
-        try self.focusTerminal(self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable,source_pane);
+        if(source_pane.len>0) try self.focusTerminal(self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable,source_pane);
         return self.nativePaneIdForSessionInTab(tab_id,execution,session) orelse error.TargetPaneUnavailable;
     }
     pub fn terminalViewState(self: *const Executor, pane_id: []const u8, execution: []const u8, session: []const u8) enum { pending, ready, unavailable } {

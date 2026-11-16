@@ -5,7 +5,7 @@ use crate::{
     terminal::{present, Selection},
     InputEngine,
 };
-use polar_tmux_protocol::{
+use polar_station_protocol::{
     ClientApplicationMessage, CodexApiV1, CodexCommandV1, CodexRequestEnvelopeV1, CodexResultV1,
     CodexStateV1, CodexSubmissionStatusV1, HostApplicationMessage, LocalClientFrame, LocalHostFrame,
 };
@@ -179,7 +179,7 @@ impl InputEngine {
                     Ok(LocalHostFrame::ApplicationResponse {
                         response: HostApplicationMessage::CodexV1(response),
                     }) => response,
-                    Ok(LocalHostFrame::ApplicationStateChanged { api: polar_tmux_protocol::ApplicationStateApiV1::CodexV1, state_revision }) => {
+                    Ok(LocalHostFrame::ApplicationStateChanged { api: polar_station_protocol::ApplicationStateApiV1::CodexV1, state_revision }) => {
                         if state_revision <= self.codex.revision { return Ok(vec![]) }
                         self.codex.revision = state_revision;
                         return self.refresh_codex();

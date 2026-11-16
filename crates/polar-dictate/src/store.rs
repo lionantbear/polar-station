@@ -6,6 +6,12 @@ use async_trait::async_trait;
 /// caller-selected paths. All mutations atomically commit before returning.
 #[async_trait]
 pub trait DictateStore: Send + Sync {
+    async fn save_input(&self, _id: &str, _snapshot: crate::InputSnapshot) -> Result<()> {
+        anyhow::bail!("dictate.input_history_unavailable")
+    }
+    async fn inputs(&self, _id: &str, _key: Option<&str>) -> Result<crate::InputDetails> {
+        Ok(crate::InputDetails::default())
+    }
     async fn create(&self, recording: Recording) -> Result<Recording>;
     async fn get(&self, id: &str) -> Result<Recording>;
     async fn usage(&self) -> Result<crate::StorageUsage>;

@@ -671,12 +671,33 @@
             return (current.id, tab.id, source, tab.panes.count)
         }
 
+        func hasSessionView(execution: String, session: String) -> Bool {
+            workspace?.tabs.contains(where: { $0.panes.contains(where: { $0.executionTargetID == execution && $0.tmuxSessionID == session }) }) == true
+        }
+        func showSession(execution: String, session: String, present: (NSWindow) -> Void) async throws -> PolarTmuxShownSession {
+            guard let current = workspace else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            let ordered = current.tabs.sorted { $0.id == current.selectedTabID && $1.id != current.selectedTabID }
+            let existing = ordered.first(where: { $0.panes.contains(where: { $0.executionTargetID == execution && $0.tmuxSessionID == session }) })
+            guard let tab = existing ?? current.tabs.first(where: { $0.id == current.selectedTabID }) else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            try await performImmediate(.selectTab(tabID: tab.id))
+            let source = tab.panes.first(where: { $0.executionTargetID == execution && $0.tmuxSessionID == session })?.id ?? tab.panes.first?.id ?? ""
+            let target: [String:Any] = ["execution_target_id":execution,"tmux_session_id":session]
+            if let window = tabGroupCoordinator.controller(for:tab.id)?.window { present(window) }
+            try await ensureTerminalVisible(sourcePaneID:source,target:target)
+            guard let pane = workspace?.tabs.first(where:{$0.id == tab.id})?.panes.first(where:{$0.executionTargetID == execution && $0.tmuxSessionID == session}),
+                  let controller = tabGroupCoordinator.controller(for:tab.id), let window = controller.window else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            if let surface=surfaceCoordinator.surface(for:pane.id) {
+                controller.focusedSurfaceDidChange(to:surface); window.makeFirstResponder(surface)
+            }
+            return .init(windowID:String(window.windowNumber),tabID:tab.id,paneID:pane.id,reused:existing != nil)
+        }
+
         func ensureTerminalVisible(sourcePaneID: String, target: [String:Any]) async throws {
             if !StationMutationScope.active {
                 return try await serialized { [self] in try await ensureTerminalVisible(sourcePaneID: sourcePaneID, target: target) }
             }
             guard var candidate = workspace, var saved = catalog,
-                  let tab = candidate.tabs.first(where: { $0.panes.contains(where: { $0.id == sourcePaneID }) }),
+                  let tab = candidate.tabs.first(where: { sourcePaneID.isEmpty ? $0.id == candidate.selectedTabID : $0.panes.contains(where: { $0.id == sourcePaneID }) }),
                   tabGroupCoordinator.selectedManagedTabID() == tab.id,
                   let controller = tabGroupCoordinator.controller(for:tab.id),
                   let window = controller.window, window.isVisible,

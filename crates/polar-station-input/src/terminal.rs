@@ -70,7 +70,7 @@ impl InputEngine {
         session: String,
     ) -> Result<Vec<Effect>, String> {
         for value in [&target, &session] {
-            polar_tmux_protocol::validate_stable_identifier(value, "terminal target")
+            polar_station_protocol::validate_stable_identifier(value, "terminal target")
                 .map_err(|e| e.to_string())?;
         }
         if let Some(current) = self.terminal.selected.get(&window) {
@@ -273,7 +273,7 @@ impl InputEngine {
                 }
                 Submission::Codex { owner_host_id, .. } => Ok(vec![self.codex_request(
                     owner_host_id,
-                    polar_tmux_protocol::CodexCommandV1::GetReceipt {
+                    polar_station_protocol::CodexCommandV1::GetReceipt {
                         intent_id: intent.clone(),
                     },
                     crate::codex::Pending::Send(intent),

@@ -122,6 +122,9 @@ final class ControlCenterStore: ObservableObject {
     private var inboxDeliverySink: InboxDeliverySink = { _, _, _, completion in
         completion("The native Pane runtime is not ready.")
     }
+    var frontendActionSink: @MainActor (PolarTmuxFrontendDispatch) async -> PolarTmuxFrontendAcknowledgement = { _ in
+        .error(.init(code:"unsupported_action",message:"Client action unavailable",retryable:false))
+    }
     private var workspaceRelaySink: WorkspaceRelaySink = {
         ControlCenterStore.unavailableWorkspaceRelayResponse($0)
     }
@@ -1079,6 +1082,10 @@ final class ControlCenterStore: ObservableObject {
                 [weak self] update in
                 await self?.sessionFeedChanged(update)
             }
+            await backendSession.setFrontendHandler { [weak self] dispatch in
+                guard let self else { return .error(.init(code:"client_unavailable",message:"Client closed",retryable:false)) }
+                return await self.frontendActionSink(dispatch)
+            }
             await backendSession.setWorkspaceRelayHandler {
                 [weak self] request in
                 guard let self else {
@@ -1092,6 +1099,7 @@ final class ControlCenterStore: ObservableObject {
         try await backendSession.start(
             frontendID: "polar-station-macos",
             supportedActions: [
+                "show_session",
                 "open_session",
                 "refresh",
             ]

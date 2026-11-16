@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
+    Inputs { id:String, key:Option<String> },
     RetrySegmented {
         id: String,
     },
@@ -167,6 +168,7 @@ fn enabled() -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
+    Inputs { details: crate::InputDetails },
     ImportIssues {
         items: Vec<crate::LegacyInput>,
     },
@@ -253,6 +255,7 @@ impl crate::runtime::DictateRuntime {
                     page: self.store().history(cursor, limit).await?,
                 })
             }
+            Request::Inputs { id, key } => { return Ok(Response::Inputs { details:self.input_details(&id,key.as_deref()).await? }); }
             Request::Item { id } => {
                 return Ok(Response::Item {
                     item: self.store().item(&id).await?,

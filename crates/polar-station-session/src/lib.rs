@@ -10,11 +10,12 @@ pub mod routing;
 
 pub mod methods {
     pub const LIST: &str = "station.sessions.list";
+    pub const SHOW: &str = "station.sessions.show";
     pub const SEND: &str = "station.sessions.send";
     pub const RECEIPT: &str = "station.sessions.receipt";
     pub const OFFER: &str = "station.sessions.offer";
     pub const SEND_CONFIRMED: &str = "station.sessions.send_confirmed";
-    pub const ALL: &[&str] = &[LIST, SEND, RECEIPT, OFFER, SEND_CONFIRMED];
+    pub const ALL: &[&str] = &[LIST, SHOW, SEND, RECEIPT, OFFER, SEND_CONFIRMED];
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -25,6 +26,7 @@ pub struct ListRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LocalRequest {
+    Show { principal: String, input: ShowRequest },
     List {
         input: ListRequest,
     },
@@ -151,6 +153,22 @@ pub struct PreparedSessionView {
     pub working_directory: String,
     pub summary: Vec<String>,
 }
+/// Show only an existing observed terminal; never starts an Agent or writes input.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShowRequest {
+    pub intent_id: String,
+    pub reference: SessionReference,
+    pub reason: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShownSession {
+    pub window_id: String,
+    pub tab_id: String,
+    pub pane_id: String,
+    pub reused: bool,
+}
 /// Delivered means terminal input, never task acceptance or completion.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Receipt {
@@ -161,6 +179,9 @@ pub struct Receipt {
 }
 #[async_trait::async_trait]
 pub trait SessionBackend: Send + Sync {
+    async fn show(&self, _principal: &str, _request: ShowRequest) -> Result<ShownSession> {
+        anyhow::bail!("Session presentation is unavailable on this backend")
+    }
     async fn list(&self, request: ListRequest) -> Result<Catalog>;
     async fn send(&self, principal: &str, request: SendRequest) -> Result<Receipt>;
     async fn receipt(&self, principal: &str, request: ReceiptRequest) -> Result<Receipt>;
@@ -202,6 +223,13 @@ impl SessionRuntime {
         ensure!(catalog.targets.iter().any(|target| target.available && target.target_id == reference.target_id), "The target Host is unavailable.");
         Ok(PreparedSessionView { reference, label:session.name.clone(), agent_type:session.kind.clone(),
             working_directory:pane.working_directory.clone(), summary:session.summary.clone() })
+    }
+    pub async fn show(&self, principal: &str, request: ShowRequest) -> Result<ShownSession> {
+        identifier(principal)?;
+        identifier(&request.intent_id)?;
+        request.reference.validate()?;
+        ensure!(!request.reason.trim().is_empty() && request.reason.len() <= 1024 && !request.reason.chars().any(char::is_control), "invalid presentation reason");
+        self.backend()?.show(principal, request).await
     }
     pub async fn send(&self, principal: &str, request: SendRequest) -> Result<Receipt> {
         identifier(principal)?;

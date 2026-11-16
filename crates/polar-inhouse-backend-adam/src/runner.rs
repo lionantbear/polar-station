@@ -431,6 +431,8 @@ pub enum AdamProviderEvent {
 
 #[async_trait]
 pub trait AdamProviderEventSink: Send {
+    async fn input_snapshot(&mut self,_snapshot:polar_inhouse_contract::InhouseInputSnapshot) {}
+
     async fn emit(&mut self, event: AdamProviderEvent) -> Result<(), AdamBackendError>;
 }
 
@@ -670,6 +672,13 @@ impl AdamTurnAccumulator {
 
 #[async_trait]
 impl AdamProviderEventSink for AdamTurnAccumulator {
+    async fn input_snapshot(&mut self,snapshot:polar_inhouse_contract::InhouseInputSnapshot) {
+        if let Some(sink)=&self.event_sink {
+            let future=sink.lock().ok().map(|mut h|h.on_input_snapshot(snapshot));
+            if let Some(future)=future {future.await;}
+        }
+    }
+
     async fn emit(&mut self, event: AdamProviderEvent) -> Result<(), AdamBackendError> {
         match event {
             AdamProviderEvent::AnswerDelta(text) => {
@@ -1723,11 +1732,12 @@ impl AdamProviderConnector for OpenAiConnector {
             }
         }
         let serialized = body.to_string();
+        let observation=polar_inhouse_contract::InhouseInputSnapshot{request_id:operation_id.clone(),channel:"provider".into(),status:"prepared".into(),content:body.clone()};
+        sink.input_snapshot(observation.clone()).await;
         tracing::info!(target:"polar_adam::latency",operation_id,event="adam.request_built",work_us=timing.elapsed().as_micros() as u64,bytes=serialized.len() as u64,continued);
-        socket
-            .send(Message::Text(serialized.into()))
-            .await
-            .map_err(|err| AdamBackendError::Transport(err.to_string()))?;
+        let sent=socket.send(Message::Text(serialized.into())).await;
+        sink.input_snapshot(polar_inhouse_contract::InhouseInputSnapshot{status:if sent.is_ok(){"submitted"}else{"failed"}.into(),..observation}).await;
+        sent.map_err(|err| AdamBackendError::Transport(err.to_string()))?;
 
         tracing::info!(target:"polar_adam::latency",operation_id,event="adam.request_sent",work_us=timing.elapsed().as_micros() as u64);
         let mut first_event = false;

@@ -48,6 +48,9 @@ impl CodexDictateProvider {
         webm: Vec<u8>,
         duration_ms: u32,
     ) -> Result<String, VoiceError> {
+        self.transcribe_webm_observed(webm,duration_ms,None).await
+    }
+    async fn transcribe_webm_observed(&self,webm:Vec<u8>,duration_ms:u32,observation:Option<polar_voice::inspection::InputObservation>)->Result<String,VoiceError> {
         if webm.len() < 4
             || webm.len() > MAX_WEBM_BYTES
             || webm[..4] != [0x1a, 0x45, 0xdf, 0xa3]
@@ -70,10 +73,13 @@ impl CodexDictateProvider {
             .file_name("codex.webm")
             .mime_str("audio/webm;codecs=opus")
             .map_err(|_| VoiceError::InvalidAudio)?;
+        let session_id=provider_correlation_id();let attempt_id=provider_correlation_id();
+        let observation=observation.map(|o|polar_voice::inspection::InputObservation{request_id:attempt_id.clone(),observer:o.observer});
+        let actual=serde_json::json!({"dictation_session_id":session_id,"attempt_id":attempt_id,"duration_ms":duration_ms.to_string(),"file":"[audio omitted]","text_reference_support":"unsupported"});
         let form = Form::new()
             .part("file", part)
-            .text("dictation_session_id", provider_correlation_id())
-            .text("attempt_id", provider_correlation_id())
+            .text("dictation_session_id", session_id)
+            .text("attempt_id", attempt_id)
             .text("duration_ms", duration_ms.to_string());
         let mut headers = credentials.to_auth_headers().map_err(|_| VoiceError::AuthRequired)?;
         headers.insert(
@@ -86,14 +92,17 @@ impl CodexDictateProvider {
         );
         default_client::add_originator_header(&mut headers, "polar_voice");
         tracing::info!(target:"polar_dictate::latency",event="dictate.http_request_ready",work_us=started.elapsed().as_micros() as u64,duration_ms);
-        let mut response = client
+        if let Some(o)=&observation{o.emit("transcribe","prepared",actual.clone()).await;}
+        let response = client
             .post(URL)
             .headers(headers)
             .body_stream(form.into_stream())
             .timeout(Duration::from_secs(90))
             .send()
             .await
-            .map_err(|_| VoiceError::ProviderUnavailable)?;
+            .map_err(|_| VoiceError::ProviderUnavailable);
+        if let Some(o)=&observation{o.emit("transcribe",if response.is_ok(){"submitted"}else{"failed"},actual).await;}
+        let mut response=response?;
         let status = response.status().as_u16();
         tracing::info!(target:"polar_dictate::latency",event="dictate.http_headers",work_us=started.elapsed().as_micros() as u64,status);
         tracing::info!(target:"polar_dictate::latency", event="dictate.response", status,
@@ -233,6 +242,17 @@ async fn pcm_to_webm(pcm: &[u8]) -> Result<Vec<u8>, VoiceError> {
 
 #[async_trait::async_trait]
 impl VoiceTranscriptionProvider for CodexDictateProvider {
+    async fn transcribe_observed(&self,audio:VoicePcm,encoded:Option<polar_voice::buffered::VoiceOpusRecording>,reference:polar_voice::TranscriptionReference,observation:Option<polar_voice::inspection::InputObservation>)->Result<String,VoiceError> {
+        reference.validate()?;
+        if !reference.is_empty() { return Err(VoiceError::ReferenceUnsupported); }
+        let (webm,duration)=if let Some(encoded)=encoded {
+            let duration=encoded.duration_ms();
+            let bytes=tokio::task::spawn_blocking(move || opus_to_webm(encoded.packets())).await.map_err(|_|VoiceError::TranscriptionFailed)??;
+            (bytes,duration)
+        }else{(pcm_to_webm(audio.as_bytes()).await?,(audio.as_bytes().len()/32) as u32)};
+        self.transcribe_webm_observed(webm,duration,observation).await
+    }
+
     fn maximum_audio_bytes(&self) -> usize { MAX_DICTATE_AUDIO_BYTES }
     async fn transcribe_opus(
         &self,
