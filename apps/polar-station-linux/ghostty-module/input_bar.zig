@@ -113,6 +113,7 @@ const DraftEditor = struct {
 pub const InputBar = struct {
     dictate_button: *gtk.Button,
     dictate_menu: *gtk.MenuButton,
+    dictate_send_held:bool=false,
     dictate_history: *@import("dictate_history.zig").History,
     dictate_click: ?*gtk.GestureClick = null,
     dictate_chord:@import("dictate_local_keys.zig").Chord=.{},
@@ -1086,7 +1087,7 @@ pub const InputBar = struct {
         if (self.picker == null) self.picker = Picker.create(self) catch return;
         self.picker.?.present();
     }
-    fn dictateWindowActive(_: *gobject.Object,_: *gobject.ParamSpec,self:*InputBar) callconv(.c) void {if(self.host.as(gtk.Window).isActive()==0 and self.dictate_chord.reset()==.release)self.owner.dictateLocalShortcut(false);if(self.dictate_panel)|panel|panel.refresh();self.owner.dictate.updateRecordingNotification();}
+    fn dictateWindowActive(_: *gobject.Object,_: *gobject.ParamSpec,self:*InputBar) callconv(.c) void {if(self.host.as(gtk.Window).isActive()==0)self.dictate_send_held=false;if(self.host.as(gtk.Window).isActive()==0 and self.dictate_chord.reset()==.release)self.owner.dictateLocalShortcut(false);if(self.dictate_panel)|panel|panel.refresh();self.owner.dictate.updateRecordingNotification();}
     fn dictateMapped(_: *gtk.Widget,self:*InputBar) callconv(.c) void {if(self.dictate_panel)|panel|panel.refresh();}
     pub fn refreshDictate(self:*InputBar) void {
         if(self.dictate_panel==null) self.dictate_panel=@import("dictate_panel.zig").Panel.create(self.owner.dictate,self.dictate_button.as(gtk.Widget)) catch null;
@@ -1206,6 +1207,13 @@ pub const InputBar = struct {
         };
     }
     fn dictateKeyPressed(_: *gtk.EventControllerKey,key:c_uint,_:c_uint,mods:gdk.ModifierType,self:*InputBar) callconv(.c) c_int {
+        if((key==gdk.KEY_Return or key==gdk.KEY_KP_Enter) and mods.super_mask and !mods.control_mask and !mods.shift_mask and !mods.alt_mask) {
+            if(self.dictate_send_held)return 1;
+            const actions=dictate_module.field(self.owner.dictate.panelValue(),"actions");
+            if(actions==.array)for(actions.array.items)|item|if(std.mem.eql(u8,dictate_module.string(item,"id"),"send_original") and dictate_module.boolean(item,"enabled")) {
+                if(!self.dictate_send_held){self.dictate_send_held=true;self.owner.dictate.panelAction("send_original");}return 1;
+            };
+        }
         const edge=self.dictate_chord.press(localDictateKey(key),mods.control_mask,mods.super_mask,mods.shift_mask or mods.alt_mask);
         if(edge==.press){self.owner.dictateLocalShortcut(true);return 1;}
         if(edge==.cancel){
@@ -1215,6 +1223,7 @@ pub const InputBar = struct {
         if(key==gdk.KEY_Escape and dictate_module.string(self.owner.dictate.presentation(),"cancel_id").len>0){self.owner.dictate.cancel();return 1;}return 0;
     }
     fn dictateKeyReleased(_: *gtk.EventControllerKey,key:c_uint,_:c_uint,_:gdk.ModifierType,self:*InputBar) callconv(.c) void {
+        if(key==gdk.KEY_Return or key==gdk.KEY_KP_Enter)self.dictate_send_held=false;
         if(self.dictate_chord.release(localDictateKey(key))==.release)self.owner.dictateLocalShortcut(false);
         if(key!=gdk.KEY_Tab and key!=gdk.KEY_ISO_Left_Tab)return;
         const focus=self.host.as(gtk.Window).getFocus() orelse return;
@@ -1335,17 +1344,25 @@ pub const InputBar = struct {
         self.owner.setSendMode(modified);
         if (self.owner.save_mode) |save| save(self.owner.context, modified);
     }
+    pub fn submitDictate(self:*InputBar) bool {
+        return self.submitEditorDraft();
+    }
     fn sendClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
-        if (self.composing or self.send_button.as(gtk.Widget).getSensitive() == 0) return;
-        for(self.node_editors.items) |editor| if(editor.composing)return;
-        if(self.detail_editor) |editor| if(editor.composing)return;
+        if(self.send_button.as(gtk.Widget).getSensitive()==0)return;
+        _=self.submitEditorDraft();
+    }
+    fn submitEditorDraft(self:*InputBar) bool {
+        if(self.composing)return false;
+        for(self.node_editors.items)|editor|if(editor.composing)return false;
+        if(self.detail_editor)|editor|if(editor.composing)return false;
         self.commitDraft();
-        const lease = if (self.metadata) |metadata| field(metadata.value,"generic_lease") else null;
-        if (lease) |value| {
-            self.owner.input(.{ .type="submit_input", .lease=value, .press_enter=true });
+        const lease=if(self.metadata)|metadata|field(metadata.value,"generic_lease") else null;
+        if(lease)|value| {
+            self.owner.input(.{.type="submit_input",.lease=value,.press_enter=true});
         } else {
-            self.owner.input(.{ .type = "send", .window_id = self.id, .created_at_secs = @as(u64, @intCast(@max(1, std.time.timestamp()))) });
+            self.owner.input(.{.type="send",.window_id=self.id,.created_at_secs=@as(u64,@intCast(@max(1,std.time.timestamp())))});
         }
+        return true;
     }
     pub fn inquiryEnvironment(self:*InputBar) void {
         self.owner.input(.{.type="inquiry_environment",.window_id=self.id,.foreground=self.host.as(gtk.Window).isActive()!=0,.composing=self.composing});

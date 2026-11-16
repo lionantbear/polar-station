@@ -2,6 +2,9 @@
 pub mod application;
 mod history;
 mod inspection;
+mod preview;
+mod completion;
+pub use preview::PreviewAction;
 use serde::{Deserialize, Serialize};
 
 pub const MAX_RECORDING_MS: u32 = 600_000;
@@ -73,6 +76,7 @@ pub enum Phase {
     Rewriting,
     Pending,
     Delivering,
+    Submitting,
     Delivered,
     Copying,
     Copied,
@@ -90,6 +94,7 @@ impl Phase {
             Self::Rewriting => "Refining text…",
             Self::Pending => "Saved to Dictate. Activate an input to insert.",
             Self::Delivering => "Inserting…",
+            Self::Submitting => "Sending…",
             Self::Delivered => "Inserted",
             Self::Copying => "Copying…",
             Self::Copied => "Copied",
@@ -107,6 +112,7 @@ impl Phase {
                 | Self::Transcribing
                 | Self::Rewriting
                 | Self::Delivering
+                | Self::Submitting
         )
     }
 }
@@ -172,6 +178,8 @@ pub struct Entry {
     pub unsaved: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub copy_error: Option<String>,
+    #[serde(default)]
+    pub inserted: bool,
 }
 impl Entry {
     fn learning_source(&self) -> Option<polar_transcreation::learning::Refinement> {
@@ -189,6 +197,7 @@ impl Entry {
         polar_dictate::quoted_transcript(&self.reference, &self.text)
     }
     fn status(&self) -> std::borrow::Cow<'_, str> {
+        if self.inserted { if let Some(error)=self.error.as_deref().filter(|e|e.starts_with("Text inserted;")) {return error.into();} }
         if let Some(error) = self.copy_error.as_deref() {
             return error.into();
         }
@@ -220,6 +229,8 @@ pub enum Input {
     ShowPanel {
         operation_id: String,
     },
+    CopyPreview { operation_id: String, text: String },
+    PreviewClipboard { operation_id: String, copied: bool },
     CopyDraft {
         operation_id: String,
         text: String,
@@ -235,6 +246,10 @@ pub enum Input {
         operation_id: String,
         text: String,
     },
+    PreviewAction { operation_id:String, action:PreviewAction },
+    PanelInteraction { operation_id:String, interacting:bool },
+    PanelTimeout { operation_id:String },
+    Submission { operation_id:String, submitted:bool, uncertain:bool },
     InsertDraft {
         operation_id: String,
     },
@@ -344,8 +359,14 @@ pub enum Effect {
         operation_id: String,
         text: String,
         stop_capture: bool,
+        #[serde(default)]
+        preserve_processing: bool,
     },
+    SetOutputMode { operation_id:String, mode:polar_dictate::DictateOutputMode },
+    SubmitInserted { operation_id:String, text:String },
     InsertCurrent {
+        #[serde(default)]
+        send:bool,
         operation_id: String,
         text: String,
         preserve_selection: bool,
@@ -384,6 +405,18 @@ pub enum Effect {
         text: String,
     },
 }
+impl Effect {
+    pub(super) fn operation_id(&self) -> &str {
+        match self {
+            Self::FinishCapture{operation_id,..} | Self::Copy{operation_id,..}
+            | Self::SetOutputMode{operation_id,..} | Self::SubmitInserted{operation_id,..}
+            | Self::InsertCurrent{operation_id,..} | Self::RetryTranscribe{operation_id,..}
+            | Self::Capture{operation_id,..} | Self::Transcribe{operation_id,..}
+            | Self::Cancel{operation_id,..} | Self::Rewrite{operation_id,..}
+            | Self::Insert{operation_id,..} => operation_id,
+        }
+    }
+}
 #[derive(Debug, Clone, Default)]
 pub struct Engine {
     host_events: bool,
@@ -393,6 +426,8 @@ pub struct Engine {
     shortcut_trigger: String,
     hidden_panel: Option<String>,
     selected_panel: Option<String>,
+    preview_actions:std::collections::BTreeMap<String,completion::CompletionIntent>,
+    panel_interaction:std::collections::BTreeSet<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -409,68 +444,6 @@ impl Engine {
     /// Host processing is observed, never scheduled by native phase callbacks.
     pub fn use_host_events(&mut self) {
         self.host_events = true;
-    }
-    pub fn observe_recording(&mut self, record: &polar_dictate::Recording) -> Vec<Effect> {
-        let mut effects = Vec::new();
-        if !self.host_events {
-            return effects;
-        }
-        let Some(entry) = self.entries.iter_mut().find(|e| {
-            e.operation_id == record.id
-                && e.host_recording
-                && matches!(e.phase, Phase::Transcribing | Phase::Rewriting)
-        }) else {
-            return effects;
-        };
-        entry.saved_samples = entry.saved_samples.max(record.saved_samples);
-        entry.transcription_mode = Some(record.transcription_mode);
-        entry.output_mode = Some(record.output_mode());
-        if record.capture == polar_dictate::CaptureState::Recording {
-            return effects;
-        }
-        if record.delivery != polar_dictate::DeliveryState::Pending {
-            entry.phase = match record.delivery {
-                polar_dictate::DeliveryState::Delivered => Phase::Delivered,
-                polar_dictate::DeliveryState::Copied => Phase::Copied,
-                _ => Phase::Unknown,
-            };
-            return effects;
-        }
-        let Some(original) = record.original() else {
-            if let Some(error) = record
-                .error
-                .as_ref()
-                .or_else(|| record.segments.iter().find_map(|s| s.error.as_ref()))
-            {
-                entry.error = Some(error.chars().take(512).collect());
-                entry.phase = Phase::Failed;
-            } else if !record.processing_enabled {
-                entry.error = Some("Processing stopped; saved audio is available for retry.".into());
-                entry.phase = Phase::Failed;
-            }
-            return effects;
-        };
-        entry.raw = original.clone();
-        if record.cleanup_enabled
-            && (record.cleanup_deferred
-                || record.cleanup_running
-                || (record.cleaned.is_none() && record.cleanup_error.is_none()))
-        {
-            entry.text = original;
-            entry.phase = Phase::Rewriting;
-            return effects;
-        }
-        entry.error = record.cleanup_error.clone();
-        entry.refined = record.cleaned.is_some() && entry.error.is_none();
-        entry.refine_baseline = if entry.refined {
-            record.cleaned.clone()
-        } else {
-            None
-        };
-        entry.text = record.cleaned.clone().unwrap_or(original);
-        entry.phase = Phase::Pending;
-        Self::insert(entry, &mut effects);
-        effects
     }
     pub fn history(&self) -> Vec<HistoryEntry<'_>> {
         self.entries
@@ -513,7 +486,7 @@ impl Engine {
             enabled: recording || active.is_none(),
             operation_id: active.map(|e| e.operation_id.as_str()),
             cancel_id: active
-                .filter(|e| e.phase != Phase::Delivering)
+                .filter(|e| !matches!(e.phase,Phase::Delivering|Phase::Submitting))
                 .map(|e| e.operation_id.as_str()),
             setup_required: active
                 .and_then(|entry| entry.error.as_deref())
@@ -613,14 +586,16 @@ impl Engine {
             "heading":heading,"output_mode":entry.output_mode,"transcription_mode":entry.transcription_mode,"reference":entry.reference,"copy_text":entry.delivery_text(),
             "operation_id":entry.operation_id,"phase":entry.phase,"text":entry.text,
             "status":if entry.phase == Phase::Recording { self.presentation().status } else { entry.status() },
-            "can_stop":matches!(entry.phase,Phase::Starting|Phase::Recording),
-            "can_cancel":active && entry.phase != Phase::Delivering,
+            "can_stop":false,
+            "can_cancel":active && !matches!(entry.phase,Phase::Delivering|Phase::Submitting),
             "can_copy":!entry.text.is_empty(),
             "can_edit":!active && entry.phase != Phase::Delivered && !entry.raw.is_empty(),
-            "can_insert":!active && !matches!(entry.phase,Phase::Delivered|Phase::Unknown|Phase::Failed) && valid_text(&entry.text),
+            "can_insert":!active && !matches!(entry.phase,Phase::Delivered|Phase::Unknown|Phase::Failed) && !entry.inserted && valid_text(&entry.text),
             "can_retry":entry.phase == Phase::Failed && entry.host_recording && entry.saved_samples > 0,
             "can_available":matches!(entry.phase,Phase::Transcribing|Phase::Rewriting),
-            "hide_after_ms":0,"can_view_inputs":true,"inputs_label":"View inputs",
+            "actions":preview::actions(entry,self.preview_actions.get(&entry.operation_id).map(|c|c.refine_mode),self.completion_available(entry)),
+            "can_history":entry.phase==Phase::Failed && entry.saved_samples>0,"history_label":"History",
+            "hide_after_ms":if preview::dismissible(entry) && !self.panel_interaction.contains(&entry.operation_id) {5000}else{0},"can_view_inputs":true,"inputs_label":"View inputs",
             "title":"Dictate","stop_label":"Stop","cancel_label":"Cancel",
             "copy_label":"Copy","edit_label":"Edit","insert_label":"Insert",
             "retry_label":"Retry transcription","close_label":"Close","available_label":if valid_text(&entry.text) { "Use text now" } else { "Stop waiting" }
@@ -641,6 +616,7 @@ impl Engine {
             })
             .collect();
         self.entries.retain(|entry| entry.operation_id != id);
+        self.preview_actions.remove(id);self.panel_interaction.remove(id);
         effects
     }
     /// Project an authoritative saved recording without running any effect.
@@ -684,13 +660,14 @@ impl Engine {
             .retain(|entry| entry.operation_id != recording.id);
         self.entries.push(Entry {
             unsaved: false,
-            output_mode: None,
+            output_mode: Some(recording.output_mode()),
             reference: recording.reference.clone(),
             transcription_mode: Some(recording.transcription_mode),
             created_at_ms: Some(recording.created_at_ms),
             host_recording: true,
             edited: was_edited,
             copy_error: None,
+            inserted: false,
             refine_baseline: recording.cleaned.clone(),
             refined: recording.cleaned.is_some() && recording.cleanup_error.is_none(),
             operation_id: recording.id.clone(),
@@ -725,7 +702,7 @@ impl Engine {
         if local.is_none() {
             self.entries.push(Entry {
                 unsaved: false,
-                output_mode: None,
+                output_mode: Some(record.output_mode()),
                 reference: record.reference.clone(),
                 transcription_mode: Some(record.transcription_mode),
                 created_at_ms: Some(record.created_at_ms),
@@ -741,6 +718,7 @@ impl Engine {
                 refine_baseline: record.cleaned.clone(),
                 edited: false,
                 copy_error: None,
+            inserted: false,
             });
         }
         self.dispatch(Input::CopyDraft {
@@ -784,6 +762,7 @@ impl Engine {
                     refine_baseline: record.result.clone(),
                     edited: record.draft_text.is_some(),
                     copy_error: None,
+            inserted: false,
                 });
                 Ok(())
             }
@@ -819,6 +798,7 @@ impl Engine {
             refine_baseline: None,
             edited: false,
             copy_error: None,
+            inserted: false,
         });
         self.selected_panel = None;
         Ok(())
@@ -835,11 +815,22 @@ impl Engine {
                     if valid_text(&entry.text) {
                         entry.error = None;
                         entry.phase = Phase::Pending;
-                        Self::insert(entry, &mut effects);
+                        Self::insert(entry,self.preview_actions.get(&entry.operation_id).copied(), &mut effects);
                     } else {
                         entry.phase = Phase::Failed;
                         entry.error = Some("Processing stopped; no text yet. Saved audio is available for retry.".into());
                     }
+                }
+            }
+            Input::PreviewClipboard { operation_id, copied } => {
+                if let Some(entry)=self.entries.iter_mut().find(|e|e.operation_id==operation_id) {
+                    entry.copy_error=(!copied).then(||"Copy failed; preview retained. Try Copy again.".into());
+                }
+            }
+            Input::CopyPreview { operation_id, text } => {
+                if !valid_text(&text) { return Err("No preview text to copy".into()); }
+                if self.entries.iter().any(|e|e.operation_id==operation_id) {
+                    effects.push(Effect::Copy {operation_id,text,stop_capture:false,preserve_processing:true});
                 }
             }
             Input::CopyDraft { operation_id, text } => {
@@ -848,7 +839,7 @@ impl Engine {
                 }
                 if let Some(entry) = self.entries.iter_mut().find(|e| {
                     e.operation_id == operation_id
-                        && !matches!(e.phase, Phase::Delivering | Phase::Copying)
+                        && !matches!(e.phase, Phase::Delivering | Phase::Submitting | Phase::Copying)
                 }) {
                     let stop_capture = matches!(entry.phase, Phase::Starting | Phase::Recording);
                     entry.text = text;
@@ -860,6 +851,7 @@ impl Engine {
                         operation_id: operation_id.clone(),
                         text: entry.delivery_text(),
                         stop_capture,
+                        preserve_processing: false,
                     });
                 }
             }
@@ -901,7 +893,7 @@ impl Engine {
                 if let Some(entry) = self.entries.iter_mut().find(|entry| {
                     entry.operation_id == operation_id
                         && entry.phase.active()
-                        && entry.phase != Phase::Delivering
+                        && !matches!(entry.phase,Phase::Delivering|Phase::Submitting)
                 }) {
                     entry.phase = Phase::Cancelled;
                     effects.push(Effect::Cancel {
@@ -926,6 +918,22 @@ impl Engine {
                     entry.phase = Phase::Pending;
                 }
             }
+            Input::PanelInteraction {operation_id,interacting} => {
+                if interacting && self.entries.iter().any(|e|e.operation_id==operation_id) {self.panel_interaction.insert(operation_id);} else {self.panel_interaction.remove(&operation_id);}
+            }
+            Input::PanelTimeout {operation_id} => {
+                if self.panel()["operation_id"].as_str()==Some(operation_id.as_str()) && !self.panel_interaction.contains(&operation_id) && self.entries.iter().any(|e|e.operation_id==operation_id && preview::dismissible(e)) {
+                    self.hidden_panel=Some(operation_id);
+                }
+            }
+            Input::Submission {operation_id,submitted,uncertain} => {
+                if let Some(entry)=self.entries.iter_mut().find(|e|e.operation_id==operation_id && e.inserted && e.phase==Phase::Submitting) {
+                    if submitted {entry.phase=Phase::Delivered;} else {entry.error=Some(if uncertain {"Text inserted; sending could not be confirmed. Check the target."}else{"Text inserted; Send unavailable or failed. Use the target's Send control."}.into());entry.phase=Phase::Review;self.hidden_panel=None;self.selected_panel=Some(operation_id.clone());}
+                }
+            }
+            Input::PreviewAction {operation_id,action} => {
+                effects=self.select_completion(operation_id,action);
+            }
             Input::InsertDraft { operation_id } => {
                 if self.entries.iter().any(|e| e.phase.active()) {
                     return Ok(effects);
@@ -933,16 +941,10 @@ impl Engine {
                 if let Some(entry) = self.entries.iter_mut().find(|e| {
                     e.operation_id == operation_id
                         && !matches!(e.phase, Phase::Delivered | Phase::Unknown | Phase::Failed)
-                        && valid_text(&e.text)
+                        && !e.inserted && valid_text(&e.text)
                 }) {
-                    entry.target = None;
-                    entry.phase = Phase::Delivering;
-                    effects.push(Effect::InsertCurrent {
-                        operation_id: entry.operation_id.clone(),
-                        text: entry.delivery_text(),
-                        preserve_selection: !entry.reference.is_empty(),
-                        source: entry.learning_source(),
-                    });
+                    entry.target=None;
+                    Self::insert(entry,None,&mut effects);
                     self.hidden_panel = None;
                 }
             }
@@ -1050,11 +1052,15 @@ impl Engine {
                 project,
             } => {
                 let english = self.refine_modes.get(&context_id).copied().unwrap_or(false);
+                let id=operation_id.clone();
                 effects = self.dispatch(Input::RefineText {
                     operation_id,
                     target,
                     text,
                 })?;
+                if let Some(entry)=self.entries.iter_mut().find(|e|e.operation_id==id) {
+                    entry.output_mode=Some(if english {polar_dictate::DictateOutputMode::Transcreate}else{polar_dictate::DictateOutputMode::Refine});
+                }
                 for effect in &mut effects {
                     if let Effect::Rewrite {
                         english: value,
@@ -1092,7 +1098,7 @@ impl Engine {
                 });
                 let mut entry = Entry {
                     unsaved: false,
-                    output_mode: None,
+                    output_mode: Some(polar_dictate::DictateOutputMode::Refine),
                     reference: String::new(),
                     transcription_mode: None,
                     created_at_ms: None,
@@ -1108,6 +1114,7 @@ impl Engine {
                     refine_baseline: None,
                     edited: false,
                     copy_error: None,
+            inserted: false,
                 };
                 Self::rewrite(&mut entry, &mut effects);
                 self.entries.push(entry);
@@ -1210,6 +1217,7 @@ impl Engine {
                     host_recording: true,
                     edited: false,
                     copy_error: None,
+            inserted: false,
                     refined: false,
                     refine_baseline: None,
                     saved_samples: 0,
@@ -1243,7 +1251,7 @@ impl Engine {
                 }) {
                     entry.target = Some(target);
                     if entry.refined || entry.edited {
-                        Self::insert(entry, &mut effects);
+                        Self::insert(entry,self.preview_actions.get(&entry.operation_id).copied(), &mut effects);
                     } else {
                         Self::rewrite(entry, &mut effects);
                     }
@@ -1347,8 +1355,7 @@ impl Engine {
                         } else {
                             entry.text = entry.raw.clone();
                         }
-                        entry.phase = Phase::Pending;
-                        Self::insert(entry, &mut effects);
+                        Self::complete_output(entry,self.preview_actions.get(&entry.operation_id).copied(),&mut effects);
                     }
                     Input::Failed { error, .. }
                         if matches!(
@@ -1365,7 +1372,7 @@ impl Engine {
                         } else {
                             entry.text = entry.raw.clone();
                             entry.phase = Phase::Pending;
-                            Self::insert(entry, &mut effects);
+                            Self::insert(entry,self.preview_actions.get(&entry.operation_id).copied(), &mut effects);
                         }
                     }
                     Input::Delivery { outcome, .. } if entry.phase == Phase::Delivering => {
@@ -1374,7 +1381,13 @@ impl Engine {
                                 entry.target = None;
                                 Phase::Pending
                             }
-                            DeliveryOutcome::Applied => Phase::Delivered,
+                            DeliveryOutcome::Applied => {
+                                entry.inserted=true;
+                                if self.preview_actions.remove(&entry.operation_id).is_some_and(|choice|choice.sends()) {
+                                    effects.push(Effect::SubmitInserted{operation_id:entry.operation_id.clone(),text:entry.delivery_text()});
+                                    Phase::Submitting
+                                } else {Phase::Delivered}
+                            },
                             DeliveryOutcome::Unchanged => Phase::Review,
                             DeliveryOutcome::Unknown => Phase::Unknown,
                         };
@@ -1394,6 +1407,12 @@ impl Engine {
         }
         Ok(effects)
     }
+    fn preview_action_failed(&mut self,id:&str,error:String) {
+        self.preview_actions.remove(id);
+        if let Some(entry)=self.entries.iter_mut().find(|e|e.operation_id==id) {
+            entry.error=Some(error);entry.phase=if valid_text(&entry.text){Phase::Review}else{Phase::Failed};
+        }
+    }
     fn rewrite(entry: &mut Entry, effects: &mut Vec<Effect>) {
         entry.phase = Phase::Rewriting;
         effects.push(Effect::Rewrite {
@@ -1409,26 +1428,6 @@ impl Engine {
                 .map(|t| t.context.clone())
                 .unwrap_or_default(),
         });
-    }
-    fn insert(entry: &mut Entry, effects: &mut Vec<Effect>) {
-        if entry.host_recording {
-            entry.phase = Phase::Delivering;
-            effects.push(Effect::InsertCurrent {
-                operation_id: entry.operation_id.clone(),
-                text: entry.delivery_text(),
-                preserve_selection: !entry.reference.is_empty(),
-                source: entry.learning_source(),
-            });
-            return;
-        }
-        if let Some(target) = entry.target.clone() {
-            entry.phase = Phase::Delivering;
-            effects.push(Effect::Insert {
-                operation_id: entry.operation_id.clone(),
-                target,
-                text: entry.delivery_text(),
-            });
-        }
     }
     /// A restart never replays an uncertain insertion or resumes microphone capture.
     pub fn restore(mut saved: Snapshot) -> Result<Self, String> {
@@ -1480,7 +1479,7 @@ impl Engine {
                 target.context.clear();
             }
             entry.phase = match entry.phase {
-                Phase::Delivering => Phase::Unknown,
+                Phase::Delivering | Phase::Submitting => Phase::Unknown,
                 Phase::Copying => {
                     if valid_text(&entry.raw) {
                         Phase::Review
@@ -1542,6 +1541,8 @@ impl Engine {
 fn valid_text(text: &str) -> bool {
     !text.trim().is_empty() && text.len() <= MAX_TEXT && !text.contains('\0')
 }
+
+
 
 
 

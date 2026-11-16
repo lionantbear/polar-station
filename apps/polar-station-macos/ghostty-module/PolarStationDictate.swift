@@ -13,6 +13,8 @@ final class StationDictateTarget {
     private(set) var value: [String: Any]
     enum Delivery: String { case applied, unchanged, unknown, no_target }
     var sourceApplied: (([String:Any])->Void)?
+    var submit: ((String)->Bool)?
+    func submitInserted(_ text:String)->Bool {submit?(text) ?? false}
     private let deliver:(String,@escaping (Delivery)->Void)->Void
     func insert(_ text:String,completion:@escaping (Delivery)->Void) {deliver(text,completion)}
     init(kind:String,context:String,deliver:@escaping (String,@escaping (Delivery)->Void)->Void) {
@@ -36,7 +38,7 @@ final class StationDictateTarget {
               range.length <= source.length - range.location else { return nil }
         let start = max(0, range.location - 1024)
         let end = min(source.length, range.location + range.length + 1024)
-        return StationDictateTarget(kind: kind,
+        let target=StationDictateTarget(kind: kind,
             context: includeContext ? source.substring(with: NSRange(location: start, length: end - start)) : "") { [weak editor] text in
             guard let editor, editor.window != nil, editor.isEditable,
                   !editor.hasMarkedText(), valid(), editor.string == original,
@@ -56,6 +58,7 @@ final class StationDictateTarget {
             if actual == expected {applied?(text);return .applied}
             return .unknown
         }
+        return target
     }
 }
 
@@ -83,6 +86,7 @@ final class PolarStationDictate {
     private var voiceSettingsLoaded = false
     private var voiceMicrophone: String?
     private var shortcutBinding = "Fn"
+    private var previewSendHeld=false
     private var settingsObserver: NSObjectProtocol?
     private var deletionObserver: NSObjectProtocol?
     var selectedReference: (() -> String)?
@@ -90,6 +94,7 @@ final class PolarStationDictate {
         NSApp.isActive ? (selectedReference?() ?? "") : StationDictateExternalEditors.selectedText()
     }
     var shortcutTargets: (() -> [StationDictateTarget])?
+    private var pendingSubmit:(id:String,target:StationDictateTarget,text:String)?
     private var captured: [String: StationDictateTarget] = [:]
     private var cancelled = Set<String>()
     private var recordingStart: TimeInterval?
@@ -245,6 +250,15 @@ final class PolarStationDictate {
     private let shortcutCapture = StationDictateKeyCapture()
     func handleShortcut(_ event: NSEvent) -> Bool {
         guard !stopped else { return false }
+        if event.type == .keyUp,event.keyCode == 36,previewSendHeld {previewSendHeld=false;return NSApp.isActive}
+        if NSApp.isActive,event.type == .keyDown,event.keyCode == 36,previewSendHeld,event.isARepeat {return true}
+        if NSApp.isActive,event.type == .keyDown,event.keyCode == 36,
+           event.modifierFlags.intersection([.command,.control,.option,.shift]) == [.command],
+           let panel=view["panel"] as? [String:Any],
+           let actions=panel["actions"] as? [[String:Any]],
+           actions.contains(where:{$0["id"] as? String == "send_original" && $0["enabled"] as? Bool == true}) {
+            if !event.isARepeat {previewSendHeld=true;panelAction("send_original")};return true
+        }
         return shortcutCapture.handle(event, binding: shortcutBinding) { [weak self] event in
             guard let self else { return }
             if event == 4 { cancel() }
@@ -415,8 +429,10 @@ final class PolarStationDictate {
     }
     private func panelAction(_ action:String, text:String? = nil) {
         guard let panel=view["panel"] as? [String:Any],let id=panel["operation_id"] as? String else{return}
-        if action == "insert_draft" || action == "retry_saved" {cancelled.remove(id)}
+        if action == "insert_draft" || action == "retry_saved" || ["insert_original","insert_refined","send_original","send_refined"].contains(action) {cancelled.remove(id)}
         var value:[String:Any] = ["type":action,"operation_id":id]
+        if ["insert_original","insert_refined","send_original","send_refined"].contains(action) {value["type"]="preview_action";value["action"]=action}
+        if action == "panel_interaction_on" || action == "panel_interaction_off" {value["type"]="panel_interaction";value["interacting"]=action == "panel_interaction_on"}
         if let text {value["text"]=text}
         input(value)
     }
@@ -427,12 +443,11 @@ final class PolarStationDictate {
             if effect["stop_capture"] as? Bool == true, captureID == id {
                 _ = audio.finish(operation: id); captureID = nil
             }
-            cancelled.insert(id)
-            cancelSpeech(id)
+            if effect["preserve_processing"] as? Bool != true {cancelled.insert(id);cancelSpeech(id)}
             let text=effect["text"] as? String ?? ""
             NSPasteboard.general.clearContents()
             let copied=NSPasteboard.general.setString(text,forType:.string) && NSPasteboard.general.string(forType:.string)==text
-            input(["type":"clipboard","operation_id":id,"copied":copied])
+            input(["type":effect["preserve_processing"] as? Bool == true ? "preview_clipboard":"clipboard","operation_id":id,"copied":copied])
         case "capture":
             guard voiceSettingsLoaded else { reloadVoiceSettings(); input(["type":"failed", "operation_id":id,"error":"Voice settings are not ready. Open Settings → Voice and retry."]); return }
             guard !cancelled.contains(id) else { return }
@@ -521,9 +536,13 @@ final class PolarStationDictate {
                     else {self?.input(["type":"failed","operation_id":id,"error":"Saved recording retry failed."])}
                 }
             }
+        case "submit_inserted":
+            guard let pending=pendingSubmit,pending.id==id else{input(["type":"submission","operation_id":id,"submitted":false,"uncertain":false]);return}
+            pendingSubmit=nil
+            input(["type":"submission","operation_id":id,"submitted":pending.target.submitInserted(pending.text),"uncertain":false])
         case "insert_current":
             let target=currentInputTarget(preserveSelection:effect["preserve_selection"] as? Bool ?? false)
-            deliver(id:id,target:target,source:effect["source"] as? [String:Any],text:effect["text"] as? String ?? "",missing:.no_target)
+            deliver(id:id,target:target,source:effect["source"] as? [String:Any],text:effect["text"] as? String ?? "",missing:.no_target,send:effect["send"] as? Bool ?? false)
         case "insert":
             let target=effect["target"] as? [String:Any] ?? [:]
             let identity=target["identity"] as? String ?? ""
@@ -531,13 +550,14 @@ final class PolarStationDictate {
         default: break
         }
     }
-    private func deliver(id:String,target:StationDictateTarget?,source:[String:Any]?,text:String,missing:StationDictateTarget.Delivery) {
+    private func deliver(id:String,target:StationDictateTarget?,source:[String:Any]?,text:String,missing:StationDictateTarget.Delivery,send:Bool=false) {
         guard !cancelled.contains(id),let target else {
             input(["type":"delivery","operation_id":id,"outcome":cancelled.contains(id) ? "unchanged":missing.rawValue]);captured.removeAll();return
         }
         target.insert(text) {[weak self,target] outcome in
             guard let self,!self.stopped else{return}
             if outcome == .applied,let source{target.sourceApplied?(source)}
+            if send && outcome == .applied {self.pendingSubmit=(id,target,text)}
             self.input(["type":"delivery","operation_id":id,"outcome":outcome.rawValue])
             self.captured.removeAll()
         }
@@ -551,6 +571,7 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
 
     private let more=NSButton(title:"⋯",target:nil,action:nil)
     private let actions=NSStackView()
+    private let failureActions=NSStackView()
     private var textHeight:NSLayoutConstraint!
     private let status=NSTextField(labelWithString:"")
     private let editor=NSTextView()
@@ -564,6 +585,9 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
     private let latest=NSButton(title:"↓ Latest",target:nil,action:nil)
     private var hideTimer:Timer?
     private var hidingID:String?
+    private var hovering=false
+    private var menuOpen=false
+    private var reportedInteraction=false
     override var canBecomeKey:Bool {editing}
     override var canBecomeMain:Bool {false}
     init(action:@escaping (String,String?)->Void) {
@@ -586,13 +610,28 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         textHeight=scroll.heightAnchor.constraint(equalToConstant:20);textHeight.isActive=true
         let header=NSStackView();header.orientation = .horizontal;header.distribution = .fill;header.spacing=6;header.addArrangedSubview(status)
         actions.orientation = .horizontal;actions.spacing=6
-        for (kind,title) in [("stop","Stop"),("cancel","Cancel"),("use_available","Use text now"),("copy","Copy"),("edit","Edit"),("insert_draft","Insert"),("retry_saved","Retry"),("hide_panel","Close"),("view_inputs","View inputs")] {
+        failureActions.orientation = .horizontal;failureActions.spacing=12;failureActions.isHidden=true
+        for (kind,title) in [("cancel","Cancel"),("use_available","Use text now"),("copy","Copy"),("edit","Edit"),("insert_original","Insert"),("insert_refined","Refine and Insert"),("send_original","Insert and Send"),("send_refined","Refine and Send"),("retry_saved","Retry"),("view_history","History"),("hide_panel","Close"),("view_inputs","View inputs")] {
             let button=NSButton(title:title,target:self,action:#selector(clicked(_:)))
             button.identifier=NSUserInterfaceItemIdentifier(kind);button.refusesFirstResponder=true
             button.isBordered=false;button.contentTintColor = .white
             controls[kind]=button
             if kind == "stop" {header.addArrangedSubview(button)}
-            else if kind == "copy" || kind == "insert_draft" {actions.addArrangedSubview(button)}
+            else if kind == "retry_saved" || kind == "view_history" {failureActions.addArrangedSubview(button)}
+            else if ["copy","insert_original","insert_refined","send_original","send_refined"].contains(kind) {
+                let symbols=["copy":"square.on.square","insert_original":"tray.and.arrow.down","insert_refined":"tray.and.arrow.down","send_original":"paperplane","send_refined":"paperplane"]
+                let base=NSImage(systemSymbolName:symbols[kind]!,accessibilityDescription:nil)
+                if kind.hasSuffix("refined"),let base,let star=NSImage(systemSymbolName:"sparkle",accessibilityDescription:nil) {
+                    button.image=NSImage(size:NSSize(width:24,height:22),flipped:false){rect in
+                        base.draw(in:NSRect(x:0,y:0,width:19,height:19));star.draw(in:NSRect(x:14,y:12,width:10,height:10));return true
+                    }
+                    button.image?.isTemplate=true
+                }else{button.image=base}
+                button.title="";button.imagePosition = .imageOnly
+                button.widthAnchor.constraint(equalToConstant:32).isActive=true
+                button.heightAnchor.constraint(equalToConstant:28).isActive=true
+                actions.addArrangedSubview(button)
+            }
         }
         more.target=self;more.action=#selector(showMore(_:));more.refusesFirstResponder=true
         more.isBordered=false;more.contentTintColor = .white;more.setAccessibilityLabel("More Dictate actions")
@@ -601,11 +640,19 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         NotificationCenter.default.addObserver(self,selector:#selector(userScrolled),name:NSScrollView.didLiveScrollNotification,object:scroll)
         header.addArrangedSubview(more)
         referenceLabel.maximumNumberOfLines=1;referenceLabel.lineBreakMode = .byTruncatingTail;referenceLabel.textColor = .lightGray;referenceLabel.setAccessibilityLabel("Quoted text")
-        let column=NSStackView(views:[header,referenceLabel,scroll,actions]);column.orientation = .vertical;column.alignment = .leading;column.spacing=8
+        let column=NSStackView(views:[header,referenceLabel,scroll,actions,failureActions]);column.orientation = .vertical;column.alignment = .leading;column.spacing=8
         column.edgeInsets=NSEdgeInsets(top:12,left:12,bottom:12,right:12)
         column.wantsLayer=true;column.layer?.backgroundColor=NSColor(calibratedWhite:0.09,alpha:0.8).cgColor
         column.layer?.cornerRadius=12;contentView=column
+        column.addTrackingArea(NSTrackingArea(rect:.zero,options:[.mouseEnteredAndExited,.activeAlways,.inVisibleRect],owner:self,userInfo:nil))
         for view in [header,referenceLabel,scroll] {view.widthAnchor.constraint(equalTo:column.widthAnchor,constant:-24).isActive=true}
+    }
+    override func mouseEntered(with event:NSEvent) {hovering=true;reportInteraction()}
+    override func mouseExited(with event:NSEvent) {hovering=false;reportInteraction()}
+    private func reportInteraction() {
+        let active=hovering || menuOpen || editing || editor.selectedRange().length>0
+        guard active != reportedInteraction else{return};reportedInteraction=active
+        action(active ? "panel_interaction_on" : "panel_interaction_off",nil)
     }
     private var atBottom:Bool { scroll.contentView.bounds.maxY >= editor.bounds.maxY - 2 }
     @objc private func userScrolled() {
@@ -614,8 +661,8 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         latest.isHidden=following
     }
     func textViewDidChangeSelection(_ notification:Notification) {
-        guard !updating, editor.selectedRange().length > 0 else{return}
-        following=false;latest.isHidden=false
+        guard !updating else{return}
+        if editor.selectedRange().length > 0 {following=false;latest.isHidden=false};reportInteraction()
     }
     @objc private func followLatest() { following=true;editing=false;editor.isEditable=false;applyFollowing() }
     private func applyFollowing() {
@@ -628,9 +675,10 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         updating=false;latest.isHidden=true
     }
     @objc private func showMore(_ sender:NSButton) {
+        menuOpen=true;reportInteraction();defer{menuOpen=false;reportInteraction()}
         let menu=NSMenu()
         for kind in ["view_inputs","edit","use_available","retry_saved","cancel","hide_panel"] {
-            guard let control=controls[kind],!control.isHidden else {continue}
+            guard let control=controls[kind],!control.isHidden,!(kind == "retry_saved" && !failureActions.isHidden) else {continue}
             let item=NSMenuItem(title:control.title,action:#selector(menuAction(_:)),keyEquivalent:"")
             item.target=self;item.representedObject=kind;menu.addItem(item)
         }
@@ -645,17 +693,18 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
     }
     private func performAction(_ kind:String) {
         switch kind {
-        case "copy":action("copy_draft",editor.string)
-        case "edit":following=false;latest.isHidden=false;editing=true;editor.isEditable=true;makeKeyAndOrderFront(nil);makeFirstResponder(editor)
+        case "copy":action("copy_preview",editor.string)
+        case "edit":following=false;latest.isHidden=false;editing=true;editor.isEditable=true;reportInteraction();makeKeyAndOrderFront(nil);makeFirstResponder(editor)
         default:action(kind,nil)
         }
     }
     func update(_ panel:[String:Any]?) {
         guard let panel,let id=panel["operation_id"] as? String else {hideTimer?.invalidate();hideTimer=nil;hidingID=nil;orderOut(nil);return}
-        if currentID != id {currentID=id;editing=false;following=true;editor.isEditable=false}
+        if currentID != id {currentID=id;editing=false;following=true;editor.isEditable=false;reportedInteraction=false;reportInteraction()}
         status.stringValue=panel["heading"] as? String ?? "Dictate"
         status.toolTip=panel["status"] as? String
-        let text=panel["text"] as? String ?? ""
+        let body=panel["text"] as? String ?? ""
+        let text=body.isEmpty && panel["phase"] as? String == "failed" ? (panel["status"] as? String ?? "") : body
         if editor.string != text {
             let origin=scroll.contentView.bounds.origin
             let selection=editor.selectedRange()
@@ -671,16 +720,25 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
             textHeight.constant=min(4*lineHeight,max(lineHeight,ceil(layout.usedRect(for:container).height)))
         }
         scroll.isHidden=text.isEmpty && !editing
-        for (kind,key,label) in [("view_inputs","can_view_inputs","inputs_label"),("stop","can_stop","stop_label"),("cancel","can_cancel","cancel_label"),("use_available","can_available","available_label"),("copy","can_copy","copy_label"),("edit","can_edit","edit_label"),("insert_draft","can_insert","insert_label"),("retry_saved","can_retry","retry_label")] {
+        for (kind,key,label) in [("view_history","can_history","history_label"),("view_inputs","can_view_inputs","inputs_label"),("stop","can_stop","stop_label"),("cancel","can_cancel","cancel_label"),("use_available","can_available","available_label"),("copy","can_copy","copy_label"),("edit","can_edit","edit_label"),("retry_saved","can_retry","retry_label")] {
             controls[kind]?.isHidden=panel[key] as? Bool != true
             controls[kind]?.title=panel[label] as? String ?? ""
+        }
+        for item in panel["actions"] as? [[String:Any]] ?? [] {
+            guard let kind=item["id"] as? String,let button=controls[kind] else{continue}
+            button.isHidden=false;button.isEnabled=item["enabled"] as? Bool == true
+            let label=item["label"] as? String ?? kind
+            let reason=item["disabled_reason"] as? String ?? ""
+            button.toolTip=button.isEnabled || reason.isEmpty ? label : "\(label): \(reason)";button.setAccessibilityLabel(label)
+            if kind == "copy" {button.title=""}
         }
         if panel["can_edit"] as? Bool != true {editing=false;editor.isEditable=false}
         referenceLabel.stringValue=panel["reference"] as? String ?? ""
         referenceLabel.toolTip=referenceLabel.stringValue
         referenceLabel.isHidden=referenceLabel.stringValue.isEmpty
-        actions.isHidden=panel["can_copy"] as? Bool != true && panel["can_insert"] as? Bool != true
-        let height:CGFloat=48 + (referenceLabel.isHidden ? 0 : 24) + (scroll.isHidden ? 0 : textHeight.constant+8) + (actions.isHidden ? 0 : 28)
+        actions.isHidden=panel["phase"] as? String == "failed" && panel["can_copy"] as? Bool != true
+        failureActions.isHidden=panel["can_history"] as? Bool != true
+        let height:CGFloat=48 + (referenceLabel.isHidden ? 0 : 24) + (scroll.isHidden ? 0 : textHeight.constant+8) + (actions.isHidden ? 0 : 28) + (failureActions.isHidden ? 0 : 28)
         // Grow upward from the bottom anchor so newly revealed actions stay on screen.
         var origin=frame.origin
         if let visible=(screen ?? NSScreen.main)?.visibleFrame {
@@ -692,10 +750,11 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         if !isVisible {orderFrontRegardless()}
         applyFollowing()
         let delay=panel["hide_after_ms"] as? Int ?? 0
+        if delay<=0 {hideTimer?.invalidate();hideTimer=nil;hidingID=nil}
         if delay>0 && hidingID != id {
             hideTimer?.invalidate();hidingID=id
-            hideTimer=Timer.scheduledTimer(withTimeInterval:Double(delay)/1000,repeats:false){[weak self] _ in
-                MainActor.assumeIsolated {guard let self,self.currentID==id else{return};self.action("hide_panel",nil)}
+            hideTimer=Timer.scheduledTimer(withTimeInterval:Double(delay)/1000,repeats:false){[weak self] timer in
+                MainActor.assumeIsolated {guard let self,self.currentID==id,self.hideTimer === timer else{return};self.action("panel_timeout",nil)}
             }
         }
     }
@@ -1158,7 +1217,7 @@ final class StationDictateExternalEditors {
     static func selectedText()->String {ExternalTextInsertion.selectedText()}
     static func capture(activationPoint:CGPoint?=nil,preserveSelection:Bool=false,includeContext:Bool=true)->StationDictateTarget? {
         guard let target=ExternalTextInsertion.capture(activationPoint:activationPoint,preserveSelection:preserveSelection) else{return nil}
-        return StationDictateTarget(kind:"editor",context:includeContext ? target.context : "",deliver:{text,completion in
+        let port=StationDictateTarget(kind:"editor",context:includeContext ? target.context : "",deliver:{text,completion in
             target.insert(text) {result in
                 switch result {
                 case .verified:completion(.applied)
@@ -1167,6 +1226,7 @@ final class StationDictateExternalEditors {
                 }
             }
         })
+        port.submit={_ in target.sendEnter()};return port
     }
 }
 #endif

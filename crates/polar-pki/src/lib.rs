@@ -33,7 +33,7 @@
 //! # Vault storage
 //!
 //! This crate is pure PKI logic.  Vault persistence (load or generate) is the
-//! responsibility of `polar-serve`, which holds the long-lived node resources.
+//! responsibility of the owning runtime and its Vault; this crate performs no I/O.
 //! `NodeTransportCa` and `IssuedCert` both implement `serde::{Serialize,
 //! Deserialize}` for vault round-trips.
 
@@ -44,6 +44,10 @@ use rcgen::{
 };
 use rustls_pki_types::CertificateSigningRequestDer;
 use time::{Duration, OffsetDateTime};
+
+pub mod authorization;
+pub mod connection_ca;
+pub use connection_ca::ConnectionCa;
 
 const CERT_NOT_BEFORE_CLOCK_SKEW: Duration = Duration::minutes(5);
 
@@ -220,22 +224,7 @@ impl NodeTransportCa {
         let leaf_key = KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)?;
         let leaf_key_pem = leaf_key.serialize_pem();
 
-        let mut leaf_params = CertificateParams::default();
-        leaf_params.is_ca = IsCa::NoCa;
-        leaf_params.distinguished_name.push(
-            DnType::CommonName,
-            format!("Polar Node {node_id_hex} {role}"),
-        );
-        // NodeId embedded in SAN URI so the application layer can identify the
-        // peer after an mTLS handshake without parsing the Common Name.
-        leaf_params.subject_alt_names = vec![SanType::URI(
-            Ia5String::try_from(format!("polar://node/{node_id_hex}"))
-                .map_err(|e| anyhow::anyhow!("invalid SAN URI: {e}"))?,
-        )];
-        let now = OffsetDateTime::now_utc();
-        leaf_params.not_before = now - CERT_NOT_BEFORE_CLOCK_SKEW;
-        leaf_params.not_after = now + Duration::days(role.validity_days());
-        leaf_params.extended_key_usages = role.eku_purposes();
+        let leaf_params = plane_leaf_params(node_id_hex, role, OffsetDateTime::now_utc())?;
 
         let leaf = CertifiedIssuer::signed_by(leaf_params, leaf_key, &ca_issuer)?;
         Ok(IssuedCert {
@@ -302,12 +291,11 @@ impl NodeTransportCa {
     ///
     /// CSR-first realm admission: applicant generates a CSR locally with their own key,
     /// sends the CSR (DER) to the authority. Authority verifies the CSR is valid,
-    /// signs it (conceptually), and returns only the signed certificate + root CA PEM
+    /// signs its public key, and returns only the signed certificate + root CA PEM
     /// (never the private key).
     ///
-    /// For Phase 3: we verify the CSR structure and extract the applicant node ID,
-    /// then sign a new certificate for that node. Later phases will implement perfect
-    /// public-key extraction from CSR to reuse the applicant's key material.
+    /// The caller supplies the authorized applicant identity. CSR subject and
+    /// permissions are replaced with the shared connection-certificate profile.
     pub fn sign_csr(
         &self,
         csr_der: &[u8],
@@ -316,7 +304,7 @@ impl NodeTransportCa {
     ) -> anyhow::Result<RealmIssuedCertificate> {
         use anyhow::Context;
 
-        // For Phase 3: Just verify CSR structure is valid (basic validation)
+        // Preliminary bounds; the parser below verifies the CSR self-signature.
         anyhow::ensure!(
             !csr_der.is_empty() && csr_der.len() > 10,
             "CSR DER appears to be invalid (too short)"
@@ -334,22 +322,10 @@ impl NodeTransportCa {
         let mut csr_params =
             CertificateSigningRequestParams::from_der(&csr_der).context("parse applicant CSR")?;
 
-        // Create certificate metadata for the applicant while keeping the CSR public key.
-        let cert_params = &mut csr_params.params;
-        cert_params.is_ca = IsCa::NoCa;
-        cert_params.distinguished_name.push(
-            DnType::CommonName,
-            format!("Polar Node {applicant_node_id_hex} {role}"),
-        );
-        cert_params.subject_alt_names = vec![SanType::URI(
-            Ia5String::try_from(format!("polar://node/{applicant_node_id_hex}"))
-                .context("Invalid applicant node ID for SAN URI")?,
-        )];
-
-        let now = OffsetDateTime::now_utc();
-        cert_params.not_before = now - CERT_NOT_BEFORE_CLOCK_SKEW;
-        cert_params.not_after = now + Duration::days(role.validity_days());
-        cert_params.extended_key_usages = role.eku_purposes();
+        // Only the public key comes from the CSR. Subject, permissions and all
+        // extensions are our profile, never inherited from an applicant.
+        csr_params.params =
+            plane_leaf_params(applicant_node_id_hex, role, OffsetDateTime::now_utc())?;
 
         // Sign the CSR public key using the CA key. The applicant's private key
         // stays on the applicant node and must match this certificate.
@@ -369,6 +345,28 @@ impl NodeTransportCa {
     }
 }
 
+fn plane_leaf_params(
+    node_id_hex: &str,
+    role: PlaneCertRole,
+    now: OffsetDateTime,
+) -> anyhow::Result<CertificateParams> {
+    let mut params = CertificateParams::default();
+    params.is_ca = IsCa::NoCa;
+    params.use_authority_key_identifier_extension = true;
+    params.distinguished_name.push(
+        DnType::CommonName,
+        format!("Polar Node {node_id_hex} {role}"),
+    );
+    params.subject_alt_names = vec![SanType::URI(Ia5String::try_from(format!(
+        "polar://node/{node_id_hex}"
+    ))?)];
+    params.not_before = now - CERT_NOT_BEFORE_CLOCK_SKEW;
+    params.not_after = now + Duration::days(role.validity_days());
+    params.key_usages = vec![rcgen::KeyUsagePurpose::DigitalSignature];
+    params.extended_key_usages = role.eku_purposes();
+    Ok(params)
+}
+
 /// Build deterministic CA [`CertificateParams`] for a given `node_id_hex`.
 ///
 /// Called both during initial generation and when reconstructing a signing
@@ -376,7 +374,8 @@ impl NodeTransportCa {
 /// leaf cert issuer names match the stored CA cert's subject name.
 fn ca_params_for(node_id_hex: &str) -> CertificateParams {
     let mut params = CertificateParams::default();
-    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
+    params.key_usages = vec![rcgen::KeyUsagePurpose::KeyCertSign];
     params.distinguished_name.push(
         DnType::CommonName,
         format!("Polar Node Transport CA {node_id_hex}"),

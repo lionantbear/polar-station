@@ -38,15 +38,7 @@ impl PolarVault {
             IdentityKeypair::from_seed_bytes(seed).node_id() == authority.owner,
             "identity seed mismatch"
         );
-        let directory = self
-            .managed_keys(
-                authority,
-                ProtectionCapabilities {
-                    host: true,
-                    ..Default::default()
-                },
-            )
-            .await?;
+        let directory = self.software_identity_directory(authority).await?;
         if let Some(id) = self.store.find_uuid_import(authority.owner, import).await? {
             let (key, stored, bytes) = self.software_identity_material(authority, id, 1).await?;
             ensure!(
@@ -102,15 +94,7 @@ impl PolarVault {
         version: u64,
     ) -> Result<(KeyRecord, StoredSecret, Zeroizing<Vec<u8>>)> {
         ensure!(version == 1, "fixed identity version mismatch");
-        let directory = self
-            .managed_keys(
-                authority,
-                ProtectionCapabilities {
-                    host: true,
-                    ..Default::default()
-                },
-            )
-            .await?;
+        let directory = self.software_identity_directory(authority).await?;
         let key = directory.identity_record(id).await?;
         ensure!(
             key.provider.is_none()
@@ -157,15 +141,7 @@ impl PolarVault {
         );
         let opened = opener.open(seed, authority.owner)?;
         // If revoked during opening, the unreturned owner's Drop closes it.
-        let directory = self
-            .managed_keys(
-                authority,
-                ProtectionCapabilities {
-                    host: true,
-                    ..Default::default()
-                },
-            )
-            .await?;
+        let directory = self.software_identity_directory(authority).await?;
         directory.authorize_identity(&key).await?;
         Ok(opened)
     }

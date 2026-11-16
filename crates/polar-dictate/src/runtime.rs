@@ -186,12 +186,13 @@ impl DictateRuntime {
                     .unwrap_or_else(|| "text.edit_interrupted".into())
             );
         }
+        let processing_id=format!("{operation_id}:refine:{}",saved.refine_attempt);
         let mut events = self.subscribe();
         let claimed = self
             .processing
             .lock()
             .map_err(|_| anyhow::anyhow!("dictate.worker_unavailable"))?
-            .insert(operation_id.clone());
+            .insert(processing_id.clone());
         if !claimed {
             loop {
                 let crate::HistoryItem::Text(current) = self.store.item(&operation_id).await?
@@ -215,7 +216,7 @@ impl DictateRuntime {
         }
         let _guard = ProcessingGuard {
             ids: &self.processing,
-            id: operation_id.clone(),
+            id: processing_id,
         };
         let cleanup = tokio::time::timeout(
             std::time::Duration::from_secs(30),
@@ -226,7 +227,8 @@ impl DictateRuntime {
             tokio::select! {
                 result = &mut cleanup => break result,
                 _ = events.recv() => {
-                    if !self.store.item(&operation_id).await?.active() {
+                    let current=self.store.item(&operation_id).await?;
+                    if !matches!(current,crate::HistoryItem::Text(ref r) if r.running && r.refine_attempt==saved.refine_attempt) {
                         anyhow::bail!("dictate.processing_cancelled");
                     }
                 }
@@ -237,7 +239,7 @@ impl DictateRuntime {
             Ok(Err(error)) => Err(error.to_string()),
             Err(_) => Err("text.edit_timeout; original retained".into()),
         };
-        let saved = self.store.text_finish(&operation_id, result).await?;
+        let saved = self.store.text_finish(&operation_id, saved.refine_attempt, result).await?;
         let _ = self.events.send(crate::DictateEvent::Item(Box::new(
             crate::HistoryItem::Text(Box::new(saved.clone())),
         )));
@@ -690,6 +692,7 @@ impl DictateRuntime {
         let wakes = matches!(
             change,
             Change::Stop { .. }
+                | Change::OverrideOutput { .. }
                 | Change::ResumeProcessing
                 | Change::RetrySegmented
                 | Change::Accept { .. }

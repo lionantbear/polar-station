@@ -24,6 +24,7 @@ pub trait DictateStore: Send + Sync {
     async fn text_finish(
         &self,
         id: &str,
+        attempt: u64,
         result: Result<String, String>,
     ) -> Result<crate::TextEditRecord>;
     async fn item(&self, id: &str) -> Result<crate::HistoryItem>;

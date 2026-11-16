@@ -65,6 +65,9 @@ pub const Controller = struct {
     current_conversation: ?*const fn (?*anyopaque) ?[]const u8 = null,
     custom: ?NativeTarget = null,
     external_editors: ?*external.Watcher = null,
+    pending_external:?*external.Snapshot=null,
+    pending_submit_id:?[]u8=null,
+    submit_inserted:?*const fn(?*anyopaque) bool=null,
     editor_scope: ?*anyopaque = null,
     state: *c.DictateHandle,
     speech: ?*c.DictateSpeech,
@@ -153,6 +156,8 @@ pub const Controller = struct {
     pub fn destroy(self: *Controller) void {
         if (self.external_editors) |watcher| watcher.destroy();
         self.external_editors = null;
+        if(self.pending_external)|target|target.destroy();
+        if(self.pending_submit_id)|id|a.free(id);
         c.polar_station_dictate_speech_set_progress(self.speech, null, null);
         c.polar_station_dictate_speech_set_history(self.speech, null, null);
         if (gio.Application.getDefault()) |app| {
@@ -235,6 +240,9 @@ pub const Controller = struct {
         if(same(kind,"use_original")){self.useOriginal();return;}
         const id=string(self.panelValue(),"operation_id");if(id.len==0)return;
         if(same(kind,"insert_draft") or same(kind,"retry_saved")) self.cancelled=false;
+        if(same(kind,"insert_original") or same(kind,"insert_refined") or same(kind,"send_original") or same(kind,"send_refined")) {
+            self.cancelled=false;self.input(.{.type="preview_action",.operation_id=id,.action=kind});return;
+        }
         self.input(.{.type=kind,.operation_id=id});
     }
     fn notificationResult(action:*gio.SimpleAction,_:?*glib.Variant,self:*Controller) callconv(.c) void {
@@ -247,7 +255,7 @@ pub const Controller = struct {
     }
     fn hidePanel(raw:?*anyopaque) callconv(.c) c_int {
         const self:*Controller=@ptrCast(@alignCast(raw orelse return 0));self.panel_hide_source=0;
-        if(same(string(self.panelValue(),"operation_id"),self.panel_hide_id orelse "")) self.panelAction("hide_panel");
+        if(self.panel_hide_id) |id| self.input(.{.type="panel_timeout",.operation_id=id});
         return 0;
     }
     pub fn updateRecordingNotification(self:*Controller) void {
@@ -257,6 +265,10 @@ pub const Controller = struct {
         if(panel==.null){app.withdrawNotification("station-dictate-recording");return;}
         const id=string(panel,"operation_id");
         const delay=field(panel,"hide_after_ms");
+        if(delay!=.integer or delay.integer<=0) {
+            if(self.panel_hide_source!=0){_=glib.Source.remove(self.panel_hide_source);self.panel_hide_source=0;}
+            if(self.panel_hide_id)|old|a.free(old);self.panel_hide_id=null;
+        }
         if(delay==.integer and delay.integer>0 and !same(id,self.panel_hide_id orelse "")) {
             if(self.panel_hide_source!=0) {_=glib.Source.remove(self.panel_hide_source);}
             if(self.panel_hide_id) |old| a.free(old);
@@ -482,11 +494,16 @@ pub const Controller = struct {
             .unknown => .unknown,
         };
     }
-    pub fn insertExternalCurrent(self:*Controller,text:[]const u8) Delivery {
+    pub fn insertExternalCurrent(self:*Controller,text:[]const u8,send:bool,id:[]const u8) Delivery {
         const watcher=self.external_editors orelse return .no_target;
         const target=watcher.capture() orelse return .no_target;
-        defer target.destroy();
-        return switch(target.insert(text)){.applied=>.applied,.unchanged=>.unchanged,.unknown=>.unknown};
+        var retained=false;defer if(!retained)target.destroy();
+        const outcome:Delivery=switch(target.insert(text)){.applied=>.applied,.unchanged=>.unchanged,.unknown=>.unknown};
+        if(send and outcome==.applied) {
+            if(self.pending_external)|old|old.destroy();self.pending_external=target;retained=true;
+        }
+        _=id;
+        return outcome;
     }
     pub fn insertEditorCurrent(editor:*gtk.TextView,text:[]const u8,preserve_selection:bool) Delivery {
         if(editor.getEditable()==0 or editor.as(gtk.Widget).getMapped()==0 or editor.as(gobject.Object).getData("station-dictate-panel")!=null) return .no_target;
@@ -736,9 +753,10 @@ pub const Controller = struct {
                 if (self.audio) |audio| c.polar_station_dictate_audio_stop(audio);
                 self.stopAudio();
             }
-            c.polar_station_dictate_speech_cancel(self.speech,id.ptr,id.len);
+            if(!boolean(effect,"preserve_processing")) c.polar_station_dictate_speech_cancel(self.speech,id.ptr,id.len);
+            const receipt:[]const u8=if(boolean(effect,"preserve_processing")) "preview_clipboard" else "clipboard";
             const text=a.dupeZ(u8,string(effect,"text")) catch {
-                self.input(.{.type="clipboard",.operation_id=id,.copied=false});return;
+                self.input(.{.type=receipt,.operation_id=id,.copied=false});return;
             };
             defer a.free(text);
             var copied=false;
@@ -746,7 +764,7 @@ pub const Controller = struct {
                 const clipboard=display.getClipboard();clipboard.setText(text);
                 copied=clipboard.getContent()!=null;
             }
-            self.input(.{.type="clipboard",.operation_id=id,.copied=copied});
+            self.input(.{.type=receipt,.operation_id=id,.copied=copied});
         } else if (same(kind, "cancel")) {
             self.cancelled = true;
             self.stopAudio();
@@ -793,9 +811,20 @@ pub const Controller = struct {
             const bytes=std.json.Stringify.valueAlloc(a,.{.op="retry_result",.id=id},.{}) catch return;
             const job=a.create(Job) catch {a.free(bytes);return;};
             job.*=.{.input=bytes,.service=true};self.speech_incoming.push(job);
+        } else if(same(kind,"submit_inserted")) {
+            var submitted=false;
+            if(same(id,self.pending_submit_id orelse "")) {
+                if(self.pending_external)|target| {submitted=target.sendEnter();target.destroy();self.pending_external=null;}
+                else if(self.submit_inserted)|submit| submitted=submit(self.context);
+            }
+            if(self.pending_submit_id)|old|a.free(old);self.pending_submit_id=null;
+            self.input(.{.type="submission",.operation_id=id,.submitted=submitted,.uncertain=false});
         } else if (same(kind, "insert_current")) {
+            if(self.pending_external)|old|old.destroy();self.pending_external=null;
+            if(self.pending_submit_id)|old|a.free(old);self.pending_submit_id=a.dupe(u8,id) catch null;
             const outcome:Delivery=if(self.cancelled) .unchanged else if(self.insert_current) |insert| insert(self.context,effect) else .no_target;
             self.input(.{.type="delivery",.operation_id=id,.outcome=@tagName(outcome)});
+
             self.clearTarget();
         } else if (same(kind, "insert")) {
             var outcome: Delivery = .unchanged;

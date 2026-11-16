@@ -60,7 +60,7 @@ impl SshSecretCreation {
 impl SecretImportMetadata {
     pub fn validate(&self, caps: ProtectionCapabilities) -> Result<()> {
         ensure!(
-            self.kind != SecretKind::PolarIdentity,
+            !self.kind.requires_dedicated_management(),
             "use dedicated identity initialization"
         );
         ensure!(!self.import_id.is_nil(), "invalid import UUID");

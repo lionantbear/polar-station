@@ -11,11 +11,13 @@ pub mod directory;
 pub enum KeyAlgorithm {
     Ed25519,
     P256,
+    P384,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyPurpose {
     PolarRoot,
+    TransportCa,
     Ssh,
     WebAuthn,
     VaultWorkingKey,
@@ -27,6 +29,8 @@ pub enum KeyManagement {
     VaultStored,
     PathDerived,
     ChipGenerated,
+    /// TPM-wrapped fixed-parent key, addressed by SecretId, not an NV handle.
+    TpmGenerated,
     ExternalImported,
     DerivedImported,
     VaultBackupChip,
@@ -112,14 +116,24 @@ impl KeyRecord {
             match self.algorithm {
                 KeyAlgorithm::Ed25519 => self.public_key.len() == 32,
                 KeyAlgorithm::P256 =>
-                    self.public_key.len() == 33 && matches!(self.public_key[0], 2 | 3),
+                    (self.public_key.len() == 33 && matches!(self.public_key[0], 2 | 3))
+                        || (self.purpose == KeyPurpose::TransportCa
+                            && self.public_key.len() == 65
+                            && self.public_key[0] == 4),
+                KeyAlgorithm::P384 =>
+                    self.purpose == KeyPurpose::TransportCa
+                        && self.public_key.len() == 97
+                        && self.public_key[0] == 4,
             },
             "invalid public key encoding"
         );
         if self.protection.retention == SecretRetention::OwnerLifetime {
             ensure!(
-                self.purpose == KeyPurpose::PolarRoot,
-                "owner lifetime requires a fixed identity"
+                matches!(
+                    self.purpose,
+                    KeyPurpose::PolarRoot | KeyPurpose::TransportCa
+                ),
+                "owner lifetime requires a fixed identity or CA"
             );
         }
         if let Some(provider) = &self.provider {
@@ -141,8 +155,13 @@ impl KeyRecord {
                 .map_err(|_| anyhow::anyhow!("unsupported backup protection"))?;
         }
         let hardware = self.protection.storage == SecretStorage::SecureElement;
+        let tpm = self.management == KeyManagement::TpmGenerated;
         ensure!(
-            hardware == self.hardware_object.is_some_and(|id| id != 0),
+            if tpm {
+                hardware && self.hardware_object.is_none()
+            } else {
+                hardware == self.hardware_object.is_some_and(|id| id != 0)
+            },
             "key object/protection mismatch"
         );
         match self.management {
@@ -171,6 +190,15 @@ impl KeyRecord {
                 ensure!(
                     self.recovery == KeyRecovery::Unrecoverable,
                     "chip-random key has no seed recovery"
+                );
+            }
+            KeyManagement::TpmGenerated => {
+                ensure!(
+                    self.purpose == KeyPurpose::TransportCa
+                        && self.recovery == KeyRecovery::Unrecoverable
+                        && self.provider.is_none()
+                        && self.other_copies.is_empty(),
+                    "invalid TPM CA policy"
                 );
             }
             KeyManagement::ExternalImported => {
@@ -208,6 +236,33 @@ impl KeyRecord {
                 "recovery path domain mismatch"
             );
             path.validate()?;
+        }
+        if self.purpose == KeyPurpose::TransportCa {
+            ensure!(
+                matches!(self.algorithm, KeyAlgorithm::P256 | KeyAlgorithm::P384)
+                    && self.public_key[0] == 4
+                    && self.provider.is_none()
+                    && self.scope == "transport-ca"
+                    && self.other_copies.is_empty()
+                    && matches!(
+                        self.management,
+                        KeyManagement::VaultStored | KeyManagement::TpmGenerated
+                    ),
+                "unsupported CA configuration"
+            );
+            if self.management == KeyManagement::VaultStored {
+                ensure!(
+                    self.protection
+                        == SecretProtection {
+                            storage: SecretStorage::HostMemory,
+                            compute: SecretCompute::Host,
+                            retention: SecretRetention::OwnerLifetime,
+                            vault: Some(VaultLocation::Host),
+                        }
+                        && self.recovery == (KeyRecovery::VaultBackup { id: self.id }),
+                    "software CA requires explicit host residency and Vault recovery"
+                );
+            }
         }
         if self.purpose == KeyPurpose::PolarRoot {
             ensure!(

@@ -5,6 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait.workspace = true
 uuid.workspace = true
 anyhow = { workspace = true }
 pem = { workspace = true }
@@ -12,4 +13,10 @@ serde = { workspace = true }
 rcgen = { workspace = true }
 rustls-pki-types = { workspace = true }
 time = { workspace = true }
+polar-identity.workspace = true
+polar-crypto.workspace = true
+sha2.workspace = true
+# Already locked transitively; strict DER validation preserves opaque extensions.
+x509-cert = "=0.2.5"
+x509-parser = { workspace = true, features = ["verify"] }
 

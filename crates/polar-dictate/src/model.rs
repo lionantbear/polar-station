@@ -162,6 +162,7 @@ pub enum Change {
     Stop {
         reason: Option<String>,
     },
+    OverrideOutput { mode: crate::DictateOutputMode },
     ResumeProcessing,
     CancelProcessing,
     ProcessingFailed { error: String },
@@ -627,6 +628,26 @@ impl Recording {
                 self.error = bounded_error(reason);
                 self.segments_through_saved();
             }
+            Change::OverrideOutput { mode } => {
+                ensure!(self.delivery == DeliveryState::Pending,
+                    "dictate.output_override_unavailable");
+                let changed = self.output_mode() != mode;
+                if changed || !mode.refines() || self.cleanup_error.is_some() {
+                    self.cleanup_attempt = self.cleanup_attempt.checked_add(1)
+                        .ok_or_else(|| anyhow::anyhow!("dictate.attempt_exhausted"))?;
+                    self.cleanup_running = false;
+                    self.cleaned = None;
+                    self.cleaned_prefix.clear();
+                    self.cleaned_prefix_parts = 0;
+                    self.cleanup_error = None;
+                }
+                self.output_mode = Some(mode);
+                self.cleanup_enabled = mode.refines();
+                // Existing frozen capture context remains available; changing
+                // output does not acquire new focus/context or alter ASR work.
+                self.cleanup_deferred = false;
+                if mode.refines() { self.processing_enabled = true; }
+            }
             Change::ResumeProcessing => {
                 ensure!(!self.audio_expired, "dictate.audio_expired");
                 self.processing_enabled = true;
@@ -1016,5 +1037,7 @@ pub struct StorageUsage {
 fn default_pause_processing() -> bool {
     true
 }
+
+
 
 

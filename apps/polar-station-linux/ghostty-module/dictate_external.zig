@@ -129,6 +129,7 @@ pub const Snapshot = struct {
     original: [:0]u8,
     caret: i32,
     offset: usize,
+    insertion_verified:bool=false,
     pub fn destroy(self: *Snapshot) void {
         self.bus.unref();
         a.free(self.name);
@@ -270,6 +271,12 @@ pub const Snapshot = struct {
         while (end > self.offset and !std.unicode.utf8ValidateSlice(self.original[self.offset..end])) end -= 1;
         return self.original[start..end];
     }
+    pub fn sendEnter(self:*Snapshot) bool {
+        if(!self.insertion_verified)return false;
+        if(!self.editable() or !self.foreground())return false;
+        const reply=invoke(self.bus,"org.a11y.atspi.Registry","/org/a11y/atspi/registry/deviceeventcontroller","org.a11y.atspi.DeviceEventController","GenerateKeyboardEvent",glib.Variant.newParsed("(%i, %s, %u)",@as(i32,0xff0d),@as([*:0]const u8,""),@as(u32,3)),"()") orelse return false;
+        reply.unref();self.insertion_verified=false;return true;
+    }
     pub fn insert(self: *Snapshot, text: []const u8) Delivery {
         if (!self.editable() or (self.property("CaretOffset") orelse return .unchanged) != self.caret) return .unchanged;
         const before = self.read() orelse return .unchanged;
@@ -283,6 +290,8 @@ pub const Snapshot = struct {
         defer reply.unref();
         const after = self.read() orelse return .unknown;
         defer a.free(after);
-        return if (same(after, expected)) .applied else .unknown;
+        if(!same(after,expected))return .unknown;
+        self.insertion_verified=true;
+        return .applied;
     }
 };

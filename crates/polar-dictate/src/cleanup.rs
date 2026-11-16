@@ -5,7 +5,7 @@ use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::{future::Future, pin::Pin};
 
-pub(crate) type PrefixCleanup = Pin<Box<dyn Future<Output = Result<(Vec<String>, String)>> + Send>>;
+pub(crate) type PrefixCleanup = Pin<Box<dyn Future<Output = (u64, Result<(Vec<String>, String)>)> + Send>>;
 
 impl crate::runtime::DictateRuntime {
     pub(crate) fn prefix_cleanup(&self, record: &Recording) -> Result<Option<PrefixCleanup>> {
@@ -45,8 +45,10 @@ impl crate::runtime::DictateRuntime {
                 .ok_or_else(|| anyhow::anyhow!("dictate.refinement_disabled"))?,
         };
         let recording_id = record.id.clone();
+        let cleanup_attempt=record.cleanup_attempt;
         let observer=Box::new(self.input_recorder(&record.id));
         Ok(Some(Box::pin(async move {
+            let result=async move {
             let text = tokio::time::timeout(
                 std::time::Duration::from_secs(8),
                 cleanup.clean_observed(Some(&recording_id), request,observer),
@@ -58,6 +60,8 @@ impl crate::runtime::DictateRuntime {
                 format!("{prefix} {text}")
             };
             Ok((source, text))
+            }.await;
+            (cleanup_attempt,result)
         })))
     }
 }
@@ -66,13 +70,13 @@ impl crate::runtime::DictateRuntime {
     pub(crate) async fn apply_prefix_cleanup(
         &self,
         id: &str,
-        result: Result<(Vec<String>, String)>,
+        result: (u64, Result<(Vec<String>, String)>),
     ) -> Result<()> {
         let current = self.store().get(id).await?;
-        if !current.processing_enabled || !current.cleanup_enabled {
+        if !current.processing_enabled || !current.cleanup_enabled || current.cleanup_attempt!=result.0 {
             return Ok(());
         }
-        match result {
+        match result.1 {
             Ok((source, text))
                 if current.confirmed_transcript.get(..source.len()) == Some(source.as_slice()) =>
             {

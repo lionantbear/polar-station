@@ -87,7 +87,7 @@ mod secrets;
 pub use credential_bundle::{CredentialBundle, CredentialBundleResolver, CredentialBundleStore};
 pub use operations::VaultStore;
 pub use secrets::{
-    CredentialResolver, DeviceSecretInfo, DeviceSecretMutation, IdentityMaterialOpener, SecretId,
+    CaMaterialOpener, CredentialResolver, DeviceSecretInfo, DeviceSecretMutation, IdentityMaterialOpener, SecretId,
     SecretImportMetadata, SecretInput, SecretKind, SecretLease, SecretMetadata, SecretPage,
     SecretQuery, StoredSecret, VaultAuthority,
 };

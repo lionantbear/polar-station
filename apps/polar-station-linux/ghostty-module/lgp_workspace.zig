@@ -83,6 +83,8 @@ pub const Workspace = struct {
     flush_timer: c_uint = 0,
     draft_timer: c_uint = 0,
     clock: std.time.Timer,
+    dictate_submit_editor:?*gtk.TextView=null,
+
 
     pub fn create(allocator: std.mem.Allocator, app: *Application, send: SendFn, open: OpenFn, context: ?*anyopaque) !*Workspace {
         const self = try allocator.create(Workspace);
@@ -92,7 +94,7 @@ pub const Workspace = struct {
         errdefer c.polar_station_input_free(engine);
         const dictate = try dictate_module.Controller.create();
         self.* = .{ .dictate = dictate, .allocator = allocator, .app = app, .send = send, .open = open, .context = context, .engine = engine, .clock = clock };
-        dictate.context = self; dictate.changed = dictateChanged; dictate.insert_current = insertDictateCurrent; dictate.current_project=currentDictateProject; dictate.current_conversation=currentDictateConversation; dictate.refined=refineApplied; dictate.learning_stored=learningStored;
+        dictate.context = self; dictate.changed = dictateChanged; dictate.insert_current = insertDictateCurrent;dictate.submit_inserted=submitDictateInserted; dictate.current_project=currentDictateProject; dictate.current_conversation=currentDictateConversation; dictate.refined=refineApplied; dictate.learning_stored=learningStored;
         self.restoreDrafts();
         return self;
     }
@@ -127,6 +129,17 @@ pub const Workspace = struct {
         };
         return null;
     }
+    fn clearDictateSubmit(self:*Workspace) void {
+        if(self.dictate_submit_editor)|editor|editor.as(gobject.Object).unref();self.dictate_submit_editor=null;
+    }
+    fn submitDictateInserted(raw:?*anyopaque) bool {
+        const self:*Workspace=@ptrCast(@alignCast(raw orelse return false));
+        defer self.clearDictateSubmit();
+        const editor=self.dictate_submit_editor orelse return false;
+        var composers=self.composers.valueIterator();
+        while(composers.next())|slot|if(slot.*.text==editor) return slot.*.submitDictate();
+        return false;
+    }
     fn insertDictateCurrent(raw:?*anyopaque,effect:Value) dictate_module.Controller.Delivery {
         const text=string(effect,"text") orelse "";const preserve_selection=boolean(effect,"preserve_selection");
         const self:*Workspace=@ptrCast(@alignCast(raw orelse return .no_target));
@@ -153,6 +166,14 @@ pub const Workspace = struct {
                     const final=editor.getBuffer().getText(&start,&end,0);defer glib.free(final);
                     self.input(.{.type="dictated_input",.lease=value.value,.source=source,.text=std.mem.span(final)});
                 };
+                if(outcome==.applied and boolean(effect,"send")) {
+                    var current=self.composers.valueIterator();
+                    while(current.next())|slot|if(slot.*.host.as(gtk.Window)==window and slot.*.text==editor) {
+                        self.clearDictateSubmit();
+                        _=editor.as(gobject.Object).ref();self.dictate_submit_editor=editor;
+                        break;
+                    };
+                }
                 return outcome;
             };
             if(window.getFocus()) |focus| if(gobject.ext.cast(gtk.Editable,focus)!=null) return .no_target;
@@ -164,7 +185,7 @@ pub const Workspace = struct {
             }
             return .no_target;
         };
-        return self.dictate.insertExternalCurrent(text);
+        return self.dictate.insertExternalCurrent(text,boolean(effect,"send"),string(effect,"operation_id") orelse "");
     }
     pub fn dictateShortcut(self: *Workspace, pressed: bool, discrete: bool) void {
         self.dictateShortcutSource(pressed,discrete,1);
@@ -212,7 +233,7 @@ pub const Workspace = struct {
         self.input(.{.type="idea_pick_session",.pane_id=pane,.view_id=view,.owner_host_id=owner,.endpoint_id=endpoint,.thread_id=thread,.title=title});self.saveSoon();
     }
     pub fn destroy(self: *Workspace) void {
-        self.dictate.destroy();
+        self.clearDictateSubmit();self.dictate.destroy();
         self.input(.{ .type = "export_drafts" });
         self.stopped = true;
         for ([_]c_uint{ self.timer, self.flush_timer, self.draft_timer }) |id| {

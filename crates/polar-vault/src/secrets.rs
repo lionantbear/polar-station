@@ -10,6 +10,8 @@ use zeroize::Zeroizing;
 
 mod identity;
 pub use identity::IdentityMaterialOpener;
+mod ca;
+pub use ca::CaMaterialOpener;
 mod creation;
 pub use creation::{SecretImportPort, SshSecretCreation, VaultSecretImporter};
 mod device;
@@ -44,6 +46,8 @@ pub enum SecretKind {
     GitSshPrivateKey = 3,
     /// Fixed Polar root: dedicated private initialization and backend opening only.
     PolarIdentity = 4,
+    /// Dedicated CA initializer/opener only; never a generic credential lease.
+    CertificateAuthority = 5,
 }
 impl TryFrom<u16> for SecretKind {
     type Error = anyhow::Error;
@@ -53,8 +57,14 @@ impl TryFrom<u16> for SecretKind {
             2 => Ok(Self::GitHttpBearer),
             3 => Ok(Self::GitSshPrivateKey),
             4 => Ok(Self::PolarIdentity),
+            5 => Ok(Self::CertificateAuthority),
             _ => anyhow::bail!("unsupported credential kind"),
         }
+    }
+}
+impl SecretKind {
+    pub fn requires_dedicated_management(self) -> bool {
+        matches!(self, Self::PolarIdentity | Self::CertificateAuthority)
     }
 }
 
@@ -195,7 +205,8 @@ pub struct VaultAuthority {
     owner: NodeId,
 }
 impl VaultAuthority {
-    pub(crate) fn owner(&self) -> NodeId {
+    /// Public identity only; reading it does not grant additional authority.
+    pub fn owner(&self) -> NodeId {
         self.owner
     }
     pub fn for_authorized_owner(owner: NodeId) -> Self {
@@ -328,7 +339,7 @@ impl PolarVault {
     }
     async fn open_uuid_secret(&self, record: StoredSecret) -> Result<SecretLease> {
         ensure!(
-            !record.metadata.device_only && record.metadata.kind != SecretKind::PolarIdentity,
+            !record.metadata.device_only && !record.metadata.kind.requires_dedicated_management(),
             "restricted identity/device secret cannot become a host lease"
         );
         let context = record.authenticated_context()?;
@@ -364,7 +375,7 @@ impl PolarVault {
         input: SecretInput,
     ) -> Result<SecretId> {
         ensure!(
-            kind != SecretKind::PolarIdentity,
+            !kind.requires_dedicated_management(),
             "use dedicated identity initialization"
         );
         self.import_secret_as(authority, import_id, name, kind, input, None)
@@ -434,7 +445,25 @@ impl PolarVault {
         input: &SecretInput,
         device: Option<&dyn Ed25519SecretExecutor>,
     ) -> Result<StoredSecret> {
-        let id = SecretId(polar_identity::generation::new_uuid_v7());
+        self.prepare_import_record_with_id(
+            authority,
+            SecretId(polar_identity::generation::new_uuid_v7()),
+            name,
+            kind,
+            input,
+            device,
+        )
+        .await
+    }
+    async fn prepare_import_record_with_id(
+        &self,
+        authority: &VaultAuthority,
+        id: SecretId,
+        name: &str,
+        kind: SecretKind,
+        input: &SecretInput,
+        device: Option<&dyn Ed25519SecretExecutor>,
+    ) -> Result<StoredSecret> {
         let mut record = StoredSecret {
             metadata: SecretMetadata {
                 id,
@@ -502,7 +531,7 @@ impl PolarVault {
             .await?;
         let mut record = self.authorized_secret(authority.owner, id).await?;
         ensure!(
-            record.metadata.kind != SecretKind::PolarIdentity,
+            !record.metadata.kind.requires_dedicated_management(),
             "fixed identity requires dedicated management"
         );
         ensure!(!record.metadata.revoked, "credential unavailable");
@@ -551,7 +580,7 @@ impl PolarVault {
             .await?;
         let record = self.authorized_secret(authority.owner, id).await?;
         ensure!(
-            record.metadata.kind != SecretKind::PolarIdentity,
+            !record.metadata.kind.requires_dedicated_management(),
             "fixed identity requires dedicated management"
         );
         ensure!(

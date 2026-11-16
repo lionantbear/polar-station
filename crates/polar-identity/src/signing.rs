@@ -21,6 +21,7 @@ pub enum SigningPurpose {
     NodeIdentityV1 = 0x0010,
     NodeRenameV1 = 0x0011,
     BindingRebindV1 = 0x0012,
+    CaAuthorizationV1 = 0x0013,
     DiscoveryV1 = 0x0020,
     HeartbeatV1 = 0x0021,
     SessionKeyUpdateV1 = 0x0022,
@@ -51,6 +52,7 @@ impl SigningPurpose {
         Self::NodeIdentityV1,
         Self::NodeRenameV1,
         Self::BindingRebindV1,
+        Self::CaAuthorizationV1,
         Self::DiscoveryV1,
         Self::HeartbeatV1,
         Self::SessionKeyUpdateV1,
@@ -78,6 +80,7 @@ impl SigningPurpose {
         match self {
             Self::LgpAuthorDigestV6 => Some(b"PLGA0001"),
             Self::WirePacketDigestV3 => Some(b"PWPK0001"),
+            Self::CaAuthorizationV1 => Some(b"PCAUTH01"),
             _ => None,
         }
     }

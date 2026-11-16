@@ -112,6 +112,7 @@ pub enum Request {
         id: String,
         context: String,
     },
+    OverrideOutput { id: String, mode: crate::DictateOutputMode },
     UseOriginal {
         id: String,
     },
@@ -389,6 +390,7 @@ impl crate::runtime::DictateRuntime {
                 })
             }
             Request::BindContext { id, context } => self.bind_context(&id, context).await?,
+            Request::OverrideOutput { id, mode } => self.change(&id, Change::OverrideOutput { mode }).await?,
             Request::UseOriginal { id } => self.change(&id, Change::UseOriginal).await?,
             Request::UseAvailable { id } => {
                 return Ok(Response::Item { item: self.use_available(&id).await? })

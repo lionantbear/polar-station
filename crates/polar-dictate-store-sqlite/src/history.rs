@@ -125,6 +125,7 @@ impl SqliteDictateStore {
     pub(super) async fn finish_text(
         &self,
         id: &str,
+        attempt: u64,
         result: Result<String, String>,
     ) -> Result<TextEditRecord> {
         let (owner, id) = (self.owner.clone(), id.to_owned());
@@ -133,7 +134,7 @@ impl SqliteDictateStore {
             .transaction(move |tx| {
                 (|| -> Result<_> {
                     let mut r = get_text(tx, &owner, &id)?;
-                    if !r.running {
+                    if !r.running || r.refine_attempt!=attempt {
                         return Ok(r);
                     }
                     match result {
@@ -177,6 +178,7 @@ impl SqliteDictateStore {
                         }
                         HistoryItem::Recording(r) => {
                             match change {
+                                ItemChange::OutputMode {mode,..} => r.apply(Change::OverrideOutput{mode})?,
                                 ItemChange::UseAvailable => {
                                     let text = r.text().filter(|s| !s.trim().is_empty())
                                         .or_else(|| { let text=r.receipt().transcript_preview; (!text.trim().is_empty()).then_some(text) });

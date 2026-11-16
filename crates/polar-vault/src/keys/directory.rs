@@ -2,6 +2,8 @@
 //! adapter's compare-and-swap transaction. Signing never updates this directory.
 use super::*;
 mod access;
+#[path = "ca.rs"]
+mod ca;
 #[path = "provider.rs"]
 mod provider;
 use crate::{VaultCipher, VaultStore};
@@ -60,6 +62,29 @@ pub(crate) struct ManagedKeyDirectory {
 }
 
 impl crate::PolarVault {
+    /// Software identity operations consume only the host capability of the
+    /// directory already assembled for this owner. They never replace or grow
+    /// its capability set. Standalone callers retain host-only initialization.
+    pub(crate) async fn software_identity_directory(
+        &self,
+        authority: &crate::VaultAuthority,
+    ) -> Result<Arc<KeyDirectory>> {
+        if let Some(managed) = self.key_directory.get() {
+            ensure!(
+                managed.owner == authority.owner() && managed.capabilities.host,
+                "software identity owner/capability mismatch"
+            );
+            return Ok(managed.directory.clone());
+        }
+        self.managed_keys(
+            authority,
+            ProtectionCapabilities {
+                host: true,
+                ..Default::default()
+            },
+        )
+        .await
+    }
     /// Shared credential-operation gate. Product assembly MUST authenticate
     /// managed_keys before publishing consumers. An unconfigured standalone
     /// Vault retains its existing authority model, not a new implicit key policy.

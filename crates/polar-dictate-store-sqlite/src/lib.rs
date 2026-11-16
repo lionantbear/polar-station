@@ -361,9 +361,10 @@ impl DictateStore for SqliteDictateStore {
     async fn text_finish(
         &self,
         id: &str,
+        attempt: u64,
         result: Result<String, String>,
     ) -> Result<polar_dictate::TextEditRecord> {
-        self.finish_text(id, result).await
+        self.finish_text(id, attempt, result).await
     }
     async fn item(&self, id: &str) -> Result<polar_dictate::HistoryItem> {
         self.get_item(id).await

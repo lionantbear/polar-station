@@ -806,6 +806,9 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
                 self.onDictated?(lease,source,editor.string)
             }
         }
+        if editor === text {
+            target?.submit = {[weak self] _ in self?.submitEditorDraft() ?? false}
+        }
         return target
     }
     func dictateDefaultTarget(node: Bool) -> StationDictateTarget? {
@@ -979,10 +982,19 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     @objc private func ideaReferencePressed(_ item:NSMenuItem) { if let value=item.representedObject as? [String:Any] {onIdeaInput?(value)} }
 
     @objc private func sendPressed() {
-        guard send.isEnabled, !activeTextEditor.hasMarkedText(),
+        guard send.isEnabled else{return}
+        _ = submitEditorDraft()
+    }
+    /// Use the same Rust submission path for a click and a verified Dictate insertion.
+    /// The existing draft/send callbacks already own the session binding.
+    private func submitEditorDraft()->Bool {
+        guard !activeTextEditor.hasMarkedText(),
               !ideaBlockEditors.values.contains(where: { $0.editor.hasMarkedText() }),
-              ideaDetailEditor?.editor.hasMarkedText() != true else { return }
-        onDraft?(activeTextEditor.string); onSend?()
+              ideaDetailEditor?.editor.hasMarkedText() != true,
+              let onDraft,let onSend else{return false}
+        onDraft(activeTextEditor.string)
+        onSend()
+        return true
     }
     @objc private func quotePressed() {
         quoteSelection()

@@ -7,6 +7,7 @@ members = [
     "crates/polar-cas-fs-sys",
     "crates/polar-cas-local",
     "crates/polar-connector-contract",
+    "crates/polar-crypto",
     "crates/polar-dictate",
     "crates/polar-dictate-store-sqlite",
     "crates/polar-edge-presentation",
@@ -89,6 +90,7 @@ pem = "3"
 polar-cas = { path = "crates/polar-cas" }
 polar-cas-local = { path = "crates/polar-cas-local" }
 polar-connector-contract = { path = "crates/polar-connector-contract" }
+polar-crypto = { path = "crates/polar-crypto" }
 polar-dictate = { path = "crates/polar-dictate", default-features = false }
 polar-dictate-store-sqlite = { path = "crates/polar-dictate-store-sqlite" }
 polar-edge-presentation = { path = "crates/polar-edge-presentation" }
@@ -157,6 +159,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v7"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
+x509-parser = "0.18.1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 zstd = "0.13"
 

@@ -1,0 +1,16 @@
+[package]
+license = "AGPL-3.0-only"
+name = "polar-crypto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+zeroize = "1"
+chacha20poly1305 = { workspace = true }
+hkdf = { workspace = true }
+polar-identity = { workspace = true }
+rand_core = { workspace = true }
+sha2 = { workspace = true }
+x25519-dalek = { workspace = true }

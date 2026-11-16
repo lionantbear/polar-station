@@ -8,6 +8,8 @@ pub struct TextEditRecord {
     pub id: String,
     pub created_at_ms: Option<u64>,
     pub revision: u64,
+    #[serde(default)]
+    pub refine_attempt: u64,
     pub original: String,
     pub result: Option<String>,
     pub draft_text: Option<String>,
@@ -49,6 +51,7 @@ impl TextEditRecord {
             }),
             created_at_ms: Some(now_ms),
             revision: 1,
+            refine_attempt: 0,
             result: None,
             draft_text: None,
             running: true,
@@ -80,6 +83,20 @@ impl TextEditRecord {
     }
     pub fn apply(&mut self, change: ItemChange) -> Result<()> {
         match change {
+            ItemChange::OutputMode { mode, text } => {
+                ensure!(self.delivery==DeliveryState::Pending,"dictate.delivery_conflict");
+                let text=text.unwrap_or_else(||self.original.clone());
+                ensure!(valid_text(&text),"text.edit_invalid_input");
+                let edit_mode=if mode==crate::DictateOutputMode::Transcreate {polar_transcreation::RefineMode::English}else{polar_transcreation::RefineMode::Cleanup};
+                let reusable=mode.refines() && self.original==text && self.mode==edit_mode && self.error.is_none() && (self.running || self.result.is_some());
+                if !reusable {
+                    self.refine_attempt=self.refine_attempt.checked_add(1).ok_or_else(||anyhow::anyhow!("dictate.attempt_exhausted"))?;
+                    self.running=mode.refines();
+                    if mode.refines() {self.original=text.clone();self.mode=edit_mode;self.result=None;}
+                }
+                self.draft_text=if mode.refines(){None}else{Some(text)};
+                self.output_mode=Some(mode);self.error=None;
+            }
             ItemChange::UseAvailable => {
                 ensure!(self.delivery == DeliveryState::Pending, "dictate.delivery_conflict");
                 self.draft_text = Some(self.text().into());
@@ -379,6 +396,7 @@ pub struct HistoryPage {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ItemChange {
+    OutputMode { mode: crate::DictateOutputMode, text: Option<String> },
     UseAvailable,
     Edit {
         text: String,

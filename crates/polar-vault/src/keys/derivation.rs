@@ -22,6 +22,10 @@ pub struct DerivationSpec {
 impl DerivationSpec {
     pub fn validate(&self) -> Result<()> {
         ensure!(
+            self.algorithm != KeyAlgorithm::P384,
+            "P384 CA keys do not use SLIP-0010 derivation"
+        );
+        ensure!(
             matches!(self.purpose, KeyPurpose::Ssh | KeyPurpose::WebAuthn),
             "root and runtime working keys use their existing derivations"
         );
@@ -41,6 +45,7 @@ impl DerivationSpec {
         let algorithm = match self.algorithm {
             KeyAlgorithm::Ed25519 => 1,
             KeyAlgorithm::P256 => 2,
+            KeyAlgorithm::P384 => anyhow::bail!("unsupported derivation algorithm"),
         };
         Ok(format!(
             "m/10016H/{purpose}H/{algorithm}H/{}H/{}H",
@@ -68,6 +73,7 @@ fn derive_path(seed: &[u8], algorithm: KeyAlgorithm, path: &str) -> Result<Zeroi
             let master = ExtendedPrivateKey::<Curve>::new_slip10(seed)?;
             Ok(Slip10NonHardenedDerivation::derive_slip10_path(&master, &path)?.to_bytes())
         }
+        KeyAlgorithm::P384 => anyhow::bail!("unsupported derivation algorithm"),
     }
 }
 

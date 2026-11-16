@@ -249,7 +249,7 @@ impl<P: Ports> Application<P> {
         // supplies a chance to read its immutable mode. Stop after confirmation.
         if matches!(
             kind.as_deref(),
-            Some("capture_ready" | "audio_saved" | "transcript_preview")
+            Some("capture_ready" | "audio_saved" | "transcript_preview" | "preview_action")
         ) && self.engine.entries().iter().any(|entry| {
             Some(&entry.operation_id) == operation.as_ref() && entry.transcription_mode.is_none()
         }) {
@@ -275,6 +275,14 @@ impl<P: Ports> Application<P> {
                     .find(|e| e.operation_id == id)
                 {
                     e.output_mode = Some(output);
+                }
+            }
+        }
+        if kind.as_deref()==Some("rewritten") && self.engine.host_events {
+            if let Some(id)=operation.as_deref() {
+                if self.engine.entries().iter().any(|e|e.operation_id==id && !e.host_recording) {
+                    let item=self.saved_item(id)?;
+                    return self.dispatch_inner(json!({"type":"history_item_event","item":item}));
                 }
             }
         }
@@ -695,12 +703,12 @@ impl<P: Ports> Application<P> {
                 }
                 effects
             }
-            Some("history_inputs"|"view_inputs") => {
+            Some("history_inputs"|"view_inputs"|"view_history") => {
                 let id=operation.clone().or_else(||self.history.selected.clone()).ok_or("Select a history record")?;
                 self.history.selected=Some(id.clone());
                 self.history.detail=None;
                 match self.saved_item(&id){Ok(item)=>self.history.update_item(item),Err(e)=>self.history.error=Some(e)}
-                self.inspection=super::inspection::Inspection{id:Some(id),open_requested:kind.as_deref()==Some("view_inputs"),..Default::default()};
+                self.inspection=super::inspection::Inspection{id:if kind.as_deref()==Some("view_history"){None}else{Some(id)},open_requested:matches!(kind.as_deref(),Some("view_inputs"|"view_history")),..Default::default()};
                 self.inspection.refresh(self.ports.host());vec![]
             }
             Some("input_stage"|"input_request"|"input_view"|"inputs_changed") => {
@@ -771,21 +779,16 @@ impl<P: Ports> Application<P> {
                         .entries()
                         .iter()
                         .filter(|e| {
-                            e.host_recording
-                                && matches!(
-                                    e.phase,
-                                    super::Phase::Transcribing | super::Phase::Rewriting
-                                )
+                            matches!(e.phase,super::Phase::Transcribing | super::Phase::Rewriting)
                         })
                         .map(|e| e.operation_id.clone())
                         .collect();
                     for id in ids {
-                        if let polar_dictate::HistoryItem::Recording(record) =
-                            self.saved_item(&id)?
-                        {
-                            effects.extend(self.observe_saved(*record)?);
-                            processing_update = true;
+                        match self.saved_item(&id)? {
+                            polar_dictate::HistoryItem::Recording(record)=>effects.extend(self.observe_saved(*record)?),
+                            polar_dictate::HistoryItem::Text(record)=>effects.extend(self.engine.observe_text(&record)),
                         }
+                        processing_update=true;
                     }
                 }
                 effects
@@ -812,9 +815,10 @@ impl<P: Ports> Application<P> {
                     Ok(polar_dictate::HistoryItem::Recording(record)) => {
                         self.observe_saved(*record)?
                     }
-                    Ok(item) => {
-                        self.history.update_item(item);
-                        vec![]
+                    Ok(polar_dictate::HistoryItem::Text(record)) => {
+                        let effects=self.engine.observe_text(&record);
+                        self.history.update_item(polar_dictate::HistoryItem::Text(record));
+                        effects
                     }
                     Err(error) if recording_missing(&error) => {
                         self.history.remove(&id);
@@ -988,7 +992,9 @@ impl<P: Ports> Application<P> {
         }
         if let Some(host) = self.ports.host() {
             let mut processing_effects = Vec::new();
+            let mut failed_operations=std::collections::BTreeSet::new();
             for effect in effects {
+                if failed_operations.contains(effect.operation_id()) && !matches!(effect,Effect::FinishCapture{..}) {continue;}
                 if self.engine.host_events {
                     if let Effect::Rewrite {
                         saved_recording: false,
@@ -1013,6 +1019,24 @@ impl<P: Ports> Application<P> {
                             continue;
                         }
                     }
+                }
+                if let Effect::SetOutputMode { operation_id, mode } = &effect {
+                    if self.engine.entries().iter().any(|e|e.operation_id==*operation_id && !e.host_recording) {
+                        let text=self.engine.entries().iter().find(|e|e.operation_id==*operation_id).map(|e|if e.edited {e.text.clone()}else{e.raw.clone()});
+                        match self.change_saved_item(operation_id,polar_dictate::ItemChange::OutputMode{mode:*mode,text}) {
+                            Ok(item)=>self.history.update_item(item),
+                            Err(error)=>{failed_operations.insert(operation_id.clone());self.engine.preview_action_failed(operation_id,error);continue;}
+                        }
+                        continue;
+                    }
+                    let response=match host.request(json!({"op":"override_output","id":operation_id,"mode":mode})) {
+                        Ok(response)=>response,
+                        Err(error)=>{failed_operations.insert(operation_id.clone());self.engine.preview_action_failed(operation_id,error);continue;}
+                    };
+                    let record:polar_dictate::Recording=serde_json::from_value(response["recording"].clone()).map_err(|_|"Invalid recording override")?;
+                    if record.id != *operation_id {return Err("Recording override identity mismatch".into());}
+                    processing_effects.extend(self.engine.observe_recording(&record));
+                    continue;
                 }
                 let saved_edit = if self.engine.host_events {
                     match &effect {
@@ -1108,8 +1132,8 @@ impl<P: Ports> Application<P> {
             || !matches!(
                 kind.as_deref(),
                 Some(
-                    "snapshot"
-                        | "history_inputs" | "view_inputs" | "input_stage" | "input_request" | "input_view" | "input_close" | "inputs_changed"
+                    "snapshot" | "panel_interaction" | "panel_timeout"
+                        | "history_inputs" | "view_inputs" | "view_history" | "input_stage" | "input_request" | "input_view" | "input_close" | "inputs_changed"
                         | "audio_saved"
                         | "transcript_preview"
                         | "history_event"

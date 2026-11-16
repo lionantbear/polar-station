@@ -24,6 +24,7 @@ public final class ExternalTextInsertion {
         private let marker:CFTypeRef?
         private let preserveSelection:Bool
         private let emptyValue:Bool
+        private var insertionVerified=false
         fileprivate init(pid:pid_t,element:AXUIElement,original:String?,selection:NSRange?,preserveSelection:Bool,emptyValue:Bool) {
             self.pid=pid;self.element=element;self.original=original;self.selection=selection
             self.marker=attribute(element,"AXSelectedTextMarkerRange")
@@ -43,6 +44,15 @@ public final class ExternalTextInsertion {
             if let marker,let now=attribute(element,"AXSelectedTextMarkerRange"),!CFEqual(marker,now){return false}
             return true
         }
+        public func sendEnter()->Bool {
+            guard insertionVerified,NSWorkspace.shared.frontmostApplication?.processIdentifier==pid,
+                  let focused=focusedElement(pid),CFEqual(focused,element),!protectedControl(element),
+                  CGPreflightPostEventAccess(),
+                  let down=CGEvent(keyboardEventSource:nil,virtualKey:36,keyDown:true),
+                  let up=CGEvent(keyboardEventSource:nil,virtualKey:36,keyDown:false) else{return false}
+            down.flags=[];up.flags=[];down.post(tap:.cghidEventTap);up.post(tap:.cghidEventTap)
+            self.insertionVerified=false;return true
+        }
         public func insert(_ text:String,completion:@escaping (ExternalTextInsertionResult)->Void) {
             guard !text.isEmpty,current() else{traceExternalInsertion("not-posted captured target changed");completion(.notPosted);return}
             traceExternalInsertion("target admitted pid=\(pid) empty=\(emptyValue) range=\(selection != nil) units=\(text.utf16.count)")
@@ -56,11 +66,15 @@ public final class ExternalTextInsertion {
                 guard let insertion,NSMaxRange(insertion)<=old.utf16.count else{return nil}
                 return (old as NSString).replacingCharacters(in:insertion,with:text)
             }
+            let finish:(ExternalTextInsertionResult)->Void = {[self] result in
+                insertionVerified = result == .verified
+                completion(result)
+            }
             // Preserve the verified empty Messages-field adaptation. Normal
             // external editors use their own native Paste command and Undo.
             if emptyValue {
                 let result=AXUIElementSetAttributeValue(element,kAXValueAttribute as CFString,text as CFString)
-                completion(result == .success && textValue(element)==text ? .verified : .postedUnconfirmed)
+                finish(result == .success && textValue(element)==text ? .verified : .postedUnconfirmed)
                 return
             }
             guard ExternalTextInsertion.clipboard==nil else{completion(.notPosted);return}
@@ -87,7 +101,7 @@ public final class ExternalTextInsertion {
                 commandDown.flags = .maskCommand;down.flags = .maskCommand;up.flags = .maskCommand;commandUp.flags = []
                 for event in [commandDown,down,up,commandUp] {event.post(tap:.cghidEventTap)}
                 return true
-            },completion:completion,released:{ExternalTextInsertion.clipboard=nil})
+            },completion:finish,released:{ExternalTextInsertion.clipboard=nil})
             ExternalTextInsertion.clipboard=transfer
             transfer.observe(pid:pid,element:element)
             transfer.start()
