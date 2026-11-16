@@ -26,7 +26,7 @@ def godot_toolchain(sdk):
     return {'compiler': subprocess.check_output(['xcrun', 'clang', '--version'], text=True).strip(),
             'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
             'sdk': hashlib.sha256(settings.read_bytes()).hexdigest(),
-            'scons': subprocess.check_output(['scons', '--version'], text=True).splitlines()[0],
+            'scons': subprocess.check_output(['scons', '--version'], text=True).strip(),
             'deployment_target': '15.0'}
 
 

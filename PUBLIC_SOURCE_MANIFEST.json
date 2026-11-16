@@ -2341,7 +2341,7 @@
     "apps/polar-tmux-shared/ghostty/native_actions.py": "257bf703ce280d838ec74d376ba5597a3a9a2fb0914a89093e48dbde2cddd416",
     "apps/polar-tmux-shared/ghostty/overlay.py": "dadeaf8fdc1ffe388adc67aa6dca779b13316912c1e65ee17f73d21c9a730683",
     "build-linux.py": "2f3a4648dd42bf92e5da03104a67419eb6493468183f05b5befa080ba38ce088",
-    "build-macos.py": "3fc765196028e55ddf7d2b927f9b1edbbf3dc2c8ce2320c735ede4133aae6754",
+    "build-macos.py": "3e3a1491ce1a54faba66ba270db64a6b5b22b37364562e2c7fed2397cb301325",
     "crates/polar-cas-fs-sys/Cargo.toml": "8edbab7624379be766c634d6de3df9f495e2b738329ff76d26fc75e7bb78cd82",
     "crates/polar-cas-fs-sys/LICENSE": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f",
     "crates/polar-cas-fs-sys/README.md": "009bddfb3be8c7a6233bfe8e3cbc73c5c89e34529981cb59addaacb6f0b98e9c",
@@ -4039,15 +4039,20 @@
   "schema_version": 1,
   "source_provenance": {
     "git_dirty": false,
-    "git_head": "16cc45d928c724ce7ae03daef6a69dfead57f082",
+    "git_head": "17cf315e0fe2ccc6bde85f15278342a6ce1cf9f2",
     "input_count": 2055,
-    "inputs_sha256": "18ebf435f06a67c1094254a5b529eb443c7fec0a491fd5f45c66fd4d3d5999ae",
+    "inputs_sha256": "b07e9fad040c4366142f96c1184b169179bcfcdbeb8e3846a8caf672f9f45774",
     "kind": "working_tree"
   },
   "status": "source_export_preview_not_release",
   "symlinks": {
     "apps/polar-ideacave-godot/addons/polar_graphics": "../../../crates/polar-graphics-godot/godot/addons/polar_graphics"
   },
+  "syntax_cleanup": {
+    "changed_files": 275,
+    "status": "passed"
+  },
+  "third_party_license_audit": "pending",
   "sync_managed_paths": [
     ".gitignore",
     "BUILD_LINUX.md",
@@ -6013,10 +6018,5 @@
     "vendor/grammers-tl-gen/src/metadata.rs",
     "vendor/grammers-tl-gen/src/rustifier.rs",
     "vendor/grammers-tl-gen/src/structs.rs"
-  ],
-  "syntax_cleanup": {
-    "changed_files": 275,
-    "status": "passed"
-  },
-  "third_party_license_audit": "pending"
+  ]
 }
