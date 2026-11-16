@@ -141,14 +141,14 @@ def main():
             run('scons', '-C', godot, '-j', args.jobs, *GODOT_OPTIONS,
                 'custom_modules=' + str(root / 'apps/polar-graphics-native/godot-modules'), env=env)
         cargo = ['cargo', 'build', '--locked', '--manifest-path', root / 'Cargo.toml',
-                 '--target-dir', target, '--target', 'aarch64-apple-darwin']
+                 '--target-dir', target / 'rust', '--target', 'aarch64-apple-darwin']
         if not args.debug:
             cargo.append('--release')
         # Separate invocations prevent Host features from entering the desktop archive.
         run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', env=env)
         run(*cargo, '-p', 'polar-station-desktop-ffi', '--lib', env=env)
         run(*cargo, '-p', 'polar-graphics-godot', '--lib', env=env)
-        rust = target / 'aarch64-apple-darwin' / profile
+        rust = target / 'rust/aarch64-apple-darwin' / profile
         client = target / 'polar-station-client/current'
         client.mkdir(parents=True, exist_ok=True)
         shutil.copy2(rust / 'libpolar_station_desktop_ffi.a', client)

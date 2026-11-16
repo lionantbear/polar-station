@@ -81,7 +81,6 @@ impl CodexEndpoint {
         let (stop, mut cancelled) = oneshot::channel();
         let transport = forward.clone();
         tokio::spawn(async move {
-            let mut overflow = false;
             loop {
                 let event = tokio::select! {
                     _ = &mut cancelled => break,
@@ -104,32 +103,24 @@ impl CodexEndpoint {
                 if !relevant_event(&event) {
                     continue;
                 }
-                // A full domain lane disconnects observation rather than dropping a
-                // completion silently or blocking the upstream response worker.
-                let send = events.try_send(EndpointEvent {
-                    endpoint_id: endpoint_id.clone(),
-                    generation,
-                    event,
-                });
+                // The upstream Remote client has an independent RPC worker and
+                // event receiver. Backpressure here preserves ordered domain
+                // facts without interrupting in-flight requests. Cancellation
+                // must remain available while the domain consumer is busy.
+                let send = tokio::select! {
+                    _ = &mut cancelled => break,
+                    send = events.send(EndpointEvent {
+                        endpoint_id: endpoint_id.clone(),
+                        generation,
+                        event,
+                    }) => send,
+                };
                 if send.is_err() || disconnected {
-                    overflow = matches!(send, Err(mpsc::error::TrySendError::Full(_)));
                     break;
                 }
             }
             live.store(false, Ordering::Release);
             let _ = client.shutdown().await;
-            if overflow {
-                // Wake failed-only recovery after the upstream client is stopped.
-                // This owned forwarding task may wait for capacity; the upstream
-                // RPC response worker is already shut down and never blocked.
-                tokio::select! {
-                    _ = &mut cancelled => {},
-                    _ = events.send(EndpointEvent {
-                        endpoint_id, generation,
-                        event: AppServerEvent::Disconnected { message: "domain lane overflow".into() },
-                    }) => {},
-                }
-            }
         });
         Ok(Self {
             handle,
@@ -151,6 +142,8 @@ impl CodexEndpoint {
         &self.local_socket_path
     }
 
+    #[tracing::instrument(target = "polar_station_operation", name = "codex_upstream_request", skip_all,
+        fields(component = "Codex", method))]
     pub async fn request(&self, method: &'static str, params: Value) -> Result<Value, RpcFailure> {
         if !self.connected() {
             return Err(RpcFailure::Unavailable);

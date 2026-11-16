@@ -161,6 +161,8 @@ impl CodexControlService {
         Ok(service)
     }
 
+    #[tracing::instrument(target = "polar_station_operation", name = "codex_dispatch", skip_all,
+        fields(component = "Codex", request_id = %request.request_id))]
     pub async fn dispatch(
         &self,
         principal: &str,
@@ -343,7 +345,8 @@ impl CodexControlService {
         // Dropped after the operation lock, including early-return errors.
         // Notify recovery without changing error-response projection semantics.
         let _recovery = self.publisher.recovery_after_mutation();
-        let _operation = self.operations.lock().await;
+        let _operation = tracing::Instrument::instrument(self.operations.lock(),
+            tracing::info_span!(target: "polar_station_operation", "codex_admission_wait", component="Codex")).await;
         let result = match command {
             CodexCommandV1::StartLocalServer{endpoint_id}=>self.start_local_server(&endpoint_id,may_configure).await,
             CodexCommandV1::ConnectImessageSender {
@@ -863,16 +866,21 @@ impl CodexControlService {
     }
 
     async fn needs_recovery(&self) -> bool {
-        let config = self.config.read().await;
+        // Never pin configuration while waiting for state: completion handling
+        // reads configuration from its state mutation. A queued writer makes
+        // nested read locks participate in that cycle too (Tokio is fair).
+        let config = self.config.read().await.clone();
         if !config.enabled { return false; }
         let disabled = self.topology.read().await.disabled_monitors.clone();
         let endpoints = self.endpoints.lock().await.iter().map(|(id,c)| (id.clone(),(c.client.connected(), c.generation))).collect::<BTreeMap<_,_>>();
-        let inventories = self.inventories.lock().await;
+        let inventories = self.inventories.lock().await.clone();
         config.endpoints.iter().filter(|e| e.owner_host_id == self.owner && e.control_mode != CodexControlModeV1::RemoteHost && !disabled.contains(&e.id) && !e.id.starts_with("auto-codex-"))
             .any(|e| endpoints.get(&e.id).is_none_or(|c| !c.0 || inventories.get(&e.id) != Some(&c.1)))
             || self.states.read().await.values().any(|s| s.connection == CodexConnectionStateV1::Disconnected && !disabled.contains(&s.binding.endpoint_id))
     }
 
+    #[tracing::instrument(target = "polar_station_operation", name = "codex_recovery", skip_all,
+        fields(component = "Codex"))]
     async fn reconnect(&self) {
         // Configuration events must not be lost behind an in-flight mutation.
         let _operation = self.operations.lock().await;

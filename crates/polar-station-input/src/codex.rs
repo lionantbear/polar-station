@@ -340,13 +340,12 @@ impl InputEngine {
 }
 
 fn binding_matches(selection: &Selection, state: &CodexStateV1) -> bool {
-    // The catalog's original Thread is authoritative even when a legacy
-    // binding still refers to the same terminal Session.
-    if selection.original_agent_id.as_deref().is_some_and(|id| id != state.binding.thread_id) {
-        return false;
+    // A Thread can be presented in multiple terminals over its lifetime. Its
+    // optional terminal association does not change the original send target.
+    if let Some(thread) = selection.original_agent_id.as_deref() {
+        return thread == state.binding.thread_id;
     }
-    state.binding.session.as_ref().map_or_else(
-        || selection.original_agent_id.as_deref() == Some(state.binding.thread_id.as_str()),
+    state.binding.session.as_ref().is_some_and(
         |key| key.execution_target.as_str() == selection.target
             && (key.tmux_session_id == selection.session
                 || selection.managed_reference.as_deref() == Some(key.tmux_session_id.as_str())),

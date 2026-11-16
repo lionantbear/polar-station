@@ -38,7 +38,7 @@ impl CodexControlService {
     }
 
     pub async fn endpoint_states(&self) -> std::collections::BTreeMap<String, String> {
-        let config = self.config.read().await;
+        let config = self.config.read().await.clone();
         let connections = self.endpoints.lock().await;
         config.endpoints.iter().map(|endpoint| {
             let state = if !config.enabled { "Disabled" }
@@ -53,7 +53,7 @@ impl CodexControlService {
         let mut result = CodexResultV1::Bindings { bindings: self.states.read().await.values().cloned().collect() };
         self.project_terminal_associations(&mut result).await;
         let CodexResultV1::Bindings { bindings } = result else { unreachable!() };
-        let config = self.config.read().await;
+        let config = self.config.read().await.clone();
         let mut rows: Vec<AgentSessionCatalogRowV1> = Vec::new();
         for state in bindings {
             let Some(endpoint) = config.endpoints.iter().find(|e| e.id == state.binding.endpoint_id) else { continue };
@@ -481,7 +481,7 @@ impl CodexControlService {
             candidates[0].clone()
         };
         let target=network.targets.get(&target_id).ok_or_else(||error("target_missing","The selected machine is no longer configured."))?;
-        let gate=target.operation_gate();let _guard=gate.write().await;
+        let gate=target.operation_gate();let observation=gate.read().await;
         let client=target.managed_client(&network.ssh).await.map_err(|e|error("ssh_unavailable",e.to_string()))?;
         if let CodexTerminalStart::Resume { thread_id } = &start {
             if let Some(record) = self.existing_terminal(&client, &target_id, thread_id).await? {
@@ -496,6 +496,9 @@ impl CodexControlService {
             if client.server_generation().await.map_err(|e|error("tmux_unavailable",e.to_string()))? != generation {return Err(error("source_changed","The source tmux server changed. Refresh before creating a Session."));}
             Some(path)
         }else{directory};
+        // Codex RPC/admission must never retain the machine's tmux gate.
+        // Other Pane attachments and catalog reads are independent operations.
+        drop(observation);
         // The original Thread owns Resume's cwd and name. A client's draft is not authority.
         let saved = if let CodexTerminalStart::Resume { thread_id } = &start {
             Some(self.read_original_thread(&endpoint.owner_host_id, &endpoint.id, thread_id).await?)
@@ -518,6 +521,13 @@ impl CodexControlService {
             CodexResultV1::Error{code}=>return Err(error(&code,format!("Codex Thread creation failed ({code}). No terminal was created; an unknown result must be checked before retrying."))),
             _=>return Err(error("invalid_codex_response","The app-server returned no Thread identity. Check the endpoint before retrying.")),
         };
+        let mutation=gate.write().await;
+        let client=target.managed_client(&network.ssh).await.map_err(|e|error("ssh_unavailable",e.to_string()))?;
+        // A concurrent Resume may have created the same terminal while Codex
+        // was answering. Resolve again inside the existing mutation boundary.
+        if let Some(record) = self.existing_terminal(&client, &target_id, &binding.thread_id).await? {
+            return Ok(record);
+        }
         let recovery = AgentSessionResumeV1 { execution_target_id: target_id.clone(), endpoint_id: endpoint.id.clone(), thread_id: binding.thread_id.clone() };
         let mut launch=SessionLaunchSpec::shell(terminal_name(&binding.thread_id)?,Some(&directory));
         let command=codex_cli_command(&endpoint.socket_path, &binding.thread_id, Some(&directory));
@@ -525,6 +535,7 @@ impl CodexControlService {
         let record=lifecycle.create_with_public_name(&client,ExecutionTargetId::new(&target_id).map_err(|e|error("invalid_target",e.to_string()))?,launch,Some(command),true).await
             .map_err(|e| { let mut failure = error("codex_terminal_failed",format!("The conversation exists, but its terminal could not open: {e}. Retry resumes the same conversation.")); failure.resume = Some(recovery.clone()); failure })?;
         let session=SessionKeyV1{execution_target:ExecutionTarget::new(target_id.clone()).expect("validated target"),tmux_session_id:record.reference()};
+        drop(mutation);
         lifecycle.request_refresh(record.execution_target_id.clone());
         if binding.owner_host_id==self.owner {
             self.associate_terminal_session(&binding.binding_id, session).await

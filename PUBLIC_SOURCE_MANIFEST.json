@@ -2356,7 +2356,7 @@
     "apps/polar-tmux-shared/ghostty/native_actions.py": "257bf703ce280d838ec74d376ba5597a3a9a2fb0914a89093e48dbde2cddd416",
     "apps/polar-tmux-shared/ghostty/overlay.py": "dadeaf8fdc1ffe388adc67aa6dca779b13316912c1e65ee17f73d21c9a730683",
     "build-linux.py": "2f3a4648dd42bf92e5da03104a67419eb6493468183f05b5befa080ba38ce088",
-    "build-macos.py": "3e3a1491ce1a54faba66ba270db64a6b5b22b37364562e2c7fed2397cb301325",
+    "build-macos.py": "650f12712ae4614f8ce50634a8db86ed327dc7b418e59185d8fc7e73c7899863",
     "crates/polar-cas-fs-sys/Cargo.toml": "8edbab7624379be766c634d6de3df9f495e2b738329ff76d26fc75e7bb78cd82",
     "crates/polar-cas-fs-sys/LICENSE": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f",
     "crates/polar-cas-fs-sys/README.md": "009bddfb3be8c7a6233bfe8e3cbc73c5c89e34529981cb59addaacb6f0b98e9c",
@@ -3003,7 +3003,7 @@
     "crates/polar-station-inbox/src/codex.rs": "e81f8d0dabaed9490329e4182cd78576ead86678e41d001789c20c551cce3ae6",
     "crates/polar-station-inbox/src/lib.rs": "e18c911623056aef69a7f176d4ff08bdd3ff3d2d8b637589211a2fcba7749e4d",
     "crates/polar-station-input/Cargo.toml": "26e5fe83ed261f86aa865287bdaf44515c4caee67e2eb44da6302bdd2e9922bf",
-    "crates/polar-station-input/src/codex.rs": "6012e0f400fcfc0ad52f9ed5fe26822657f5cc37322d755930635c2ba9c5707f",
+    "crates/polar-station-input/src/codex.rs": "37dfc8dd1b15af0994f75d6828eba34d9375e79013ae3be95c7b50a0c6e391ab",
     "crates/polar-station-input/src/generic.rs": "b265896b58b0db1fc0be6011074fdb19fdf258c1a7bdee01d522263b3b1dcadd",
     "crates/polar-station-input/src/input.rs": "1e18c054399292807735beff57ec8e0933623417ca010f62fbe472f6bf62db19",
     "crates/polar-station-input/src/lib.rs": "2123061b6f356f4e8e739bb7874ab7ecd2276b6d717303c6fae623e1307b142d",
@@ -3082,17 +3082,17 @@
     "crates/polar-station-runtime/src/services/channel_setup.rs": "fd7a03bd409fa6aad3f0a233ea17ae354f09e0814313546b5a8088cbec35e14d",
     "crates/polar-station-runtime/src/services/child_process.rs": "50d78af088bbf174c0039226079f9b1a123ae1911269bc18a244b0222cfab002",
     "crates/polar-station-runtime/src/services/codex_config.rs": "9794a23ba4f62ff9ab0784bb297097299a347c4572d266266755d67da2249ded",
-    "crates/polar-station-runtime/src/services/codex_control.rs": "162113ea163795d85dc2b41321f5b456594ffa9173f547274b1c6b9a1cc2d368",
+    "crates/polar-station-runtime/src/services/codex_control.rs": "df6d675cd525637e5529ea25e870107cc5a5c31a4dbc7b94dde495a91c4211e2",
     "crates/polar-station-runtime/src/services/codex_discovery.rs": "b5447153ad68a8005478173b4db8d091bc0b79c7bdc8164d19bcde7c228d5db0",
-    "crates/polar-station-runtime/src/services/codex_endpoint.rs": "d1c1cd104f9394686692b46d0f5940964b8f29e3fae471133bd5d31eacf1c62d",
+    "crates/polar-station-runtime/src/services/codex_endpoint.rs": "5298a15a048db89de864ef578e5b5f72f248786d91317b7db2a397c92f0e18be",
     "crates/polar-station-runtime/src/services/codex_file_references.rs": "abd12d6eb185bf69a2a10d83ff42f657dc9963f2d3c139ea2834f19e24c8d85c",
     "crates/polar-station-runtime/src/services/codex_imessage_runtime.rs": "52caf3ed5f4dd67505a998bc7cfb37aed2abb847f81347bea08ef0dd1ff05c6a",
     "crates/polar-station-runtime/src/services/codex_imessage_setup.rs": "0be404e92f7c8d3bc9ce3153c4f1028abf0d1d26d174f34f549647f23973278a",
     "crates/polar-station-runtime/src/services/codex_monitor.rs": "bce5a90ba7368cf37d67947310eeb99bf54d16b1d301c4b026b37c6f7dfa721b",
-    "crates/polar-station-runtime/src/services/codex_notifications.rs": "ab92cb53facd827991f519a8b04f6d218f17e92c41fa9575d7ed46713126d105",
+    "crates/polar-station-runtime/src/services/codex_notifications.rs": "239a098280745e4aa03314a7999d9e7e1889f8fe1a42396fcfc4bbc706068ad6",
     "crates/polar-station-runtime/src/services/codex_remote.rs": "26ad03b1f3c34b97b8450e79c1b3f0f5c88d1ab2d5c2175f61670a9999ab1996",
     "crates/polar-station-runtime/src/services/codex_reply.rs": "2d795e246e391c593ed119c279f95a01297b272768f4becefe3c5d7bfbf4de7d",
-    "crates/polar-station-runtime/src/services/codex_session.rs": "83f556eee8b00131fe38490facfd75bb39541d45bdc8c951e238a663e19804bd",
+    "crates/polar-station-runtime/src/services/codex_session.rs": "145980ad592448131448565d89bb6b89f359f2d9aa98a5171410f9f2168eafcb",
     "crates/polar-station-runtime/src/services/codex_startup.rs": "34825aa2a59f64080637a583c332d050110ae446ff4b47273654a468fd643e2b",
     "crates/polar-station-runtime/src/services/codex_telegram.rs": "c05565f3887350222f6ff633de010c949178f2ab54f7ea028bff731015ab1b22",
     "crates/polar-station-runtime/src/services/codex_telegram_runtime.rs": "19ad3ac86a42fa8fe724ad504348493bf814265a41cacca1695e8f1bb74dd642",
@@ -4068,15 +4068,20 @@
   "schema_version": 1,
   "source_provenance": {
     "git_dirty": false,
-    "git_head": "972afc457b5d7bded5392bfe130a239c3c02fd5d",
+    "git_head": "74b2decec20731ead7bc62ee56c49534d248b873",
     "input_count": 2069,
-    "inputs_sha256": "9e2a31037c3f3f4bed30f1ac9e8211198d5d8529c13e2ffa08e6dc3a08506874",
+    "inputs_sha256": "9020ade8bf816304908a07cbdf477006c92f0c4010834510f0e97b8ebb559ae9",
     "kind": "working_tree"
   },
   "status": "source_export_preview_not_release",
   "symlinks": {
     "apps/polar-ideacave-godot/addons/polar_graphics": "../../../crates/polar-graphics-godot/godot/addons/polar_graphics"
   },
+  "syntax_cleanup": {
+    "changed_files": 276,
+    "status": "passed"
+  },
+  "third_party_license_audit": "pending",
   "sync_managed_paths": [
     ".gitignore",
     "BUILD_LINUX.md",
@@ -6056,10 +6061,5 @@
     "vendor/grammers-tl-gen/src/metadata.rs",
     "vendor/grammers-tl-gen/src/rustifier.rs",
     "vendor/grammers-tl-gen/src/structs.rs"
-  ],
-  "syntax_cleanup": {
-    "changed_files": 276,
-    "status": "passed"
-  },
-  "third_party_license_audit": "pending"
+  ]
 }

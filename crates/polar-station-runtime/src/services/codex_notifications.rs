@@ -158,7 +158,7 @@ impl CodexControlService {
         if binding.revision != revision {
             return Err("binding_conflict");
         }
-        let config = self.config.read().await;
+        let config = self.config.read().await.clone();
         if !config.enabled {
             return Err("control_disabled");
         }
