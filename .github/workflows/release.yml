@@ -61,7 +61,6 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       CARGO_BUILD_JOBS: '3'
-      SCCACHE_DIR: ${{ runner.temp }}/station-sccache
       POLAR_GRAPHICS_JOBS: '3'
       PYTHONDONTWRITEBYTECODE: '1'
     outputs:
@@ -134,6 +133,7 @@ jobs:
       - name: Build through public entry and collect private observations
         if: github.event_name == 'push' || inputs.phase == 'build'
         env:
+          SCCACHE_DIR: ${{ runner.temp }}/station-sccache
           POLAR_STATION_RUST_CACHE_EXACT_MATCH: ${{ steps.rust-cache.outputs.cache-hit }}
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" build
       - name: Save Zig compilation cache
