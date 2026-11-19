@@ -1,15 +1,15 @@
 # Polar Station: source, rebuilding and library modifications
 
-This page accompanies the Apple Silicon preview built from b2e3f9b2de2c56827fc3776eb6bdbc89e0931387. The full
+This page accompanies the Apple Silicon preview built from 6481f7eaeb3ba26402eba0aaf4ce8b80f9078a71. The full
 application source, Cargo.lock, native modules, patches and build entries are
-[available at that exact commit](https://github.com/lionantbear/polar-station/tree/b2e3f9b2de2c56827fc3776eb6bdbc89e0931387).
-The native build is [run 43919929363, attempt 1](https://github.com/lionantbear/polar-station/actions/runs/43919929363).
+[available at that exact commit](https://github.com/lionantbear/polar-station/tree/6481f7eaeb3ba26402eba0aaf4ce8b80f9078a71).
+The native build is [run 44451634029, attempt 1](https://github.com/lionantbear/polar-station/actions/runs/44451634029).
 Downloadable release files are the DMG and SHA256SUMS. Complete original license
 texts and the component index are in the DMG's THIRD-PARTY-NOTICES directory.
 
 ## Application and upstream source
 
-Follow [BUILD_MACOS.md](https://github.com/lionantbear/polar-station/blob/b2e3f9b2de2c56827fc3776eb6bdbc89e0931387/BUILD_MACOS.md)
+Follow [BUILD_MACOS.md](https://github.com/lionantbear/polar-station/blob/6481f7eaeb3ba26402eba0aaf4ce8b80f9078a71/BUILD_MACOS.md)
 for the single complete macOS build command. It builds graphics, Rust, Zig and
 Swift/Xcode, copies resources and signs the result locally. Publisher keys,
 notarization credentials, private automation and a release account are not
@@ -21,7 +21,8 @@ The pinned upstream native sources are:
 - [Godot](https://github.com/godotengine/godot/tree/ed1daf0bf001b61586d9930840f2f1394092c079).
 - [Sparkle 2.9.0](https://github.com/sparkle-project/Sparkle/tree/21d8df80440b1ca3b65fa82e40782f1e5a9e6ba2).
 
-Station's Ghostty patch is in `apps/polar-station-macos/ghostty-overlay/`.
+Station's Ghostty and callback lifetime patches are in
+`apps/polar-station-macos/ghostty-overlay/`.
 `apps/polar-tmux-shared/ghostty/overlay.py` and `native_actions.py` apply renderer
 and action changes; native Swift/Zig integration is beside the patch.
 `build-macos.py` applies the Godot headless entry change and selects the custom
@@ -57,12 +58,12 @@ Use the exact source archives below. The Homebrew keg revision `_4` for GTS does
 | gettext 1.0 | https://ftpmirror.gnu.org/gettext/gettext-1.0.tar.gz | 85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a |
 | GLib 2.90.1 | https://download.gnome.org/sources/glib/2.90/glib-2.90.1.tar.xz | 93c941aa17d5eb1d53fe838365f29a8b4e539c222a256d974ec8f30fc413e396 |
 | libtool/libltdl 2.6.2 | https://ftpmirror.gnu.org/libtool/libtool-2.6.2.tar.xz | 2ef1067c16c97db930fd740cc9bc3d3ba9a583804ae5ac42cc3e8719e49e191e |
-| Graphviz 16.1.1 | https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.1/graphviz-16.1.1.tar.xz | 52e7fb9a57b52b5c67f41dba6504ba3231e118258779421cb8f4f99104de71f6 |
+| Graphviz 16.1.0 | https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/16.1.0/graphviz-16.1.0.tar.xz | 0f661718f3e5268dc3bad0fb53ab646605d26db70f4080799aff1dc2f61783c3 |
 | GTS 0.7.6 | https://downloads.sourceforge.net/project/gts/gts/0.7.6/gts-0.7.6.tar.gz | 059c3e13e3e3b796d775ec9f96abdce8f2b3b5144df8514eda0cc12e13e8b81e |
 | PCRE2 10.49 | https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.bz2 | 53c156e1ba416a20da8e65395daa132da0d80e76910424caca3fcdae7831d384 |
-| Static gettext 0.24 | https://deps.files.ghostty.org/gettext-0.24.tar.gz | c918503d593d70daf4844d175a13d816afacb667c06fba1ec9dcd5002c1518b7 |
+| Static gettext 0.24 | https://ftp.gnu.org/gnu/gettext/gettext-0.24.tar.gz | c918503d593d70daf4844d175a13d816afacb667c06fba1ec9dcd5002c1518b7 |
 
-The build recipes are at [Homebrew core 31e66ebe62d2bc457bb18423ef092902f780d05c](https://github.com/Homebrew/homebrew-core/tree/31e66ebe62d2bc457bb18423ef092902f780d05c): `Formula/g/gettext.rb`, `Formula/g/glib.rb`, `Formula/g/graphviz.rb`, `Formula/g/gts.rb`, `Formula/lib/libtool.rb` and `Formula/p/pcre2.rb`. These include configure/Meson arguments and install transformations. Their source/build procedures match the supplied components; bottle metadata, conflict declarations, compatibility metadata and Homebrew network-policy metadata are not source patches. GNU mirror spellings may differ while retaining the exact same source checksum.
+Use [Homebrew core 31e66ebe62d2bc457bb18423ef092902f780d05c](https://github.com/Homebrew/homebrew-core/tree/31e66ebe62d2bc457bb18423ef092902f780d05c) for gettext, GLib, GTS, libtool and PCRE2. Graphviz 16.1.0 uses [its pinned recipe](https://github.com/Homebrew/homebrew-core/blob/ffc79088768f59d49d304f3ff00de576b4ea8f69/Formula/g/graphviz.rb). These recipes record the configure or Meson arguments and install transformations used to rebuild the supplied libraries.
 
 GLib uses [hardcoded-paths.diff](https://github.com/Homebrew/homebrew-core/blob/31e66ebe62d2bc457bb18423ef092902f780d05c/Patches/glib/hardcoded-paths.diff), SHA-256 `d846efd0bf62918350da94f850db33b0f8727fece9bfaf8164566e3094e80c97`, with `@@HOMEBREW_PREFIX@@` substitution and the recipe's `gio/meson.build`/pkg-config transformations. Its build resource [gobject-introspection 1.86.0](https://download.gnome.org/sources/gobject-introspection/1.86/gobject-introspection-1.86.0.tar.xz) has SHA-256 `920d1a3fcedeadc32acff95c2e203b319039dd4b4a08dd1a2dfd283d19c0b9ae`. GTS's inline recipe patch changes the example program's `pgm.h` include to `netpbm/pgm.h`; the recipe runs autoreconf and selects GNU17 C. No separate unpublished library patch is needed.
 
@@ -79,7 +80,7 @@ command accepts an explicit `--sdk` path and respects `DEVELOPER_DIR`.
 ```sh
 git clone https://github.com/lionantbear/polar-station.git
 cd polar-station
-git checkout --detach b2e3f9b2de2c56827fc3776eb6bdbc89e0931387
+git checkout --detach 6481f7eaeb3ba26402eba0aaf4ce8b80f9078a71
 cargo fetch --locked
 # Prepare the tools and pinned upstream checkouts described in BUILD_MACOS.md.
 export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
@@ -125,7 +126,7 @@ and signs the modified result. No proprietary object-file kit is required.
 
 The application includes unmodified tmux 3.8 tool archives for local and SSH
 targets. Their exact per-platform hashes and upstream release are recorded in
-[`target_tools/tmux-3.8/manifest.json`](https://github.com/lionantbear/polar-station/blob/b2e3f9b2de2c56827fc3776eb6bdbc89e0931387/crates/polar-station-runtime/src/services/target_tools/tmux-3.8/manifest.json).
+[`target_tools/tmux-3.8/manifest.json`](https://github.com/lionantbear/polar-station/blob/6481f7eaeb3ba26402eba0aaf4ce8b80f9078a71/crates/polar-station-runtime/src/services/target_tools/tmux-3.8/manifest.json).
 The upstream build and release source is [tmux-builds v3.8](https://github.com/tmux/tmux-builds/releases/tag/v3.8).
 The original provided notices for tmux, utf8proc/Unicode data, libevent, ncurses
 and musl accompany the DMG unchanged. The archived binaries and their original

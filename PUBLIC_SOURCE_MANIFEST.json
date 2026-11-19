@@ -3386,7 +3386,7 @@
     "crates/polar-voice/src/reference.rs": "9dff1a9eca00546cc49eddfb938b2f6c8b406ad4c1ac029afebf505b20e767b7",
     "crates/polar-voice/src/transcription.rs": "fd1bdd9e40d4d8403172fcee9d1d22d584336f99068b617f471d0cde34127fa3",
     "docs/release/ASSET_PROVENANCE.json": "8a5b6cf9bf7f26a2e31355ba80079d6e341ab7a2a428c95ada9ec7b2b50b9857",
-    "docs/release/SOURCE_AND_REBUILD.md": "a099f4fde35d201ab1cf255a616dd808d7438674c3e39fc2ae7e56ca410b2921",
+    "docs/release/SOURCE_AND_REBUILD.md": "a7e31bc634e7fd20eb10a410bca1f96ca65a87c2ad4d9853e5e86587328c4c7c",
     "licenses/cargo-archive-integrity.json": "6013453ea8ca7a87d3829e6b5ff15154ed334fbc4cb6b2a593d1b7be1b6d8bfe",
     "licenses/cargo-evidence.json": "9228b68effe14c56a270326f9585ae453b49b5606f5a6665194db9c958c74816",
     "licenses/cargo-texts/000cbb5bea6f21829c8f0d9e1fe87410bd5ef0453412ffc017845982a3e19824.txt": "000cbb5bea6f21829c8f0d9e1fe87410bd5ef0453412ffc017845982a3e19824",
