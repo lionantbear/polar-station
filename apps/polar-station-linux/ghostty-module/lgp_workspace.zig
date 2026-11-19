@@ -405,7 +405,7 @@ pub const Workspace = struct {
         self.input(.{ .type="select_non_input", .window_id=composer.id, .pane_id=pane });
     }
     fn paneCreated(context: ?*anyopaque, pane: []const u8, window: []const u8, host: *NativeWindow, content: Content, display: *DisplaySurface) void {
-        if (content.kind == .local_diagnostics or content.kind == .remote_hosts or content.kind == .settings_text) return;
+        if (content.kind == .local_diagnostics or content.kind == .remote_hosts or content.kind == .settings_text or content.kind == .settings_pane) return;
         const self: *Workspace = @ptrCast(@alignCast(context orelse return));
         if (self.panes.get(pane)) |previous| paneRetired(context, pane, previous.display);
         const entry = Entry.create(self, pane, window, host, content, display) catch {

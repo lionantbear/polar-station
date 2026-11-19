@@ -41,6 +41,22 @@ const diagnostics_page = @import("diagnostics_page.zig");
 const native_hooks = @import("native_content_hooks.zig");
 const desktop_ffi = @cImport({ @cInclude("polar_station_desktop_client.h"); });
 
+const WorkspaceSettingsPane = @import("workspace_settings_pane.zig").Pane;
+const WorkspaceSettingsEntry = struct {
+    display: *DisplaySurface,
+    view: *WorkspaceSettingsPane,
+    pane_id: []u8,
+};
+const WorkspaceSettingsSave = struct {
+    revision: u64,
+    workspace_id: []u8,
+    pane_id: []u8,
+    fn deinit(self: WorkspaceSettingsSave, allocator: std.mem.Allocator) void {
+        allocator.free(self.workspace_id);
+        allocator.free(self.pane_id);
+    }
+};
+
 const DiagnosticsEntry = struct {
     owner: *State,
     pane: []u8,
@@ -107,6 +123,8 @@ const State = struct {
     window_executors: std.ArrayListUnmanaged(*presentation_executor.Executor) = .empty,
     lgp: ?*lgp_workspace.Workspace = null,
     diagnostics: std.StringHashMapUnmanaged(*DiagnosticsEntry) = .empty,
+    workspace_settings: std.StringHashMapUnmanaged(WorkspaceSettingsEntry) = .empty,
+    workspace_settings_save: ?WorkspaceSettingsSave = null,
     prompt_editor: ?*@import("settings_text_editor.zig").Panel = null,
     prompt_pane: ?struct { id: []u8, field: []u8, display: *DisplaySurface, host: *Window } = null,
     diagnostic_selection: ?DiagnosticSelection = null,
@@ -262,6 +280,8 @@ const State = struct {
         self.window_executors.deinit(self.allocator);
         self.executor.deinit();
         self.diagnostics.deinit(self.allocator);
+        self.workspace_settings.deinit(self.allocator);
+        if (self.workspace_settings_save) |save| save.deinit(self.allocator);
         self.diagnostics_engine.deinit();
         @import("graphics_surface.zig").shutdown();
         if (self.lgp) |lgp| lgp.destroy();
@@ -578,7 +598,9 @@ pub fn tick(app: *Application) void {
                     }
 
                     const owner = if (current.executor.pending_lifecycle) |pending| pending.owner else current.activeExecutor();
-                    const failed_window = if (owner) |executor| executor.managed_window else null;
+                    const failed_window = if (current.workspace_settings_save != null)
+                        null
+                    else if (owner) |executor| executor.managed_window else null;
                     const changed = current.executor.applyNativeStateResponse(response) catch |err| failed: {
                         std.log.warn("Polar Station native persistence completion failed: {s}", .{@errorName(err)});
                         // A failed admitted save cancels Quit as well as the
@@ -597,6 +619,7 @@ pub fn tick(app: *Application) void {
                         const saved=std.json.parseFromSlice(struct{revision:u64,@"error":?[]const u8=null},current.allocator,response,.{.ignore_unknown_fields=true}) catch null;
                         if(saved)|v|{defer v.deinit();page.saved(v.value.revision,v.value.@"error"!=null);}
                     }
+                    completeWorkspaceSettingsSave(current, response);
                     current.initializeWindowRestoration();
                     // Window callbacks during a lifecycle save cannot write a
                     // competing snapshot. Recompute from live windows once the
@@ -656,6 +679,20 @@ fn diagnosticsHooks(current: *State) native_hooks.Hooks {
 
 fn diagnosticsCreated(context: ?*anyopaque, pane: []const u8, window: []const u8, host: *Window, content: StationContent, display: *DisplaySurface) void {
     const current: *State = @ptrCast(@alignCast(context orelse return));
+    if (content.kind == .settings_pane) {
+        const view = WorkspaceSettingsPane.create(current.allocator, current, saveWorkspaceSettings, reloadWorkspaceSettings) catch return;
+        const id = current.allocator.dupe(u8, pane) catch {
+            view.deinit();
+            return;
+        };
+        current.workspace_settings.put(current.allocator, id, .{ .display = display, .view = view, .pane_id = id }) catch {
+            current.allocator.free(id);
+            view.deinit();
+            return;
+        };
+        display.surface.stationSetExternalWidget(view.root.as(gtk.Widget));
+        return;
+    }
     if(content.kind == .unavailable) {
         const transfer=@import("workspace_transfer_window.zig");
         const view=transfer.local(current.allocator,.{.action="reference_view",.reference=content.reference}) catch return;defer view.deinit();
@@ -710,6 +747,12 @@ fn diagnosticsCreated(context: ?*anyopaque, pane: []const u8, window: []const u8
 
 fn diagnosticsRetired(context: ?*anyopaque, pane: []const u8, display: *DisplaySurface) void {
     const current: *State = @ptrCast(@alignCast(context orelse return));
+    if (current.workspace_settings.get(pane)) |entry| if (entry.display == display) {
+        _ = current.workspace_settings.remove(pane);
+        entry.view.deinit();
+        display.surface.stationRetireExternalWidget();
+        current.allocator.free(entry.pane_id);
+    };
     if (current.prompt_pane) |entry| if (entry.display == display) {
         current.prompt_pane=null;
         display.surface.stationRetireExternalWidget();
@@ -1052,15 +1095,7 @@ fn settingsPageOpened(context:?*anyopaque,controller:*controller_pane.Controller
         current.backend_page.?.present(controller.host_window.as(gtk.Window),current.client.socket_path);
         page.send(.{.type="back"});
     } else if(std.mem.eql(u8,kind,"workspaces")) {
-        if (current.workspace_manager == null) current.workspace_manager = @import("workspace_manager_window.zig").Manager.create(current.allocator,current,workspaceManagerAction) catch return;
-        current.workspace_manager.?.get_projection = workspaceManagerProjection;
-        current.workspace_manager.?.transfer.send=sendLgpFrame;current.workspace_manager.?.transfer.send_context=current;
-        const executor = current.controllerExecutor(controller.controller_id) orelse return;
-        const bound = if (executor.nativeWorkspaceSnapshot()) |snapshot| snapshot.workspace_id else null;
-        current.workspace_manager.?.present(controller.host_window.as(gtk.Window),controller.controller_id,bound);
-        current.workspace_manager.?.updateConnections(if(current.controller_model.projection()) |projection| &projection.connections else null);
-        if (current.executor.workspace.catalog) |catalog| current.workspace_manager.?.refresh(catalog.value,current.executor.workspace.committing);
-        page.send(.{ .type = "back" });
+        renderWorkspaceDirectory(current, controller, page) catch page.mount(gtk.Label.new("Could not read saved Workspaces").as(gtk.Widget));
     } else if(std.mem.eql(u8,kind,"setup")) {
         const remote=if(route==.object) if(route.object.get("remote")) |value| value==.bool and value.bool else false else false;
         const key=std.fmt.allocPrint(current.allocator,"settings:{d}:{s}",.{controller.controller_id,if(remote) "remote" else "local"}) catch return;
@@ -1136,6 +1171,174 @@ fn backendAction(context:?*anyopaque,action:[]const u8,bytes:[]const u8) void {
     }
     current.renderControllers();
 }
+const workspace_local = @import("workspace_transfer_window.zig");
+
+fn workspaceCatalogJson(current: *State, allocator: std.mem.Allocator) !std.json.Value {
+    const catalog = current.executor.workspace.catalog orelse return error.NativeWorkspaceUnavailable;
+    const bytes = try @import("native_workspace_store.zig").encodeCatalog(allocator, catalog.value);
+    defer allocator.free(bytes);
+    return std.json.parseFromSliceLeaky(std.json.Value, allocator, bytes, .{ .allocate = .alloc_always });
+}
+
+const WorkspaceDirectoryClick = struct {
+    current: *State,
+    controller_id: u64,
+    page: *@import("settings_navigation.zig").Page,
+    id: []u8,
+
+    fn free(raw: ?*anyopaque) callconv(.c) void {
+        const self: *WorkspaceDirectoryClick = @ptrCast(@alignCast(raw orelse return));
+        self.current.allocator.free(self.id);
+        self.current.allocator.destroy(self);
+    }
+
+    fn clicked(button: *gtk.Button, self: *WorkspaceDirectoryClick) callconv(.c) void {
+        const current = self.current;
+        const executor = current.controllerExecutor(self.controller_id) orelse return;
+        executor.openContent(.{ .kind = .settings_pane }, null) catch |err| {
+            current.controller_model.setLocalError(@errorName(err));
+            current.renderControllers();
+            return;
+        };
+        const snapshot = executor.nativeWorkspaceSnapshot() orelse return;
+        const tab = snapshot.tab(snapshot.selected_tab_id) orelse return;
+        const focused = tab.focused_pane_id orelse return;
+        const entry = current.workspace_settings.get(focused) orelse return;
+        if (entry.view.pending) return;
+        reloadWorkspaceSettings(current, entry.view, self.id) catch |err| {
+            entry.view.show(@errorName(err));
+            return;
+        };
+        self.page.selectWorkspace(self.id, button);
+    }
+};
+
+fn openWorkspaceManagement(_: *gtk.Button, controller: *controller_pane.Controller) callconv(.c) void {
+    const current: *State = @ptrCast(@alignCast(controller.action_context orelse return));
+    if (current.workspace_manager == null) current.workspace_manager = @import("workspace_manager_window.zig").Manager.create(current.allocator, current, workspaceManagerAction) catch return;
+    const manager = current.workspace_manager.?;
+    manager.get_projection = workspaceManagerProjection;
+    manager.transfer.send = sendLgpFrame;
+    manager.transfer.send_context = current;
+    const executor = current.controllerExecutor(controller.controller_id) orelse return;
+    const bound = if (executor.nativeWorkspaceSnapshot()) |snapshot| snapshot.workspace_id else null;
+    manager.present(controller.host_window.as(gtk.Window), controller.controller_id, bound);
+    manager.updateConnections(if (current.controller_model.projection()) |projection| &projection.connections else null);
+    if (current.executor.workspace.catalog) |catalog| manager.refresh(catalog.value, current.executor.workspace.committing);
+}
+
+fn renderWorkspaceDirectory(current: *State, controller: *controller_pane.Controller, page: *@import("settings_navigation.zig").Page) !void {
+    var arena = std.heap.ArenaAllocator.init(current.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const doc = try workspace_local.local(a, .{ .action = "workspace_directory", .catalog = try workspaceCatalogJson(current, a) });
+    defer doc.deinit();
+    const management = gtk.Button.newWithLabel("Import, export and archive…");
+    _ = gtk.Button.signals.clicked.connect(management, *controller_pane.Controller, openWorkspaceManagement, controller, .{});
+    const rows = workspace_local.field(doc.value, "rows");
+    if (rows != .array) return error.InvalidWorkspaceDirectory;
+    if (rows.array.items.len == 0) {
+        page.mount(gtk.Label.new("No saved Workspaces").as(gtk.Widget));
+        page.mount(management.as(gtk.Widget));
+        return;
+    }
+    const active = gtk.Box.new(.vertical, 4);
+    const archived = gtk.Box.new(.vertical, 4);
+    var has_archived = false;
+    for (rows.array.items) |row| {
+        const id = workspace_local.string(row, "id");
+        const title = try a.dupeZ(u8, workspace_local.string(row, "name"));
+        const button = gtk.Button.newWithLabel(title);
+        const click = try current.allocator.create(WorkspaceDirectoryClick);
+        errdefer current.allocator.destroy(click);
+        click.* = .{ .current = current, .controller_id = controller.controller_id, .page = page, .id = try current.allocator.dupe(u8, id) };
+        button.as(gobject.Object).setDataFull("station-workspace-settings-row", click, WorkspaceDirectoryClick.free);
+        _ = gtk.Button.signals.clicked.connect(button, *WorkspaceDirectoryClick, WorkspaceDirectoryClick.clicked, click, .{});
+        if (std.mem.eql(u8, page.workspace_selected_id orelse "", id)) page.selectWorkspace(id, button);
+        const flag = workspace_local.field(row, "archived");
+        const is_archived = flag == .bool and flag.bool;
+        if (is_archived) has_archived = true;
+        (if (is_archived) archived else active).append(button.as(gtk.Widget));
+    }
+    page.mount(active.as(gtk.Widget));
+    if (has_archived) {
+        const expander = gtk.Expander.new("Archived");
+        expander.setExpanded(@intFromBool(page.workspace_archive_expanded));
+        expander.setChild(archived.as(gtk.Widget));
+        page.workspace_archive = expander;
+        page.mount(expander.as(gtk.Widget));
+    }
+    page.mount(management.as(gtk.Widget));
+}
+
+fn reloadWorkspaceSettings(raw: *anyopaque, view: *WorkspaceSettingsPane, id: []const u8) !void {
+    const current: *State = @ptrCast(@alignCast(raw));
+    var arena = std.heap.ArenaAllocator.init(current.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const detail = try workspace_local.local(a, .{ .action = "workspace_details", .catalog = try workspaceCatalogJson(current, a), .workspace_id = id });
+    defer detail.deinit();
+    const message = workspace_local.string(detail.value, "error");
+    if (message.len != 0) { view.show(message); return; }
+    try view.load(id, detail.value);
+}
+
+fn saveWorkspaceSettings(raw: *anyopaque, view: *WorkspaceSettingsPane, id: []const u8, revision: u64, layout: @import("workspace_settings_pane.zig").Layout) !void {
+    const current: *State = @ptrCast(@alignCast(raw));
+    if (current.workspace_settings_save != null) return error.NativeTransactionInProgress;
+    var arena = std.heap.ArenaAllocator.init(current.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const saved = try workspaceCatalogJson(current, a);
+    const candidate = try workspace_local.local(a, .{ .action = "update_workspace", .catalog = saved, .workspace_id = id, .revision = revision, .layout = layout });
+    defer candidate.deinit();
+    const message = workspace_local.string(candidate.value, "error");
+    if (message.len != 0) { view.show(message); return; }
+    const bytes = try std.json.Stringify.valueAlloc(a, candidate.value, .{});
+    const before = try std.json.Stringify.valueAlloc(a, saved, .{});
+    if (std.mem.eql(u8, bytes, before)) {
+        try reloadWorkspaceSettings(current, view, id);
+        view.show("Workspace is up to date");
+        return;
+    }
+    var entries = current.workspace_settings.valueIterator();
+    const pane_id = while (entries.next()) |entry| {
+        if (entry.view == view) break entry.pane_id;
+    } else return error.NativeWorkspaceUnavailable;
+    const pending_id = try current.allocator.dupe(u8, id);
+    errdefer current.allocator.free(pending_id);
+    const pending_pane = try current.allocator.dupe(u8, pane_id);
+    errdefer current.allocator.free(pending_pane);
+    const receipt = try current.executor.manageBackendCatalog(bytes);
+    current.workspace_settings_save = .{ .revision = receipt, .workspace_id = pending_id, .pane_id = pending_pane };
+    view.setPending(true);
+}
+
+fn completeWorkspaceSettingsSave(current: *State, bytes: []const u8) void {
+    const pending = current.workspace_settings_save orelse return;
+    const result = std.json.parseFromSlice(struct { revision: u64, @"error": ?[]const u8 = null }, current.allocator, bytes, .{ .ignore_unknown_fields = true }) catch return;
+    defer result.deinit();
+    if (result.value.revision != pending.revision) return;
+    current.workspace_settings_save = null;
+    defer pending.deinit(current.allocator);
+    if (result.value.@"error" == null) {
+        if (current.executorForWorkspace(pending.workspace_id)) |executor| executor.refreshEditedWorkspace() catch |err| {
+            current.controller_model.setLocalError(@errorName(err));
+        };
+        for (current.controllers.items) |controller| {
+            if (controller.settings_page.workspace_directory_visible) controller.settings_page.send(.{ .type = "show" });
+        }
+    }
+    if (current.workspace_settings.get(pending.pane_id)) |entry| {
+        entry.view.setPending(false);
+        if (result.value.@"error") |message| { entry.view.show(message); return; }
+        reloadWorkspaceSettings(current, entry.view, pending.workspace_id) catch |err| {
+            entry.view.show(@errorName(err)); return;
+        };
+        entry.view.show("Workspace saved");
+    }
+}
+
 fn workspaceManagerProjection(context: ?*anyopaque) ?*const controller_model.Projection {
     const current: *State = @ptrCast(@alignCast(context orelse return null));
     return current.controller_model.projection();

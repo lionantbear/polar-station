@@ -602,6 +602,14 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
             guard content.kind != .localDiagnostics,content.kind != .remoteHosts,
                   let index = tabIndex(tabID), !paneID.isEmpty, content.isValid
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            if content.kind == .settingsPane {
+                tabs[index].mode = .focus
+                if let existing = tabs[index].panes.first(where: { $0.content?.kind == .settingsPane }) {
+                    selectedTabID = tabID; selectedPaneID = existing.id
+                    tabs[index].mainPaneID = existing.id
+                    break
+                }
+            }
             if content.kind == .ideaTree,
                let existing = tabs[index].panes.first(where: { $0.content?.kind == .ideaTree }) {
                 selectedTabID = tabID; selectedPaneID = existing.id

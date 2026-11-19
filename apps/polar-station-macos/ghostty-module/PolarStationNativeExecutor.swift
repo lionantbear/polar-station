@@ -249,6 +249,14 @@
                 return try await serialized { [self] in try await openConversation(content, replacing: paneID) }
             }
             guard let current = workspace else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+            if content.kind == .settingsPane,
+               let tab = current.tabs.first(where: { $0.id == current.selectedTabID }),
+               tab.mode == .focus,
+               let main = tab.mainPaneID,
+               let pane = tab.panes.first(where: { $0.id == main }),
+               pane.content?.kind == .settingsPane {
+                return
+            }
             if let paneID, let tab = current.tabs.first(where: { $0.id == current.selectedTabID }),
                tab.panes.contains(where: { $0.id == paneID && $0.content != nil }) {
                 try await performMutation(.replaceContent(paneID: paneID, content: content))
@@ -1031,6 +1039,15 @@
             candidate.revision += 1
             try candidate.validate()
             try await persistLifecycle(candidate)
+        }
+
+        func saveWorkspaceSettings(_ id: String, candidate: @escaping @MainActor () throws -> Data?) async throws {
+            try await serialized({ [self] in
+                guard let data = try candidate() else { return }
+                try await manageBackendCatalog(data)
+                if workspaceID == id { refreshTransferredWorkspace() }
+                else { catalogChanged?() }
+            }, requireWindow: false)
         }
 
         var managementCatalog: PolarStationNativeWorkspaceCatalog? { (catalogOwner ?? self).ownedCatalog }

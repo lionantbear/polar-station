@@ -938,6 +938,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case lgpText = "lgp_text", ideaTree = "idea_tree"
         case localDiagnostics = "local_diagnostics", remoteHosts = "remote_hosts"
+        case settingsPane = "settings_pane"
         case settingsText = "settings_text", toolSetup = "tool_setup", unavailable
     }
     public let kind: Kind
@@ -974,6 +975,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
         self.init(diagnosticsKind:.toolSetup)
         self.setupID=setupID;self.executionTargetID=executionTargetID
     }
+    public static let settingsPane = StationPaneContentV1(diagnosticsKind: .settingsPane)
     public static let localDiagnostics = StationPaneContentV1(diagnosticsKind: .localDiagnostics)
     public static let remoteHosts = StationPaneContentV1(diagnosticsKind: .remoteHosts)
     public var fingerprintComponents: [String] {
@@ -984,7 +986,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
         case .ideaTree: identity = [viewID]
         case .settingsText: identity = [settingsField]
         case .lgpText: identity = [targetID, nodeID, owner, thread, actor]
-        case .localDiagnostics, .remoteHosts: identity = []
+        case .localDiagnostics, .remoteHosts, .settingsPane: identity = []
         }
         return ["polar-station-pane-content-v1", kind.rawValue] + identity
     }
@@ -1018,7 +1020,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
             }
             self.init(setupID:try values.decode(String.self,forKey:.setupID),executionTargetID:try values.decode(String.self,forKey:.executionTargetID))
             guard isValid else {throw DecodingError.dataCorruptedError(forKey:.setupID,in:values,debugDescription:"Invalid setup identity")}
-        case .localDiagnostics, .remoteHosts:
+        case .localDiagnostics, .remoteHosts, .settingsPane:
             for key: CodingKeys in [.targetID, .nodeID, .owner, .thread, .actor, .viewID, .settingsField] where values.contains(key) {
                 throw DecodingError.dataCorruptedError(forKey: key, in: values, debugDescription: "Diagnostics has no terminal or conversation identity")
             }
@@ -1052,7 +1054,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(kind, forKey: .kind)
         if kind == .unavailable {try values.encode(reference,forKey:.reference);return}
-        if kind == .localDiagnostics || kind == .remoteHosts { return }
+        if kind == .localDiagnostics || kind == .remoteHosts || kind == .settingsPane { return }
         if kind == .toolSetup {
             try values.encode(setupID,forKey:.setupID);try values.encode(executionTargetID,forKey:.executionTargetID);return
         }

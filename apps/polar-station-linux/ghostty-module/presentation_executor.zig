@@ -955,6 +955,10 @@ pub const Executor = struct {
         try self.refreshTransferredWorkspace();
     }
 
+    pub fn refreshEditedWorkspace(self: *Executor) !void {
+        if (self.nativeWorkspaceSnapshot()) |snapshot| try self.applySnapshot(snapshot, .preserve_native);
+    }
+
     pub fn refreshTransferredWorkspace(self: *Executor) !void {
         if (self.nativeWorkspaceSnapshot()) |snapshot| try self.applySnapshot(snapshot, .force);
     }
@@ -1225,10 +1229,14 @@ pub const Executor = struct {
             }
         else
             try self.workspace.planOpenContent(arena.allocator(), content);
-        var previous = try self.commitNativeWorkspace(plan.snapshot, .force);
+        const workspace = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        var previous: ?native_workspace_store.OwnedCatalog = null;
         defer if (previous) |*value| value.deinit();
+        if (content.kind != .settings_pane or workspace.workspace_revision != plan.snapshot.workspace_revision) {
+            previous = try self.commitNativeWorkspace(plan.snapshot, .force);
+        }
         if (self.current) |*current| try current.focusTab(plan.tab_id, plan.pane_id);
-        if (content.kind == .local_diagnostics or content.kind == .remote_hosts or content.kind == .settings_text or content.kind == .tool_setup or content.kind == .unavailable) {
+        if (content.kind == .local_diagnostics or content.kind == .remote_hosts or content.kind == .settings_text or content.kind == .settings_pane or content.kind == .tool_setup or content.kind == .unavailable) {
             if (self.managed_window) |window| self.content_hooks.nonInput(window, plan.pane_id);
         } else {
             self.content_hooks.selected(plan.pane_id);
@@ -1577,7 +1585,7 @@ pub const Executor = struct {
             if (pane.active and pane.surface == surface) {
                 switch (pane.content_state) {
                     .display => |display| {
-                        if (display.identity.kind == .local_diagnostics or display.identity.kind == .remote_hosts or display.identity.kind == .settings_text)
+                        if (display.identity.kind == .local_diagnostics or display.identity.kind == .remote_hosts or display.identity.kind == .settings_text or display.identity.kind == .settings_pane)
                             self.content_hooks.nonInput(current.window, pane.pane_id)
                         else self.content_hooks.selected(pane.pane_id);
                     },

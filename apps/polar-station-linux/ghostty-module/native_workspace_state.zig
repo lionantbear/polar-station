@@ -123,13 +123,31 @@ pub const State = struct {
                 }
             }
         }
-        if (selected.panes.len >= 9) return error.ChatTabFull;
         const tabs = try allocator.dupe(renderpkg.Tab, source.tabs);
         const tab_index: usize = blk: {
             for (tabs, 0..) |tab, i| if (std.mem.eql(u8, tab.id, source.selected_tab_id)) break :blk i;
             return error.InvalidSelectedTab;
         };
         const tab = &tabs[tab_index];
+        if (content.kind == .settings_pane) {
+            for (tab.panes) |pane| {
+                const existing = pane.content orelse continue;
+                if (existing.kind != .settings_pane) continue;
+                if (tab.display_mode == .focus and std.mem.eql(u8, tab.focused_pane_id orelse "", pane.id))
+                    return .{ .snapshot = source, .tab_id = tab.id, .pane_id = pane.id };
+                const order = try allocator.dupe([]const u8, tab.visual_pane_ids);
+                for (order, 0..) |id, index| if (std.mem.eql(u8, id, pane.id)) {
+                    std.mem.rotate([]const u8, order[0 .. index + 1], index);
+                    break;
+                };
+                tab.visual_pane_ids = order;
+                tab.display_mode = .focus;
+                tab.focused_pane_id = pane.id;
+                return contentPlan(source, tabs, tab.id, pane.id, allocator);
+            }
+            tab.display_mode = .focus;
+        }
+        if (selected.panes.len >= 9) return error.ChatTabFull;
         const pane_id = try newNativeIdentifier(allocator);
         const panes = try allocator.alloc(renderpkg.Pane, tab.panes.len + 1);
         @memcpy(panes[0..tab.panes.len], tab.panes);
@@ -138,17 +156,22 @@ pub const State = struct {
         @memcpy(order[0..tab.visual_pane_ids.len], tab.visual_pane_ids);
         order[order.len - 1] = pane_id;
         tab.panes = panes;
+        if (content.kind == .settings_pane) std.mem.rotate([]const u8, order, order.len - 1);
         tab.visual_pane_ids = order;
         // Explicit user open chooses the new pane; media/terminal focus changes
         // elsewhere do not select a different Composer target.
         if (tab.display_mode == .focus) tab.focused_pane_id = pane_id;
+        return contentPlan(source, tabs, tab.id, pane_id, allocator);
+    }
+
+    fn contentPlan(source: renderpkg.Snapshot, tabs: []renderpkg.Tab, tab_id: []const u8, pane_id: []const u8, allocator: std.mem.Allocator) !OpenContentPlan {
         if (source.workspace_revision == std.math.maxInt(u64)) return error.InvalidWorkspaceRevision;
         var candidate = source;
         candidate.tabs = tabs;
-        candidate.selected_tab_id = tab.id;
+        candidate.selected_tab_id = tab_id;
         candidate.workspace_revision += 1;
         candidate.snapshot_fingerprint = try std.fmt.allocPrint(allocator, "native:{s}:{d}:lgp:{s}", .{ source.workspace_id, candidate.workspace_revision, pane_id });
-        return .{ .snapshot = candidate, .tab_id = tab.id, .pane_id = pane_id };
+        return .{ .snapshot = candidate, .tab_id = tab_id, .pane_id = pane_id };
     }
 
     /// Replace only a semantic Pane in the selected Tab. Keep the user's slot,
@@ -1227,6 +1250,8 @@ fn renderedHasPane(panes: []const renderpkg.Pane, pane_id: []const u8) bool {
 
 
 // Both windows share stored mappings but retain their own selected Workspace.
+
+
 
 
 

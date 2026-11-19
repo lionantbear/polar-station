@@ -2,7 +2,7 @@
 //! The Rust LGP engine owns behavior. These values only survive native layout
 //! mutations and select the processless factory; they never become tmux IDs.
 const std = @import("std");
-pub const Kind = enum { lgp_text, idea_tree, local_diagnostics, remote_hosts, settings_text, tool_setup, unavailable };
+pub const Kind = enum { lgp_text, idea_tree, local_diagnostics, remote_hosts, settings_pane, settings_text, tool_setup, unavailable };
 pub const Content = struct {
     kind: Kind = .lgp_text,
     reference: ?std.json.Value = null,
@@ -18,7 +18,7 @@ pub const Content = struct {
     execution_target_id: []const u8 = "",
     pub fn jsonStringify(self: Content, writer: anytype) !void {
         if (self.kind == .unavailable) return writer.write(.{.kind=self.kind,.reference=self.reference});
-        if (self.kind == .local_diagnostics or self.kind == .remote_hosts) return writer.write(.{ .kind = self.kind });
+        if (self.kind == .local_diagnostics or self.kind == .remote_hosts or self.kind == .settings_pane) return writer.write(.{ .kind = self.kind });
         if (self.kind == .tool_setup) return writer.write(.{ .kind=self.kind, .setup_id=self.setup_id, .execution_target_id=self.execution_target_id });
         if (self.kind == .settings_text) return writer.write(.{ .kind = self.kind, .field = self.field });
         if (self.kind == .idea_tree) return writer.write(.{ .kind = self.kind, .view_id = self.view_id });
@@ -46,7 +46,7 @@ pub const Content = struct {
             return;
         }
         if (self.field.len != 0) return error.InvalidContentIdentity;
-        if (self.kind == .local_diagnostics or self.kind == .remote_hosts) {
+        if (self.kind == .local_diagnostics or self.kind == .remote_hosts or self.kind == .settings_pane) {
             inline for (.{ "view_id", "target_id", "node_id", "owner", "thread", "actor" }) |field| {
                 if (@field(self, field).len != 0) return error.InvalidContentIdentity;
             }

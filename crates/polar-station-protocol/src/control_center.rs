@@ -267,13 +267,14 @@ pub enum StationPaneContentV1 {
     IdeaTree { view_id: String },
     LocalDiagnostics {},
     RemoteHosts {},
+    SettingsPane {},
     SettingsText { field: polar_station_settings::VoicePromptField },
     /// Restored attempts are informational; launch commands are never persisted.
     ToolSetup { setup_id: String, execution_target_id: String },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum StationPaneContentKindV1 { Unavailable, LgpText, IdeaTree, LocalDiagnostics, RemoteHosts, SettingsText, ToolSetup }
+pub enum StationPaneContentKindV1 { Unavailable, LgpText, IdeaTree, LocalDiagnostics, RemoteHosts, SettingsPane, SettingsText, ToolSetup }
 impl StationPaneContentV1 {
     pub fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
@@ -286,7 +287,7 @@ impl StationPaneContentV1 {
                 validate_stable_identifier(execution_target_id, "setup target identity")?;
             }
             Self::IdeaTree { view_id } => validate_stable_identifier(view_id, "Idea Tree view identity")?,
-            Self::LocalDiagnostics {} | Self::RemoteHosts {} | Self::SettingsText { .. } => {},
+            Self::LocalDiagnostics {} | Self::RemoteHosts {} | Self::SettingsPane {} | Self::SettingsText { .. } => {},
         }
         Ok(())
     }
@@ -309,6 +310,7 @@ impl StationPaneContentV1 {
                 hash_component(hash, setup_id);
                 hash_component(hash, execution_target_id);
             }
+            Self::SettingsPane {} => hash_component(hash, "settings_pane"),
             Self::SettingsText { field } => {
                 hash_component(hash, "settings_text");
                 hash_component(hash, match field {

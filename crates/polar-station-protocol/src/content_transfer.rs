@@ -21,6 +21,7 @@ pub enum PortableContentV1 {
         view_id: String,
         paths: Vec<String>,
     },
+    SettingsPane {},
     Settings {
         field: String,
     },
@@ -70,6 +71,7 @@ impl PortableContentV1 {
                 }
                 Ok(())
             }
+            Self::SettingsPane {} => Ok(()),
             Self::Settings { field } if matches!(field.as_str(), "cleanup" | "english") => Ok(()),
             Self::Settings { .. } => {
                 Err(ProtocolValidationError::InvalidIdentifier("Settings field"))

@@ -145,7 +145,7 @@ final class PolarStationLgpWorkspace: NSObject {
         }
         if tracing { NSLog("Station input registered pane=%@ window=%@",paneID,windowID) }
         panes[paneID] = Pane(content: content, display: display, windowID: windowID)
-        if content.kind == .localDiagnostics || content.kind == .remoteHosts || content.kind == .settingsText {
+        if content.kind == .localDiagnostics || content.kind == .remoteHosts || content.kind == .settingsText || content.kind == .settingsPane {
             if pendingSelection.remove(paneID) != nil, (window.windowController as? TerminalController)?.focusedSurface === display.view { selected(paneID) }
             return
         }
@@ -336,7 +336,7 @@ final class PolarStationLgpWorkspace: NSObject {
     func retired(_ paneID: String) {
         pendingSelection.remove(paneID)
         guard let pane = panes.removeValue(forKey: paneID) else { return }
-        if pane.content.kind == .localDiagnostics || pane.content.kind == .remoteHosts || pane.content.kind == .settingsText { return }
+        if pane.content.kind == .localDiagnostics || pane.content.kind == .remoteHosts || pane.content.kind == .settingsText || pane.content.kind == .settingsPane { return }
         pane.display.subscribeIdea(nil)
         input(["type": "close", "pane_id": paneID])
     }
@@ -366,7 +366,7 @@ final class PolarStationLgpWorkspace: NSObject {
     func selected(_ paneID: String) {
         if ProcessInfo.processInfo.environment["POLAR_STATION_TRACE_DIR"] != nil { NSLog("Station input selected pane=%@ registered=%d",paneID,panes[paneID] == nil ? 0 : 1) }
         guard let pane = panes[paneID] else { pendingSelection.insert(paneID); return }
-        if pane.content.kind == .localDiagnostics || pane.content.kind == .remoteHosts || pane.content.kind == .settingsText {
+        if pane.content.kind == .localDiagnostics || pane.content.kind == .remoteHosts || pane.content.kind == .settingsText || pane.content.kind == .settingsPane {
             composers[pane.windowID]?.commitDraft()
             if let window = pane.display.view.window { composers[pane.windowID]?.attach(to: window) }
             input(["type":"select_non_input", "window_id":pane.windowID, "pane_id":paneID])
@@ -379,7 +379,7 @@ final class PolarStationLgpWorkspace: NSObject {
         refreshRenderGuards()
     }
     func activateComposer(_ paneID:String) {
-        guard let pane = panes[paneID], pane.content.kind != .localDiagnostics, pane.content.kind != .remoteHosts, pane.content.kind != .settingsText else { return }
+        guard let pane = panes[paneID], pane.content.kind != .localDiagnostics, pane.content.kind != .remoteHosts, pane.content.kind != .settingsText, pane.content.kind != .settingsPane else { return }
         input(["type":"activate_composer","pane_id":paneID])
     }
     func failed(_ paneID: String, _ error: String) {

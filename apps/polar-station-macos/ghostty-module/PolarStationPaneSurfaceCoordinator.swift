@@ -844,7 +844,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         if let window = event.window, let root = window.contentView,
            let hit = root.hitTest(root.convert(event.locationInWindow, from: nil)) {
             for (id, pane) in displayPanes where pane.display.view.window === window {
-                guard pane.content.kind == .localDiagnostics || pane.content.kind == .remoteHosts || pane.content.kind == .settingsText else { continue }
+                guard pane.content.kind == .localDiagnostics || pane.content.kind == .remoteHosts || pane.content.kind == .settingsText || pane.content.kind == .settingsPane else { continue }
                 guard hit === pane.display.view || hit.isDescendant(of: pane.display.view) else { continue }
                 focusPane(nil)
                 displaySelected?(id)

@@ -18,6 +18,11 @@ pub const Page = struct {
     on_open: ?*const fn (?*anyopaque, *Page, std.json.Value) void = null,
     lease: ?auxiliary.ContentLease = null,
     can_back: bool = false,
+    workspace_directory_visible: bool = false,
+    workspace_archive: ?*gtk.Expander = null,
+    workspace_archive_expanded: bool = false,
+    workspace_selected_id: ?[]u8 = null,
+    workspace_selected_button: ?*gtk.Button = null,
     embedded_host: auxiliary.EmbeddedHost = .{ .close = editorClosed },
     clicks: std.ArrayListUnmanaged(*Click) = .empty,
     const Click = struct { page: *Page, route: []u8, navigate: bool = false };
@@ -54,10 +59,14 @@ pub const Page = struct {
     }
     pub fn deinit(self: *Page) void {
         self.clear();
+        if (self.workspace_selected_id) |id| self.allocator.free(id);
         c.polar_station_settings_navigation_free(self.handle);
         self.allocator.destroy(self);
     }
     fn clear(self: *Page) void {
+        if (self.workspace_archive) |expander| self.workspace_archive_expanded = expander.getExpanded() != 0;
+        self.workspace_archive = null;
+
         if (self.lease) |lease| {
             self.body.remove(lease.widget);
             lease.restore();
@@ -71,6 +80,15 @@ pub const Page = struct {
         self.clicks.deinit(self.allocator);
         self.clicks = .empty;
     }
+    pub fn selectWorkspace(self: *Page, id: []const u8, button: *gtk.Button) void {
+        const owned = self.allocator.dupe(u8, id) catch return;
+        if (self.workspace_selected_id) |old| self.allocator.free(old);
+        self.workspace_selected_id = owned;
+        if (self.workspace_selected_button) |old| old.as(gtk.Widget).removeCssClass("suggested-action");
+        self.workspace_selected_button = button;
+        button.as(gtk.Widget).addCssClass("suggested-action");
+    }
+
     pub fn mount(self: *Page, widget: *gtk.Widget) void {
         self.body.append(widget);
     }
@@ -114,7 +132,9 @@ pub const Page = struct {
         };
         if (route != .object) return;
         const page = route.object.get("page") orelse return;
+        self.workspace_directory_visible = page == .string and std.mem.eql(u8, page.string, "workspaces");
         self.content_scroll.setPolicy(.never, if (if (value.object.get("is_directory")) |directory| directory == .bool and directory.bool else false) .automatic else .never);
+        if (self.workspace_directory_visible) self.content_scroll.setPolicy(.never, .automatic);
         if (page == .string and std.mem.eql(u8, page.string, "setup")) {
             if (value.object.get("scopes")) |scopes| if (scopes == .array) {
                 const bar = gtk.Box.new(.horizontal, 4);

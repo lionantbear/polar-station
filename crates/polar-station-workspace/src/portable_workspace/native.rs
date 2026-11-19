@@ -1,5 +1,6 @@
 //! Local-only native file adapters. No native structure is sent to a Host.
 use super::*;
+mod settings;
 use polar_station_protocol::{PaneContentBindingV1, PolarConnectionV1, PortableHostV1};
 use serde_json::{json, Value};
 
@@ -40,6 +41,9 @@ struct SavedPane {
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Request {
+    WorkspaceDirectory { catalog: Value },
+    WorkspaceDetails { catalog: Value, workspace_id: String },
+    UpdateWorkspace { catalog: Value, workspace_id: String, revision: u64, layout: settings::Layout },
     PrepareCatalog {catalog:Value},
     ProtectCatalog {catalog:Value,bundle:HostExportBundleV1,sources:Vec<TerminalSourceV1>},
     ResolveCatalog {catalog:Value,associations:Vec<HostImportAssociationV1>,#[serde(default)] polar_instances:Vec<PolarConnectionV1>},
@@ -84,6 +88,9 @@ fn native(value: Value) -> Result<SavedWorkspace, String> {
 }
 pub fn dispatch(request: Request) -> Result<Value, String> {
     match request {
+        Request::WorkspaceDirectory { catalog } => settings::directory(&catalog),
+        Request::WorkspaceDetails { catalog, workspace_id } => settings::detail(&catalog, &workspace_id),
+        Request::UpdateWorkspace { catalog, workspace_id, revision, layout } => settings::update(catalog, &workspace_id, revision, layout),
         Request::PrepareCatalog {catalog}=>{
             let workspaces=catalog.get("workspaces").and_then(Value::as_array).ok_or("Missing Workspace catalog")?;
             let mut bindings=Vec::new();let mut targets=BTreeSet::new();let mut sources=BTreeSet::new();let mut references=Vec::new();let mut panes=0;
@@ -297,6 +304,7 @@ pub fn dispatch(request: Request) -> Result<Value, String> {
                             view_id: view_id.clone(),
                             paths: idea_sources.get(&view_id).cloned().unwrap_or_default(),
                         },
+                        Some(StationPaneContentV1::SettingsPane {}) => Content::SettingsPane {},
                         Some(StationPaneContentV1::SettingsText { field }) => Content::Settings {
                             field: serde_json::to_value(field)
                                 .map_err(|e| e.to_string())?
@@ -473,6 +481,9 @@ pub fn dispatch(request: Request) -> Result<Value, String> {
                                 })
                             };
                         }
+                        Content::SettingsPane {} => {
+                            row["content"] = json!(StationPaneContentV1::SettingsPane {});
+                        },
                         Content::Settings { field } => {
                             row["content"] = json!({"kind":"settings_text","field":field})
                         }

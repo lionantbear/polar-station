@@ -47,6 +47,136 @@
         let completion: (@MainActor (String?) -> Void)?
     }
 
+    private struct WorkspaceDirectoryRow: Decodable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let archived: Bool
+    }
+
+    private struct WorkspaceSettingsLayout: Codable, Equatable {
+        struct Tab: Codable, Equatable, Identifiable {
+            let id: String
+            var title: String
+            var pane_ids: [String]
+        }
+        var name: String
+        var tabs: [Tab]
+    }
+
+    private struct WorkspaceSettingsDetail: Decodable {
+        struct Workspace: Decodable {
+            struct Tab: Decodable {
+                struct Pane: Decodable {
+                    let id: String
+                    let execution_target_id: String?
+                    let tmux_session_id: String?
+                    let content: StationPaneContentV1?
+                    let source: TerminalSourceV1?
+                }
+                let panes: [Pane]
+                let mode: String
+                let main_pane_id: String?
+                let split_ratios: [Double]?
+                let id: String
+            }
+            let tabs: [Tab]
+            let revision: UInt64
+        }
+        let revision: UInt64
+        let workspace: Workspace
+        let layout: WorkspaceSettingsLayout
+    }
+
+    private struct WorkspaceSettingsContent: View {
+        @ObservedObject var context: PolarStationWindowContext
+        let paneID: String
+        let load: (String) throws -> WorkspaceSettingsDetail
+        let save: (String, UInt64, WorkspaceSettingsLayout) async throws -> WorkspaceSettingsDetail
+        @State private var detail: WorkspaceSettingsDetail?
+        @State private var draft: WorkspaceSettingsLayout?
+        @State private var message: String?
+        @State private var saving = false
+
+        private var id: String? { context.settingsWorkspaceByPane[paneID] }
+        var body: some View {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(id == nil ? "Settings" : "Workspace").font(.title2)
+                    if let layout = draft, let detail {
+                        TextField("Workspace name", text: Binding(get: { draft?.name ?? "" }, set: { draft?.name = $0 }))
+                        Text("Tabs & Panes").font(.headline)
+                        ForEach(Array(layout.tabs.enumerated()), id: \.element.id) { index, tab in
+                            GroupBox(detail.workspace.tabs.first { candidate in
+                                candidate.id == tab.id
+                            }?.mode.capitalized ?? "Tab") {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    TextField("Tab title", text: Binding(get: { draft?.tabs[index].title ?? "" }, set: { draft?.tabs[index].title = $0 }))
+                                    VStack(alignment: .leading) {
+                                        Button("Move Tab up") { draft?.tabs.swapAt(index, index - 1) }.disabled(index == 0)
+                                        Button("Move Tab down") { draft?.tabs.swapAt(index, index + 1) }.disabled(index + 1 == layout.tabs.count)
+                                    }
+                                    ForEach(Array(tab.pane_ids.enumerated()), id: \.element) { position, pane in
+                                        let binding = detail.workspace.tabs.flatMap(\.panes).first { $0.id == pane }
+                                        let saved = detail.workspace.tabs.first { $0.id == tab.id }
+                                        Text([saved?.main_pane_id == pane ? "MAIN" : nil,
+                                              binding?.source?.host.target_id ?? binding?.execution_target_id,
+                                              binding?.tmux_session_id, binding?.content?.kind.rawValue, pane]
+                                            .compactMap { $0 }.joined(separator: " · ")).textSelection(.enabled)
+                                        VStack(alignment: .leading) {
+                                            Button("Move Pane up") { draft?.tabs[index].pane_ids.swapAt(position, position - 1) }.disabled(position == 0)
+                                            Button("Move Pane down") { draft?.tabs[index].pane_ids.swapAt(position, position + 1) }.disabled(position + 1 == tab.pane_ids.count)
+                                            Menu("Move to Tab") {
+                                                ForEach(layout.tabs.indices.filter { $0 != index && layout.tabs[$0].pane_ids.count < 9 }, id: \.self) { target in
+                                                    Button(layout.tabs[target].title) {
+                                                        draft?.tabs[index].pane_ids.remove(at: position)
+                                                        draft?.tabs[target].pane_ids.append(pane)
+                                                    }
+                                                }
+                                            }.disabled(layout.tabs.count < 2)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Button("Save") { commit() }.disabled(saving || detail.layout == layout)
+                    }
+                    if id != nil { Button("Reload", action: reload).disabled(saving) }
+                    if let message { Text(message).foregroundStyle(.secondary) }
+                    if id == nil { Text("Choose a Workspace in Control Center Settings.") }
+                }.disabled(saving).padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            }.task(id: id) { reload() }
+        }
+
+        private func reload() {
+            message = nil
+            detail = nil
+            draft = nil
+            guard let id else { return }
+            do {
+                let loaded = try load(id)
+                detail = loaded
+                draft = loaded.layout
+            } catch { message = error.localizedDescription }
+        }
+
+        private func commit() {
+            guard let id, let detail, let draft else { return }
+            saving = true
+            Task {
+                defer { saving = false }
+                do {
+                    let saved = try await save(id, detail.revision, draft)
+                    guard self.id == id else { return }
+                    self.detail = saved
+                    self.draft = saved.layout
+                    message = "Workspace saved"
+                } catch {
+                    if self.id == id { message = error.localizedDescription }
+                }
+            }
+        }
+    }
+
     @MainActor
     private final class PolarStationWindowContext: ObservableObject {
         let executor: PolarStationNativeExecutor
@@ -67,6 +197,9 @@
         }
         let presentation = ControlCenterPresentationState()
         let applicationShortcuts = ApplicationShortcutCommandState()
+        @Published var settingsWorkspaceByPane: [String: String] = [:]
+        @Published var workspaceDirectory: [WorkspaceDirectoryRow] = []
+        @Published var selectedWorkspaceSettingsID: String?
         @Published var layout: NativeWorkspaceLayoutView?
         var paneHost: NSHostingView<PolarStationPaneRoot>?
         var shortcutEditorHost: NSHostingView<PolarStationSessionShortcutRoot>?
@@ -132,6 +265,19 @@
             .accessibilityIdentifier("polar-station-control-center")
         }
 
+        private func workspaceSettingsRow(_ row: WorkspaceDirectoryRow) -> some View {
+            Button {
+                PolarStationRuntime.shared.selectWorkspaceSettings(row.id, in: windowContext)
+            } label: {
+                HStack {
+                    Text(row.name)
+                    if row.id == windowContext.selectedWorkspaceSettingsID {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+
         @ViewBuilder private func settingsPage(_ route:SettingsNavigation.Route) -> some View {
             switch route.page {
             case "station_backend":
@@ -140,10 +286,24 @@
                     windowContext.settingsNavigation.completeBack()
                 }
             case "workspaces":
-                Color.clear.onAppear {
-                    PolarStationRuntime.shared.openWorkspaceManager(in:windowContext)
-                    windowContext.settingsNavigation.completeBack()
-                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(windowContext.workspaceDirectory.filter { !$0.archived }) { row in
+                            workspaceSettingsRow(row)
+                        }
+                        if windowContext.workspaceDirectory.contains(where: { $0.archived }) {
+                            DisclosureGroup("Archived") {
+                                ForEach(windowContext.workspaceDirectory.filter { $0.archived }) { row in
+                                    workspaceSettingsRow(row)
+                                }
+                            }
+                        }
+                        if windowContext.workspaceDirectory.isEmpty { Text("No saved Workspaces") }
+                        Button("Import, export and archive…") {
+                            PolarStationRuntime.shared.openWorkspaceManager(in: windowContext)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                }.onAppear { PolarStationRuntime.shared.refreshWorkspaceSettingsDirectory() }
             case "setup": PolarStationDiagnosticsRoot(model:model,remote:route.remote ?? false,context:windowContext)
             case "connections":
                 if let projection = model.projection {
@@ -617,6 +777,58 @@
                 self.refreshWindowLayouts()
             }
             backendWindow.present(current:model.selectedBackendSocket?.path ?? PolarTmuxSocketPath.resolve().path)
+        }
+
+        private func workspaceSettings(_ request: [String: Any]) throws -> [String: Any] {
+            guard let catalog = primaryWindow.executor.managementCatalog,
+                  let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(catalog)) as? [String: Any]
+            else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+            var input = request
+            input["catalog"] = object
+            return try WorkspaceManagerWindow.transfer(input)
+        }
+
+        fileprivate func refreshWorkspaceSettingsDirectory() {
+            guard let result = try? workspaceSettings(["action": "workspace_directory"]),
+                  let rows = result["rows"],
+                  let data = try? JSONSerialization.data(withJSONObject: rows),
+                  let directory = try? JSONDecoder().decode([WorkspaceDirectoryRow].self, from: data)
+            else { return }
+            for context in allWindows where context.workspaceDirectory != directory {
+                context.workspaceDirectory = directory
+            }
+        }
+
+        fileprivate func selectWorkspaceSettings(_ id: String, in context: PolarStationWindowContext) {
+            context.executor.enqueueMutation?({ [weak context] in
+                guard let context else { return }
+                let tab = context.executor.layoutView()?.selectedTabID
+                try await context.executor.openConversation(.settingsPane)
+                guard let pane = context.executor.layoutView()?.tabs.first(where: { $0.tabID == tab })?
+                    .panes.first(where: { $0.content?.kind == .settingsPane })
+                else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                context.settingsWorkspaceByPane[pane.paneID] = id
+                context.selectedWorkspaceSettingsID = id
+            }, true, { [weak self] error in if let error { self?.model.presentLocalError(error) } })
+        }
+
+        private func workspaceSettingsDetail(_ id: String) throws -> WorkspaceSettingsDetail {
+            let value = try workspaceSettings(["action": "workspace_details", "workspace_id": id])
+            return try JSONDecoder().decode(WorkspaceSettingsDetail.self, from: JSONSerialization.data(withJSONObject: value))
+        }
+
+        private func saveWorkspaceSettings(_ id: String, revision: UInt64, layout: WorkspaceSettingsLayout) async throws -> WorkspaceSettingsDetail {
+            let executor = context(workspaceID: id)?.executor ?? primaryWindow.executor
+            try await executor.saveWorkspaceSettings(id) { [self] in
+                let input = try JSONSerialization.jsonObject(with: JSONEncoder().encode(layout))
+                let candidate = try workspaceSettings(["action":"update_workspace", "workspace_id":id, "revision":revision, "layout":input])
+                let proposed = (candidate["workspaces"] as? [[String: Any]])?.first { ($0["id"] as? String) == id }
+                let current = try workspaceSettingsDetail(id)
+                guard let proposed,
+                      (proposed["revision"] as? UInt64) != current.workspace.revision else { return nil }
+                return try JSONSerialization.data(withJSONObject: candidate)
+            }
+            return try workspaceSettingsDetail(id)
         }
 
         fileprivate func openWorkspaceManager(in origin: PolarStationWindowContext) {
@@ -1567,6 +1779,21 @@
                     display.mountNativeContent(text)
                     return
                 }
+                if let self, let context, content.kind == .settingsPane {
+                    display.mountNativeContent(NSHostingView(rootView: WorkspaceSettingsContent(
+                        context: context, paneID: id,
+                        load: { [weak self] id in
+                            guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                            return try self.workspaceSettingsDetail(id)
+                        },
+                        save: { [weak self] id, revision, layout in
+                            guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                            return try await self.saveWorkspaceSettings(id, revision: revision, layout: layout)
+                        }
+                    ).stationTheme()))
+                    context.executor.reconcileInputSelection()
+                    return
+                }
                 if let self,content.kind == .settingsText {
                     self.settingsTextPaneID=id
                     self.settingsTextBuffer.setPresentationWindow(display.view.window ?? window)
@@ -1615,6 +1842,7 @@
                 guard let self, let context else { return }
                 restoreWorkspaceWindowsIfReady()
                 refreshWindowLayouts()
+                refreshWorkspaceSettingsDirectory()
                 context.executor.refreshNumberBadges()
                 for window in allWindows { window.executor.showWorkspaceChooser() }
             }

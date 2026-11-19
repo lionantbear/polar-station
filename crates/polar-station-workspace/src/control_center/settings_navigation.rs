@@ -92,7 +92,7 @@ impl SettingsNavigation {
                 SettingsRoute::Intelligence => "Session intelligence",
                 SettingsRoute::Appearance => "Appearance",
                 SettingsRoute::Workspace => "Workspace",
-                SettingsRoute::Workspaces => "Workspaces",
+                SettingsRoute::Workspaces => "Workspace",
                 SettingsRoute::StationBackend => "Station Backend",
                 SettingsRoute::Voice { .. } => "Voice",
                 SettingsRoute::Connections { .. } => "Agents & connections",
@@ -116,7 +116,7 @@ impl SettingsNavigation {
                 _ => vec![
                 entry("Setup & diagnostics", "This computer and remote hosts", "checkmark.shield", SettingsRoute::Setup { remote: false }),
                 entry("Appearance & Workspace", "Theme, text and layout", "paintbrush", SettingsRoute::AppearanceGroup),
-                entry("Workspaces", "Saved workspaces, details and archive", "rectangle.3.group", SettingsRoute::Workspaces),
+                entry("Workspace", "Saved Workspaces and layout", "rectangle.3.group", SettingsRoute::Workspaces),
                 entry("Station Backend", "Local compact or full Polar; applies to every Workspace", "server.rack", SettingsRoute::StationBackend),
                 entry("Voice", "Dictate, cleanup and terminology", "mic", SettingsRoute::Voice { section: None }),
                 entry("Agents & connections", "Accounts, endpoints and machines", "network", SettingsRoute::Agents),
