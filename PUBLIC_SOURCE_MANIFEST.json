@@ -2116,7 +2116,7 @@
     "vendor/grammers-tl-gen/src/structs.rs": "100644"
   },
   "files": {
-    ".github/workflows/release.yml": "7c151c1f587930b093e355ab2fa562141299437510792a1796888c9ab4b6eedb",
+    ".github/workflows/release.yml": "4262db4a86a9cf51b85e4daecbfbcc25f27a3d868dd008b3377e87f26111080e",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_LINUX.md": "d4113d34b18aee38b71468a70365660904eafb8e9dc91341770d36c7546a4a0f",
     "BUILD_MACOS.md": "42aa0436e021a94fcd163d0956ababa3924144ffef3c5513834434a8176da330",
@@ -4149,11 +4149,6 @@
   "symlinks": {
     "apps/polar-ideacave-godot/addons/polar_graphics": "../../../crates/polar-graphics-godot/godot/addons/polar_graphics"
   },
-  "syntax_cleanup": {
-    "changed_files": 288,
-    "status": "passed"
-  },
-  "third_party_license_audit": "pending",
   "sync_managed_paths": [
     ".gitignore",
     "BUILD_LINUX.md",
@@ -6169,5 +6164,10 @@
     "vendor/grammers-tl-gen/src/metadata.rs",
     "vendor/grammers-tl-gen/src/rustifier.rs",
     "vendor/grammers-tl-gen/src/structs.rs"
-  ]
+  ],
+  "syntax_cleanup": {
+    "changed_files": 288,
+    "status": "passed"
+  },
+  "third_party_license_audit": "pending"
 }

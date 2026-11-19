@@ -1,5 +1,5 @@
 name: Polar Station release
-run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || '059fef6c03183a47f34b48ce806cebef9e634802facbfe71670ae9a0c33112c3' }}
+run-name: ${{ startsWith(github.ref_name, 'station-operator-') && 'operator' || inputs.phase || 'build' }} ${{ inputs.tools_sha256 || 'f034fa99f31ce4b34cff4f276eba61eeb9514d85d6437449f5cd5e80701a720b' }}
 on:
   push:
     tags: ['station-build-*', 'station-operator-*']
@@ -61,6 +61,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       CARGO_BUILD_JOBS: '3'
+      SCCACHE_DIR: ${{ runner.temp }}/station-sccache
       POLAR_GRAPHICS_JOBS: '3'
       PYTHONDONTWRITEBYTECODE: '1'
     outputs:
@@ -74,7 +75,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ASSET: ${{ inputs.tools_asset }}
-          TOOL_SHA: ${{ inputs.tools_sha256 || '059fef6c03183a47f34b48ce806cebef9e634802facbfe71670ae9a0c33112c3' }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || 'f034fa99f31ce4b34cff4f276eba61eeb9514d85d6437449f5cd5e80701a720b' }}
         run: |
           set -euo pipefail
           export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
@@ -112,6 +113,7 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: . -> target/rust
+          cache-directories: ${{ runner.temp }}/station-sccache
           shared-key: station-macos-arm64-${{ steps.godot-key.outputs.rust_native_key }}
           env-vars: DEVELOPER_DIR MACOSX_DEPLOYMENT_TARGET SDKROOT
           cache-bin: 'false'
@@ -119,11 +121,29 @@ jobs:
           cache-all-crates: 'false'
           cache-on-failure: 'true'
           save-if: ${{ github.ref == 'refs/heads/release/macos-current' }}
+      - name: Restore Zig compilation cache
+        if: github.event_name == 'push' || inputs.phase == 'build'
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        id: zig-cache
+        with:
+          key: station-zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ steps.godot-key.outputs.rust_native_key }}-${{ github.sha }}
+          restore-keys: station-zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ steps.godot-key.outputs.rust_native_key }}-
+          path: |
+            ~/.cache/zig
+            target/polar-station/native/macos/ghostty/.zig-cache
       - name: Build through public entry and collect private observations
         if: github.event_name == 'push' || inputs.phase == 'build'
         env:
           POLAR_STATION_RUST_CACHE_EXACT_MATCH: ${{ steps.rust-cache.outputs.cache-hit }}
         run: python3 "$POLAR_STATION_RELEASE_TOOLS/release_ci.py" build
+      - name: Save Zig compilation cache
+        if: (github.event_name == 'push' || inputs.phase == 'build') && github.ref == 'refs/heads/release/macos-current' && steps.zig-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          key: station-zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ steps.godot-key.outputs.rust_native_key }}-${{ github.sha }}
+          path: |
+            ~/.cache/zig
+            target/polar-station/native/macos/ghostty/.zig-cache
       - name: Check application and package actual inputs
         if: github.event_name == 'push' || inputs.phase == 'build'
         run: bash "$POLAR_STATION_RELEASE_TOOLS/collect.sh"
@@ -209,7 +229,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOOL_ASSET: ${{ inputs.tools_asset }}
-          TOOL_SHA: ${{ inputs.tools_sha256 || '059fef6c03183a47f34b48ce806cebef9e634802facbfe71670ae9a0c33112c3' }}
+          TOOL_SHA: ${{ inputs.tools_sha256 || 'f034fa99f31ce4b34cff4f276eba61eeb9514d85d6437449f5cd5e80701a720b' }}
         run: |
           set -euo pipefail
           export POLAR_STATION_RELEASE_TOOLS="$RUNNER_TEMP/station-release-tools"
