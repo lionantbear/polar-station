@@ -1,6 +1,11 @@
 //! Projection of native selection; observing a Pane never grants keyboard focus.
 use super::*;
 impl Engine {
+    /// Read-only context for the shared Station input coordinator.
+    pub fn selected_input_pane(&self, window: &str) -> Option<&str> {
+        self.selected.get(window).map(String::as_str)
+    }
+
     pub(super) fn observe_composer_selection(&mut self, pane: &str, out: &mut Vec<Effect>) -> Result<(), String> {
         let window = self.views.get(pane).map(|v|v.window.clone())
             .or_else(||self.ideas.get(pane).map(|v|v.window.clone())).ok_or("unknown composer Pane")?;

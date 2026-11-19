@@ -9,10 +9,12 @@ const model = @import("control_center/model.zig");
 const intent = @import("control_center/intent.zig");
 const codex_wire = @import("codex.zig");
 const codex_page_module = @import("codex_connections_page.zig");
+const host_transfer_module = @import("host_transfer_window.zig");
 const Changed = *const fn (?*anyopaque, intent.ConnectionUpdate) void;
 const Row = struct { owner: *Panel, polar: bool, index: usize };
 
 pub const Panel = struct {
+    host_transfer: ?*host_transfer_module.Review = null,
     list_inputs: @import("application_refresh.zig").RenderedInputs = .{},
     engine: ?*c.ConnectionsHandle = null,
     operation_token: ?u64 = null,
@@ -82,6 +84,7 @@ pub const Panel = struct {
         return .{ .engine = c.polar_station_connections_new(), .allocator = allocator, .app = app, .changed = changed, .context = context };
     }
     pub fn deinit(self: *Panel) void {
+        if(self.host_transfer)|review|review.deinit();
         self.list_inputs.deinit(self.allocator);
 
         if(self.codex_owner)|v|self.allocator.free(v);
@@ -165,6 +168,11 @@ pub const Panel = struct {
         _=root.as(@import("gobject").Object).refSink();self.content=root;
         root.as(gtk.Widget).setMarginTop(18); root.as(gtk.Widget).setMarginBottom(18);
         root.as(gtk.Widget).setMarginStart(18); root.as(gtk.Widget).setMarginEnd(18);
+        const transfer_buttons=gtk.Box.new(.horizontal,8);root.append(transfer_buttons.as(gtk.Widget));
+        const import_hosts=gtk.Button.newWithLabel("Import Hosts…");transfer_buttons.append(import_hosts.as(gtk.Widget));
+        const export_hosts=gtk.Button.newWithLabel("Export Hosts…");transfer_buttons.append(export_hosts.as(gtk.Widget));
+        _=gtk.Button.signals.clicked.connect(import_hosts,*Panel,importHostsClicked,self,.{});
+        _=gtk.Button.signals.clicked.connect(export_hosts,*Panel,exportHostsClicked,self,.{});
         const body = gtk.Box.new(.vertical, 18); self.body = body; body.as(gtk.Widget).setVexpand(1); root.append(body.as(gtk.Widget));
         const left = gtk.Box.new(.vertical, 8); self.navigation = left; body.append(left.as(gtk.Widget));
         self.search = gtk.Entry.new(); self.search.?.setPlaceholderText("Search machines"); left.append(self.search.?.as(gtk.Widget));
@@ -264,6 +272,7 @@ pub const Panel = struct {
         send(self.codex_context,payload) catch {self.codexDisconnected();};
     }
     pub fn requestFailed(self: *Panel, id: []const u8, message: []const u8) bool {
+        if(self.host_transfer)|review|if(review.requestFailed(id,message))return true;
         const pending = self.codex_request orelse return false;
         if (!std.mem.eql(u8, pending, id)) return false;
         self.allocator.free(pending);
@@ -290,6 +299,33 @@ pub const Panel = struct {
             const message=response.result.code orelse "App-server settings request failed. Your draft is retained.";
             if(token)|t|self.interact(.{.type="complete",.token=t,.@"error"=message}) else self.text(self.status.?,message);
         }
+    }
+    pub fn transfer(self:*Panel) ?*host_transfer_module.Review {
+        if(self.host_transfer==null)self.host_transfer=host_transfer_module.Review.create(self.allocator,self,transferInput) catch return null;
+        const review=self.host_transfer.?;review.send=self.codex_send;review.send_context=self.codex_context;
+        review.parent=if(self.content)|root|auxiliary.contentParent(self.app,root.as(gtk.Widget)) else null;
+        return review;
+    }
+    pub fn importHostsBundle(self:*Panel,bytes:[]const u8) void {
+        if(self.pending or self.editing)return;
+        if(self.host_transfer==null)_=self.transfer() orelse return;
+        const parsed=std.json.parseFromSlice(std.json.Value,self.allocator,bytes,.{}) catch return;defer parsed.deinit();
+        self.interact(.{.type="import_hosts",.bundle=parsed.value});
+    }
+    fn importHostsClicked(_: *gtk.Button,self:*Panel) callconv(.c) void {
+        if(self.pending or self.editing)return;
+        if(self.transfer())|review|review.openImport();
+    }
+    fn exportHostsClicked(_: *gtk.Button,self:*Panel) callconv(.c) void {
+        if(self.pending or self.editing)return;
+        const facts=self.latest orelse return;
+        if(self.transfer())|review|review.openExport(facts.value);
+    }
+    fn transferInput(context:?*anyopaque,bytes:[]const u8) void {
+        const self:*Panel=@ptrCast(@alignCast(context orelse return));self.interactBytes(bytes);
+    }
+    pub fn receiveHostTransfer(self:*Panel,payload:[]const u8) bool {
+        if(self.host_transfer)|review|return review.receive(payload);return false;
     }
     fn codexInput(context:?*anyopaque,bytes:[]const u8) void {
         const self:*Panel=@ptrCast(@alignCast(context.?));
@@ -569,16 +605,16 @@ pub const Panel = struct {
         const response = c.polar_station_connections_dispatch(engine, bytes.ptr, bytes.len) orelse return;
         defer c.polar_station_desktop_string_free(response);
         const Change = struct { type: []const u8, machine: ?model.MachineConnection = null, polar: ?model.PolarConnection = null };
-        const Effect = struct { type: []const u8, token: ?u64 = null, expected_revision: std.json.Value = .null, settings: ?codex_wire.Settings = null, change: ?Change = null };
+        const Effect = struct { request: std.json.Value = .null, bundle: std.json.Value = .null, type: []const u8, token: ?u64 = null, expected_revision: std.json.Value = .null, settings: ?codex_wire.Settings = null, change: ?Change = null };
         const View = struct { codex_settings: ?codex_wire.Settings = null, codex_draft: ?codex_wire.Endpoint = null, codex_enabled: bool = false, pending: bool, editing: bool, confirm_discard: bool, message: ?[]const u8 = null, confirmation: []const u8, save_label: []const u8, discard_label: []const u8, keep_label: []const u8 };
         const Output = struct { view: ?View = null, effects: []const Effect = &.{}, @"error": ?[]const u8 = null };
         const parsed = std.json.parseFromSlice(Output, self.allocator, std.mem.span(response), .{ .ignore_unknown_fields = true }) catch return;
         defer parsed.deinit();
-        if (parsed.value.@"error") |message| { if (self.status) |status| self.text(status, message); return; }
+        if (parsed.value.@"error") |message| { if (self.status) |status| self.text(status, message); if(self.host_transfer)|review|review.problem(message); return; }
         const view = parsed.value.view orelse return;
         // Snapshot arrival never mutates native input widgets or their IME selection.
         self.editing = view.editing;
-        if(self.codex_page)self.pending=view.pending;
+        self.pending=view.pending;
         if(self.codex_view)|page|page.update(view.codex_settings,view.codex_draft,view.codex_enabled,view.pending or self.codex_request!=null);
         if(self.codex_page)self.renderMode();
         if (view.message) |message| { if (self.status) |status| self.text(status, message); }
@@ -593,7 +629,13 @@ pub const Panel = struct {
             _ = adw.MessageDialog.signals.response.connect(dialog, *Panel, leaveResponse, self, .{});
             self.leave_dialog = dialog; dialog.as(gtk.Window).present();
         }
+        if(self.host_transfer)|review|{
+            const raw=std.json.parseFromSlice(std.json.Value,self.allocator,std.mem.span(response),.{}) catch return;defer raw.deinit();
+            if(raw.value==.object)if(raw.value.object.get("view"))|view_value|review.update(view_value);
+        }
         for (parsed.value.effects) |effect| {
+            if(std.mem.eql(u8,effect.type,"host_transfer")){if(self.transfer())|review|review.request(effect.token orelse continue,effect.request);}
+            if(std.mem.eql(u8,effect.type,"write_host_export")){if(self.transfer())|review|review.writeExport(effect.bundle);}
             if (std.mem.eql(u8, effect.type, "close")) { if (self.content) |root| auxiliary.closeContent(root.as(gtk.Widget)); }
             if(std.mem.eql(u8,effect.type,"save_codex")){
                 const settings=effect.settings orelse continue;

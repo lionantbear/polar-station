@@ -2,8 +2,8 @@
 //! planning. The durable-in-flight UI lifecycle remains in FileOpenFlow.
 use super::*;
 use polar_station_resources::{
-    FileOpenFailure, FileOpenResolution, FileOpenStage, FileReferenceInput, ResolvedFile,
-    ResolvedFileSource, SourcePath,
+    FileOpenContext, FileOpenFailure, FileOpenResolution, FileOpenStage, FileReferenceInput,
+    ResolvedFile, ResolvedFileSource, SourcePath,
 };
 
 impl ResourceService {
@@ -12,17 +12,11 @@ impl ResourceService {
         request: ResourcesRequestEnvelopeV1,
         source: Result<ResolvedFileSource, FileOpenFailure>,
         input: FileReferenceInput,
-        #[cfg(feature = "codex-control")] recovery: Option<(
-            &super::super::codex_control::CodexControlService,
-            polar_station_workspace::SessionKey,
-        )>,
     ) -> ResourcesResponseEnvelopeV1 {
         let resolution = self
             .resolve_open_operations(
                 source,
                 input,
-                #[cfg(feature = "codex-control")]
-                recovery,
             )
             .await
             .unwrap_or_else(|failure| FileOpenResolution::Failure { failure });
@@ -33,89 +27,33 @@ impl ResourceService {
         &self,
         source: Result<ResolvedFileSource, FileOpenFailure>,
         input: FileReferenceInput,
-        #[cfg(feature = "codex-control")] recovery: Option<(
-            &super::super::codex_control::CodexControlService,
-            polar_station_workspace::SessionKey,
-        )>,
     ) -> Result<FileOpenResolution, FileOpenFailure> {
-        let source = source?;
-        self.check_file_source(&source)?;
-        let parsed = polar_station_resources::parse_file_input(&input, source.flavor)?;
-        let candidates = resolve_references(&source, parsed.clone())?;
-        let mut files = self
-            .existing_candidate_files(&source.origin.execution_target_id, &candidates)
-            .await
-            .map_err(|e| {
-                FileOpenFailure::new(FileOpenStage::Verify, "source_file_check_failed", e)
-            })?;
-        #[cfg(feature = "codex-control")]
-        if files.is_empty() {
-            if let Some((codex, session)) = recovery {
-                let mut recovered = Vec::new();
-                for mut reference in parsed {
-                    if reference.path.starts_with('/')
-                        || reference.path.starts_with("./")
-                        || reference.path.starts_with("../")
-                        || reference.path.starts_with("~/")
-                    {
-                        continue;
-                    }
-                    if let Some((origin, path)) = codex
-                        .terminal_file_reference(&session, &reference.path)
-                        .await
-                        .map_err(|e| {
-                            FileOpenFailure::new(FileOpenStage::Source, &e.code, e.message)
-                        })?
-                    {
-                        if origin.execution_target_id != source.origin.execution_target_id
-                            || origin.cwd != source.origin.cwd
-                        {
-                            return Err(FileOpenFailure::new(
-                                FileOpenStage::Source,
-                                "source_changed",
-                                "The original Thread source changed; retry.",
-                            ));
-                        }
-                        reference.path = path;
-                        if !recovered.contains(&reference) {
-                            recovered.push(reference);
-                        }
-                    }
-                }
-                if !recovered.is_empty() {
-                    files = self
-                        .existing_candidate_files(
-                            &source.origin.execution_target_id,
-                            &resolve_references(&source, recovered)?,
-                        )
-                        .await
-                        .map_err(|e| {
-                            FileOpenFailure::new(
-                                FileOpenStage::Verify,
-                                "source_file_check_failed",
-                                e,
-                            )
-                        })?;
-                }
+        let captured_text = input.text().to_owned();
+        let source = source.map_err(|mut failure| { failure.captured_text = Some(captured_text.clone()); failure })?;
+        let mut context = FileOpenContext {
+            origin: source.origin.clone(),
+            paths: vec![],
+            local_path: None,
+        };
+        let result = async {
+            self.check_file_source(&source)?;
+            let recognized = polar_station_resources::recognize_file_input(&input, source.flavor)?;
+            context.paths = vec![recognized.reference.path.clone()];
+            let references = resolve_references(&source, vec![recognized.reference])?;
+            for reference in &references {
+                if !context.paths.contains(&reference.path) { context.paths.push(reference.path.clone()); }
             }
+            let files = self.existing_candidate_files(&source.origin.execution_target_id, &references)
+                .await.map_err(|e| FileOpenFailure::new(FileOpenStage::Verify, "source_file_check_failed", e))?;
+            let reference = files.into_iter().next().ok_or_else(|| FileOpenFailure::new(
+                FileOpenStage::Verify, "file_not_found", "The recognized file does not exist on the source machine."))?;
+            self.access_resolution(ResolvedFile { source, reference }).await
         }
-        files.sort_by(|a, b| a.path.cmp(&b.path));
-        files.dedup_by(|a, b| a.path == b.path);
-        match files.len() {
-            0 => Err(FileOpenFailure::new(
-                FileOpenStage::Verify,
-                "file_not_found",
-                "No matching file exists on the source machine.",
-            )),
-            1 => {
-                self.access_resolution(ResolvedFile {
-                    source,
-                    reference: files.into_iter().next().unwrap(),
-                })
-                .await
-            }
-            _ => Ok(FileOpenResolution::Choices { source, files }),
-        }
+        .await;
+        result.map_err(|mut failure| {
+            failure.captured_text = Some(captured_text);
+            failure.with_context(context)
+        })
     }
 
     pub(super) async fn replan_file_access(
@@ -178,7 +116,18 @@ impl ResourceService {
                 message,
             )
         })?;
-        self.verify_ready_file_access(&access_plan, &catalog, &statuses).await?;
+        self.verify_ready_file_access(&access_plan, &catalog, &statuses).await.map_err(|failure| {
+            let local_path = match &access_plan {
+                polar_station_resources::FileAccessPlan::NativeLocal { local_path }
+                | polar_station_resources::FileAccessPlan::MappedReady { local_path, .. } => Some(local_path.clone()),
+                _ => None,
+            };
+            failure.with_context(FileOpenContext {
+                origin: file.source.origin.clone(),
+                paths: vec![file.reference.path.clone()],
+                local_path,
+            })
+        })?;
         self.check_resolved_file(&file)?;
         Ok(FileOpenResolution::Resolved { file, access_plan })
     }
@@ -260,7 +209,7 @@ impl ResourceService {
         }
         Ok(())
     }
-    async fn file_open_response(
+    pub(super) async fn file_open_response(
         &self,
         request: ResourcesRequestEnvelopeV1,
         resolution: FileOpenResolution,

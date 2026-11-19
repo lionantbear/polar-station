@@ -218,6 +218,12 @@ struct SessionEditorSheet: View {
                 }
                 Text(capturedDestination.isEmpty ? destination : capturedDestination).lineLimit(1).font(.caption).foregroundStyle(.secondary).help(destination)
                 Spacer(minLength: 0)
+                if browsingHistory && !binding {
+                    Toggle("YOLO", isOn: field(\.yolo))
+                        .toggleStyle(.checkbox)
+                        .help("Skip approvals and sandbox when resuming")
+                        .fixedSize()
+                }
                 Button("Cancel", role: .cancel, action: cancel).keyboardShortcut(.cancelAction).disabled(pending)
                 Button(submitLabel, action: submitOnce).keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
                     .disabled(!canSubmit || pending || (readingDirectory && agentMode != "resume"))

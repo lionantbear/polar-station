@@ -305,7 +305,7 @@ impl HistoryItem {
                     !r.audio_expired && r.saved_samples > 0,
                     r.cleaned.is_some(),
                     r.dismissed,
-                    r.error.clone().or_else(|| r.cleanup_error.clone()),
+                    r.failure().map(str::to_owned),
                 ),
                 Self::Text(r) => (
                     r.created_at_ms,
@@ -381,6 +381,16 @@ pub struct HistorySummary {
     pub delivery: DeliveryState,
     pub active: bool,
     pub completed_at_ms: Option<u64>,
+}
+/// Ordinary History omits accidental short captures, never useful short text.
+/// This is a projection rule, not permission to discard saved audio.
+pub fn has_history_content(has_text: bool, has_audio: bool, saved_samples: u64) -> bool {
+    has_text || (has_audio && saved_samples >= 2 * crate::SAMPLE_RATE)
+}
+impl HistorySummary {
+    pub fn visible(&self) -> bool {
+        !self.is_test && has_history_content(self.has_text, self.has_audio, self.saved_samples)
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistoryCursor {

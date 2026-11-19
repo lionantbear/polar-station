@@ -2,6 +2,10 @@
 use super::Engine;
 use polar_dictate::{DeliveryState, HistoryItem, HistorySummary, Recording, SAMPLE_RATE};
 use serde_json::{json, Value};
+pub(super) fn labels() -> Value {
+    json!({"secondary":"Record actions","inputs":"Inputs","retry_open":"Retry Dictate initialization","title":"Dictate history","detail":"Dictate history detail","empty":"No saved dictation yet","original":"Original","refined":"Result","copy":"Copy","insert":"Insert in current input","retry":"Retry transcription","dismiss":"Dismiss draft","settings":"Voice Settings…","more":"Load older","earlier":"Earlier","text":"Text refinement","cleanup":"Clean up by rules…","delete":"Delete record…","pin":"Keep this record","unpin":"Allow automatic cleanup"})
+}
+
 #[derive(Default)]
 pub(super) struct History {
     pub records: Vec<HistorySummary>,
@@ -13,6 +17,18 @@ pub(super) struct History {
     pub next: Option<polar_dictate::HistoryCursor>,
 }
 impl History {
+    /// Resolve against the same filtered order rendered by both native readers.
+    /// Navigation changes selection only; the application owns loading the item.
+    pub fn adjacent(&self, engine: &Engine, down: bool) -> Option<String> {
+        let rows = self.rows(engine);
+        let current = rows.iter().position(|row| row["operation_id"].as_str() == self.selected.as_deref());
+        let index = match current {
+            Some(index) if down => (index + 1).min(rows.len().saturating_sub(1)),
+            Some(index) => index.saturating_sub(1),
+            None => 0,
+        };
+        rows.get(index)?["operation_id"].as_str().map(str::to_owned)
+    }
     pub fn update(&mut self, r: Recording) {
         self.update_item(HistoryItem::Recording(Box::new(r)));
     }
@@ -49,10 +65,10 @@ impl History {
     pub fn rows(&self, engine: &Engine) -> Vec<Value> {
         let mut rows = Vec::new();
         for r in &self.records {
-            if r.is_test || (!r.has_text && !r.has_audio) {
+            if !r.visible() {
                 continue;
             }
-            let status = if r.active {
+            let status: String = if r.active {
                 "Processing…".into()
             } else if r.delivery == DeliveryState::Copied {
                 "Copied".into()
@@ -60,8 +76,13 @@ impl History {
                 "Inserted".into()
             } else if r.delivery == DeliveryState::Unknown {
                 "Check the input before inserting again".into()
-            } else if let Some(error) = &r.error {
-                format!("Original retained · {error}")
+            } else if r.error.is_some() {
+                if r.has_text {
+                    "Original retained"
+                } else {
+                    "Transcription failed"
+                }
+                .into()
             } else if !r.has_text {
                 "Recoverable recording".into()
             } else {
@@ -77,7 +98,11 @@ impl History {
                     continue;
                 }
                 if (!e.unsaved && self.records.iter().any(|r| r.id == e.operation_id))
-                    || (e.text.trim().is_empty() && e.raw.trim().is_empty() && e.saved_samples == 0)
+                    || !polar_dictate::history::has_history_content(
+                        !e.text.trim().is_empty() || !e.raw.trim().is_empty(),
+                        e.saved_samples > 0,
+                        e.saved_samples,
+                    )
                 {
                     continue;
                 }
@@ -151,7 +176,35 @@ impl History {
             HistoryItem::Text(r) => r.result.is_some() || r.draft_text.is_some(),
         }) || local.is_some_and(|e| e.refined || e.edited);
         let summary = saved.map(HistoryItem::summary);
-        json!({"operation_id":id,"text":quote(text.clone()),"raw":quote(original.clone()),"can_copy":!text.trim().is_empty(),"can_copy_original":!original.trim().is_empty(),
+        let has_transcript = super::valid_text(&text) || super::valid_text(&original);
+        let error = summary
+            .as_ref()
+            .and_then(|s| s.error.as_deref())
+            .unwrap_or("");
+        let (notice_title, notice) =
+            if record.is_some_and(|r| r.saved_samples > 0) && !has_transcript && !active {
+                (
+                    if error.is_empty() {
+                        "Saved recording"
+                    } else {
+                        "Transcription failed"
+                    },
+                    if record.is_some_and(|r| r.audio_expired) {
+                        "The recording audio is no longer available."
+                    } else if can_recover {
+                        "Your recording is saved. You can retry transcription."
+                    } else {
+                        "Your recording is saved. Finish the active operation before retrying."
+                    },
+                )
+            } else if !error.is_empty() {
+                ("Original retained", "Your available text is preserved.")
+            } else {
+                ("", "")
+            };
+
+        json!({"operation_id":id,"has_transcript":has_transcript,"notice_title":notice_title,"notice":notice,"error":error,
+            "duration_ms":summary.as_ref().map_or(0,|s|s.saved_samples.saturating_mul(1000)/SAMPLE_RATE),"text":quote(text.clone()),"raw":quote(original.clone()),"can_copy":!text.trim().is_empty(),"can_copy_original":!original.trim().is_empty(),
             "can_original":!original.trim().is_empty(),"can_refined":has_result,
             "can_recover":can_recover&&super::valid_text(&text)&&record.is_some_and(|r|r.validate_saved_input().is_ok()),
             "can_retry":can_recover&&record.is_some_and(|r|r.original().is_none()||r.cleanup_error.is_some()),

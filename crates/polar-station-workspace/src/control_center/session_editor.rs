@@ -344,7 +344,7 @@ impl SessionEditorEngine {
                         } else {
                             vec![]
                         },
-                        yolo: codex && !resume && d.yolo,
+                        yolo: codex && d.yolo,
                         open_local_cli: codex && d.open_local_cli,
                         open_terminal: false,
                     }

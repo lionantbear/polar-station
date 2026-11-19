@@ -504,17 +504,7 @@ pub const InputBar = struct {
     }
     pub fn updateGeneric(self: *InputBar, view: Value) void {
         self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_active=false;self.dictate_history.bindInput(self.text);self.text.setEditable(1);
-        const lease = field(view, "lease") orelse return;
-        const pane = string(lease, "pane") orelse return;
-        const bytes = std.json.Stringify.valueAlloc(self.owner.allocator, .{
-            .type="composer", .pane_id=pane, .text=string(view,"text") orelse "",
-            .draft_revision=number(lease,"draft_revision"), .generic_lease=lease, .project=field(view,"project"),
-            .status=string(view,"unavailable") orelse "Ready", .can_send=boolean(view,"can_send"),
-        }, .{}) catch return;
-        defer self.owner.allocator.free(bytes);
-        var parsed = std.json.parseFromSlice(Value,self.owner.allocator,bytes,.{}) catch return;
-        defer parsed.deinit();
-        self.update(parsed.value);
+        self.update(view);
         const send_label=string(view,"send_label") orelse "Send";
         {
             const label_=self.owner.allocator.dupeZ(u8,send_label) catch return;
@@ -1296,12 +1286,8 @@ pub const InputBar = struct {
             self.editor_scroll.setMaxContentHeight(self.inlineEditorLimit());
         // Presentation follows the buffer even while sending is unavailable.
         if (self.pane_id == null) return;
-        const lease = if (self.metadata) |metadata| field(metadata.value,"generic_lease") else null;
-        if (lease) |value| {
-            self.owner.input(.{ .type="edit_input", .lease=value, .text=std.mem.span(text) });
-        } else {
-            self.owner.input(.{ .type = "draft", .window_id = self.id, .text = std.mem.span(text) });
-        }
+        self.owner.input(.{ .type="input_action", .window_id=self.id,
+            .pane_id=self.pane_id orelse return, .action=.{ .kind="edit", .text=std.mem.span(text) } });
         self.owner.saveSoon();
     }
     pub fn commitDraft(self: *InputBar) void {
@@ -1355,13 +1341,14 @@ pub const InputBar = struct {
         if(self.composing)return false;
         for(self.node_editors.items)|editor|if(editor.composing)return false;
         if(self.detail_editor)|editor|if(editor.composing)return false;
-        self.commitDraft();
-        const lease=if(self.metadata)|metadata|field(metadata.value,"generic_lease") else null;
-        if(lease)|value| {
-            self.owner.input(.{.type="submit_input",.lease=value,.press_enter=true});
-        } else {
-            self.owner.input(.{.type="send",.window_id=self.id,.created_at_secs=@as(u64,@intCast(@max(1,std.time.timestamp())))});
-        }
+        const buffer=(if(self.inquiry_active) self.inquiry_text else self.text).getBuffer();
+        var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;
+        buffer.getBounds(&start,&end);
+        const text=buffer.getText(&start,&end,1);defer glib.free(text);
+        self.owner.input(.{ .type="input_action", .window_id=self.id,
+            .pane_id=self.pane_id orelse return false,
+            .action=.{ .kind="submit", .text=std.mem.span(text), .created_at_secs=@as(u64,@intCast(@max(1,std.time.timestamp()))) } });
+        self.owner.saveSoon();
         return true;
     }
     pub fn inquiryEnvironment(self:*InputBar) void {
@@ -1415,7 +1402,8 @@ pub const InputBar = struct {
         if(self.updating or self.composing or !self.inquiry_active) return;
         var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;buffer.getBounds(&start,&end);
         const text=buffer.getText(&start,&end,1);defer glib.free(text);
-        self.owner.input(.{.type="draft",.window_id=self.id,.text=std.mem.span(text)});self.owner.saveSoon();
+        self.owner.input(.{.type="input_action",.window_id=self.id,.pane_id=self.pane_id orelse return,
+            .action=.{.kind="edit",.text=std.mem.span(text)}});self.owner.saveSoon();
     }
     fn restoreInquiryEditor(self:*InputBar) void {
         if(self.inquiry_answer_scroll) |scroll| scroll.setChild(null);
@@ -1647,10 +1635,8 @@ pub const InputBar = struct {
         _ = self.text.as(gtk.Widget).grabFocus();
     }
     fn retryClicked(_: *gtk.Button, self: *InputBar) callconv(.c) void {
-        if (self.metadata) |meta| if (field(meta.value,"generic_lease")) |lease| {
-            self.owner.input(.{.type="refresh_input",.lease=lease});return;
-        };
-        self.owner.input(.{ .type = "retry", .pane_id = self.pane_id orelse return });
+        self.owner.input(.{ .type="input_action", .window_id=self.id,
+            .pane_id=self.pane_id orelse return, .action=.{ .kind="refresh" } });
     }
     fn searchActivated(entry: *gtk.Entry, self: *InputBar) callconv(.c) void {
         self.owner.input(.{ .type = "search", .pane_id = self.pane_id orelse return, .query = std.mem.span(entry.as(gtk.Editable).getText()) });

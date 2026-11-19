@@ -393,6 +393,8 @@ pub enum VoiceError {
     ProviderUnavailable,
     AuthRequired,
     Timeout,
+    AudioConnectionTimeout,
+    FinalTranscriptTimeout,
     TestRecordingFailed,
     TranscriptionFailed,
     InvalidStream,
@@ -420,6 +422,8 @@ impl VoiceError {
             self,
             Self::ProviderUnavailable
                 | Self::Timeout
+                | Self::AudioConnectionTimeout
+                | Self::FinalTranscriptTimeout
                 | Self::TranscriptionFailed
                 | Self::MediaJitterExceeded
                 | Self::RateLimited { .. }
@@ -448,6 +452,8 @@ impl VoiceError {
             Self::ProviderUnavailable => "voice.provider_unavailable",
             Self::AuthRequired => "voice.auth_required",
             Self::Timeout => "voice.timeout",
+            Self::AudioConnectionTimeout => "voice.audio_connection_timeout",
+            Self::FinalTranscriptTimeout => "voice.final_transcript_timeout",
             Self::TestRecordingFailed => "voice.test_recording_failed",
             Self::TranscriptionFailed => "voice.transcription_failed",
             Self::InvalidStream => "voice.invalid_stream",
@@ -978,14 +984,18 @@ impl VoiceRuntime {
             stream.provider_session.commit(request.packet_count),
         )
         .await;
+        // Retire admission before cancellation: a stalled provider must not retain
+        // the operation indefinitely after its deadline.
+        self.streams.lock().await.remove(&request.operation_id);
         let provider_result = match provider_result {
             Ok(result) => result,
             Err(_) => {
-                let _ = stream.provider_session.abort().await;
+                let _ = tokio::time::timeout(
+                    self.config.provider_timeout, stream.provider_session.abort(),
+                ).await;
                 Err(VoiceError::Timeout)
             }
         };
-        self.streams.lock().await.remove(&request.operation_id);
         let result = provider_result.and_then(|text| {
             normalize_transcript(text).map(|text| VoiceStreamCommitResult { text: transcription::clean_transcript_spacing(&text) })
         });

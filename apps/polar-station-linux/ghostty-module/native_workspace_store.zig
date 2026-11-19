@@ -10,6 +10,7 @@ const renderpkg = @import("workspace_rendering.zig");
 pub const schema_version: u32 = 2;
 
 const PersistedPane = struct {
+    source: ?@import("portable_content.zig").Source = null,
     id: []const u8,
     execution_target_id: ?[]const u8 = null,
     tmux_session_id: ?[]const u8 = null,
@@ -28,6 +29,8 @@ const PersistedTab = struct {
 };
 
 const PersistedWorkspace = struct {
+    portable_hosts: std.json.Value = .null,
+    portable_source_workspace_id: ?[]const u8 = null,
     layout_map_visible: ?bool = null,
     inbox_visible: ?bool = null,
     id: []const u8,
@@ -246,6 +249,7 @@ fn persistedWorkspace(
                 .execution_target_id = if (pane.isTerminal()) pane.execution_target_id else null,
                 .tmux_session_id = if (pane.isTerminal()) pane.tmux_session_id else null,
                 .content = pane.content,
+                .source = pane.source,
             };
             canonical_ids[pane_index] = pane.id;
         }
@@ -261,6 +265,8 @@ fn persistedWorkspace(
         };
     }
     return .{
+        .portable_hosts = snapshot.portable_hosts,
+        .portable_source_workspace_id = snapshot.portable_source_workspace_id,
         .id = snapshot.workspace_id,
         .name = snapshot.workspace_name,
         .revision = snapshot.workspace_revision,
@@ -429,6 +435,8 @@ fn nativeWorkspace(
     }
     const revision = workspace.revision;
     return .{
+        .portable_hosts = try cloneValue(alloc, workspace.portable_hosts),
+        .portable_source_workspace_id = if(workspace.portable_source_workspace_id) |v| try alloc.dupe(u8,v) else null,
         .workspace_id = try alloc.dupe(u8, workspace.id),
         .workspace_name = try alloc.dupe(u8, workspace.name),
         .workspace_revision = revision,
@@ -450,6 +458,7 @@ pub fn nativePane(
     pane: PersistedPane,
 ) !renderpkg.Pane {
     if (pane.content) |content| {
+        if (pane.source != null) return error.InvalidPane;
         if (pane.execution_target_id != null or pane.tmux_session_id != null) return error.InvalidPane;
         const copy = try content.clone(allocator);
         return .{ .id = try allocator.dupe(u8, pane.id), .content = copy,
@@ -463,14 +472,13 @@ pub fn nativePane(
     const tmux_session_id = try allocator.dupe(u8, pane.tmux_session_id orelse return error.InvalidPane);
     return .{
         .id = try allocator.dupe(u8, pane.id),
+        .source = if (pane.source) |source| try source.clone(allocator) else null,
         .execution_target_id = execution_target_id,
         .tmux_session_id = tmux_session_id,
         .transport_status = .recovering,
-        .attach_fingerprint = try std.fmt.allocPrint(
-            allocator,
-            "content:{s}:{s}",
-            .{ execution_target_id, tmux_session_id },
-        ),
+        .attach_fingerprint = if (pane.source) |source|
+            try std.fmt.allocPrint(allocator, "content:{s}:{s}:{s}", .{ execution_target_id, tmux_session_id, try std.json.Stringify.valueAlloc(allocator, source, .{}) })
+        else try std.fmt.allocPrint(allocator, "content:{s}:{s}", .{ execution_target_id, tmux_session_id }),
         .attach_plan = .{
             .program = "polar-tmux-pane-host",
             .args = &.{},
@@ -491,6 +499,7 @@ fn deepCloneFromDecoded(
                 .execution_target_id = if (pane.isTerminal()) pane.execution_target_id else null,
                 .tmux_session_id = if (pane.isTerminal()) pane.tmux_session_id else null,
                 .content = pane.content,
+                .source = pane.source,
             });
             panes[pane_index].transport_status = pane.transport_status;
         }
@@ -519,6 +528,8 @@ fn deepCloneFromDecoded(
         };
     }
     return .{
+        .portable_hosts = try cloneValue(allocator, source.portable_hosts),
+        .portable_source_workspace_id = if(source.portable_source_workspace_id) |v| try allocator.dupe(u8,v) else null,
         .workspace_id = try allocator.dupe(u8, source.workspace_id),
         .workspace_name = try allocator.dupe(u8, source.workspace_name),
         .workspace_revision = source.workspace_revision,
@@ -689,7 +700,7 @@ fn cloneStrings(
     return result;
 }
 
-fn statePath(allocator: std.mem.Allocator) ![]u8 {
+pub fn statePath(allocator: std.mem.Allocator) ![]u8 {
     const base = std.process.getEnvVarOwned(
         allocator,
         "XDG_STATE_HOME",
@@ -727,3 +738,18 @@ fn statePath(allocator: std.mem.Allocator) ![]u8 {
 
 
 
+
+fn cloneValue(a:std.mem.Allocator,value:std.json.Value) !std.json.Value {
+    const bytes=try std.json.Stringify.valueAlloc(a,value,.{});defer a.free(bytes);
+    return std.json.parseFromSliceLeaky(std.json.Value,a,bytes,.{.allocate=.alloc_always});
+}
+pub fn encodeWorkspace(a:std.mem.Allocator,snapshot:renderpkg.Snapshot) ![]u8 {
+    var arena=std.heap.ArenaAllocator.init(a);defer arena.deinit();
+    return std.json.Stringify.valueAlloc(a,try persistedWorkspace(arena.allocator(),snapshot),.{});
+}
+pub fn decodeWorkspace(a:std.mem.Allocator,bytes:[]const u8) !OwnedSnapshot {
+    var arena=std.heap.ArenaAllocator.init(a);errdefer arena.deinit();
+    const saved=try std.json.parseFromSliceLeaky(PersistedWorkspace,arena.allocator(),bytes,.{.allocate=.alloc_always,.ignore_unknown_fields=true});
+    const value=try nativeWorkspace(arena.allocator(),saved);try validateSnapshot(value);
+    return .{.arena=arena,.value=value};
+}

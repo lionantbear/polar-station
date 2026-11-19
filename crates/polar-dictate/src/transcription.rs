@@ -23,13 +23,13 @@ impl crate::runtime::DictateRuntime {
         if current.capture == CaptureState::Recording {
             // Preserve saved audio and expose the failure through the existing
             // stop/error path; capture cannot silently keep a dead stream alive.
-            self.change(
-                id,
-                Change::Stop {
-                    reason: Some("Realtime transcription interrupted; saved audio retained".into()),
-                },
-            )
-            .await?;
+            let reason = match result.as_ref().err().and_then(|error| error.downcast_ref::<polar_voice::VoiceError>()) {
+                Some(error @ (polar_voice::VoiceError::AudioConnectionTimeout
+                    | polar_voice::VoiceError::FinalTranscriptTimeout
+                    | polar_voice::VoiceError::Timeout)) => error.code(),
+                _ => "Realtime transcription interrupted",
+            };
+            self.change(id, Change::Stop { reason: Some(reason.into()) }).await?;
         }
         let current = self.store().get(id).await?;
         let record = if let Some(segment) = current

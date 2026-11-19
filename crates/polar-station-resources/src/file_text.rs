@@ -48,70 +48,87 @@ pub fn parse_source_reference(text: &str, flavor: PathFlavor) -> Option<FileRefe
     Some(reference)
 }
 
-/// Pure parsing/reconstruction after the source adapter has declared its syntax.
+/// Only external URI matches may fall through to Ghostty after Rust file recognition.
+pub fn is_external_file_link(text: &str) -> bool {
+    url::Url::parse(text).is_ok_and(|uri| uri.scheme() != "file" && uri.scheme().len() > 1)
+}
+
+/// Compatibility projection: a clicked reference is never a candidate list.
 pub fn parse_file_input(
     input: &FileReferenceInput,
     flavor: PathFlavor,
 ) -> Result<Vec<FileReference>, FileOpenFailure> {
-    input.validate()?;
-    let logical = logical_capture(input);
-    let input = logical.as_ref().unwrap_or(input);
-    let mut refs = match input {
-        FileReferenceInput::NativeMatch {
-            text, hit, matched, ..
-        } => {
-            let mut refs: Vec<_> = parse_reference_range(text, *matched, flavor)
-                .map(|r| r.reference)
-                .into_iter()
-                .collect();
-            for r in crate::file_continuation::recover_display_candidates(text, *hit, flavor) {
-                if !refs.contains(&r) {
-                    refs.push(r);
-                }
-            }
-            refs
-        }
-        FileReferenceInput::TerminalHit { text, hit, .. } => {
-            crate::file_continuation::recover_display_candidates(text, *hit, flavor)
-        }
-        FileReferenceInput::Selection { text } => {
-            let joined: String = text.chars().filter(|c| !matches!(c, '\r' | '\n')).collect();
-            let mut refs: Vec<_> = parse_source_reference(&joined, flavor)
-                .into_iter()
-                .collect();
-            if text.contains(['\r', '\n']) {
-                let unpadded: String = text.lines().map(|r| r.trim_matches(' ')).collect();
-                if let Some(r) = parse_source_reference(&unpadded, flavor) {
-                    if !refs.contains(&r) {
-                        refs.push(r);
-                    }
-                }
-            }
-            refs
-        }
-    };
-    refs.dedup();
-    if refs.is_empty() {
-        return Err(FileOpenFailure::new(
-            FileOpenStage::Parse,
-            "file_reference_missing",
-            "No file reference was found at this position.",
-        ));
-    }
-    if refs.len() > crate::MAX_FILE_CANDIDATES
-        || refs.iter().map(|r| r.path.len()).sum::<usize>() > crate::MAX_FILE_CANDIDATE_BYTES
-    {
-        return Err(FileOpenFailure::new(
-            FileOpenStage::Parse,
-            "file_reference_limit",
-            "The file reference is too large; select the complete path.",
-        ));
-    }
-    Ok(refs)
+    Ok(vec![recognize_file_input(input, flavor)?.reference])
 }
 
-/// The exact native match uses this same representation parser. This does not
-/// expand its range or inspect neighboring rows.
+/// Pure, singular recognition shared by hover, activation and legacy ingress.
+pub fn recognize_file_input(
+    input: &FileReferenceInput,
+    flavor: PathFlavor,
+) -> Result<crate::RecognizedFileReference, FileOpenFailure> {
+    input.validate()?;
+    if let FileReferenceInput::Recognized {
+        recognized,
+        flavor: supplied,
+        ..
+    } = input
+    {
+        if *supplied != flavor {
+            return Err(FileOpenFailure::new(
+                FileOpenStage::Parse,
+                "source_syntax_changed",
+                "The source path syntax changed.",
+            ));
+        }
+        return Ok(recognized.clone());
+    }
+    let missing = || {
+        FileOpenFailure::new(
+            FileOpenStage::Parse,
+            "file_reference_missing",
+            "No complete file reference was found at this position.",
+        )
+    };
+    let (text, hit, rows, selection) = match input {
+        FileReferenceInput::NativeMatch {
+            text, hit, rows, ..
+        }
+        | FileReferenceInput::TerminalHit { text, hit, rows } => {
+            (text.as_str(), *hit, rows.as_slice(), false)
+        }
+        FileReferenceInput::Selection { text } => (
+            text.as_str(),
+            text.len() - text.trim_start().len(),
+            &[][..],
+            true,
+        ),
+        FileReferenceInput::Recognized { .. } => unreachable!(),
+    };
+    let logical = crate::file_continuation::reconstruct(text, hit, rows, selection, flavor)
+        .ok_or_else(missing)?;
+    let parsed = if selection {
+        let value = logical.text.trim();
+        let start = logical.text.len() - logical.text.trim_start().len();
+        ParsedFileReference {
+            reference: crate::file_matcher::exact(value, flavor).ok_or_else(missing)?,
+            range: TextRange {
+                start,
+                end: start + value.len(),
+            },
+        }
+    } else {
+        crate::file_matcher::reference_at(&logical.text, logical.hit, flavor).ok_or_else(missing)?
+    };
+    if !parsed.range.contains(logical.hit) {
+        return Err(missing());
+    }
+    Ok(crate::RecognizedFileReference {
+        reference: parsed.reference,
+        ranges: logical.ranges(parsed.range),
+        continued: logical.continued,
+    })
+}
+
 pub fn parse_reference_range(
     text: &str,
     range: TextRange,
@@ -123,164 +140,23 @@ pub fn parse_reference_range(
     })
 }
 
-pub(crate) fn reference_at(
-    text: &str,
-    hit: usize,
+/// Carry the exact shared result to Host; no native parsing and no second scan.
+pub fn recognize_file_capture(
+    input: FileReferenceInput,
     flavor: PathFlavor,
-) -> Option<ParsedFileReference> {
-    if hit >= text.len() || !text.is_char_boundary(hit) {
-        return None;
-    }
-    // OffsetIter retains the original text range; decoded Markdown targets are
-    // not guessed from an outer prose prefix or from rendered labels.
-    for (event, range) in Parser::new(text).into_offset_iter() {
-        if !range.contains(&hit) {
-            continue;
-        }
-        let reference = match event {
-            Event::Start(Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. }) => {
-                let target = if dest_url.starts_with("file:") {
-                    dest_url.into_string()
-                } else if dest_url.contains("://") {
-                    continue;
-                } else {
-                    percent_encoding::percent_decode_str(&dest_url)
-                        .decode_utf8()
-                        .ok()?
-                        .into_owned()
-                };
-                parse_source_reference(&target, flavor)
-            }
-            Event::Code(value) if file_shaped(&value, flavor) => {
-                parse_source_reference(&value, flavor)
-            }
-            _ => None,
-        };
-        if let Some(reference) = reference {
-            return Some(ParsedFileReference {
-                range: TextRange {
-                    start: range.start,
-                    end: range.end,
-                },
-                reference,
-            });
-        }
-    }
-    let start = text[..hit].rfind('\n').map_or(0, |i| i + 1);
-    let end = text[hit..].find('\n').map_or(text.len(), |i| hit + i);
-    let line = &text[start..end];
-    let mut cursor = 0;
-    while cursor < line.len() {
-        let c = line[cursor..].chars().next()?;
-        if matches!(c, '"' | '\'' | '`') {
-            let after = cursor + c.len_utf8();
-            if let Some(length) = line[after..].find(c) {
-                let stop = after + length + c.len_utf8();
-                let range = TextRange {
-                    start: start + cursor,
-                    end: start + stop,
-                };
-                if range.contains(hit) {
-                    return parse_reference_range(text, range, flavor);
-                }
-                cursor = stop;
-                continue;
-            }
-        }
-        if boundary(c) {
-            cursor += c.len_utf8();
-            continue;
-        }
-        let begin = cursor;
-        let mut depth = 0usize;
-        while cursor < line.len() {
-            let c = line[cursor..].chars().next()?;
-            if c == '(' {
-                depth += 1;
-            } else if c == ')' && depth > 0 {
-                depth -= 1;
-            } else if boundary(c) {
-                break;
-            }
-            cursor += c.len_utf8();
-        }
-        let range = TextRange {
-            start: start + begin,
-            end: start + cursor,
-        };
-        if range.contains(hit) && file_shaped(&line[begin..cursor], flavor) {
-            return parse_reference_range(text, range, flavor);
-        }
-    }
-    None
-}
-
-fn boundary(c: char) -> bool {
-    c.is_whitespace()
-        || matches!(
-            c,
-            '<' | '>' | '"' | '\'' | '`' | '[' | ']' | '(' | ')' | ',' | ';' | '│'
-        )
-}
-fn file_shaped(text: &str, flavor: PathFlavor) -> bool {
-    text.contains('/')
-        || text.contains('.')
-        || text.starts_with('~')
-        || (flavor == PathFlavor::Windows && text.contains(['\\', ':']))
-        || matches!(
-            text,
-            "README" | "LICENSE" | "Makefile" | "Dockerfile" | "justfile" | "Justfile"
-        )
-}
-
-fn logical_capture(input: &FileReferenceInput) -> Option<FileReferenceInput> {
-    let (text, hit, matched, rows) = match input {
-        FileReferenceInput::NativeMatch {
-            text,
-            hit,
-            matched,
-            rows,
-        } => (text, *hit, Some(*matched), rows),
-        FileReferenceInput::TerminalHit { text, hit, rows } => (text, *hit, None, rows),
-        _ => return None,
+) -> Result<FileReferenceInput, FileOpenFailure> {
+    let recognized = recognize_file_input(&input, flavor)?;
+    let hit = match &input {
+        FileReferenceInput::NativeMatch { hit, .. }
+        | FileReferenceInput::TerminalHit { hit, .. }
+        | FileReferenceInput::Recognized { hit, .. } => *hit,
+        FileReferenceInput::Selection { .. } => recognized.ranges[0].start,
     };
-    let mut remove = vec![false; text.len()];
-    for row in rows.iter().filter(|r| r.soft_wrap) {
-        let end = row.end;
-        if end > 0 && text.as_bytes()[end - 1] == b'\n' {
-            remove[end - 1] = true;
-            if end > 1 && text.as_bytes()[end - 2] == b'\r' {
-                remove[end - 2] = true;
-            }
-        }
-    }
-    if !remove.iter().any(|v| *v) {
-        return None;
-    }
-    let offset = |old: usize| old - remove[..old].iter().filter(|v| **v).count();
-    let value = String::from_utf8(
-        text.bytes()
-            .enumerate()
-            .filter_map(|(i, b)| (!remove[i]).then_some(b))
-            .collect(),
-    )
-    .ok()?;
-    let hit = offset(hit);
-    Some(match matched {
-        Some(range) => FileReferenceInput::NativeMatch {
-            text: value,
-            hit,
-            matched: TextRange {
-                start: offset(range.start),
-                end: offset(range.end),
-            },
-            rows: vec![],
-        },
-        None => FileReferenceInput::TerminalHit {
-            text: value,
-            hit,
-            rows: vec![],
-        },
+    Ok(FileReferenceInput::Recognized {
+        text: input.text().into(),
+        hit,
+        flavor,
+        recognized,
     })
 }
 

@@ -382,7 +382,10 @@ impl GenericDrafts {
     }
     pub(crate) fn watch_pending(&mut self, intent:&str, now_ms:u64) {
         for pending in self.drafts.values_mut().filter_map(|d|d.pending.as_mut()) {
-            if pending.intent==intent {pending.deadline_ms=Some(now_ms.saturating_add(30_000));}
+            if pending.intent==intent {
+                pending.error=None;
+                pending.deadline_ms=Some(now_ms.saturating_add(30_000));
+            }
         }
     }
     pub(crate) fn next_deadline_ms(&self)->Option<u64> {
@@ -392,7 +395,7 @@ impl GenericDrafts {
         let mut changed=false;
         for pending in self.drafts.values_mut().filter_map(|d|d.pending.as_mut()) {
             if pending.error.is_none() && pending.deadline_ms.is_some_and(|due|due<=now_ms) {
-                pending.error=Some("Sending result is unconfirmed; Retry checks the original receipt without resending text".into());
+                pending.error=Some("Sending result is unconfirmed; Retry checks the original receipt before continuing".into());
                 changed=true;
             }
         }
@@ -489,7 +492,7 @@ impl GenericDrafts {
         for draft in drafts.values_mut() {
             if let Some(pending) = &mut draft.pending {
                 pending.dispatched = true;
-                pending.error.get_or_insert_with(|| "Previous send is unconfirmed; Retry checks its receipt without resending text".into());
+                pending.error.get_or_insert_with(|| "Previous send is unconfirmed; Retry checks its receipt before continuing".into());
             }
         }
         self.drafts = drafts;

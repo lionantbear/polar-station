@@ -10742,6 +10742,7 @@ dependencies = [
  "percent-encoding",
  "polar-identity",
  "pulldown-cmark 0.13.4",
+ "regex",
  "serde",
  "serde_json",
  "typed-path",

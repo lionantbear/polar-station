@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub(super) struct RemoteConnection {
     pub connection: HostConnectionSettingsV1,
-    client: Arc<PeerClient>,
+    pub(super) client: Arc<PeerClient>,
 }
 
 impl CodexControlService {
@@ -19,9 +19,8 @@ impl CodexControlService {
         &self,
         request: &CodexRequestEnvelopeV1,
     ) -> ControlResult<CodexResultV1> {
-        // The owner applies its own revision/turn checks. This gate protects the
-        // desktop's route from being replaced while an intent is in flight.
-        let _gate = self.operations.lock().await;
+        // Freeze the authorized route for this request. Network waits on one
+        // owner never occupy the local binding/notification transaction gate.
         let config = self.config.read().await.clone();
         if !config.enabled {
             return Err("control_disabled");
@@ -107,38 +106,14 @@ impl CodexControlService {
             }
             _ => {}
         }
-        let peer = {
-            let mut peers = self.peers.lock().await;
-            if peers
-                .get(&connection.id)
-                .is_some_and(|p| p.connection != *connection || !p.client.connected())
-            {
-                peers.remove(&connection.id);
+        let peer = self.peer_connection(connection).await?;
+        {
+            let current=self.config.read().await;
+            if !current.enabled || !current.host_connections.contains(connection)
+                || routes.iter().any(|route|!current.endpoints.contains(route)) {
+                return Err("settings_conflict");
             }
-            if !peers.contains_key(&connection.id) {
-                let client = PeerClient::connect(
-                    self.network.as_ref().ok_or("ssh_unavailable")?,
-                    connection,
-                    &self.owner,
-                    HostPeerScopeV1::ExecutionController,
-                    self.peer_credentials.clone(),
-                    self.publisher.clone(),
-                )
-                .await?;
-                peers.insert(
-                    connection.id.clone(),
-                    RemoteConnection {
-                        connection: connection.clone(),
-                        client: Arc::new(client),
-                    },
-                );
-            }
-            peers
-                .get(&connection.id)
-                .ok_or("peer_unavailable")?
-                .client
-                .clone()
-        };
+        }
         if matches!(outgoing.command, CodexCommandV1::SubmitThreadText { .. } | CodexCommandV1::GetThreadBinding { .. }) {
             let mut capabilities = outgoing.clone();
             capabilities.request_id = crate::host_identity::random_uuid_v4();

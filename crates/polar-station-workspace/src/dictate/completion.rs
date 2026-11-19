@@ -161,10 +161,16 @@ impl Engine {
         if !self.host_events {
             return effects;
         }
+        let timeout = if record.capture != polar_dictate::CaptureState::Recording {
+            record.failure().filter(|code| super::preview::timeout_copy(code).is_some())
+        } else {
+            None
+        };
         let Some(entry) = self.entries.iter_mut().find(|e| {
             e.operation_id == record.id
                 && e.host_recording
-                && matches!(e.phase, Phase::Transcribing | Phase::Rewriting)
+                && (matches!(e.phase, Phase::Transcribing | Phase::Rewriting)
+                    || (timeout.is_some() && matches!(e.phase, Phase::Starting | Phase::Recording | Phase::Failed)))
         }) else {
             return effects;
         };
@@ -183,7 +189,13 @@ impl Engine {
             return effects;
         }
         let Some(original) = record.original() else {
-            if let Some(error) = record
+            if let Some(code) = timeout {
+                if matches!(entry.phase, Phase::Starting | Phase::Recording) {
+                    effects.push(Effect::FinishCapture { operation_id: record.id.clone() });
+                }
+                entry.error = Some(code.into());
+                entry.phase = Phase::Failed;
+            } else if let Some(error) = record
                 .error
                 .as_ref()
                 .or_else(|| record.segments.iter().find_map(|s| s.error.as_ref()))

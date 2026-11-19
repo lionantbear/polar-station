@@ -212,6 +212,17 @@ impl<P: Ports> Application<P> {
         Ok(item)
     }
     fn dispatch_inner(&mut self, mut value: Value) -> Result<Value, String> {
+        if value["type"] == "history_move" {
+            let down = match value["direction"].as_str() {
+                Some("down") => true,
+                Some("up") => false,
+                _ => return Err("Invalid history direction".into()),
+            };
+            value = match self.history.adjacent(&self.engine, down) {
+                Some(id) => json!({"type":"history_select","operation_id":id}),
+                None => json!({"type":"snapshot"}),
+            };
+        }
         self.copy_completed = None;
         self.inspection.open_requested=false;
         self.cleanup_preview = None;
@@ -1221,7 +1232,7 @@ impl<P: Ports> Application<P> {
             "copy_completed":self.copy_completed,
             "refine_modes":self.engine.refine_modes,
             "refine_ui":{"cleanup":"Refine","english":"Refine + English","hint":"Hold to choose Refine mode"},
-            "history_ui":{"inputs":"Inputs","retry_open":"Retry Dictate initialization","title":"Dictate history","detail":"Dictate history detail","empty":"No saved dictation yet","original":"Original","refined":"Result","copy":"Copy","insert":"Insert in current input","retry":"Retry transcription","dismiss":"Dismiss draft","settings":"Voice Settings…","more":"Load older","earlier":"Earlier","text":"Text refinement","cleanup":"Clean up by rules…","delete":"Delete record…","pin":"Keep this record","unpin":"Allow automatic cleanup"},
+            "history_ui":super::history::labels(),
             "snapshot":self.snapshot(),"panel":self.engine.panel(),"effects":effects})
     }
 }

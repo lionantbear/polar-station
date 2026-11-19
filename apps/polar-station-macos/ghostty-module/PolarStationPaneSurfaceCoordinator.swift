@@ -8,6 +8,8 @@ import PolarTmuxHostClient
 /// callback-facing object is released merely because the Pane host detached.
 @MainActor
 final class PolarStationPaneSurfaceCoordinator: NSObject {
+    var backendSocket: (() -> URL?)?
+    private var backendSuspended = false
     var displayCreated: ((String, StationPaneContentV1, PolarStationDisplaySurface, NSWindow?) -> Void)?
     var displayRetired: ((String) -> Void)?
     var displayInteraction: (() -> Void)?
@@ -112,6 +114,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
     struct Binding: Equatable {
         let executionTargetID: String
         let tmuxSessionID: String
+        var source: TerminalSourceV1? = nil
     }
 
     private struct ResidentPane {
@@ -122,6 +125,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         let channelGeneration: UInt64
         let controlSocketURL: URL
         var contentRevision: UInt64
+        let backendPath: String
     }
 
     private struct RetirementLease {
@@ -181,11 +185,13 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
 
     func binding(
         executionTargetID: String,
-        tmuxSessionID: String
+        tmuxSessionID: String,
+        source: TerminalSourceV1? = nil
     ) -> Binding {
         Binding(
             executionTargetID: executionTargetID,
-            tmuxSessionID: tmuxSessionID
+            tmuxSessionID: tmuxSessionID,
+            source: source
         )
     }
 
@@ -265,13 +271,15 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
             }
             retireSetup(pane.id)
             retireDisplay(pane.id)
+            guard !backendSuspended, backendSocket?() != nil else { continue }
             guard let target = pane.executionTargetID, let session = pane.tmuxSessionID else {
                 displayFailed?(pane.id, "Invalid Pane content binding")
                 continue
             }
-            let expectedBinding = binding(executionTargetID: target, tmuxSessionID: session)
+            let expectedBinding = binding(executionTargetID: target, tmuxSessionID: session, source: pane.source)
             if let resident = residentPanes[pane.id],
-               resident.binding == expectedBinding {
+               resident.binding == expectedBinding,
+               resident.backendPath == backendSocket?()?.path {
                 observeRecovery(paneID: pane.id, resident: resident)
                 result[pane.id] = resident.surface
                 continue
@@ -341,7 +349,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         for pane in candidate.tabs.flatMap(\.panes) {
             guard pane.content == nil, let old = prior[pane.id], old.content == nil,
                   old.executionTargetID != pane.executionTargetID
-                    || old.tmuxSessionID != pane.tmuxSessionID
+                    || old.tmuxSessionID != pane.tmuxSessionID || old.source != pane.source
             else { continue }
             try await rebindPaneContent(paneID: pane.id, to: pane)
         }
@@ -353,7 +361,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         for pane in workspace.tabs.flatMap(\.panes) {
             guard pane.content == nil, let target = pane.executionTargetID, let session = pane.tmuxSessionID,
                   let resident = residentPanes[pane.id],
-                  resident.binding != binding(executionTargetID: target, tmuxSessionID: session)
+                  resident.binding != binding(executionTargetID: target, tmuxSessionID: session, source: pane.source)
             else { continue }
             try await rebindPaneContent(paneID: pane.id, to: pane)
         }
@@ -380,14 +388,16 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
                 channelGeneration: resident.channelGeneration,
                 contentRevision: nextRevision,
                 executionTarget: target,
-                tmuxSessionID: session
+                tmuxSessionID: session,
+                source: pane.source
             ))
             guard response.result.bindingAccepted else {
                 throw PolarStationNativeExecutorError.contentBindingRejected
             }
             resident.binding = binding(
                 executionTargetID: target,
-                tmuxSessionID: session
+                tmuxSessionID: session,
+                source: pane.source
             )
             resident.contentRevision = nextRevision
             residentPanes[pane.id] = resident
@@ -412,6 +422,16 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
             await retireLease(leaseID)
         }
     }
+
+    func suspendBackend() async {
+        backendSuspended = true
+        for id in Array(setupPanes.keys) { retireSetup(id) }
+        for id in Array(displayPanes.keys) { retireDisplay(id) }
+        for id in Array(residentPanes.keys) {
+            if let lease = beginRetirement(paneID:id) { await retireLease(lease) }
+        }
+    }
+    func resumeBackend() { backendSuspended = false }
 
     func retryFailedRetirements() async {
         guard !retirementRetryInFlight,
@@ -551,14 +571,16 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
             channelGeneration: resident.channelGeneration,
             contentRevision: nextRevision,
             executionTarget: target,
-            tmuxSessionID: session
+            tmuxSessionID: session,
+            source: pane.source
         ))
         guard response.result.bindingAccepted else {
             throw PolarStationNativeExecutorError.contentBindingRejected
         }
         resident.binding = binding(
             executionTargetID: target,
-            tmuxSessionID: session
+            tmuxSessionID: session,
+            source: pane.source
         )
         resident.contentRevision = nextRevision
         residentPanes[paneID] = resident
@@ -581,15 +603,20 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         let channelID = "macos-surface-\(identifier)"
         let controlSocketURL = paneDirectory
             .appendingPathComponent("pane-\(identifier.prefix(12)).sock")
-        let arguments = [
+        var arguments = [
             helper, "pane-host",
             "--channel-id", channelID,
             "--channel-generation", "1",
             "--control-socket", controlSocketURL.path,
-            "--host-socket", PolarTmuxSocketPath.resolve().path,
+            "--host-socket", backendSocket?()?.path ?? "/unavailable-station-backend.sock",
             "--initial-execution-target", initialBinding.executionTargetID,
             "--initial-session", initialBinding.tmuxSessionID,
         ]
+        if let source = initialBinding.source {
+            let data = try? JSONEncoder().encode(source)
+            // Encoding failure must reject launch, never drop the identity guard.
+            arguments += ["--initial-source", data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"]
+        }
         var configuration = Ghostty.SurfaceConfiguration()
         configuration.fontSize = Float32(fontSize)
         configuration.command = arguments.map(shellQuote).joined(separator: " ")
@@ -602,7 +629,8 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
             channelID: channelID,
             channelGeneration: 1,
             controlSocketURL: controlSocketURL,
-            contentRevision: 1
+            contentRevision: 1,
+            backendPath: backendSocket?()?.path ?? "/unavailable-station-backend.sock"
         )
     }
 
@@ -648,6 +676,11 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
               case .recovery(let view) = response.result,
               let entry = residentPanes.first(where: { $0.value.channelID == response.channelID && $0.value.channelGeneration == response.channelGeneration }) else { return }
         guard response.contentRevision >= entry.value.contentRevision else { return }
+        defer {
+            if entry.value.binding.source != nil, focusedPaneID == entry.key, let window = entry.value.surface.window {
+                notifyTerminalSelection(window:window,paneID:entry.key,resident:entry.value)
+            }
+        }
         recoveryOverlays[entry.key]?.render(view)
         if view.phase != "hidden" {
             readyBindingGenerations.removeValue(forKey: response.channelID)
@@ -658,6 +691,14 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
             if surface.window?.isKeyWindow == true && surface.window?.firstResponder === surface {
                 focusPane(entry.key, clicked: true)
             }
+        }
+    }
+
+    private func notifyTerminalSelection(window:NSWindow, paneID:String, resident:ResidentPane) {
+        if backendSuspended || (resident.binding.source != nil && readyBindingGenerations[resident.channelID] != resident.contentRevision) {
+            setupSelected?(window,paneID)
+        } else {
+            terminalSelected?(window,paneID,resident.binding.executionTargetID,resident.binding.tmuxSessionID)
         }
     }
 
@@ -680,7 +721,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         } else if displayPanes[paneID] != nil {
             displaySelected?(paneID)
         } else if let resident = residentPanes[paneID] {
-            terminalSelected?(window, paneID, resident.binding.executionTargetID, resident.binding.tmuxSessionID)
+            notifyTerminalSelection(window:window, paneID:paneID, resident:resident)
         }
     }
 
@@ -709,7 +750,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
               let entry = residentPanes.first(where: { $0.value.surface === surface }) else { return }
         observeRecovery(paneID: entry.key, resident: entry.value)
         focusPane(entry.key)
-        if let window = surface.window { terminalSelected?(window, entry.key, entry.value.binding.executionTargetID, entry.value.binding.tmuxSessionID) }
+        if let window = surface.window { notifyTerminalSelection(window:window, paneID:entry.key, resident:entry.value) }
     }
 
     @objc private func windowFocused(_ notification: Notification) {
@@ -723,7 +764,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         for (id, resident) in residentPanes where resident.surface.window === window && window.firstResponder === resident.surface {
             observeRecovery(paneID: id, resident: resident)
             focusPane(id)
-            terminalSelected?(window, id, resident.binding.executionTargetID, resident.binding.tmuxSessionID)
+            notifyTerminalSelection(window:window, paneID:id, resident:resident)
         }
     }
 

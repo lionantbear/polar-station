@@ -1,5 +1,6 @@
 //! Session/target control shell. Native layout never enters this service.
 mod editor;
+mod transfer;
 use super::{
     application_state::ApplicationStatePublisher,
     control_center_wire::{wire_action, wire_session_library},
@@ -106,6 +107,21 @@ impl ControlCenterService {
         assert!(self.connection_dependencies.set(ConnectionDependencies { resources, settings, gateway }).is_ok());
     }
 
+    async fn observe_host_identity(&self, target: &crate::target_registry::RegisteredTarget, client: &polar_tmux_core::TmuxClient) -> anyhow::Result<()> {
+        let observation = super::target_identity::read(client.target()).await?;
+        let targets = self.targets.clone();
+        let id = target.id().to_owned();
+        let generation = target.configuration_revision();
+        tokio::task::spawn_blocking(move || targets.record_host_observation(&id, generation, observation)).await??;
+        Ok(())
+    }
+
+    async fn observe_local_host_identity(&self) -> anyhow::Result<()> {
+        let target = self.targets.get("local").ok_or_else(|| anyhow::anyhow!("Local execution is unavailable"))?;
+        let client = target.managed_client(&self.ssh_connections).await?;
+        self.observe_host_identity(&target, &client).await
+    }
+
     async fn check_connection(&self, id: &str, polar: bool, request_id: &str) -> ConnectionCheckV1 {
         let checked = tokio::time::timeout(std::time::Duration::from_secs(12), async {
             if polar {
@@ -117,9 +133,14 @@ impl ControlCenterService {
             let target = self.targets.get(id).ok_or_else(|| "Machine is no longer configured.".to_owned())?;
             let client = target.managed_client(&self.ssh_connections).await
                 .map_err(|_| "SSH connection failed. Check the destination, host key and authenticated account.".to_owned())?;
+            let identity = if self.observe_host_identity(&target, &client).await.is_ok() {
+                "Execution identity recorded."
+            } else {
+                "Execution identity could not be recorded; import matching remains unverified."
+            };
             let transport = if id == "local" { "Local machine" } else { "SSH connected" };
             match client.availability().await {
-                Ok(polar_tmux_core::TmuxAvailability::Available { version }) => Ok(format!("{transport}; {version}. Terminal Sessions are available. Polar chat is checked separately.")),
+                Ok(polar_tmux_core::TmuxAvailability::Available { version }) => Ok(format!("{transport}; {version}. Terminal Sessions are available. {identity} Polar chat is checked separately.")),
                 Ok(polar_tmux_core::TmuxAvailability::ExecutableMissing { .. }) => Err(format!("{transport}; tmux is not installed. Install tmux to use terminal Sessions. Polar chat does not require tmux.")),
                 Err(_) => Err(format!("{transport}; tmux could not be queried. Check its installation and remote PATH. Polar chat is checked separately.")),
             }
@@ -127,7 +148,7 @@ impl ControlCenterService {
         let (ready, summary) = match checked {
             Ok(Ok(message)) => (true, message),
             Ok(Err(message)) => (false, message),
-            Err(_) => (false, "Connection check timed out. No configuration or Pane binding was changed.".into()),
+            Err(_) => (false, "Connection check timed out. No connection settings or Pane binding was changed.".into()),
         };
         ConnectionCheckV1 { request_id: request_id.into(), target_id: id.into(), polar, ready, summary }
     }
@@ -328,6 +349,77 @@ impl ControlCenterService {
                 None,
             );
         }
+        if let ControlCenterCommandV1::HostTransfer { request: transfer } = request.command.clone() {
+            use polar_station_protocol::{HostTransferRequestV1, HostTransferResponseV1};
+            let observe_local = match &transfer {
+                HostTransferRequestV1::Export { target_ids } => target_ids.iter().any(|id| id == "local"),
+                HostTransferRequestV1::ExportContent { bindings, target_ids } => target_ids.iter().any(|id| id=="local") || bindings.iter().any(|b| b.execution_target.as_str() == "local"),
+                _ => false,
+            };
+            if observe_local && self.observe_local_host_identity().await.is_err() {
+                // Never fall back to retained local proof after a failed fresh observation.
+                // Importing a file still never connects its remote Hosts.
+                return error_response(&request, revision, "host_identity_unavailable",
+                    "Cannot read this computer's execution identity. No Host import was applied; retry after checking local execution.", None);
+            }
+            if let HostTransferRequestV1::ExportContent { bindings, target_ids } = &transfer {
+                return match self.export_terminal_sources(bindings, target_ids).await {
+                    Ok(result) => ControlCenterResponseEnvelopeV1 { protocol_version: PROTOCOL_VERSION, api: ControlCenterApiV1::ControlCenterV1,
+                        request_id: request.request_id, control_revision: revision, result: ControlCenterResultV1::HostTransfer { result } },
+                    Err(error) => error_response(&request, revision, "workspace_export_failed", error.to_string(), None),
+                };
+            }
+            let targets = self.targets.clone();
+            let applying = matches!(transfer, HostTransferRequestV1::Apply { .. });
+            let before = self.targets.connections();
+            if let HostTransferRequestV1::Apply { expected_revision, bundle, decisions } = &transfer {
+                let preflight_targets = targets.clone();
+                let (expected_revision, bundle, decisions) = (expected_revision.clone(), bundle.clone(), decisions.clone());
+                let preflight = tokio::task::spawn_blocking(move || preflight_targets.host_import_connection_changes(&expected_revision, &bundle, &decisions)).await;
+                let changes = match preflight {
+                    Ok(Ok(changes)) => changes,
+                    Ok(Err(error)) => return error_response(&request, revision, "host_transfer_failed", error.to_string(), None),
+                    Err(_) => return error_response(&request, revision, "host_transfer_failed", "Host import preflight did not complete.", None),
+                };
+                for change in changes {
+                    if let Err(error) = self.check_connection_references(&change).await {
+                        return error_response(&request, revision, &error.code, error.message, None);
+                    }
+                }
+            }
+            let outcome = tokio::task::spawn_blocking(move || -> anyhow::Result<HostTransferResponseV1> {
+                match transfer {
+                    HostTransferRequestV1::ExportContent { .. } => unreachable!("handled asynchronously"),
+                    HostTransferRequestV1::Resolve { sources } => Ok(HostTransferResponseV1::Resolved {
+                        revision: targets.connections().revision,
+                        associations: sources.into_iter().filter_map(|source| targets.resolve_host_ref(&source)
+                            .map(|target_id| HostImportAssociationV1 { source, target_id })).collect(),
+                    }),
+                    HostTransferRequestV1::Export { target_ids } => Ok(HostTransferResponseV1::Exported { bundle: targets.export_hosts(&target_ids)? }),
+                    HostTransferRequestV1::Plan { bundle } => Ok(HostTransferResponseV1::Planned { plan: targets.plan_host_import(&bundle)? }),
+                    HostTransferRequestV1::Compare { expected_revision, host, target_id } => Ok(HostTransferResponseV1::Compared { candidate: targets.compare_host_import(&expected_revision, &host, &target_id)?, source: host.source, revision: expected_revision }),
+                    HostTransferRequestV1::Apply { expected_revision, bundle, decisions } => Ok(HostTransferResponseV1::Applied { result: targets.apply_host_import(&expected_revision, &bundle, &decisions)? }),
+                }
+            }).await;
+            return match outcome {
+                Ok(Ok(result)) => {
+                    if applying {
+                        for machine in self.targets.connections().machines {
+                            if before.machines.iter().find(|m| m.id == machine.id).is_some_and(|old| old.destination != machine.destination || old.route_profile != machine.route_profile) {
+                                if let Some(target) = self.targets.ssh_targets().into_iter().find(|t| t.target_id == machine.id) { self.schedule_target_recovery(target); }
+                            }
+                        }
+                        self.session_fact_provider.request_refresh();
+                        self.schedule_projection_refresh("host_import_applied");
+                    }
+                    self.state_events.publish(ApplicationStateApiV1::ControlCenterV1);
+                    ControlCenterResponseEnvelopeV1 { protocol_version: PROTOCOL_VERSION, api: ControlCenterApiV1::ControlCenterV1,
+                        request_id: request.request_id, control_revision: revision, result: ControlCenterResultV1::HostTransfer { result } }
+                }
+                Ok(Err(error)) => error_response(&request, revision, "host_transfer_failed", error.to_string(), None),
+                Err(_) => error_response(&request, revision, "host_transfer_failed", "Host transfer did not complete.", None),
+            };
+        }
         if let ControlCenterCommandV1::SessionEditor { request: editor } = request.command.clone() {
             return match self.session_editor(editor).await {
                 Ok(result) => ControlCenterResponseEnvelopeV1 { protocol_version: PROTOCOL_VERSION, api: ControlCenterApiV1::ControlCenterV1,
@@ -416,7 +508,7 @@ impl ControlCenterService {
                 let service = self.codex.get().ok_or_else(||control_error("codex_unavailable","Codex control is unavailable."))?;
                 if *open_terminal && !*open_local_cli {
                     let start = if *mode == polar_station_protocol::AgentStartModeV1::Resume {
-                        super::codex_session::CodexTerminalStart::Resume { thread_id: session_id.clone().ok_or_else(|| control_error("thread_required", "Select a conversation to resume."))? }
+                        super::codex_session::CodexTerminalStart::Resume { thread_id: session_id.clone().ok_or_else(|| control_error("thread_required", "Select a conversation to resume."))?, yolo: *yolo }
                     } else { super::codex_session::CodexTerminalStart::New { yolo: *yolo } };
                     let fact = service.create_terminal(execution_target_id.clone(), Some(endpoint_id.clone()),
                         if *mode == polar_station_protocol::AgentStartModeV1::New { Some(name.clone()) } else { None },

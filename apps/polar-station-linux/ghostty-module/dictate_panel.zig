@@ -6,11 +6,10 @@ const glib=@import("glib");
 const gobject=@import("gobject");
 const dictate=@import("dictate.zig");
 const a=std.heap.c_allocator;
+// Use the Cairo context type already imported by the GTK bindings.
+const CairoContext = @typeInfo(@typeInfo(gtk.DrawingAreaDrawFunc).pointer.child).@"fn".params[1].type.?;
 const Item=struct{kind:[:0]const u8,key:[:0]const u8,label:[:0]const u8};
 const items=[_]Item{
-    .{.kind="view_inputs",.key="can_view_inputs",.label="inputs_label"},
-    .{.kind="cancel",.key="can_cancel",.label="cancel_label"},
-    .{.kind="use_available",.key="can_available",.label="available_label"},
     .{.kind="copy",.key="can_copy",.label="copy_label"},
     .{.kind="edit",.key="can_edit",.label="edit_label"},
     .{.kind="insert_original",.key="",.label=""},
@@ -27,9 +26,11 @@ pub const Panel=struct{
     popover:?*gtk.Popover=null,
     window:?*gtk.Window=null,
     status:*gtk.Label,
+    waveform: *gtk.DrawingArea,
+    waveform_levels: dictate.Waveform = @splat(0),
+    failure_notice: *gtk.Label,
     reference:*gtk.Label,
     css:*gtk.CssProvider,
-    more:*gtk.MenuButton,
     actions:*gtk.Box,
     failure_actions:*gtk.Box,
     editor:*gtk.TextView,
@@ -50,22 +51,31 @@ pub const Panel=struct{
         if(anchor==null) {const handle=gtk.WindowHandle.new();handle.setChild(header.as(gtk.Widget));box.append(handle.as(gtk.Widget));} else box.append(header.as(gtk.Widget));
         const status=gtk.Label.new("");status.setEllipsize(.end);status.setXalign(0);
         status.as(gtk.Widget).setHexpand(1);header.append(status.as(gtk.Widget));
+        const waveform = gtk.DrawingArea.new();
+        waveform.setContentWidth(110);
+        waveform.setContentHeight(20);
+        waveform.as(gtk.Widget).setCanTarget(0);
+        waveform.as(gtk.Widget).setVisible(0);
+        waveform.setDrawFunc(drawWaveform, self, null);
+        header.append(waveform.as(gtk.Widget));
         const reference=gtk.Label.new("");reference.setEllipsize(.end);reference.setSingleLineMode(1);reference.setXalign(0);reference.as(gtk.Widget).addCssClass("station-dictate-reference");box.append(reference.as(gtk.Widget));
+        const failure_notice = gtk.Label.new("");
+        failure_notice.setWrap(1);
+        failure_notice.setXalign(0);
+        failure_notice.as(gtk.Widget).setVisible(0);
+        box.append(failure_notice.as(gtk.Widget));
         const editor=gtk.TextView.new();editor.getBuffer().setEnableUndo(1);editor.setWrapMode(.word_char);editor.setEditable(0);editor.as(gtk.Widget).setFocusable(0);
         editor.as(gobject.Object).setData("station-dictate-panel",self);editor.as(gtk.Widget).setTooltipText("Dictate result");
         const scroll=gtk.ScrolledWindow.new();scroll.as(gtk.Widget).setFocusable(0);scroll.setPolicy(.never,.automatic);scroll.setMinContentHeight(20);scroll.setMaxContentHeight(80);scroll.setPropagateNaturalHeight(1);scroll.setChild(editor.as(gtk.Widget));box.append(scroll.as(gtk.Widget));
         const row=gtk.Box.new(.horizontal,6);box.append(row.as(gtk.Widget));
         const failure_row=gtk.Box.new(.horizontal,12);box.append(failure_row.as(gtk.Widget));
-        const more=gtk.MenuButton.new();more.setLabel("⋯");more.as(gtk.Widget).setTooltipText("More Dictate actions");more.as(gtk.Widget).setFocusable(0);
-        const menu=gtk.Popover.new();menu.as(gtk.Widget).addCssClass("station-dictate-menu");menu.setHasArrow(0);const extra=gtk.Box.new(.vertical,4);menu.setChild(extra.as(gtk.Widget));more.setPopover(menu);
         var buttons:[items.len]*gtk.Button=undefined;
         for(items,0..) |item,i| {
             const button=gtk.Button.new();button.as(gtk.Widget).setFocusOnClick(0);button.as(gtk.Widget).setFocusable(0);
             button.as(gtk.Widget).addCssClass("flat");
             button.as(gobject.Object).setData("dictate-action",@constCast(item.kind.ptr));
             _=gtk.Button.signals.clicked.connect(button,*Panel,clicked,self,.{});
-            if(std.mem.eql(u8,item.kind,"stop")) header.append(button.as(gtk.Widget))
-            else if(std.mem.eql(u8,item.kind,"retry_saved") or std.mem.eql(u8,item.kind,"view_history"))failure_row.append(button.as(gtk.Widget))
+            if(std.mem.eql(u8,item.kind,"retry_saved") or std.mem.eql(u8,item.kind,"view_history") or std.mem.eql(u8,item.kind,"edit"))failure_row.append(button.as(gtk.Widget))
             else if(direct(item.kind)) {
                 const icon=gtk.Image.newFromIconName(if(std.mem.eql(u8,item.kind,"copy")) "edit-copy-symbolic" else if(std.mem.startsWith(u8,item.kind,"send")) "mail-send-symbolic" else "go-bottom-symbolic");icon.setPixelSize(18);
                 const overlay=gtk.Overlay.new();overlay.setChild(icon.as(gtk.Widget));
@@ -74,21 +84,22 @@ pub const Panel=struct{
                 }
                 button.setChild(overlay.as(gtk.Widget));button.as(gtk.Widget).setSizeRequest(32,28);row.append(button.as(gtk.Widget));
             }
-            else extra.append(button.as(gtk.Widget));
+            else {
+                const spacer=gtk.Box.new(.horizontal,0);spacer.as(gtk.Widget).setHexpand(1);row.append(spacer.as(gtk.Widget));
+                button.setChild(gtk.Image.newFromIconName("window-close-symbolic").as(gtk.Widget));row.append(button.as(gtk.Widget));
+            }
             buttons[i]=button;
         }
         const latest=gtk.Button.newWithLabel("↓ Latest");latest.as(gtk.Widget).setFocusOnClick(0);latest.as(gtk.Widget).setFocusable(0);latest.as(gtk.Widget).addCssClass("flat");latest.as(gtk.Widget).setVisible(0);
         _=gtk.Button.signals.clicked.connect(latest,*Panel,followLatest,self,.{});header.append(latest.as(gtk.Widget));
-        header.append(more.as(gtk.Widget));
         const css=gtk.CssProvider.new();
         css.loadFromString(".station-dictate-window, .station-dictate-popup > contents { background: transparent; box-shadow: none; padding: 0; } .station-dictate-card { background: rgba(24,26,30,0.80); color: #f4f4f6; border-radius: 12px; padding: 12px; } .station-dictate-card textview, .station-dictate-card textview text, .station-dictate-card scrolledwindow { background: transparent; color: #f4f4f6; border: none; } .station-dictate-reference { color: #c9cbd1; font-size: 12px; border-left: 2px solid #a2a5ad; padding-left: 6px; } .station-dictate-card textview { font-size: 14px; } .station-dictate-card scrollbar.vertical slider { min-height: 16px; } .station-dictate-menu > contents { background: #24262a; color: #f4f4f6; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 4px; } .station-dictate-menu button:hover { background: rgba(255,255,255,0.12); } .station-dictate-card button { color: #f4f4f6; min-height: 20px; padding: 2px 6px; }");
         gtk.StyleContext.addProviderForDisplay(box.as(gtk.Widget).getDisplay(),css.as(gtk.StyleProvider),gtk.STYLE_PROVIDER_PRIORITY_APPLICATION+10);
-        self.*=.{.owner=owner,.anchor=anchor,.status=status,.reference=reference,.editor=editor,.scroll=scroll,.buttons=buttons,.css=css,.more=more,.actions=row,.failure_actions=failure_row,.latest=latest};
+        self.*=.{.owner=owner,.anchor=anchor,.status=status,.waveform=waveform,.failure_notice=failure_notice,.reference=reference,.editor=editor,.scroll=scroll,.buttons=buttons,.css=css,.actions=row,.failure_actions=failure_row,.latest=latest};
         const motion=gtk.EventControllerMotion.new();
         _=gtk.EventControllerMotion.signals.enter.connect(motion,*Panel,pointerEntered,self,.{});
         _=gtk.EventControllerMotion.signals.leave.connect(motion,*Panel,pointerLeft,self,.{});
         box.as(gtk.Widget).addController(motion.as(gtk.EventController));
-        _=gobject.Object.signals.notify.connect(more.as(gobject.Object),*Panel,menuChanged,self,.{.detail="active"});
         const wheel=gtk.EventControllerScroll.new(.{.vertical=true});wheel.as(gtk.EventController).setPropagationPhase(.capture);
         _=gtk.EventControllerScroll.signals.scroll.connect(wheel,*Panel,userWheel,self,.{});scroll.as(gtk.Widget).addController(wheel.as(gtk.EventController));
         const drag=gtk.GestureClick.new();drag.as(gtk.EventController).setPropagationPhase(.capture);
@@ -119,9 +130,8 @@ pub const Panel=struct{
     fn direct(kind:[]const u8) bool {return std.mem.eql(u8,kind,"copy") or std.mem.startsWith(u8,kind,"insert_") or std.mem.startsWith(u8,kind,"send_");}
     fn pointerEntered(_: *gtk.EventControllerMotion,_:f64,_:f64,self:*Panel) callconv(.c) void {self.hovering=true;self.reportInteraction();}
     fn pointerLeft(_: *gtk.EventControllerMotion,self:*Panel) callconv(.c) void {self.hovering=false;self.reportInteraction();}
-    fn menuChanged(_: *gobject.Object,_:*gobject.ParamSpec,self:*Panel) callconv(.c) void {self.reportInteraction();}
     fn reportInteraction(self:*Panel) void {
-        const active=self.hovering or self.editing or self.more.getActive()!=0 or self.hasSelection();
+        const active=self.hovering or self.editing or self.hasSelection();
         if(active==self.reported_interaction)return;self.reported_interaction=active;
         self.owner.input(.{.type="panel_interaction",.operation_id=dictate.string(self.owner.panelValue(),"operation_id"),.interacting=active});
     }
@@ -162,7 +172,6 @@ pub const Panel=struct{
     fn clicked(button:*gtk.Button,self:*Panel) callconv(.c) void {
         const ptr=button.as(gobject.Object).getData("dictate-action") orelse return;
         const kind=std.mem.span(@as([*:0]const u8,@ptrCast(ptr)));
-        self.more.popdown();
         if(std.mem.eql(u8,kind,"edit")) {
             self.following=false;self.latest.as(gtk.Widget).setVisible(1);
             self.editing=true;self.reportInteraction();self.editor.setEditable(1);self.editor.as(gtk.Widget).setFocusable(1);
@@ -176,11 +185,37 @@ pub const Panel=struct{
         }
         self.owner.panelAction(kind);
     }
+    pub fn updateWaveform(self: *Panel, id: []const u8, levels: dictate.Waveform) void {
+        if (!std.mem.eql(u8, id, self.current_id) or self.waveform.as(gtk.Widget).getMapped() == 0) return;
+        if (std.mem.eql(u8, &self.waveform_levels, &levels)) return;
+        self.waveform_levels = levels;
+        self.waveform.as(gtk.Widget).queueDraw();
+    }
+
+    fn drawWaveform(_: *gtk.DrawingArea, cr: CairoContext, width: c_int, height: c_int, data: ?*anyopaque) callconv(.c) void {
+        const self: *Panel = @ptrCast(@alignCast(data orelse return));
+        const w: f64 = @floatFromInt(width);
+        const h: f64 = @floatFromInt(height);
+        if (std.mem.allEqual(u8, &self.waveform_levels, 0)) {
+            cr.setSourceRgba(0.74, 0.66, 0.99, 0.64);
+            cr.rectangle(0, h / 2 - 1, w, 2);
+        } else {
+            cr.setSourceRgba(0.74, 0.66, 0.99, 1);
+            const step = w / @as(f64, @floatFromInt(self.waveform_levels.len));
+            for (self.waveform_levels, 0..) |level, i| {
+                const bar_height = @max(2, @as(f64, @floatFromInt(level)) * h / 255);
+                const x = (@as(f64, @floatFromInt(i)) + 0.5) * step - 1;
+                cr.rectangle(x, (h - bar_height) / 2, 2, bar_height);
+            }
+        }
+        cr.fill();
+    }
+
     pub fn present(self:*Panel) void {self.refresh();if(self.window) |window| window.present();}
     pub fn refresh(self:*Panel) void {
         const panel=self.owner.panelValue();
         const id=dictate.string(panel,"operation_id");
-        if(!std.mem.eql(u8,id,self.current_id)){const next=a.dupe(u8,id) catch return;a.free(self.current_id);self.current_id=next;self.following=true;self.editing=false;self.editor.setEditable(0);self.reported_interaction=false;self.reportInteraction();}
+        if(!std.mem.eql(u8,id,self.current_id)){const next=a.dupe(u8,id) catch return;a.free(self.current_id);self.current_id=next;self.waveform_levels=@splat(0);self.waveform.as(gtk.Widget).queueDraw();self.following=true;self.editing=false;self.editor.setEditable(0);self.reported_interaction=false;self.reportInteraction();}
         const quote=a.dupeZ(u8,dictate.string(panel,"reference")) catch return;defer a.free(quote);
         self.reference.setText(quote);self.reference.as(gtk.Widget).setTooltipText(quote);self.reference.as(gtk.Widget).setVisible(@intFromBool(quote.len>0));
         var visible=panel!=.null;
@@ -189,9 +224,13 @@ pub const Panel=struct{
             if(anchor.getRoot()) |root| {if(gobject.ext.cast(gtk.Window,root.as(gobject.Object))) |window| {
                 // A nested native menu temporarily deactivates its owning
                 // window. Hiding this parent here would destroy that menu.
-                visible=visible and (window.isActive()!=0 or self.more.getActive()!=0);
+                visible=visible and window.isActive()!=0;
             }} else visible=false;
         }
+        const phase = dictate.string(panel, "phase");
+        const show_waveform = visible and std.mem.eql(u8, phase, "recording");
+        self.waveform.as(gtk.Widget).setVisible(@intFromBool(show_waveform));
+        if (!show_waveform) self.waveform_levels = @splat(0);
         if(!visible) {
             if(self.popover) |popup| popup.popdown();
             if(self.window) |window| window.as(gtk.Widget).setVisible(0);
@@ -199,8 +238,13 @@ pub const Panel=struct{
         }
         const detail=a.dupeZ(u8,dictate.string(panel,"status")) catch return;defer a.free(detail);self.status.as(gtk.Widget).setTooltipText(detail);
         const status=a.dupeZ(u8,dictate.string(panel,"heading")) catch return;defer a.free(status);self.status.setText(status);
+        const notice = dictate.string(panel, "failure_notice");
+        const notice_z = a.dupeZ(u8, notice) catch return;
+        defer a.free(notice_z);
+        self.failure_notice.setText(notice_z);
+        self.failure_notice.as(gtk.Widget).setVisible(@intFromBool(notice.len > 0));
         const body=dictate.string(panel,"text");
-        const text=a.dupeZ(u8,if(body.len==0 and std.mem.eql(u8,dictate.string(panel,"phase"),"failed"))dictate.string(panel,"status") else body) catch return;defer a.free(text);
+        const text=a.dupeZ(u8,if(body.len==0 and notice.len==0 and std.mem.eql(u8,phase,"failed"))dictate.string(panel,"status") else body) catch return;defer a.free(text);
         const buffer=self.editor.getBuffer();var first:gtk.TextIter=undefined;var last:gtk.TextIter=undefined;buffer.getBounds(&first,&last);
         const existing=buffer.getText(&first,&last,1);defer glib.free(existing);
         if(!std.mem.eql(u8,std.mem.span(existing),text)){
@@ -226,8 +270,8 @@ pub const Panel=struct{
         const line_height=@max(1,measured);
         self.scroll.setMinContentHeight(-1);self.scroll.setMaxContentHeight(4*line_height);
         self.scroll.setMinContentHeight(line_height);
-        self.actions.as(gtk.Widget).setVisible(@intFromBool(!std.mem.eql(u8,dictate.string(panel,"phase"),"failed") or dictate.boolean(panel,"can_copy")));
-        self.failure_actions.as(gtk.Widget).setVisible(@intFromBool(dictate.boolean(panel,"can_history")));
+        self.actions.as(gtk.Widget).setVisible(1);
+        self.failure_actions.as(gtk.Widget).setVisible(@intFromBool(dictate.boolean(panel,"can_edit") or dictate.boolean(panel,"can_retry") or dictate.boolean(panel,"can_history")));
         self.scroll.as(gtk.Widget).setVisible(@intFromBool(text.len>0 or self.editing));
         for(items,0..) |item,i| {
             if(direct(item.kind)) {
@@ -242,7 +286,11 @@ pub const Panel=struct{
                 };
             } else {
                 const label=a.dupeZ(u8,dictate.string(panel,item.label)) catch continue;defer a.free(label);
-                self.buttons[i].setLabel(label);self.buttons[i].as(gtk.Widget).setVisible(@intFromBool(item.key.len==0 or dictate.boolean(panel,item.key)));
+                if(std.mem.eql(u8,item.kind,"hide_panel")) {
+                    self.buttons[i].as(gtk.Widget).setTooltipText(label);
+                    var props=[_]gtk.AccessibleProperty{.label};var values=[_]gobject.Value{std.mem.zeroes(gobject.Value)};
+                    gtk.AccessibleProperty.initValue(.label,&values[0]);defer values[0].unset();values[0].setString(label);self.buttons[i].as(gtk.Accessible).updatePropertyValue(1,&props,&values);
+                } else self.buttons[i].setLabel(label);self.buttons[i].as(gtk.Widget).setVisible(@intFromBool(item.key.len==0 or dictate.boolean(panel,item.key)));
             }
         }
         if(!dictate.boolean(panel,"can_edit")){self.editing=false;self.editor.setEditable(0);self.editor.as(gtk.Widget).setFocusable(0);}

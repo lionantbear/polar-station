@@ -425,6 +425,7 @@ impl PolarVault {
             secret.as_bytes()
         };
         let (nonce, ciphertext) = self.cipher.seal(plain).await?;
+        let version = public.map(|_| crate::public_state::material_version(&nonce, &ciphertext));
         self.store
             .put_secret_material(
                 scope.to_owned(),
@@ -444,6 +445,7 @@ impl PolarVault {
             state
                 .records
                 .insert((scope.into(), name.into()), secret.into());
+            state.versions.insert((scope.into(),name.into()), version.expect("version computed for public state"));
             state.revision += 1;
         }
         Ok(())
@@ -490,6 +492,7 @@ impl PolarVault {
                 .write()
                 .map_err(|_| anyhow::anyhow!("public state poisoned"))?;
             state.records.remove(&(scope.into(), name.into()));
+            state.versions.remove(&(scope.into(), name.into()));
             state.revision += 1;
         }
         Ok(())

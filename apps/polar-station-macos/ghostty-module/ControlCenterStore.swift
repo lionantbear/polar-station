@@ -99,6 +99,10 @@ final class ControlCenterStore: ObservableObject {
     func setExtensionInputHandler(_ handler: @escaping PolarTmuxHostClient.ExtensionInputHandler) async {
         await backendSession.setExtensionInputHandler(handler)
     }
+    @Published private(set) var selectedBackendSocket: URL?
+    var backendReady: (@MainActor () async -> Void)?
+    var backendUnavailable: (@MainActor (String) -> Void)?
+    func requestBackend(_ payload:Data) async throws -> Data { try await backendSession.requestBackend(payload) }
     func sendStationSession(_ payload: Data) async throws { try await backendSession.sendStationSession(payload) }
     func sendExtensionFrame(_ payload: Data) async throws { try await backendSession.sendExtensionFrame(payload) }
 
@@ -880,6 +884,17 @@ final class ControlCenterStore: ObservableObject {
         }
     }
 
+    func requestHostTransfer(_ transfer: HostTransferRequestV1) async throws -> HostTransferResponseV1 {
+        try await ensureBackendSession()
+        let response = try await backendSession.requestControlCenter(.init(requestID: requestID(), frontendSessionID: frontendSessionID,
+            expectedControlRevision: nil, command: .hostTransfer(transfer)))
+        switch response.result {
+        case .hostTransfer(let result): return result
+        case .error(let error, _): throw error
+        default: throw PolarTmuxLocalIPCError.unexpectedFrame("No Host transfer result")
+        }
+    }
+
     func readSessionEditor(_ editor: SessionEditorRequestV1) async throws -> SessionEditorResultV1 {
         try await ensureBackendSession()
         let response = try await backendSession.requestControlCenter(.init(
@@ -1109,9 +1124,17 @@ final class ControlCenterStore: ObservableObject {
 
     private func backendAvailabilityChanged(
         _ availability: PolarStationBackendAvailability
-    ) {
+    ) async {
         backendAvailability = availability
+        if let message = availability.failureMessage { backendUnavailable?(message) }
         if case .ready = availability {
+            let selected = await backendSession.backendSocket()
+            if selectedBackendSocket != selected {
+                projection = nil; resourcesProjection = nil; sessionRuntime = [:]
+                inboxPage = .init(messages:[],nextBeforeCreatedAtMilliseconds:nil,unreadCount:0)
+            }
+            selectedBackendSocket = selected
+            await backendReady?()
             attentionInteraction.reconnect()
             NotificationCenter.default.post(name: Notification.Name("PolarStationRecoveryTransportReady"), object: nil)
             hostIsReady = true
@@ -1211,7 +1234,7 @@ final class ControlCenterStore: ObservableObject {
         from response: ControlCenterResponseEnvelopeV1
     ) throws -> ControlCenterProjectionV1 {
         switch response.result {
-        case .sessionEditor: throw PolarTmuxLocalIPCError.unexpectedFrame("Expected a Control Center projection")
+        case .hostTransfer, .sessionEditor: throw PolarTmuxLocalIPCError.unexpectedFrame("Expected a Control Center projection")
         case let .projection(projection),
              let .intentAccepted(projection),
              let .sessionCreated(projection, _), let .sessionBatchCreated(projection, _):

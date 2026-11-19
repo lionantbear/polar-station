@@ -4,6 +4,7 @@ const DisplaySurface = @import("display_surface.zig").DisplaySurface;
 const Content = @import("station_content.zig").Content;
 pub const Hooks = struct {
     context: ?*anyopaque = null,
+    host_socket: ?*const fn (?*anyopaque) []const u8 = null,
     on_created: ?*const fn (?*anyopaque, []const u8, []const u8, *Window, Content, *DisplaySurface) void = null,
     on_retired: ?*const fn (?*anyopaque, []const u8, *DisplaySurface) void = null,
     on_activated: ?*const fn (?*anyopaque, []const u8) void = null,

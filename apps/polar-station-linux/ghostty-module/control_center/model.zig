@@ -66,7 +66,7 @@ pub const MachineConnection = struct { id: []const u8, display_name: []const u8,
 pub const PolarConnection = struct { id: []const u8, display_name: []const u8, execution_target_id: []const u8, socket_path: []const u8, expected_node_id: []const u8, expected_peer_uid: ?u32 = null };
 pub const ConnectionCheck = struct { target_id: []const u8, polar: bool, ready: bool, summary: []const u8 };
 pub const MachineConnectionStatus = struct { id: []const u8, connection: Connection };
-pub const Connections = struct { machine_statuses: []const MachineConnectionStatus = &.{}, last_check: ?ConnectionCheck = null, revision: []const u8 = "", machines: []const MachineConnection = &.{}, polar_instances: []const PolarConnection = &.{} };
+pub const Connections = struct { workspace_transfer_supported: bool = false, host_transfer_supported: bool = false, machine_statuses: []const MachineConnectionStatus = &.{}, last_check: ?ConnectionCheck = null, revision: []const u8 = "", machines: []const MachineConnection = &.{}, polar_instances: []const PolarConnection = &.{} };
 
 pub const SshRouteProfile = struct {
     lan_address: []const u8,

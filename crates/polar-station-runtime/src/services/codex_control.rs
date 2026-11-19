@@ -10,12 +10,13 @@ use polar_station_protocol::*;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
 pub(super) struct EndpointConnection {
     pub generation: u64,
+    pub settings: polar_station_settings::CodexEndpointSettingsV1,
     pub client: Arc<CodexEndpoint>,
 }
 
@@ -42,8 +43,9 @@ pub struct CodexControlService {
     pub(super) observations: std::sync::Mutex<BTreeMap<String, Observation>>,
     pub(super) endpoints: Mutex<BTreeMap<String, EndpointConnection>>,
     pub(super) inventories: Mutex<BTreeMap<String, u64>>,
-    next_generation: AtomicU64,
-    events: mpsc::Sender<EndpointEvent>,
+    pub(super) next_generation: AtomicU64,
+    pub(super) connection_attempts: super::codex_connections::ConnectionAttempts,
+    pub(super) events: mpsc::Sender<EndpointEvent>,
 }
 
 pub(super) type ControlResult<T> = Result<T, &'static str>;
@@ -90,6 +92,7 @@ impl CodexControlService {
             endpoints: Mutex::new(BTreeMap::new()),
             inventories: Mutex::new(BTreeMap::new()),
             next_generation: AtomicU64::new(1),
+            connection_attempts: Default::default(),
             events,
         });
         let weak = Arc::downgrade(&service);
@@ -204,6 +207,13 @@ impl CodexControlService {
     ) -> ControlResult<CodexResultV1> {
         // Reads remain usable while a mutation waits for its RPC response.
         match &command {
+            CodexCommandV1::SubmitThreadText { .. } => {
+                // Explicit original-thread input uses durable submission CAS,
+                // not the observation/notification transaction lane.
+                let result=self.submit(principal,command).await;
+                self.publisher.publish(ApplicationStateApiV1::CodexV1);
+                return result;
+            }
             CodexCommandV1::GetUi => return Ok(CodexResultV1::Ui {
                 file_reference_lookup: true,
                 labels: [
@@ -464,14 +474,25 @@ impl CodexControlService {
                 self.publisher.publish(ApplicationStateApiV1::CodexV1);
                 Ok(CodexResultV1::Binding { binding:self.states.read().await.get(&id).cloned() })
             }
-            CodexCommandV1::OpenThread { endpoint_id, thread_id } => {
+            CodexCommandV1::OpenThread { endpoint_id, thread_id, yolo } => {
                 if !may_configure { return Err("scope_denied"); }
                 let topology = self.settings.load_message_connectors().map_err(|_| "settings_unavailable")?;
                 if topology.disabled_monitors.contains(&endpoint_id) { return Err("monitor_disabled"); }
                 // Observe first only after the original app server proves the exact ID.
                 // A failed thread/resume must never manufacture a fresh Thread.
                 let client = self.endpoint(&endpoint_id).await?;
-                let value = client.request("thread/resume", json!({"threadId":thread_id,"excludeTurns":true})).await.map_err(RpcFailure::code)?;
+                let mut params = json!({"threadId":thread_id,"excludeTurns":true});
+                if yolo {
+                    params["approvalPolicy"] = serde_json::to_value(codex_app_server_protocol::AskForApproval::Never).map_err(|_| "invalid_codex_request")?;
+                    params["sandbox"] = serde_json::to_value(codex_app_server_protocol::SandboxMode::DangerFullAccess).map_err(|_| "invalid_codex_request")?;
+                }
+                let value = client.request("thread/resume", params).await.map_err(RpcFailure::code)?;
+                // Loaded/subscribed upstream Threads can ignore resume overrides.
+                // Confirm the returned effective policy; never stop active work to force it.
+                if yolo && (value.get("approvalPolicy") != Some(&serde_json::to_value(codex_app_server_protocol::AskForApproval::Never).map_err(|_| "invalid_codex_response")?)
+                    || value.get("sandbox") != Some(&serde_json::to_value(codex_app_server_protocol::SandboxPolicy::DangerFullAccess).map_err(|_| "invalid_codex_response")?)) {
+                    return Err("resume_yolo_not_applied");
+                }
                 if value.pointer("/thread/id").and_then(Value::as_str) != Some(thread_id.as_str()) { return Err("thread_mismatch"); }
                 self.enable_original_thread(&endpoint_id, &thread_id).await?;
                 let id = self.observe_loaded_thread(&endpoint_id, &thread_id, None).await?;
@@ -650,8 +671,7 @@ impl CodexControlService {
                     binding: Some(state.clone()),
                 })
             }
-            command @ (CodexCommandV1::SubmitThreadText { .. }
-            | CodexCommandV1::QueueText { .. }
+            command @ (CodexCommandV1::QueueText { .. }
             | CodexCommandV1::Steer { .. }
             | CodexCommandV1::Interrupt { .. }) => self.submit(principal, command).await,
             _ => Err("invalid_request"),
@@ -747,61 +767,6 @@ impl CodexControlService {
             return Err("binding_conflict");
         }
         Ok(state)
-    }
-
-    pub(super) async fn endpoint(&self, id: &str) -> ControlResult<Arc<CodexEndpoint>> {
-        let config = self.config.read().await;
-        if !config.enabled {
-            return Err("control_disabled");
-        }
-        let endpoint = config
-            .endpoints
-            .iter()
-            .find(|e| e.id == id)
-            .cloned()
-            .ok_or("endpoint_not_found")?;
-        drop(config);
-        if endpoint.owner_host_id != self.owner {
-            return Err("owner_mismatch");
-        }
-        if endpoint.control_mode == CodexControlModeV1::RemoteHost {
-            return Err("endpoint_mode_unavailable");
-        }
-        let mut endpoints = self.endpoints.lock().await;
-        if let Some(connection) = endpoints.get(id).filter(|e| e.client.connected()) {
-            return Ok(connection.client.clone());
-        }
-        endpoints.remove(id);
-        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
-        let forward = if endpoint.control_mode == CodexControlModeV1::SshDirect {
-            Some(Arc::new(
-                super::ssh_socket_forward::SshSocketForward::connect(
-                    self.network.as_ref().ok_or("ssh_unavailable")?,
-                    &endpoint.execution_target_id,
-                    &endpoint.socket_path,
-                )
-                .await?,
-            ))
-        } else {
-            None
-        };
-        let socket = forward
-            .as_ref()
-            .map(|f| f.socket_path().to_string_lossy().into_owned())
-            .unwrap_or(endpoint.socket_path);
-        let client = Arc::new(
-            CodexEndpoint::connect(id.into(), generation, &socket, self.events.clone(), forward)
-                .await
-                .map_err(RpcFailure::code)?,
-        );
-        endpoints.insert(
-            id.into(),
-            EndpointConnection {
-                generation,
-                client: client.clone(),
-            },
-        );
-        Ok(client)
     }
 
     pub(super) async fn join(&self, id: &str, allow_resume: bool) -> ControlResult<()> {

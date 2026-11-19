@@ -25,7 +25,7 @@ fn dispatch_at(handle:*mut LgpClientHandle,bytes:*const u8,length:usize,now:Opti
         let input:Input=serde_json::from_slice(unsafe{std::slice::from_raw_parts(bytes,length)}).map_err(|e|e.to_string())?;
         let mut engine=unsafe{&*handle}.state.lock().map_err(|_|"LGP state unavailable")?;
         if let Some(now)=now {engine.advance_clock(now);}
-        let effects=engine.dispatch(input)?;
+        let effects=polar_station_input::presentation::native_effects(engine.dispatch(input)?).map_err(|e|e.to_string())?;
         Ok(serde_json::json!({"ok":true,"effects":effects,"next_deadline_ms":engine.next_deadline_ms()}))
     })).unwrap_or_else(|_|Err("LGP state panicked; reconnect required".into()));
     let value=match result{Ok(value)=>value,Err(error)=>serde_json::json!({"ok":false,"error":error})};
@@ -59,5 +59,7 @@ pub unsafe extern "C" fn polar_station_input_free(handle:*mut LgpClientHandle) {
 pub unsafe extern "C" fn polar_station_input_dispatch_at(handle:*mut LgpClientHandle,bytes:*const u8,length:usize,now_ms:u64)->*mut std::ffi::c_char {
     dispatch_at(handle,bytes,length,Some(now_ms))
 }
+
+
 
 

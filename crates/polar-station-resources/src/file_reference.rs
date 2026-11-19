@@ -17,20 +17,18 @@ pub struct FileLocation {
 /// Explicit file-open intents may contain terminal display line breaks. This
 /// never changes the terminal selection or the strict parser used for links.
 pub fn parse_selected_file_reference(value: &str) -> Option<FileReference> {
-    if value.len() > 16384 {
-        return None;
-    }
-    let joined: String = value
-        .chars()
-        .filter(|c| !matches!(c, '\r' | '\n'))
-        .collect();
-    parse_file_reference(&joined)
+    crate::recognize_file_input(
+        &crate::FileReferenceInput::Selection { text: value.into() },
+        crate::PathFlavor::Posix,
+    )
+    .ok()
+    .map(|found| found.reference)
 }
 
-/// Parse one candidate selected by the native link engine or by the user.
+/// Decode one exact representation selected by the shared matcher or user.
 /// URI authorities never select an execution target.
 pub fn parse_file_reference(value: &str) -> Option<FileReference> {
-    parse_file_reference_for_flavor(value, crate::PathFlavor::Posix)
+    crate::parse_source_reference(value, crate::PathFlavor::Posix)
 }
 pub(crate) fn parse_file_reference_for_flavor(
     value: &str,
@@ -40,11 +38,6 @@ pub(crate) fn parse_file_reference_for_flavor(
         return None;
     }
     let mut value = value.trim();
-    let markdown = value.starts_with('[') || value.starts_with("![");
-    if markdown {
-        let (_, target) = value.split_once("](")?;
-        value = target.strip_suffix(')')?.trim();
-    }
     let literal = value.starts_with(['\'', '"']);
     if let Some(first) = value
         .chars()
@@ -74,19 +67,19 @@ pub(crate) fn parse_file_reference_for_flavor(
         if value.contains("://") {
             return None;
         }
-        let (path, location) = if literal {
+        let drive_only_colon = flavor == crate::PathFlavor::Windows
+            && value.as_bytes().get(1) == Some(&b':')
+            && value
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic)
+            && !value[2..].contains(':');
+        let (path, location) = if literal || drive_only_colon {
             (value, None)
         } else {
             split_location(value)?
         };
-        let path = if markdown {
-            percent_encoding::percent_decode_str(path)
-                .decode_utf8()
-                .ok()?
-                .into_owned()
-        } else {
-            path.to_owned()
-        };
+        let path = path.to_owned();
         (path, location)
     };
     if path.is_empty() || path.chars().any(char::is_control) || path.contains("://") {
@@ -105,9 +98,9 @@ pub(crate) fn parse_file_reference_for_flavor(
     {
         return None;
     }
-    // Candidate detection belongs to the native link rules. A user-selected
-    // exact filename can be extensionless or contain spaces; parsing must not
-    // turn a type/filename list into an admission whitelist.
+    // Text boundaries belong to the shared matcher. An explicitly selected
+    // filename may be extensionless or contain spaces; representation parsing
+    // does not use a file-type whitelist.
     Some(FileReference { path, location })
 }
 
@@ -159,18 +152,6 @@ fn split_location(value: &str) -> Option<(&str, Option<FileLocation>)> {
         }
     }
     Some((value, None))
-}
-
-/// Oniguruma patterns consumed by Ghostty's existing link matcher. URL/OSC8
-/// precedence and cell geometry stay in Ghostty. These are not per-file-type.
-pub fn file_link_rules() -> &'static [&'static str] {
-    &[
-        r#"!?\[[^\]\r\n]*\]\((?:file:[^\r\n)]+|(?!(?:[[:alpha:]][[:alnum:]+.-]*):[^0-9])[^\r\n)]+)\)"#,
-        r#"(["'`])(?:/|\./|\.\./)[^\r\n]*?\1"#,
-        r#"file://[^\s<>"'`()\[\],;]*[^\s<>"'`()\[\],;.]"#,
-        r#"(?<![^\s\[('"`])(?:/|\./|\.\./|[[:alnum:]_.-]+/)[^\s<>"'`()\[\],;]*[^\s<>"'`()\[\],;.!?:]"#,
-        r#"(?<![^\s\[('"`])(?:[[:alnum:]_+-][[:alnum:]_+.-]*\.[[:alpha:]][[:alnum:]_+-]*|\.[[:alpha:]_][[:alnum:]_.-]*|README|LICENSE|Makefile|Dockerfile|Justfile|justfile)(?::[0-9]+(?::[0-9]+)?)?(?:#L[0-9]+(?:C[0-9]+)?)?(?![[:alnum:]_/@])"#,
-    ]
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]

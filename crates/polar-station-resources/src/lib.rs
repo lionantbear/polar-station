@@ -11,7 +11,10 @@ mod reconciliation;
 mod validation;
 
 pub use command::apply_catalog;
-pub use editor::{FileMappingPrefill, ResourceEditor, ResourceEditorConfirmation, ResourceEditorEffect, ResourceEditorInput, ResourceEditorView};
+pub use editor::{
+    FileMappingPrefill, ResourceEditor, ResourceEditorConfirmation, ResourceEditorEffect,
+    ResourceEditorInput, ResourceEditorView,
+};
 pub use error::{ResourceError, ResourceErrorCode};
 pub use model::{
     AndroidMirrorSpec, FileMappingSpec, PortForwardSpec, ResourceCatalog, ResourceId,
@@ -37,16 +40,21 @@ mod file_reference;
 pub use file_path::{PathFlavor, PathForm, SourcePath};
 mod file_continuation;
 mod file_input;
+mod file_matcher;
 mod file_text;
 pub use file_input::{
-    DisplayRowBoundary, FileAccessPlan, FileOpenFailure, FileOpenResolution, FileOpenStage,
-    FileReferenceInput, ParsedFileReference, ResolvedFile, ResolvedFileSource, TextRange,
+    DisplayRowBoundary, FileAccessPlan, FileOpenContext, FileOpenFailure, FileOpenResolution,
+    FileOpenStage, FileReferenceInput, ParsedFileReference, RecognizedFileReference, ResolvedFile,
+    ResolvedFileSource, TextRange,
 };
 pub use file_reference::{
-    file_link_rules, parse_file_reference, parse_selected_file_reference, select_opener,
-    FileLocation, FileReference, FileTypeRule, OpenStrategy,
+    parse_file_reference, parse_selected_file_reference, select_opener, FileLocation,
+    FileReference, FileTypeRule, OpenStrategy,
 };
-pub use file_text::{parse_file_input, parse_reference_range, parse_source_reference};
+pub use file_text::{
+    is_external_file_link, parse_file_input, parse_reference_range, parse_source_reference,
+    recognize_file_capture, recognize_file_input,
+};
 
 mod file_open;
 pub use file_open::{FileOpenEffect, FileOpenFlow, FileOpenInput, FileOrigin};

@@ -1,4 +1,5 @@
 mod connections;
+mod transfer;
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
@@ -353,6 +354,7 @@ pub struct TargetRegistry {
 
 #[derive(Debug)]
 struct TargetRegistryState {
+    portability: transfer::HostPortability,
     polar_targets: Vec<crate::polar_target_config::PolarTargetConfig>,
     targets: HashMap<String, RegisteredTarget>,
     configured_targets: Vec<ConfiguredTarget>,
@@ -410,6 +412,7 @@ impl TargetRegistry {
             state: Arc::new(StdRwLock::new(TargetRegistryState {
                 targets: HashMap::from([(LOCAL_TARGET_ID.to_string(), local)]),
                 configured_targets: Vec::new(),
+                portability: transfer::HostPortability::default(),
                 polar_targets: Vec::new(),
             })),
             config_path: None,
@@ -474,6 +477,7 @@ impl TargetRegistry {
                 targets,
                 configured_targets: config.targets,
                 polar_targets: config.polar_targets,
+                portability: config.portability,
             })),
             config_path: Some(Arc::new(path.to_path_buf())),
             update_gate: Arc::new(StdMutex::new(())),
@@ -556,7 +560,7 @@ impl TargetRegistry {
             .update_gate
             .lock()
             .expect("target registry update lock poisoned");
-        let (next_config, next_revision) = {
+        let (mut next_config, next_revision) = {
             let state = self.state.read().expect("target registry lock poisoned");
             let current = state.targets.get(target_id);
             let current_revision = current.map_or(0, RegisteredTarget::revision);
@@ -586,6 +590,7 @@ impl TargetRegistry {
             }
             (
                 TargetRegistryFile {
+                    portability: state.portability.initialized(),
                     polar_targets: state.polar_targets.clone(),
                     targets: configured_targets,
                 },
@@ -593,6 +598,7 @@ impl TargetRegistry {
             )
         };
 
+        next_config.portability.observations.remove(target_id);
         write_private_target_config(path, &next_config)?;
         let current_state = self.state.read().expect("target registry lock poisoned");
         let mut replacement_targets = HashMap::new();
@@ -647,6 +653,7 @@ impl TargetRegistry {
             let mut state = self.state.write().expect("target registry lock poisoned");
             state.targets = replacement_targets;
             state.configured_targets = next_config.targets;
+            state.portability = next_config.portability;
         }
         Ok(WorkspaceSshTarget {
             target_id: target_id.to_owned(),
@@ -706,6 +713,8 @@ fn route_profile_to_protocol(profile: &SshRouteProfile) -> SshRouteProfileV1 {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TargetRegistryFile {
+    #[serde(default)]
+    portability: transfer::HostPortability,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     polar_targets: Vec<crate::polar_target_config::PolarTargetConfig>,
     #[serde(default)]

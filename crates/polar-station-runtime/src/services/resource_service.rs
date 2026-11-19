@@ -257,18 +257,18 @@ impl ResourceService {
         source: Option<SessionFileContext<'_>>,
     ) -> ResourcesResponseEnvelopeV1 {
         if let ResourcesCommandV1::ResolveFileOpen { origin, input } = &request.command {
+            let input = match polar_station_resources::recognize_file_capture(input.clone(), polar_station_resources::PathFlavor::Posix) {
+                Ok(value) => value,
+                Err(mut failure) => {
+                    failure.captured_text = Some(input.text().into());
+                    return self.file_open_response(request, polar_station_resources::FileOpenResolution::Failure { failure }).await;
+                }
+            };
             let source = match request.validate() {
-                Ok(()) => self.resolve_open_source(origin.clone(), input, codex, source).await,
+                Ok(()) => self.resolve_open_source(origin.clone(), &input, codex, source).await,
                 Err(_) => Err(polar_station_resources::FileOpenFailure::new(polar_station_resources::FileOpenStage::Capture, "invalid_request", "Invalid file-open request.")),
             };
-            let recovery = origin.terminal_session_id.as_ref().and_then(|session| {
-                Some((codex?, polar_station_workspace::SessionKey::new(
-                    polar_station_workspace::ExecutionTargetId::new(origin.execution_target_id.clone()).ok()?,
-                    polar_station_workspace::StableTmuxSessionId::new(session.clone()).ok()?,
-                )))
-            });
-            let input = input.clone();
-            return self.resolve_file_open(request, source, input, recovery).await;
+            return self.resolve_file_open(request, source, input).await;
         }
         let legacy = match &request.command {
             ResourcesCommandV1::ResolveFileCandidates { origin, candidates } => Some((origin.clone(),
@@ -321,7 +321,7 @@ impl ResourceService {
                 let source = if origin.terminal_session_id.is_some() {
                     Err(FileOpenFailure::new(FileOpenStage::Source, "source_unavailable", "The original Session resolver is unavailable."))
                 } else { Ok(ResolvedFileSource { target_configuration_revision: self.file_source_revision(&origin.execution_target_id), origin, flavor: PathFlavor::Posix, home: None }) };
-                self.resolve_file_open(request, source, input, #[cfg(feature = "codex-control")] None).await
+                self.resolve_file_open(request, source, input).await
             }
             ResourcesCommandV1::PlanFileAccess { file } => self.replan_file_access(request, file).await,
             ResourcesCommandV1::ResolveFileCandidates { origin, candidates } => {

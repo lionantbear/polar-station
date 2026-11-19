@@ -1178,7 +1178,7 @@ pub const Controller = struct {
         self.sessions_inputs.deinit(self.allocator);
         self.map_inputs.deinit(self.allocator);
         self.inbox_inputs.deinit(self.allocator);
-        clearBox(self.layout_box);
+        self.clearWorkspaceMap();
         clearBox(self.inbox_box);
         self.clearSessionRows();
         clearBox(self.workspace_menu_box);
@@ -3774,6 +3774,17 @@ pub const Controller = struct {
         self.connections.?.connectCodex(self.model.host_id);
 
     }
+    pub fn importWorkspaceHosts(self:*Controller,bytes:[]const u8,parent:?*gtk.Window,callback:*const fn(?*anyopaque) void,context:?*anyopaque) void {
+        self.ensureConnections();
+        const projection=self.model.projection() orelse return;
+        if(self.connections)|connections|{
+            connections.update(projection.connections);
+            const review=connections.transfer() orelse return;
+            review.parent=parent;review.on_review_closed=callback;review.review_context=context;
+            if(review.window)|window|window.setTransientFor(parent);
+            connections.importHostsBundle(bytes);
+        }
+    }
     pub fn presentConnections(self: *Controller) void {
         self.openSettings(.{ .page="connections" });
     }
@@ -5847,6 +5858,7 @@ pub const Controller = struct {
         self.session_create_machine.?.as(gtk.Widget).setSensitive(@intFromBool(!view.pending));
         self.session_create_mode_bar.?.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only));
         if(self.editor.options_menu) |menu| menu.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only and std.mem.eql(u8,d.session_type,"codex") and std.mem.eql(u8,d.mode,"resume")));
+        if(self.editor.yolo_slot) |slot| slot.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only and std.mem.eql(u8,d.session_type,"codex") and std.mem.eql(u8,d.mode,"resume")));
         self.session_create_window.?.as(gtk.Window).setTitle(if(d.bind_only) "Bind Codex session" else "Add Session");
         self.session_create_submit.?.as(gtk.Widget).setSensitive(@intFromBool(view.can_submit));
         const caption = self.allocator.dupeZ(u8, view.submit_label) catch return;
@@ -6019,7 +6031,7 @@ pub const Controller = struct {
         self.session_create_endpoint.?.setSelected(if (!changed and old_endpoint_index < endpoints.as(@import("gio").ListModel).getNItems()) old_endpoint_index else 0);
         self.session_create_configuring = was_configuring;
         self.session_create_endpoint.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
-        self.session_create_yolo.?.as(gtk.Widget).setVisible(@intFromBool(is_codex and !is_resume));
+        self.session_create_yolo.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
         self.session_create_local_cli.?.as(gtk.Widget).setVisible(@intFromBool(selected_type == 2));
         if (changed and !self.session_create_configuring) {
             if (self.session_directory) |window| window.native.as(gtk.Widget).setVisible(0);

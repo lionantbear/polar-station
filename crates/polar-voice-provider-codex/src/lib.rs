@@ -8,6 +8,8 @@ pub mod dictate;
 pub mod realtime;
 mod jitter;
 mod streaming;
+mod media_diagnostics;
+mod rtcp;
 pub use jitter::{ProviderJitterBuffer, ProviderJitterStats, JitterPlayout, OPUS_SILENCE_PACKET};
 pub use streaming::merge_transcript_segments;
 use streaming::wait_for_transcript;
@@ -40,9 +42,8 @@ use ropus::{Application, Channels, Encoder};
 use tokio::sync::{Mutex,mpsc};
 use webrtc::{
     api::{
-        interceptor_registry::register_default_interceptors, media_engine::MediaEngine, APIBuilder,
+        media_engine::MediaEngine, APIBuilder,
     },
-    interceptor::registry::Registry,
     media::Sample,
     peer_connection::{
         configuration::RTCConfiguration, peer_connection_state::RTCPeerConnectionState,
@@ -51,6 +52,7 @@ use webrtc::{
     rtp_transceiver::rtp_codec::RTCRtpCodecCapability,
     track::track_local::{track_local_static_sample::TrackLocalStaticSample, TrackLocal},
 };
+use tracing::Instrument;
 use zeroize::Zeroize;
 
 const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
@@ -60,13 +62,14 @@ const REALTIME_MODEL: &str = "gpt-live-1-codex";
 const OPUS_SAMPLE_RATE_HZ: u32 = 48_000;
 const OPUS_SAMPLES_PER_FRAME: usize = 960;
 const OPUS_FRAME_DURATION: Duration = Duration::from_millis(20);
-const TRANSCRIPT_WAIT: Duration = Duration::from_secs(30);
+const TRANSCRIPT_WAIT: Duration = Duration::from_secs(60);
 #[derive(Clone)]
 pub struct CodexVoiceProvider {
     auth_manager: Option<Arc<AuthManager>>,
     vault_auth: Option<Arc<VaultAuth>>,
     http_client_factory: HttpClientFactory,
     prepared: Arc<Mutex<Option<ProviderResources>>>,
+    cleanup: Arc<CleanupTasks>,
 }
 
 impl CodexVoiceProvider {
@@ -112,6 +115,7 @@ impl CodexVoiceProvider {
         let http_client_factory = auth_manager.http_client_factory();
         Self {
             prepared: Arc::new(Mutex::new(None)),
+            cleanup: Arc::default(),
             auth_manager: Some(auth_manager),
             vault_auth: None,
             http_client_factory,
@@ -126,6 +130,7 @@ impl CodexVoiceProvider {
     ) -> Self {
         let provider = Self {
             prepared: Arc::new(Mutex::new(None)),
+            cleanup: Arc::default(),
             auth_manager: None,
             vault_auth: Some(Arc::new(VaultAuth {
                 vault,
@@ -227,18 +232,21 @@ impl CodexVoiceProvider {
         let peer = ServerMediaPeer::new_with_channels(if request.is_some() { 2 } else { 1 })
             .await
             .map_err(|_| voice_failure("peer_create", VoiceError::ProviderUnavailable))?;
-        let mut resources = ProviderResources::new(peer);
+        let mut resources = ProviderResources::new(peer, self.cleanup.clone());
         resources.auth_scope=Some(snapshot.clone());
         resources.stream_instructions = instructions.map(str::to_owned);
         if let Some(output) = output {
             realtime::attach_output(&resources.peer().peer, output);
         }
+        let trace = resources.trace.clone();
         let connect_result = async {
+            let mut stage_started = std::time::Instant::now();
             let offer = resources
                 .peer()
                 .create_offer()
                 .await
                 .map_err(|_| voice_failure("offer_create", VoiceError::TranscriptionFailed))?;
+            media_diagnostics::connection_stage("offer_created", &mut stage_started);
             let session_id = provider_correlation_id();
             let thread_correlation_id = provider_correlation_id();
             let session = if let Some(request) = request {
@@ -256,6 +264,7 @@ impl CodexVoiceProvider {
                         provider_api_failure("call_create", &error, VoiceError::TranscriptionFailed)
                     })?;
 
+            media_diagnostics::connection_stage("call_created", &mut stage_started);
             let mut sideband_headers = realtime_call_headers(&session_id, &thread_correlation_id);
             sideband_headers.extend(auth_provider.to_auth_headers().map_err(|_| VoiceError::AuthRequired)?);
             let sideband =
@@ -276,18 +285,23 @@ impl CodexVoiceProvider {
                         )
                     })?;
             resources.install_sideband(sideband);
+            media_diagnostics::connection_stage("sideband_connected", &mut stage_started);
 
             resources
                 .peer()
                 .apply_answer(call.sdp)
                 .await
                 .map_err(|_| voice_failure("answer_apply", VoiceError::TranscriptionFailed))?;
+            media_diagnostics::connection_stage("answer_applied", &mut stage_started);
             resources
                 .peer()
                 .wait_until_connected()
                 .await
-                .map_err(|_| voice_failure("peer_connect", VoiceError::Timeout))
+                .map_err(|_| voice_failure("peer_connect", VoiceError::AudioConnectionTimeout))?;
+            media_diagnostics::connection_stage("peer_connected", &mut stage_started);
+            Ok(())
         }
+        .instrument(trace)
         .await;
         match connect_result {
             Ok(()) => Ok(resources),
@@ -491,7 +505,7 @@ fn snapshot_auth_provider(auth: &CodexAuth) -> Result<Arc<SnapshotAuth>, VoiceEr
 
 fn voice_failure(stage: &str, error: VoiceError) -> VoiceError {
     if std::env::var_os("POLAR_VOICE_STAGE_DIAGNOSTICS").is_some() {
-        eprintln!("Polar Voice provider failure stage: {stage}");
+        tracing::warn!(target: "polar_dictate::latency", event="voice.provider_failure", stage, code=error.code());
     }
     error
 }
@@ -534,7 +548,7 @@ fn provider_api_failure(
             codex_api::ApiError::ServerOverloaded { .. } => "server_overloaded".to_string(),
             _ => "provider_error".to_string(),
         };
-        eprintln!("Polar Voice provider failure stage: {stage}; kind: {kind}");
+        tracing::warn!(target: "polar_dictate::latency", event="voice.provider_api_failure", stage, kind);
     }
     let status = match provider_error {
         codex_api::ApiError::Api { status, .. } => Some(*status),
@@ -553,7 +567,19 @@ fn provider_api_failure(
     }
 }
 
+#[derive(Default)]
+struct CleanupTasks(std::sync::Mutex<tokio::task::JoinSet<()>>);
+impl CleanupTasks {
+    fn spawn(&self, future: impl std::future::Future<Output=()> + Send + 'static) {
+        let mut tasks = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        while tasks.try_join_next().is_some() {}
+        tasks.spawn(future);
+    }
+}
+
 struct ProviderResources {
+    trace: tracing::Span,
+    cleanup: Arc<CleanupTasks>,
     auth_scope: Option<Arc<SnapshotAuth>>,
     stream_instructions: Option<String>,
     stream_input: serde_json::Value,
@@ -562,8 +588,14 @@ struct ProviderResources {
 }
 
 impl ProviderResources {
-    fn new(peer: ServerMediaPeer) -> Self {
+    fn new(peer: ServerMediaPeer, cleanup: Arc<CleanupTasks>) -> Self {
         Self {
+            trace: if media_diagnostics::enabled() {
+                tracing::info_span!(target: "polar_dictate::latency", "voice_session", attempt_id=%provider_correlation_id())
+            } else {
+                tracing::Span::none()
+            },
+            cleanup,
             auth_scope: None,
             stream_instructions: None,
             stream_input: serde_json::Value::Null,
@@ -609,32 +641,54 @@ impl ProviderResources {
         }
     }
 
+    fn schedule_close(&mut self) -> tokio::sync::oneshot::Receiver<()> {
+        let sideband = self.sideband.take();
+        let peer = self.peer.take();
+        let (done, completion) = tokio::sync::oneshot::channel();
+        // The provider owns the task even when the caller's wait is cancelled.
+        self.cleanup.spawn(async move {
+            tokio::join!(
+                async {
+                    if let Some(sideband) = sideband {
+                        match tokio::time::timeout(Duration::from_secs(5), sideband.close()).await {
+                            Ok(Ok(_)) => {},
+                            _ => tracing::error!("Voice sideband close failed or timed out"),
+                        }
+                    }
+                },
+                async {
+                    if let Some(peer) = peer {
+                        let closing = peer.close();
+                        tokio::pin!(closing);
+                        let result = tokio::select! {
+                            result = &mut closing => result,
+                            _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                                // Timing out must not drop cleanup while WebRTC still
+                                // owns a gathering task that can create new sockets.
+                                tracing::error!("Voice media close is slow; retaining cleanup ownership");
+                                closing.await
+                            }
+                        };
+                        if let Err(error) = result {
+                            tracing::error!(?error, "Voice media close failed");
+                        }
+                    }
+                },
+            );
+            let _ = done.send(());
+        });
+        completion
+    }
+
     async fn close_all(&mut self) {
-        if let Some(sideband) = self.sideband.take() {
-            let _ = sideband.close().await;
-        }
-        if let Some(peer) = self.peer.take() {
-            let _ = peer.close().await;
-        }
+        let _ = self.schedule_close().await;
     }
 }
 
 impl Drop for ProviderResources {
     fn drop(&mut self) {
-        let sideband = self.sideband.take();
-        let peer = self.peer.take();
-        if sideband.is_none() && peer.is_none() {
-            return;
-        }
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-            runtime.spawn(async move {
-                if let Some(sideband) = sideband {
-                    let _ = sideband.close().await;
-                }
-                if let Some(peer) = peer {
-                    let _ = peer.close().await;
-                }
-            });
+        if (self.sideband.is_some() || self.peer.is_some()) && tokio::runtime::Handle::try_current().is_ok() {
+            drop(self.schedule_close());
         }
     }
 }
@@ -643,18 +697,27 @@ struct ServerMediaPeer {
     peer: Arc<webrtc::peer_connection::RTCPeerConnection>,
     track: Arc<TrackLocalStaticSample>,
     connected: Mutex<mpsc::Receiver<()>>,
+    rtcp_task: tokio::task::JoinHandle<()>,
+    gathering_task: Mutex<Option<tokio::task::JoinHandle<Result<String, webrtc::Error>>>>,
+}
+
+impl Drop for ServerMediaPeer {
+    fn drop(&mut self) { self.rtcp_task.abort(); }
 }
 
 impl ServerMediaPeer {
     async fn new_with_channels(channels: u16) -> Result<Self, webrtc::Error> {
         let mut media_engine = MediaEngine::default();
         media_engine.register_default_codecs()?;
-        let mut registry = Registry::new();
-        registry = register_default_interceptors(registry, &mut media_engine)?;
+        let registry = rtcp::registry(&mut media_engine)?;
         let api = APIBuilder::new()
             .with_media_engine(media_engine)
             .with_interceptor_registry(registry)
             .build();
+        Self::new_with_api(api, channels).await
+    }
+
+    async fn new_with_api(api: webrtc::api::API, channels: u16) -> Result<Self, webrtc::Error> {
         let peer = Arc::new(api.new_peer_connection(RTCConfiguration::default()).await?);
         let track = Arc::new(TrackLocalStaticSample::new(
             RTCRtpCodecCapability {
@@ -669,7 +732,7 @@ impl ServerMediaPeer {
         let sender = peer
             .add_track(Arc::clone(&track) as Arc<dyn TrackLocal + Send + Sync>)
             .await?;
-        tokio::spawn(async move {
+        let rtcp_task = tokio::spawn(async move {
             let mut buffer = vec![0_u8; 1_500];
             while sender.read(&mut buffer).await.is_ok() {}
         });
@@ -691,19 +754,29 @@ impl ServerMediaPeer {
             peer,
             track,
             connected: Mutex::new(connected_rx),
+            rtcp_task,
+            gathering_task: Mutex::new(None),
         })
     }
 
     async fn create_offer(&self) -> Result<String, webrtc::Error> {
-        let offer = self.peer.create_offer(None).await?;
-        let mut gathering_complete = self.peer.gathering_complete_promise().await;
-        self.peer.set_local_description(offer).await?;
-        let _ = tokio::time::timeout(Duration::from_secs(5), gathering_complete.recv()).await;
-        self.peer
-            .local_description()
-            .await
-            .map(|description| description.sdp)
-            .ok_or(webrtc::Error::ErrConnectionClosed)
+        let mut task = self.gathering_task.lock().await;
+        let peer = self.peer.clone();
+        // webrtc 0.17 starts an internal gathering task that close() does not
+        // join or reliably cancel. Keep the whole offer operation alive across
+        // caller cancellation, then join it before closing the media peer.
+        *task = Some(tokio::spawn(async move {
+            let offer = peer.create_offer(None).await?;
+            let mut gathering_complete = peer.gathering_complete_promise().await;
+            peer.set_local_description(offer).await?;
+            let _ = gathering_complete.recv().await;
+            peer.local_description().await
+                .map(|description| description.sdp)
+                .ok_or(webrtc::Error::ErrConnectionClosed)
+        }));
+        let result = task.as_mut().expect("offer task installed").await;
+        task.take();
+        result.map_err(|_| webrtc::Error::ErrConnectionClosed)?
     }
 
     async fn apply_answer(&self, sdp: String) -> Result<(), webrtc::Error> {
@@ -746,6 +819,9 @@ impl ServerMediaPeer {
     }
 
     async fn close(&self) -> Result<(), webrtc::Error> {
+        if let Some(task) = self.gathering_task.lock().await.take() {
+            let _ = task.await;
+        }
         self.peer.close().await
     }
 }

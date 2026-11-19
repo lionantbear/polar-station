@@ -5,6 +5,10 @@ use crate::SshRouteProfileV1;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectionsProjectionV1 {
+    #[serde(default)]
+    pub host_transfer_supported: bool,
+    #[serde(default)]
+    pub workspace_transfer_supported: bool,
     pub revision: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_check: Option<ConnectionCheckV1>,

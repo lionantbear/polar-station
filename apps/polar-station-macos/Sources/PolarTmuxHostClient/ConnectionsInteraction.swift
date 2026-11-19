@@ -5,6 +5,9 @@ import CPolarStationDesktopClient
 /// Local C ABI adapter. Draft revision, pending tokens and leave decisions belong to Rust.
 @MainActor public final class ConnectionsInteraction: ObservableObject {
     public struct State: Decodable {
+        public var host_import_plan: HostImportPlanV1?
+        public var host_import_decisions: [HostImportDecisionV1]
+        public var host_import_can_apply: Bool
         public var editing: Bool
         public var dirty: Bool
         public var draft: ConnectionChangeV1?
@@ -20,14 +23,18 @@ import CPolarStationDesktopClient
         public var keep_label: String
     }
     public struct Effect: Decodable {
+        public let request: HostTransferRequestV1?
+        public let bundle: HostExportBundleV1?
         public let type: String
         public let token: UInt64?
         public let expected_revision: String?
         public let settings: CodexControlSettingsV1?
         public let codex_revision: UInt64?
-        private enum CodingKeys: String, CodingKey { case type, token, expected_revision, change, settings }
+        private enum CodingKeys: String, CodingKey { case type, token, expected_revision, change, settings, request, bundle }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
+            request = try c.decodeIfPresent(HostTransferRequestV1.self, forKey: .request)
+            bundle = try c.decodeIfPresent(HostExportBundleV1.self, forKey: .bundle)
             type = try c.decode(String.self, forKey: .type)
             token = try c.decodeIfPresent(UInt64.self, forKey: .token)
             settings = try c.decodeIfPresent(CodexControlSettingsV1.self, forKey: .settings)
@@ -48,6 +55,7 @@ import CPolarStationDesktopClient
         deinit { polar_station_connections_free(pointer) }
     }
     private let owner = Handle()
+    private var diagnosticRevision = ""
     @Published public private(set) var state: State?
     public var requestClose: (() -> Void)?
     public var saveCodexDraft: (() -> Void)?
@@ -66,6 +74,18 @@ import CPolarStationDesktopClient
         guard let bytes = try? JSONEncoder().encode(endpoint), let value = try? JSONSerialization.jsonObject(with: bytes) else { return }
         _ = dispatch(["type":"draft_codex", "endpoint":value, "enabled":enabled])
     }
+    public func exportHosts(_ ids: [String]) -> [Effect] { dispatch(["type":"export_hosts", "target_ids":ids]) }
+    public func importHosts(_ bundle: HostExportBundleV1) -> [Effect] { send("import_hosts",value:bundle,key:"bundle") }
+    public func compareHostImport(_ source: HostRefV1, target: String) -> [Effect] {
+        guard let bytes = try? JSONEncoder().encode(source), let value = try? JSONSerialization.jsonObject(with: bytes) else { return [] }
+        return dispatch(["type":"compare_host_import", "source":value, "target_id":target])
+    }
+    public func chooseHostImport(_ decision: HostImportDecisionV1) -> [Effect] { send("choose_host_import",value:decision,key:"decision") }
+    public func transferComplete(_ token: UInt64, result: HostTransferResponseV1?, error: String?) -> [Effect] {
+        var value: Any = NSNull()
+        if let result, let bytes = try? JSONEncoder().encode(result), let object = try? JSONSerialization.jsonObject(with:bytes) { value=object }
+        return dispatch(["type":"transfer_complete","token":token,"result":value,"error":error as Any? ?? NSNull()])
+    }
     public func snapshot(_ facts: ConnectionsProjectionV1) { _ = send("snapshot", value: facts, key: "facts") }
     public func begin(_ change: ConnectionChangeV1) { _ = send("edit", value: change, key: "change") }
     public func draft(_ change: ConnectionChangeV1) { _ = send("draft", value: change, key: "change") }
@@ -83,6 +103,10 @@ import CPolarStationDesktopClient
             guard let result = polar_station_connections_dispatch(handle, buffer.bindMemory(to: UInt8.self).baseAddress, bytes.count) else { return [] }
             defer { polar_station_desktop_string_free(result) }
             guard let output = try? JSONDecoder().decode(Output.self, from: Data(String(cString: result).utf8)) else { return [] }
+            if ProcessInfo.processInfo.environment["POLAR_STATION_TEST_PORTABILITY_TRACE"] == "1" {
+                if let facts = object["facts"] as? [String: Any], let revision = facts["revision"] as? String { diagnosticRevision = revision }
+                NSLog("Station private import owner=%@ input=%@ facts=%@ plan=%@ apply=%d pending=%d", String(describing:ObjectIdentifier(self)), object["type"] as? String ?? "", diagnosticRevision, output.view.host_import_plan?.revision ?? "", output.view.host_import_can_apply ? 1 : 0, output.view.pending ? 1 : 0)
+            }
             state = output.view
             return output.effects
         }

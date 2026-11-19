@@ -19,12 +19,8 @@ impl ResourceService {
                 "The original source Session is unavailable.",
             )
         };
-        let absolute = polar_station_resources::parse_file_input(input, PathFlavor::Posix)
-            .is_ok_and(|refs| refs.iter().all(|r| r.path.starts_with('/')));
-        origin = self
-            .session_file_origin(origin, if absolute { "/" } else { "./" }, codex, context)
-            .await?
-            .0;
+        let FileReferenceInput::Recognized { recognized, .. } = input else { return Err(unavailable()); };
+        origin = self.session_file_origin(origin, &recognized.reference.path, codex, context).await?.0;
         if !self
             .current_targets()
             .contains_key(&origin.execution_target_id)
@@ -32,7 +28,7 @@ impl ResourceService {
             return Err(unavailable());
         }
         origin.terminal_session_id = None;
-        let home = if input.text().contains("~/") || input.text().trim() == "~" {
+        let home = if recognized.reference.path.starts_with("~/") || recognized.reference.path == "~" {
             if origin.execution_target_id == crate::target_registry::LOCAL_TARGET_ID {
                 std::env::var("HOME").ok()
             } else {

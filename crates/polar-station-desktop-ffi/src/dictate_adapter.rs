@@ -6,8 +6,12 @@ impl std::ops::Deref for DictateSpeech {
     fn deref(&self) -> &Self::Target { &self.0 }
 }
 impl DictateSpeech {
+    pub fn with_client(client:polar_station_client::dictate_client::DictateClient) -> Result<Self,String> {
+        polar_station_client::dictate_speech::DictateSpeech::with_client(client).map(Self)
+    }
     pub fn local() -> Result<Self, String> {
-        polar_station_client::dictate_speech::DictateSpeech::local().map(Self)
+        Self::with_client(polar_station_client::dictate_client::DictateClient::with_endpoint_reader(
+            std::sync::Arc::new(crate::desktop_client_ffi::selected_backend_socket)))
     }
     
 }

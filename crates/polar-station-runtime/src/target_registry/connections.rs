@@ -3,15 +3,17 @@ use crate::polar_target_config::{PolarRoute, PolarTargetConfig};
 use polar_station_protocol::{ConnectionChangeV1, ConnectionsProjectionV1, MachineConnectionV1, PolarConnectionV1};
 use sha2::{Digest, Sha256};
 
-fn revision(config: &TargetRegistryFile) -> String {
+pub(super) fn revision(config: &TargetRegistryFile) -> String {
     format!("{:x}", Sha256::digest(serde_json::to_vec(config).expect("target config serializable")))
 }
 
 impl TargetRegistry {
     pub fn connections(&self) -> ConnectionsProjectionV1 {
         let state = self.state.read().expect("target registry lock poisoned");
-        let config = TargetRegistryFile { targets: state.configured_targets.clone(), polar_targets: state.polar_targets.clone() };
+        let config = TargetRegistryFile { targets: state.configured_targets.clone(), polar_targets: state.polar_targets.clone(), portability: state.portability.clone() };
         ConnectionsProjectionV1 {
+            host_transfer_supported: true,
+            workspace_transfer_supported: true,
             revision: revision(&config), last_check: None, machine_statuses: Vec::new(),
             machines: config.targets.iter().map(|t| MachineConnectionV1 {
                 id: t.id().into(), display_name: t.display_name().cloned().unwrap_or_else(|| t.id().into()),
@@ -34,7 +36,7 @@ impl TargetRegistry {
         let path = self.config_path.as_deref().context("Connections cannot be saved without a target configuration path")?;
         let _guard = self.update_gate.lock().expect("target update lock poisoned");
         let mut state = self.state.write().expect("target registry lock poisoned");
-        let mut config = TargetRegistryFile { targets: state.configured_targets.clone(), polar_targets: state.polar_targets.clone() };
+        let mut config = TargetRegistryFile { targets: state.configured_targets.clone(), polar_targets: state.polar_targets.clone(), portability: state.portability.clone() };
         anyhow::ensure!(revision(&config) == expected, "Connections changed in another window. Reload before saving.");
         match change {
             ConnectionChangeV1::SaveMachine { mut machine } => {
@@ -66,12 +68,19 @@ impl TargetRegistry {
                 validate_target_id(&id)?;
                 anyhow::ensure!(config.targets.iter().any(|t| t.id() == id), "Machine no longer exists");
                 config.targets.retain(|t| t.id() != id);
+                config.portability.imported_hosts.remove(&id);
             }
             ConnectionChangeV1::RemovePolar { id } => {
                 anyhow::ensure!(config.polar_targets.iter().any(|t| t.id == id), "Polar instance no longer exists");
                 config.polar_targets.retain(|t| t.id != id);
             }
         }
+        self.commit_configuration(&mut state, config, path)
+    }
+
+    /// Shared atomic commit for form edits and an entire reviewed import batch.
+    pub(super) fn commit_configuration(&self, state: &mut TargetRegistryState, mut config: TargetRegistryFile, path: &Path) -> Result<()> {
+        config.portability = config.portability.initialized();
         PolarTargetConfig::validate_all(&config.polar_targets)?;
         for polar in &config.polar_targets {
             if let PolarRoute::SshUds { execution_target_id, .. } = &polar.route {
@@ -94,10 +103,18 @@ impl TargetRegistry {
             };
             targets.insert(t.id().into(), target);
         }
+        config.portability.observations.retain(|id, _| {
+            id == LOCAL_TARGET_ID || config.targets.iter().find(|t| t.id() == id)
+                .zip(state.configured_targets.iter().find(|t| t.id() == id))
+                .is_some_and(|(next, previous)| next.destination() == previous.destination() && next.route_profile() == previous.route_profile())
+        });
+        anyhow::ensure!(config.portability.aliases.iter().all(|alias| alias.target_id == LOCAL_TARGET_ID || config.targets.iter().any(|t| t.id() == alias.target_id)),
+            "Host is referenced by imported Workspaces; reconfigure its connection instead of removing it.");
         write_private_target_config(path, &config)?;
         state.targets = targets;
         state.configured_targets = config.targets;
         state.polar_targets = config.polar_targets;
+        state.portability = config.portability;
         Ok(())
     }
 }

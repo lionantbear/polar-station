@@ -10,6 +10,15 @@ use crate::{
 
 #[async_trait]
 pub trait ConnectionCa: Send + Sync {
+    /// Invalidates independently owned local CA handles during owner shutdown.
+    fn close(&self) -> Result<()> {
+        Ok(())
+    }
+    /// Capability of this configured CA handle, not of the root Ed25519 signer.
+    /// Admission to other algorithms still belongs to their typed backend.
+    fn uses_hardware_key(&self) -> bool {
+        false
+    }
     fn owner(&self) -> NodeId;
     fn as_peer_ca_cert(&self) -> PeerCaCert;
     async fn sign_csr(

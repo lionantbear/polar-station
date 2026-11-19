@@ -4,6 +4,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 mod pane_content;
 pub use pane_content::*;
+mod portable_content;
+pub use portable_content::*;
 mod recovery;
 pub use recovery::*;
 mod terminal_control;

@@ -94,6 +94,8 @@ pub enum Input {
 #[serde(tag="type",rename_all="snake_case")]
 pub enum Effect {
     Request{frame:Value},
+    /// Internal domain intent, consumed by polar-station-input before native projection.
+    CodexSubmission{intent:String,check:bool},
     Render{pane_id:String,base_revision:u64,next_revision:u64,operation:u32,text:String},
     NeedsRender,
     ReferenceControls{pane_id:String,revision:u64,items:Value,can_return:bool},
@@ -237,7 +239,7 @@ impl Engine {
                     if let Purpose::Send{scope,window,..}=pending.purpose {
                         if let Some(draft)=self.drafts.get_mut(&(window,scope.clone().into())){draft.pending=None;draft.status=format!("Not sent — {reason}");}
                         self.status(&scope,"send_rejected",&reason.to_string(),&mut effects);
-                    }else{if let Purpose::IdeaCodex(op)=&pending.purpose { self.idea_codex_not_sent(op); } self.failed(pending.purpose,&reason.to_string(),&mut effects);}
+                    }else{self.failed(pending.purpose,&reason.to_string(),&mut effects);}
                 }
             },
             Input::ListTargets=>{self.request("embedded",json!({"op":"list_targets"}),Purpose::ListTargets,&mut effects)?;},
@@ -268,7 +270,7 @@ impl Engine {
             },
             Input::IdeaHost{host_id,supported}=>{validate_id(&host_id)?;self.idea_codex.host=supported.then_some(host_id);},
             Input::IdeaShowSession{window_id}=>self.idea_show_session(&window_id)?,
-            Input::IdeaCheckReceipt{window_id}=>self.idea_check_receipt(&window_id)?,
+            Input::IdeaCheckReceipt{window_id}=>self.idea_check_receipt(&window_id,&mut effects)?,
             Input::IdeaNodeInstruction{window_id,view_id,node_uuid,title,text,remove}=>self.idea_node_instruction(&window_id,view_id.as_deref(),node_uuid,title,text,remove)?,
             Input::IdeaSessions=>{},
             Input::IdeaPickSession{pane_id,view_id,owner_host_id,endpoint_id,thread_id,title}=>self.idea_pick_session(pane_id,view_id,idea_codex::Target{owner_host_id,endpoint_id,thread_id,title})?,
@@ -302,7 +304,7 @@ impl Engine {
                 if draft.text!=text{draft.text=text;draft.revision=draft.revision.checked_add(1).ok_or("draft version exhausted")?;}
             },
             Input::Send{window_id,created_at_secs}=>{
-                if self.idea_key(&window_id).is_ok() {self.idea_send(&window_id)?;self.idea_composer_effects(&mut effects);self.flush_requests(&mut effects);return Ok(effects);}
+                if self.idea_key(&window_id).is_ok() {self.idea_send(&window_id,&mut effects)?;self.idea_composer_effects(&mut effects);self.flush_requests(&mut effects);return Ok(effects);}
                 if self.composer_scope(&window_id).ok().is_some_and(|(_,scope)|self.inquiries.draft_context(&window_id,&scope).is_some()||self.inquiries.can_send(&window_id,&scope,"").is_some()) {
                     self.inquiry_send(&window_id,&mut effects)?;self.composer_effects(&mut effects);self.inquiry_effects(&mut effects);self.flush_requests(&mut effects);return Ok(effects);
                 }
@@ -969,7 +971,7 @@ impl Engine {
         for scope in scopes{if self.ready&&self.threads.get(&scope).is_some_and(|t|t.resync_attempts<=2){self.bind(&scope,out)?;}}
         Ok(())
     }
-    fn disconnect(&mut self,out:&mut Vec<Effect>){self.inquiry_disconnect_views();self.ready=false;self.idea_codex=Default::default();self.queued.clear();
+    fn disconnect(&mut self,out:&mut Vec<Effect>){self.disconnect_idea_submissions();self.inquiry_disconnect_views();self.ready=false;self.idea_codex=Default::default();self.queued.clear();
         let pending=std::mem::take(&mut self.pending);for (_,p) in pending{if matches!(p.purpose,Purpose::Send{..}|Purpose::Inquiry{..}|Purpose::IdeaCodex(_)){self.failed(p.purpose,"Connection closed; the operation may have committed",out);}}
         self.catalogs.clear();self.catalog_dirty.clear();
         self.pages.clear();for t in self.threads.values_mut(){t.lease=None;t.subscription=None;t.sequence=0;t.boot=None;t.staging=None;t.record.clear();t.status="offline".into();}

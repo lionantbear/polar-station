@@ -61,6 +61,7 @@ impl From<PaneContentBindingV1> for SessionKeyV1 {
 impl From<SessionKeyV1> for PaneContentBindingV1 {
     fn from(key: SessionKeyV1) -> Self {
         Self {
+            source: None,
             execution_target: key.execution_target,
             tmux_session_id: key.tmux_session_id,
         }
@@ -203,6 +204,8 @@ pub use polar_tmux_types::TerminalSizeV1;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalBridgeHelloV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub portable_binding_version: Option<u16>,
     pub protocol_version: u32,
     pub session_runtime_api_version: u16,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -225,6 +228,12 @@ fn initial_content_generation() -> u64 {
 
 impl TerminalBridgeHelloV1 {
     pub fn validate(&self) -> Result<(), ProtocolValidationError> {
+        if self.portable_binding_version.is_some_and(|version| version != 1)
+            || (self.initial_binding.as_ref().is_some_and(|binding| binding.source.is_some())
+                && self.portable_binding_version != Some(1))
+        {
+            return Err(ProtocolValidationError::InvalidIdentifier("portable binding version"));
+        }
         if self.protocol_version != PROTOCOL_VERSION {
             return Err(ProtocolValidationError::UnsupportedProtocolVersion(
                 self.protocol_version,

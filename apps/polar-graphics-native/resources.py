@@ -8,6 +8,10 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+try:
+    from build_cache import graphics_inputs, graphics_reusable, record_graphics
+except ImportError:
+    from build_cache import graphics_inputs, graphics_reusable, record_graphics
 
 
 def digest(directory: Path) -> str:
@@ -48,8 +52,11 @@ def validate_engine_function_bindings(godot: Path) -> None:
 
 def build(root: Path, output: Path, godot: Path, editor: Path, extension: Path, graphviz: Path) -> None:
     # Inputs are already built artifacts. Launch never runs a compiler/editor.
-    if output.exists():
-        raise ValueError("choose a new bundle output directory")
+    tools = [subprocess.check_output(command, text=True).strip() for command in
+             (["cc", "--version"], ["pkg-config", "--modversion", "gtk4", "epoxy"])]
+    inputs = graphics_inputs(root, godot, editor, extension, graphviz, __file__, tools)
+    if graphics_reusable(output, inputs, digest):
+        return
     validate_engine_function_bindings(godot)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".graphics-build-", dir=output.parent) as temporary:
@@ -102,7 +109,10 @@ exec "$base/bin/dot.bin" "$@"
                                  for name, path in (("libgodot", godot), ("gdextension", extension), ("godot_editor", editor))}}
         (stage / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
         digest(stage)
+        if output.exists():
+            output.rename(Path(temporary) / "old")
         stage.rename(output)
+    record_graphics(output, inputs, digest)
 
 
 

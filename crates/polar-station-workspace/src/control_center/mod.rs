@@ -47,9 +47,12 @@ pub use tool_preparation::{ToolSetupCopy,tool_setup_copy};
 pub mod diagnostics_engine;
 
 mod settings_navigation;
+pub mod workspace_manager;
 pub use settings_navigation::{SettingsNavigation, SettingsNavigationInput, SettingsNavigationView, SettingsRoute};
 
 mod settings_text;
 pub use settings_text::{SettingsTextActions,SettingsTextFieldView,PromptField,SettingsTextEngine,SettingsTextInput,SettingsTextView,SettingsTextEffect};
 
 pub use polar_station_settings::{SettingsEditInput,SettingsEditLease,SettingsEditSection,SettingsEditView};
+
+pub mod backend_selection;

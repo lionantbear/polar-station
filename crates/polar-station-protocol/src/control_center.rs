@@ -46,7 +46,7 @@ impl ControlCenterRequestEnvelopeV1 {
             (ControlCenterCommandV1::SubmitIntent { .. }, None) => {
                 return Err(ProtocolValidationError::MissingExpectedRevision);
             }
-            (ControlCenterCommandV1::GetProjection | ControlCenterCommandV1::SessionEditor { .. }, Some(_)) => {
+            (ControlCenterCommandV1::GetProjection | ControlCenterCommandV1::SessionEditor { .. } | ControlCenterCommandV1::HostTransfer { .. }, Some(_)) => {
                 return Err(ProtocolValidationError::InvalidControlCenterCommand);
             }
             _ => {}
@@ -58,6 +58,7 @@ impl ControlCenterRequestEnvelopeV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControlCenterCommandV1 {
+    HostTransfer { request: crate::HostTransferRequestV1 },
     GetProjection,
     SessionEditor { request: crate::SessionEditorRequestV1 },
     SubmitIntent { intent: ControlCenterIntentV1 },
@@ -66,6 +67,7 @@ pub enum ControlCenterCommandV1 {
 impl ControlCenterCommandV1 {
     fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
+            Self::HostTransfer { request } => request.validate(),
             Self::GetProjection => Ok(()),
             Self::SessionEditor { request } => request.validate(),
             Self::SubmitIntent { intent } => intent.validate(),
@@ -260,6 +262,7 @@ pub struct WorkspaceStructurePaneV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum StationPaneContentV1 {
+    Unavailable { reference: Box<crate::PortableContentV1> },
     LgpText { target_id: String, node_id: String, owner: String, thread: String, actor: String },
     IdeaTree { view_id: String },
     LocalDiagnostics {},
@@ -270,10 +273,11 @@ pub enum StationPaneContentV1 {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum StationPaneContentKindV1 { LgpText, IdeaTree, LocalDiagnostics, RemoteHosts, SettingsText, ToolSetup }
+pub enum StationPaneContentKindV1 { Unavailable, LgpText, IdeaTree, LocalDiagnostics, RemoteHosts, SettingsText, ToolSetup }
 impl StationPaneContentV1 {
     pub fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
+            Self::Unavailable { reference } => reference.validate()?,
             Self::LgpText { target_id, node_id, owner, thread, actor } => {
                 for value in [target_id, node_id, owner, thread, actor] { validate_stable_identifier(value, "content identity")?; }
             }
@@ -289,6 +293,10 @@ impl StationPaneContentV1 {
     fn hash(&self, hash: &mut Sha256) {
         hash_component(hash, "polar-station-pane-content-v1");
         match self {
+            Self::Unavailable { reference } => {
+                hash_component(hash, "unavailable");
+                hash_component(hash, &serde_json::to_string(reference).unwrap_or_default());
+            }
             Self::LgpText { target_id, node_id, owner, thread, actor } => {
                 hash_component(hash, "lgp_text");
                 for value in [target_id, node_id, owner, thread, actor] { hash_component(hash, value); }
@@ -537,7 +545,7 @@ impl ControlCenterIntentV1 {
             Self::EndAgentSession { owner_host_id, endpoint_id, thread_id, confirmation_id } => {
                 validate_stable_identifier(owner_host_id, "owner Host")?;
                 validate_stable_identifier(confirmation_id, "confirmation")?;
-                crate::CodexCommandV1::OpenThread { endpoint_id:endpoint_id.clone(), thread_id:thread_id.clone() }.validate()
+                crate::CodexCommandV1::OpenThread { endpoint_id:endpoint_id.clone(), thread_id:thread_id.clone(), yolo:false }.validate()
             }
             Self::RenameAgentSession { owner_host_id, endpoint_id, thread_id, name } => {
                 validate_stable_identifier(owner_host_id, "owner Host ID")?;
@@ -676,6 +684,7 @@ impl ControlCenterResponseEnvelopeV1 {
         }
         validate_stable_identifier(&self.request_id, "request ID")?;
         match &self.result {
+            ControlCenterResultV1::HostTransfer { .. } => Ok(()),
             ControlCenterResultV1::SessionEditor { result } => result.validate(),
             ControlCenterResultV1::SessionBatchCreated { projection, items } => {
                 for item in items { if let Some(session) = &item.session { session.validate()?; }
@@ -705,6 +714,7 @@ impl ControlCenterResponseEnvelopeV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ControlCenterResultV1 {
+    HostTransfer { result: crate::HostTransferResponseV1 },
     SessionBatchCreated { projection: ControlCenterProjectionV1, items: Vec<SessionCreationItemV1> },
     SessionEditor { result: crate::SessionEditorResultV1 },
     SessionCreated {

@@ -10,9 +10,13 @@ fn error(code: &str, message: impl Into<String>) -> ControlCenterErrorV1 {
     ControlCenterErrorV1 { resume: None, code: code.into(), message: message.into() }
 }
 
+fn resume_yolo_error() -> ControlCenterErrorV1 {
+    error("resume_yolo_not_applied", "Codex did not apply YOLO to this conversation. Uncheck YOLO to open it with its current permissions. Active work was not interrupted.")
+}
+
 pub enum CodexTerminalStart {
     New { yolo: bool },
-    Resume { thread_id: String },
+    Resume { thread_id: String, yolo: bool },
 }
 
 impl CodexControlService {
@@ -139,7 +143,7 @@ impl CodexControlService {
             .find(|e| e.id == endpoint_id && e.execution_target_id == target_id)
             .cloned().ok_or_else(||error("endpoint_changed","The Codex app-server endpoint is not configured on the selected Host."))?;
         let command = if let Some(thread_id) = resume_id {
-            CodexCommandV1::OpenThread { endpoint_id: endpoint.id, thread_id }
+            CodexCommandV1::OpenThread { endpoint_id: endpoint.id, thread_id, yolo }
         } else {
             CodexCommandV1::StartThread { endpoint_id: endpoint.id, name: Some(name), working_directory: directory, yolo }
         };
@@ -150,6 +154,7 @@ impl CodexControlService {
         }).await;
         match response.result {
             CodexResultV1::Binding { binding: Some(state) } => Ok(state.binding),
+            CodexResultV1::Error { code } if code == "resume_yolo_not_applied" => Err(resume_yolo_error()),
             CodexResultV1::Error { code } => Err(error(&code,format!("Codex app-server rejected the session operation ({code}); refresh the original Thread before retrying."))),
             _ => Err(error("codex_identity_missing","The app server did not confirm an original Thread ID; refresh before retrying.")),
         }
@@ -353,19 +358,14 @@ impl CodexControlService {
                 terminal_session_id:Some(session.tmux_session_id.as_str().into()),
             },path.into())));
         }
-        let wants_lookup=!path.starts_with("./") && !path.starts_with("../");
-        // Old peers deny unknown command fields. Probe the additive read
-        // capability through their existing GetUi before sending a lookup.
-        let supported = wants_lookup && (owner==self.owner || matches!(
-            self.end_rpc("desktop-file-capability", &owner, CodexCommandV1::GetUi).await,
-            Ok(CodexResultV1::Ui { file_reference_lookup:true, .. })
-        ));
+        // File identification is complete on the desktop. Read only source
+        // metadata; never reinterpret the clicked path using conversation history.
         let read=self.end_rpc("desktop-file-reference", &owner, CodexCommandV1::ReadThread {
             endpoint_id:endpoint.clone(),thread_id:thread,
-            file_reference:supported.then(||path.into()),
+            file_reference:None,
         }).await;
         let (cwd,path)=match read {
-            Ok(CodexResultV1::Thread { thread, resolved_file_reference }) => (Some(thread.cwd),resolved_file_reference.unwrap_or_else(||path.into())),
+            Ok(CodexResultV1::Thread { thread, .. }) => (Some(thread.cwd),path.to_owned()),
             Err(failure) => return Err(failure),
             _ => return Err(error("invalid_thread_response", "Cannot read the original conversation.")),
         };
@@ -483,8 +483,12 @@ impl CodexControlService {
         let target=network.targets.get(&target_id).ok_or_else(||error("target_missing","The selected machine is no longer configured."))?;
         let gate=target.operation_gate();let observation=gate.read().await;
         let client=target.managed_client(&network.ssh).await.map_err(|e|error("ssh_unavailable",e.to_string()))?;
-        if let CodexTerminalStart::Resume { thread_id } = &start {
+        if let CodexTerminalStart::Resume { thread_id, .. } = &start {
             if let Some(record) = self.existing_terminal(&client, &target_id, thread_id).await? {
+                drop(observation);
+                if matches!(&start, CodexTerminalStart::Resume { yolo: true, .. }) {
+                    self.open_agent_thread(&target_id, &endpoint.id, String::new(), None, Some(thread_id.clone()), true).await?;
+                }
                 return Ok(record);
             }
         }
@@ -500,7 +504,7 @@ impl CodexControlService {
         // Other Pane attachments and catalog reads are independent operations.
         drop(observation);
         // The original Thread owns Resume's cwd and name. A client's draft is not authority.
-        let saved = if let CodexTerminalStart::Resume { thread_id } = &start {
+        let saved = if let CodexTerminalStart::Resume { thread_id, .. } = &start {
             Some(self.read_original_thread(&endpoint.owner_host_id, &endpoint.id, thread_id).await?)
         } else { None };
         let directory = saved.as_ref().map(|t|t.cwd.clone()).or(directory)
@@ -513,11 +517,12 @@ impl CodexControlService {
             protocol_version:PROTOCOL_VERSION,api:CodexApiV1::CodexV1,request_id:crate::host_identity::random_uuid_v4(),
             owner_host_id:endpoint.owner_host_id.clone(),command:match start {
                 CodexTerminalStart::New { yolo } => CodexCommandV1::StartThread{endpoint_id:endpoint.id.clone(),name:Some(display_name.clone()),working_directory:Some(directory.clone()),yolo},
-                CodexTerminalStart::Resume { thread_id } => CodexCommandV1::OpenThread { endpoint_id:endpoint.id.clone(), thread_id },
+                CodexTerminalStart::Resume { thread_id, yolo } => CodexCommandV1::OpenThread { endpoint_id:endpoint.id.clone(), thread_id, yolo },
             },
         }).await;
         let binding=match response.result {
             CodexResultV1::Binding{binding:Some(state)}=>state.binding,
+            CodexResultV1::Error { code } if code == "resume_yolo_not_applied" => return Err(resume_yolo_error()),
             CodexResultV1::Error{code}=>return Err(error(&code,format!("Codex Thread creation failed ({code}). No terminal was created; an unknown result must be checked before retrying."))),
             _=>return Err(error("invalid_codex_response","The app-server returned no Thread identity. Check the endpoint before retrying.")),
         };

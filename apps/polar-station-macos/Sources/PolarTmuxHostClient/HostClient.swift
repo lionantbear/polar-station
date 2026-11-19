@@ -43,6 +43,26 @@ public actor PolarTmuxHostClient {
         try rust.sendSession(payload)
     }
 
+    public func backendSocket() -> URL? { (transport as? PolarTmuxRustDesktopTransport)?.backendSocket() }
+    public func requestBackend(_ payload: Data) async throws -> Data {
+        try await ensureTransport()
+        guard let rust = transport as? PolarTmuxRustDesktopTransport,
+              let object = try JSONSerialization.jsonObject(with:payload) as? [String:Any],
+              let id = object["request_id"] as? String else { throw PolarTmuxLocalIPCError.invalidJSON }
+        guard responseWaiters[id] == nil else { throw PolarTmuxLocalIPCError.duplicateRequestID(id) }
+        return try await withCheckedThrowingContinuation { continuation in
+            responseWaiters[id] = ResponseBinding(generation:nil,complete:{ result in
+                switch result {
+                case .success(.backend(let data)): continuation.resume(returning:data)
+                case .failure(let error): continuation.resume(throwing:error)
+                default: continuation.resume(throwing:PolarTmuxLocalIPCError.unexpectedFrame("backend receipt"))
+                }
+            })
+            do { try rust.sendBackend(payload) }
+            catch { responseWaiters.removeValue(forKey:id)?.complete(.failure(error)) }
+        }
+    }
+
     public func sendExtensionFrame(_ payload: Data) async throws {
         guard let transport, activeRegistration != nil else { throw PolarTmuxLocalIPCError.connectionClosed }
         guard payload.count <= 1_048_576,
@@ -60,7 +80,7 @@ public actor PolarTmuxHostClient {
     }
 
     // Delivery bindings only. Rust owns admission, identity, deadlines and cancellation.
-    private enum ResponsePayload: Sendable { case host(PolarTmuxLocalHostFrame), content(PolarTmuxPaneContentResponse) }
+    private enum ResponsePayload: Sendable { case host(PolarTmuxLocalHostFrame), content(PolarTmuxPaneContentResponse), backend(Data) }
     private struct ResponseBinding {
         let generation: UInt64?
         let complete: @Sendable (Result<ResponsePayload, any Error>) -> Void
@@ -396,7 +416,11 @@ public actor PolarTmuxHostClient {
                     }
                     continue
                 case .session(let data):
-                    await extensionInputHandler?(data)
+                    if let event = try? JSONSerialization.jsonObject(with:data) as? [String:Any],
+                       event["type"] as? String == "backend_completed", let id = event["request_id"] as? String,
+                       let binding = responseWaiters.removeValue(forKey:id) {
+                        binding.complete(.success(.backend(data)))
+                    } else { await extensionInputHandler?(data) }
                     continue
                 case .content(let response):
                     if let binding = responseWaiters.removeValue(forKey: response.requestID), binding.generation == nil {

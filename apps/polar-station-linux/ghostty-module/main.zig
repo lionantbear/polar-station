@@ -146,6 +146,8 @@ const State = struct {
     resource_file_flow: @import("resource_file_open.zig").Adapter = .{},
     resource_file_presentation: @import("file_open_presentation.zig").Presentation = .{},
     repairing_native_transfer: bool = false,
+    backend_page: ?*@import("backend_window.zig").Page = null,
+    workspace_manager: ?*@import("workspace_manager_window.zig").Manager = null,
 
     fn executorForWindow(self: *State, window: *Window) ?*presentation_executor.Executor {
         if (self.executor.managed_window == window) return &self.executor;
@@ -246,6 +248,8 @@ const State = struct {
         clearDiagnosticAttachment(self);
         clearDiagnosticSelection(self);
         self.closing = true;
+        if(self.backend_page)|page|page.deinit();
+        if (self.workspace_manager) |manager| manager.deinit();
         clearResourceFile(self);
         self.resource_file_presentation.deinit();
         for (self.controllers.items) |controller| controller.deinit();
@@ -304,6 +308,10 @@ const State = struct {
         self.presentMigratedSettings();
         renderDiagnostics(self);
         self.rememberOpenWindows();
+        if (self.workspace_manager) |manager| if (self.executor.workspace.catalog) |catalog| {
+            manager.updateConnections(if(self.controller_model.projection()) |projection| &projection.connections else null);
+            manager.refresh(catalog.value, self.executor.workspace.committing);
+        };
         self.executor.syncTabFocusIndicators();
         for (self.window_executors.items) |executor| executor.syncTabFocusIndicators();
         if (self.number_badges_visible) {
@@ -490,6 +498,8 @@ pub fn tick(app: *Application) void {
             switch (event) {
                 .request_failed => |value| {
                     var handled = current.codex_window.requestFailed(value.request_id, value.message);
+                    if(current.backend_page)|page|handled=page.requestFailed(value.request_id,value.message) or handled;
+                    if(current.workspace_manager)|manager|handled=manager.transfer.requestFailed(value.request_id,value.message) or handled;
                     handled = current.connector_window.requestFailed(value.request_id, value.message) or handled;
                     for (current.controllers.items) |controller| {
                         if (controller.connections) |connections| handled = connections.requestFailed(value.request_id, value.message) or handled;
@@ -526,10 +536,18 @@ pub fn tick(app: *Application) void {
                 .unavailable => |value| {
                     if (current.lgp) |lgp| lgp.disconnected(value.generation);
                     current.controller_model.setLocalError(value.message);
+                    if(current.backend_page)|page|if(page.waiting_registration){page.problem(value.message);backendWindowsSensitive(current,true);};
                     backendBecameUnavailable(current, .unavailable);
                     current.renderControllers();
                 },
+                .backend_completed => |bytes| {
+                    if(current.backend_page)|page|page.receiveBackend(bytes);
+                    const result=std.json.parseFromSlice(struct{request_id:[]const u8,@"error":?[]const u8=null},current.allocator,bytes,.{.ignore_unknown_fields=true}) catch null;
+                    if(result)|v|{defer v.deinit();if(std.mem.eql(u8,v.value.request_id,"client-preferences"))if(v.value.@"error")|message|current.controller_model.setLocalError(message);}
+                },
                 .ready => |value| {
+                    current.client.syncBackendSocket() catch {};
+                    if(current.lgp)|lgp|lgp.dictate.backendReady();
                     if (current.attention_engine.dispatch(current.allocator, .{ .type = "reconnect" })) |output| output.deinit() else |_| {}
                     batch.observedFrame();
                     handleHostFrame(current, value.generation, value.frame, &batch);
@@ -546,6 +564,7 @@ pub fn tick(app: *Application) void {
                     if (current.lgp) |lgp| lgp.sessionCompleted(response);
                 },
                 .native_state_completed => |response| {
+                    current.client.syncBackendSocket() catch {};
                     if (current.quitting) {
                         const receipt = std.json.parseFromSlice(struct { revision: u64, @"error": ?[]const u8 = null }, current.allocator, response, .{ .ignore_unknown_fields = true }) catch continue;
                         defer receipt.deinit();
@@ -574,6 +593,10 @@ pub fn tick(app: *Application) void {
                         }
                         break :failed true;
                     };
+                    if(current.backend_page)|page|{
+                        const saved=std.json.parseFromSlice(struct{revision:u64,@"error":?[]const u8=null},current.allocator,response,.{.ignore_unknown_fields=true}) catch null;
+                        if(saved)|v|{defer v.deinit();page.saved(v.value.revision,v.value.@"error"!=null);}
+                    }
                     current.initializeWindowRestoration();
                     // Window callbacks during a lifecycle save cannot write a
                     // competing snapshot. Recompute from live windows once the
@@ -626,13 +649,22 @@ fn submitPaneContent(context: ?*anyopaque, socket_path: []const u8, request: []c
 }
 
 fn diagnosticsHooks(current: *State) native_hooks.Hooks {
-    return .{ .context = current, .on_created = diagnosticsCreated, .on_retired = diagnosticsRetired,
+    return .{ .context = current, .host_socket = selectedBackendSocket, .on_created = diagnosticsCreated, .on_retired = diagnosticsRetired,
         .on_selected = diagnosticsSelected, .on_activated = diagnosticsActivated,
         .on_deselected = diagnosticsDeselected, .on_non_input = diagnosticsNonInput };
 }
 
 fn diagnosticsCreated(context: ?*anyopaque, pane: []const u8, window: []const u8, host: *Window, content: StationContent, display: *DisplaySurface) void {
     const current: *State = @ptrCast(@alignCast(context orelse return));
+    if(content.kind == .unavailable) {
+        const transfer=@import("workspace_transfer_window.zig");
+        const view=transfer.local(current.allocator,.{.action="reference_view",.reference=content.reference}) catch return;defer view.deinit();
+        var detail:std.ArrayList(u8)=.empty;defer detail.deinit(current.allocator);
+        const details=transfer.field(view.value,"details");
+        if(details==.array)for(details.array.items)|item|if(item==.string){detail.appendSlice(current.allocator,"\n") catch return;detail.appendSlice(current.allocator,item.string) catch return;};
+        const text=std.fmt.allocPrintSentinel(current.allocator,"{s}\n\n{s}\n{s}",.{transfer.string(view.value,"title"),transfer.string(view.value,"message"),detail.items},0) catch return;defer current.allocator.free(text);
+        const label=gtk.Label.new(text);label.setWrap(1);label.setSelectable(1);display.surface.stationSetExternalWidget(label.as(gtk.Widget));return;
+    }
     if(content.kind == .tool_setup) {
         var copy=@import("tool_setup_surface.zig").loadCopy(current.allocator) catch return;
         defer copy.deinit();
@@ -1015,7 +1047,21 @@ fn settingsPageOpened(context:?*anyopaque,controller:*controller_pane.Controller
     const current:*State=@ptrCast(@alignCast(context orelse return));
     const field=@import("dictate.zig").string;
     const kind=field(route,"page");
-    if(std.mem.eql(u8,kind,"setup")) {
+    if(std.mem.eql(u8,kind,"station_backend")) {
+        if(current.backend_page==null)current.backend_page=@import("backend_window.zig").Page.create(current.allocator,current,backendAction) catch return;
+        current.backend_page.?.present(controller.host_window.as(gtk.Window),current.client.socket_path);
+        page.send(.{.type="back"});
+    } else if(std.mem.eql(u8,kind,"workspaces")) {
+        if (current.workspace_manager == null) current.workspace_manager = @import("workspace_manager_window.zig").Manager.create(current.allocator,current,workspaceManagerAction) catch return;
+        current.workspace_manager.?.get_projection = workspaceManagerProjection;
+        current.workspace_manager.?.transfer.send=sendLgpFrame;current.workspace_manager.?.transfer.send_context=current;
+        const executor = current.controllerExecutor(controller.controller_id) orelse return;
+        const bound = if (executor.nativeWorkspaceSnapshot()) |snapshot| snapshot.workspace_id else null;
+        current.workspace_manager.?.present(controller.host_window.as(gtk.Window),controller.controller_id,bound);
+        current.workspace_manager.?.updateConnections(if(current.controller_model.projection()) |projection| &projection.connections else null);
+        if (current.executor.workspace.catalog) |catalog| current.workspace_manager.?.refresh(catalog.value,current.executor.workspace.committing);
+        page.send(.{ .type = "back" });
+    } else if(std.mem.eql(u8,kind,"setup")) {
         const remote=if(route==.object) if(route.object.get("remote")) |value| value==.bool and value.bool else false else false;
         const key=std.fmt.allocPrint(current.allocator,"settings:{d}:{s}",.{controller.controller_id,if(remote) "remote" else "local"}) catch return;
         defer current.allocator.free(key);
@@ -1048,6 +1094,105 @@ fn settingsPageOpened(context:?*anyopaque,controller:*controller_pane.Controller
             page.attach(lease);
         }
     }
+}
+
+
+fn selectedBackendSocket(context:?*anyopaque) []const u8 {
+    const current:*State=@ptrCast(@alignCast(context orelse return ""));return current.client.socket_path;
+}
+fn backendWindowsSensitive(current:*State,enabled:bool) void {
+    if(current.executor.managed_window)|w|w.as(gtk.Widget).setSensitive(@intFromBool(enabled));
+    for(current.window_executors.items)|executor|if(executor.managed_window)|w|w.as(gtk.Widget).setSensitive(@intFromBool(enabled));
+}
+fn backendAction(context:?*anyopaque,action:[]const u8,bytes:[]const u8) void {
+    const current:*State=@ptrCast(@alignCast(context orelse return));
+    const page=current.backend_page orelse return;
+    if(std.mem.eql(u8,action,"capture")){
+        if(current.executor.workspace.committing){page.problem("Wait for the Workspace save to finish.");return;}
+        const catalog=if(current.executor.workspace.catalog)|v|v.value else {page.problem("Workspace catalog is unavailable.");return;};
+        const saved=@import("native_workspace_store.zig").encodeCatalog(current.allocator,catalog) catch {page.problem("Cannot read Workspace catalog.");return;};defer current.allocator.free(saved);page.capture(saved);
+    }else if(std.mem.eql(u8,action,"host")){
+        current.client.sendJson(bytes) catch |err|page.problem(@errorName(err));
+    }else if(std.mem.eql(u8,action,"backend")){
+        current.client.backend(bytes) catch |err|{page.problem(@errorName(err));backendWindowsSensitive(current,true);};
+    }else if(std.mem.eql(u8,action,"save_protected") or std.mem.eql(u8,action,"save_resolved")){
+        if(current.lgp)|lgp|{
+            if(lgp.dictate.capture_id!=null or lgp.dictate.submitted_id!=null){page.problem("Finish or cancel Dictate before switching backends.");return;}
+            if(!lgp.flushDrafts()){page.problem("Cannot save drafts. Keep this backend open.");return;}
+        }
+        backendWindowsSensitive(current,false);
+        page.save_revision=current.executor.manageBackendCatalog(bytes) catch |err|{page.problem(@errorName(err));backendWindowsSensitive(current,true);return;};
+    }else if(std.mem.eql(u8,action,"suspend")){
+        current.executor.suspendBackend();for(current.window_executors.items)|executor|executor.suspendBackend();
+    }else if(std.mem.eql(u8,action,"switched")){
+        current.client.syncBackendSocket() catch {};
+        current.controller_model.deinit();current.controller_model=controller_model.Model.init(current.allocator);
+        current.session_cache.deinit();current.session_cache=session_runtime.Cache.init(current.allocator);
+        current.resources_model.deinit();current.resources_model=resources.Model.init(current.allocator);
+    }else if(std.mem.eql(u8,action,"restore") or std.mem.eql(u8,action,"recover")){
+        backendWindowsSensitive(current,true);
+        current.executor.resumeBackend() catch {};
+        for(current.window_executors.items)|executor|executor.resumeBackend() catch {};
+    }
+    current.renderControllers();
+}
+fn workspaceManagerProjection(context: ?*anyopaque) ?*const controller_model.Projection {
+    const current: *State = @ptrCast(@alignCast(context orelse return null));
+    return current.controller_model.projection();
+}
+
+fn workspaceManagerAction(context: ?*anyopaque, action: []const u8, target: []const u8, name: []const u8) void {
+    const current: *State = @ptrCast(@alignCast(context orelse return));
+    const manager = current.workspace_manager orelse return;
+    if (current.quitting) return;
+    if(std.mem.eql(u8,action,"export") or std.mem.eql(u8,action,"open")) {
+        if(manager.catalog)|catalog|for(catalog.value.workspaces)|w|if(std.mem.eql(u8,w.workspace_id,target)){
+            const bytes=@import("native_workspace_store.zig").encodeWorkspace(current.allocator,w) catch return;defer current.allocator.free(bytes);
+            if(std.mem.eql(u8,action,"export")) {
+                if(current.lgp)|lgp| {
+                    var arena=std.heap.ArenaAllocator.init(current.allocator);defer arena.deinit();
+                    const sources=lgp.portableIdeaSources(arena.allocator()) catch return;
+                    const encoded=std.json.Stringify.valueAlloc(arena.allocator(),sources,.{}) catch return;
+                    const copied=std.json.parseFromSlice(std.json.Value,current.allocator,encoded,.{.allocate=.alloc_always}) catch return;
+                    if(manager.transfer.idea_sources)|v|v.deinit();manager.transfer.idea_sources=copied;
+                }
+                manager.transfer.exportWorkspace(bytes);
+            } else manager.transfer.openWorkspace(bytes);return;
+        };
+        return;
+    }
+    if(std.mem.eql(u8,action,"import")){manager.transfer.openImport();return;}
+    if(std.mem.eql(u8,action,"import_hosts")) {
+        for(current.controllers.items)|controller|if(controller.controller_id==manager.controller_id){controller.importWorkspaceHosts(name,manager.window,@import("workspace_transfer_window.zig").Transfer.hostsReviewed,&manager.transfer);return;};
+        manager.problem("Open Connections to review the included Hosts.");return;
+    }
+    if(std.mem.eql(u8,action,"resolve_commit")) {
+        const revision=current.executor.manageReplace(name) catch |err|{manager.problem(@errorName(err));return;};
+        if(manager.open_after_save)|id|current.allocator.free(id);manager.open_after_save=current.allocator.dupe(u8,target) catch return;manager.open_after_revision=revision;
+        current.renderControllers();return;
+    }
+    if(std.mem.eql(u8,action,"import_commit")) {
+        current.executor.manageImport(name) catch |err|{manager.problem(@errorName(err));return;};
+        if(manager.selected)|v|current.allocator.free(v);manager.selected=current.allocator.dupe(u8,target) catch null;
+        current.renderControllers();return;
+    }
+    const owner = current.executorForWorkspace(target) orelse &current.executor;
+    if (std.mem.eql(u8,action,"archive") or std.mem.eql(u8,action,"restore")) {
+        owner.manageArchived(std.mem.eql(u8,action,"archive"),target) catch |err| {manager.problem(@errorName(err));return;};
+    } else if (std.mem.eql(u8,action,"rename")) {
+        owner.manageRename(target,name) catch |err| {manager.problem(@errorName(err));return;};
+    } else if (std.mem.eql(u8,action,"open_resolved")) {
+        if (current.executorForWorkspace(target)) |existing| {
+            existing.refreshTransferredWorkspace() catch |err| {manager.problem(@errorName(err));return;};
+            if (existing.managed_window) |window| window.as(gtk.Window).present();
+        } else {
+            sendControllerRequest(current,manager.controller_id,.{.select_workspace=.{.workspace_id=target}});
+            if(current.executorForWorkspace(target)) |opened| if(opened.managed_window) |window| window.as(gtk.Window).present();
+        }
+    } else if (std.mem.eql(u8,action,"new")) {
+        sendControllerRequest(current,manager.controller_id,.{.create_workspace=.{.name=name}});
+    }
+    current.renderControllers();
 }
 
 fn retryChatHost(context: ?*anyopaque) void {
@@ -1332,6 +1477,7 @@ pub fn requestNativeSurfaceClose(surface: *@import("../class/surface.zig").Surfa
     const root = surface.as(gtk.Widget).getRoot() orelse return true;
     const window = gobject.ext.cast(Window, root.as(gobject.Object)) orelse return false;
     const executor = current.executorForWindow(window) orelse return true;
+    if (executor.backend_suspended) return true;
     if (executor.applying_physical_snapshot) return false;
     if (executor.nativePaneIdForSurface(surface)) |borrowed| {
         const id = current.allocator.dupe(u8, borrowed) catch return true;
@@ -1347,6 +1493,7 @@ pub fn requestNativeSurfaceClose(surface: *@import("../class/surface.zig").Surfa
 pub fn interceptNativePageClose(window: *Window, page: *adw.TabPage) bool {
     const current = if (state) |*value| value else return false;
     const executor = current.executorForWindow(window) orelse return false;
+    if (executor.backend_suspended) { window.getTabView().closePageFinish(page, 0); return true; }
     if (executor.applying_physical_snapshot) return false;
     const tab = gobject.ext.cast(@import("../class/tab.zig").Tab, page.getChild()) orelse return false;
     window.getTabView().closePageFinish(page, 0);
@@ -1916,6 +2063,11 @@ fn handleHostFrame(
                 handleInboxResponse(current, payload);
                 return;
             }
+            if(current.backend_page)|page|if(page.receiveHost(payload))return;
+            if(current.workspace_manager)|manager|if(manager.transfer.receive(payload))return;
+            for(current.controllers.items)|controller| {
+                if(controller.connections)|connections|if(connections.receiveHostTransfer(payload))return;
+            }
             var outcome =
                 protocol.decodeControlCenterResponseOutcome(
                     current.allocator,
@@ -1943,6 +2095,12 @@ fn handleHostFrame(
                 true
             else if (current.controller_model.applyApplicationResponse(payload)) applied: {
                 if (current.controller_model.projection()) |projection| {
+                    if(current.backend_page)|page|if(page.waiting_registration){
+                        if(current.executor.workspace.catalog)|catalog|{
+                            const bytes=@import("native_workspace_store.zig").encodeCatalog(current.allocator,catalog.value) catch null;
+                            if(bytes)|value|{defer current.allocator.free(value);page.registered(value,projection.connections.polar_instances);}
+                        }
+                    };
                     current.executor.applyControlProjection(projection) catch {};
                     for (current.window_executors.items) |executor| executor.applyControlProjection(projection) catch {};
                 }

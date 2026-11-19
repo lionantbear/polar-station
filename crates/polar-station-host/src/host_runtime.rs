@@ -62,6 +62,7 @@ use crate::{
 use crate::local_ipc;
 
 mod session_management;
+mod listener_lifecycle;
 
 const REQUEST_CACHE_CAPACITY: usize = 256;
 const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
@@ -83,6 +84,7 @@ impl<T> Drop for AbortTaskOnDrop<T> {
 
 #[derive(Clone)]
 struct AppState {
+    composition: HostRuntimeComposition,
     dictate: Option<Arc<crate::dictate_host::DictateHost>>,
     host: HostDescriptor,
     identity: Arc<HostIdentity>,
@@ -105,6 +107,7 @@ struct AppState {
     ssh_connections: SshConnectionManager,
     connected_companions: Arc<AtomicU64>,
     companion_listener_ready: bool,
+    ipc_ready: Arc<std::sync::atomic::AtomicBool>,
     authentication_slots: Arc<Semaphore>,
     terminal_consumers: TerminalConsumerRegistry,
     extensions: Arc<crate::local_extensions::LocalExtensionRegistry>,
@@ -837,6 +840,7 @@ pub async fn run_config_with_services_until<S>(
     let connector_monitor = crate::host::connector_monitor::ConnectorMonitor::start(codex.clone());
     tracing::info!(target: "polar_station_operation", component="Host", event="host_services_ready");
     let state = Arc::new(AppState {
+        composition,
         dictate,
         host,
         identity,
@@ -859,6 +863,7 @@ pub async fn run_config_with_services_until<S>(
         ssh_connections,
         connected_companions: Arc::new(AtomicU64::new(0)),
         companion_listener_ready: companion_listener_ready(bound_address),
+        ipc_ready: Arc::default(),
         authentication_slots: Arc::new(Semaphore::new(16)),
         terminal_consumers: TerminalConsumerRegistry::default(),
         extensions: Arc::new(extensions),
@@ -866,15 +871,17 @@ pub async fn run_config_with_services_until<S>(
     let _session_backend = session_management::mount(&state, session_runtime.as_ref())?;
 
     #[cfg(unix)]
-    let (ipc_stop, ipc_task) = {
+    let (ipc_stop, mut ipc_task) = {
         let listener = local_ipc::bind(&socket_path)?;
         tracing::info!(target: "polar_station_operation", component="Host", event="ipc_listening");
         let ipc_state = state.clone();
         let (stop, stopped) = tokio::sync::oneshot::channel();
+        let readiness = listener_lifecycle::ListenerReadiness::new(state.ipc_ready.clone());
         let task = tokio::spawn(async move {
+            let _readiness = readiness;
             let result = run_local_listener(listener, ipc_state, stopped).await;
             if let Err(error) = &result {
-                warn!(%error, "Polar Tmux local IPC listener stopped");
+                tracing::error!(error = %format!("{error:#}"), "Polar Station local IPC listener stopped");
             }
             result
         });
@@ -937,24 +944,43 @@ pub async fn run_config_with_services_until<S>(
             axum::serve(listener, app).await
         }
     };
+    #[cfg(unix)]
+    let mut ipc_finished = None;
     let serve_result = if composition == HostRuntimeComposition::StandalonePolarStation {
         tokio::select! {
             result = serve => result,
+            result = async {
+                #[cfg(unix)] { (&mut ipc_task).await }
+                #[cfg(not(unix))] { std::future::pending::<Result<Result<()>, tokio::task::JoinError>>().await }
+            } => {
+                tracing::error!(error = ?result, "Critical Station IPC task exited");
+                #[cfg(unix)] { ipc_finished = Some(result); }
+                Err(std::io::Error::other("critical Station IPC task exited"))
+            },
             result = wait_for_host_shutdown_signal() => result,
             _ = &mut shutdown => Ok(()),
         }
     } else {
         tokio::select! {
             result = serve => result,
+            result = async {
+                #[cfg(unix)] { (&mut ipc_task).await }
+                #[cfg(not(unix))] { std::future::pending::<Result<Result<()>, tokio::task::JoinError>>().await }
+            } => {
+                tracing::error!(error = ?result, "Critical Station IPC task exited");
+                #[cfg(unix)] { ipc_finished = Some(result); }
+                Err(std::io::Error::other("critical Station IPC task exited"))
+            },
             _ = &mut shutdown => Ok(()),
         }
     };
+    state.ipc_ready.store(false, Ordering::Release);
     tracing::info!(target: "polar_station_operation", component="Host", event="host_shutdown_requested");
     #[cfg(unix)]
     let ipc_result = {
         state.terminal_consumers.lifetimes.close();
         let _ = ipc_stop.send(());
-        ipc_task.await.context("local IPC owner failed")
+        match ipc_finished { Some(result) => result, None => ipc_task.await }.context("local IPC owner failed")
     };
     let terminal_cleanup = state
         .terminal_consumers
@@ -1067,8 +1093,12 @@ where
     }
 }
 
-async fn health() -> &'static str {
-    "ok"
+async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if state.ipc_ready.load(Ordering::Acquire) {
+        (axum::http::StatusCode::OK, "ok")
+    } else {
+        (axum::http::StatusCode::SERVICE_UNAVAILABLE, "local IPC unavailable")
+    }
 }
 
 async fn get_host(State(state): State<Arc<AppState>>) -> Json<HostDescriptor> {
@@ -1597,6 +1627,7 @@ async fn process_application_request(
         }
         ClientApplicationMessage::ControlCenterV1(request) => {
             let reason = match &request.command {
+                polar_station_protocol::ControlCenterCommandV1::HostTransfer { .. } => "host_transfer",
                 polar_station_protocol::ControlCenterCommandV1::GetProjection => "get_projection",
                 polar_station_protocol::ControlCenterCommandV1::SessionEditor { .. } => "session_editor",
                 polar_station_protocol::ControlCenterCommandV1::SubmitIntent { .. } => "submit_intent",
@@ -2739,7 +2770,7 @@ async fn run_local_listener(
                 return Ok(());
             },
             _ = connections.join_next(), if !connections.is_empty() => continue,
-            result = listener.accept() => result.context("failed to accept local IPC connection")?,
+            result = listener_lifecycle::accept(&listener, &state.ipc_ready) => result.context("failed to accept local IPC connection")?,
         };
         let connection_state = state.clone();
         connections.spawn(async move {
@@ -2798,10 +2829,26 @@ async fn serve_local_connection(
         if request.extension == "polar.station.health" {
             local_ipc::verify_peer(&stream)?;
             anyhow::ensure!(request.version == 1, "unsupported readiness probe");
+            use polar_station_protocol::{StationBackendDescriptorV1, StationBackendCompositionV1 as Composition, StationBackendAdmissionV1 as Admission};
+            let instance = request.payload.get("frontend_instance_id").and_then(serde_json::Value::as_str);
+            let admission = match state.frontends.registrations.lock().await.values().next() {
+                None => Admission::Available,
+                Some(active) if Some(active.instance_id.as_str()) == instance => Admission::CurrentClient,
+                Some(_) => Admission::Occupied,
+            };
+            let sources:Vec<polar_station_protocol::HostRefV1>=serde_json::from_value(request.payload.get("sources").cloned().unwrap_or_else(||serde_json::json!([])))?;
+            anyhow::ensure!(sources.len()<=256,"Too many Host references in backend preview");
+            let mut source_associations=Vec::new();
+            for source in sources {source.validate()?;if let Some(target_id)=state.targets.resolve_host_ref(&source){source_associations.push(polar_station_protocol::HostImportAssociationV1 {source,target_id});}}
+            let descriptor = StationBackendDescriptorV1 {
+                backend_selection_version: 1,
+                host_id: state.identity.host_id().to_owned(),
+                desktop_version: polar_station_protocol::DESKTOP_CONTROL_CONTRACT_VERSION,
+                composition: match state.composition { HostRuntimeComposition::StandalonePolarStation => Composition::Compact, HostRuntimeComposition::EmbeddedPolar => Composition::Full },
+                execution_uid: local_ipc::effective_uid(), admission, host: state.host.clone(), source_associations,
+            };
             let response = polar_local_access_contract::LocalExtensionResponseV1::for_request(request,
-                polar_local_access_contract::LocalExtensionResultV1::Success { payload: serde_json::json!({
-                    "host_id":state.identity.host_id(), "desktop_version":polar_station_protocol::DESKTOP_CONTROL_CONTRACT_VERSION
-                }) });
+                polar_local_access_contract::LocalExtensionResultV1::Success { payload: serde_json::to_value(descriptor)? });
             local_ipc::write_json_frame(&mut stream, &LocalHostFrame::ExtensionResponse { response }).await?;
             return Ok(());
         }

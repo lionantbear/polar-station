@@ -120,7 +120,7 @@ impl SessionEditorRequestV1 {
             }
             Self::PreviewEndAgent { execution_target_id, owner_host_id, endpoint_id, thread_id } => {
                 crate::validate_stable_identifier(owner_host_id, "owner Host")?;
-                crate::CodexCommandV1::OpenThread { endpoint_id:endpoint_id.clone(), thread_id:thread_id.clone() }.validate()?;
+                crate::CodexCommandV1::OpenThread { endpoint_id:endpoint_id.clone(), thread_id:thread_id.clone(), yolo:false }.validate()?;
                 execution_target_id
             }
             Self::PreviewEnd {

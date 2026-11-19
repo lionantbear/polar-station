@@ -4,20 +4,24 @@ use polar_local_access_contract::{LocalExtensionRequestV1, LocalExtensionResultV
 use polar_station_protocol::{LocalClientFrame, LocalHostFrame};
 use serde_json::Value;
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
+pub type EndpointResult = Result<std::path::PathBuf>;
+pub type EndpointReader = std::sync::Arc<dyn Fn() -> Result<std::path::PathBuf> + Send + Sync>;
 #[derive(Clone, Default)]
 pub struct DictateClient {
-    pub(crate) path: Option<std::path::PathBuf>,
+    path: Option<std::path::PathBuf>,
+    reader: Option<EndpointReader>,
 }
 impl DictateClient {
-    pub fn with_socket_path(path: std::path::PathBuf) -> Self {
-        Self { path: Some(path) }
+    pub fn with_socket_path(path: std::path::PathBuf) -> Self { Self { path:Some(path), reader:None } }
+    pub fn with_endpoint_reader(reader: EndpointReader) -> Self { Self { path:None, reader:Some(reader) } }
+    pub(crate) fn endpoint(&self) -> Result<std::path::PathBuf> {
+        if let Some(reader)=&self.reader {return reader();}
+        self.path.clone().map(Ok).unwrap_or_else(crate::local_ipc::default_socket_path)
     }
+    /// An admitted multi-request operation retains its original backend.
+    pub(crate) fn snapshot(&self) -> Result<Self> { Ok(Self::with_socket_path(self.endpoint()?)) }
     async fn connect(&self) -> Result<tokio::net::UnixStream> {
-        let path = self
-            .path
-            .clone()
-            .map(Ok)
-            .unwrap_or_else(crate::local_ipc::default_socket_path)?;
+        let path = self.endpoint()?;
         let owner = crate::local_ipc::effective_uid();
         let metadata =
             std::fs::symlink_metadata(&path).context("Start Polar Station Host to use Voice")?;
@@ -114,3 +118,5 @@ impl DictateClient {
     }
 
 }
+
+

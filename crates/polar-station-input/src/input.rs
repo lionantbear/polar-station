@@ -12,6 +12,7 @@ pub enum Input {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GenericInput {
+    InputAction { window_id: String, pane_id: String, action: crate::actions::InputAction },
     ReferenceCollection { enabled:bool },
     DictatedInput { lease:Lease, source:crate::learning::Refinement, text:String },
     RefinedInput { lease:Lease, original:String, text:String, english:bool },

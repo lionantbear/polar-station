@@ -9,6 +9,12 @@ mod terminal_control;
 pub use terminal_control::*;
 pub use polar_tmux_types::*;
 
+mod backend;
+pub use backend::*;
+mod content_transfer;
+pub use content_transfer::*;
+mod host_transfer;
+pub use host_transfer::*;
 mod connections;
 pub use connections::*;
 mod codex_control;

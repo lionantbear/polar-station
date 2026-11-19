@@ -265,6 +265,7 @@ pub struct TransportMaterialReconcileReport {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiscoveryFrame {
+    pub installation_generation: [u8; 16],
     pub node_id: String,
     pub node_name: String,
     pub binding_pubkey: String,

@@ -38,6 +38,8 @@ pub(super) struct Submission {
     pub target: Target,
     pub intent: String,
     pub revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<CodexCommandV1>,
 }
 #[derive(Default)]
 pub(super) struct Codex {
@@ -45,13 +47,6 @@ pub(super) struct Codex {
 }
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Operation {
-    Send {
-        owner: String,
-        view: String,
-        revision: u64,
-        intent: String,
-        check: bool,
-    },
     Show {
         owner: String,
         window: String,
@@ -167,7 +162,7 @@ impl Engine {
     }
     pub(super) fn idea_operation_owner<'a>(&'a self, op: &'a Operation) -> Option<&'a str> {
         match op {
-            Operation::Send { owner, .. } | Operation::Show { owner, .. } => Some(owner),
+            Operation::Show { owner, .. } => Some(owner),
         }
     }
     pub(super) fn idea_pick_session(
@@ -233,7 +228,7 @@ impl Engine {
         Ok(id)
     }
 
-    pub(super) fn idea_send(&mut self, window: &str) -> Result<(), String> {
+    pub(super) fn idea_send(&mut self, window: &str, out: &mut Vec<Effect>) -> Result<(), String> {
         if self.idea_codex.host.is_none() {
             return Err("Codex protocol unavailable; reconnect to an updated Host".into());
         }
@@ -251,35 +246,26 @@ impl Engine {
             );
         }
         let intent = polar_identity::generation::new_uuid_v7().to_string();
-        let DraftContext::Idea(view) = &key.1 else {
-            return Err("Select an Idea Tree".into());
-        };
         let revision = draft.revision;
-        let op = Operation::Send {
-            owner: target.owner_host_id.clone(),
-            view: view.clone(),
-            revision,
-            intent: intent.clone(),
-            check: false,
-        };
         let command = CodexCommandV1::SubmitThreadText {
             endpoint_id: target.endpoint_id.clone(),
             thread_id: target.thread_id.clone(),
             intent_id: intent.clone(),
             text,
         };
-        let id = self.idea_codex_request(command, op)?;
         let draft = self.drafts.get_mut(&key).ok_or("Missing draft")?;
         draft.idea_submission = Some(Submission {
             target,
-            intent,
+            intent: intent.clone(),
             revision,
+            command: Some(command),
         });
-        draft.pending = Some(id);
+        draft.pending = Some(intent.clone());
+        out.push(Effect::CodexSubmission { intent, check: false });
         draft.status = "Submitting to Codex…".into();
         Ok(())
     }
-    pub(super) fn idea_check_receipt(&mut self, window: &str) -> Result<(), String> {
+    pub(super) fn idea_check_receipt(&mut self, window: &str, out: &mut Vec<Effect>) -> Result<(), String> {
         if self.idea_codex.host.is_none() {
             return Err("Codex protocol unavailable".into());
         }
@@ -292,26 +278,51 @@ impl Engine {
             .idea_submission
             .clone()
             .ok_or("No unresolved submission")?;
-        let DraftContext::Idea(view) = &key.1 else {
-            return Err("Select an Idea Tree".into());
-        };
-        let op = Operation::Send {
-            owner: submission.target.owner_host_id,
-            view: view.clone(),
-            revision: submission.revision,
-            intent: submission.intent.clone(),
-            check: true,
-        };
-        let id = self.idea_codex_request(
-            CodexCommandV1::GetReceipt {
-                intent_id: submission.intent,
-            },
-            op,
-        )?;
         let draft = self.drafts.get_mut(&key).ok_or("Missing draft")?;
-        draft.pending = Some(id);
+        draft.pending = Some(submission.intent.clone());
+        out.push(Effect::CodexSubmission { intent: submission.intent, check: true });
         draft.status = "Checking submission receipt…".into();
         Ok(())
+    }
+    /// The input coordinator reads the frozen request, never the current editor.
+    pub fn idea_submission(&self, intent: &str) -> Option<(String, Option<CodexCommandV1>)> {
+        self.drafts.values().find_map(|draft| {
+            let submission = draft.idea_submission.as_ref().filter(|s| s.intent == intent)?;
+            Some((submission.target.owner_host_id.clone(), submission.command.clone()))
+        })
+    }
+    pub fn complete_idea_submission(&mut self, intent: &str, result: CodexResultV1, not_sent: bool) -> Result<Vec<Effect>, String> {
+        let Some(draft) = self.drafts.values_mut().find(|d|d.idea_submission.as_ref().is_some_and(|s|s.intent==intent)) else { return Ok(vec![]) };
+        let revision=draft.idea_submission.as_ref().ok_or("Missing submission")?.revision;
+        draft.pending=None;
+        match result {
+            CodexResultV1::Receipt { receipt:Some(receipt) } if receipt.intent_id==intent => {
+                draft.status=receipt.label;
+                if matches!(receipt.status,CodexSubmissionStatusV1::Accepted|CodexSubmissionStatusV1::Rejected) {
+                    draft.idea_submission=None;
+                }
+                if receipt.clear_input && receipt.status==CodexSubmissionStatusV1::Accepted && draft.revision==revision {
+                    draft.text.clear();draft.node_blocks.clear();draft.idea_context=None;
+                    draft.revision=draft.revision.checked_add(1).ok_or("draft version exhausted")?;
+                }
+            }
+            result=>{
+                let message=if let CodexResultV1::Error { code }=result {code} else {"Unconfirmed response".into()};
+                if not_sent {
+                    draft.idea_submission=None;
+                    draft.status=format!("Not submitted: {message}; input retained");
+                } else {
+                    draft.status=format!("{message}; input retained — Check receipt");
+                }
+            }
+        }
+        let mut out=Vec::new();self.idea_composer_effects(&mut out);Ok(out)
+    }
+    pub(super) fn disconnect_idea_submissions(&mut self) {
+        for draft in self.drafts.values_mut().filter(|d|d.idea_submission.is_some()) {
+            draft.pending = None;
+            draft.status = "Connection closed; input retained — Check receipt".into();
+        }
     }
     pub(super) fn idea_show_session(&mut self, window: &str) -> Result<(), String> {
         if self.idea_codex.host.is_none() {
@@ -378,66 +389,7 @@ impl Engine {
                     .ok_or("This Codex session has no terminal view")?;
                 out.push(Effect::EnsureTerminalVisible { window_id: window, pane_id: pane, token: format!("idea-session:{}", self.next_id("view")?), target: json!({"client_view":{"execution_target_id":session.execution_target.as_str(),"tmux_session_id":session.tmux_session_id}}) });
             }
-            (
-                Operation::Send {
-                    view,
-                    revision,
-                    intent,
-                    ..
-                },
-                CodexResultV1::Receipt {
-                    receipt: Some(receipt),
-                },
-            ) if receipt.intent_id == intent => {
-                if let Some(draft) = self
-                    .drafts
-                    .get_mut(&(String::new(), DraftContext::Idea(view)))
-                {
-                    if draft
-                        .idea_submission
-                        .as_ref()
-                        .is_none_or(|s| s.intent != intent)
-                    {
-                        return Ok(());
-                    }
-                    draft.pending = None;
-                    draft.status = receipt.label;
-                    if matches!(
-                        receipt.status,
-                        CodexSubmissionStatusV1::Accepted | CodexSubmissionStatusV1::Rejected
-                    ) {
-                        draft.idea_submission = None;
-                    }
-                    if receipt.clear_input
-                        && receipt.status == CodexSubmissionStatusV1::Accepted
-                        && draft.revision == revision
-                    {
-                        draft.text.clear();
-                        draft.node_blocks.clear();
-                        draft.idea_context = None;
-                        draft.revision += 1;
-                    }
-                }
-            }
-            (op, CodexResultV1::Error { code }) => {
-                if matches!(
-                    code.as_str(),
-                    "unsupported_codex_contract"
-                        | "endpoint_not_found"
-                        | "codex_unavailable"
-                        | "ssh_unavailable"
-                        | "endpoint_mode_unavailable"
-                        | "endpoint_not_mapped"
-                        | "owner_mismatch"
-                        | "scope_denied"
-                        | "control_disabled"
-                        | "thread_released"
-                        | "invalid_request"
-                ) {
-                    self.idea_codex_not_sent(&op);
-                }
-                self.idea_codex_failed(op, &code, out);
-            }
+            (op, CodexResultV1::Error { code }) => self.idea_codex_failed(op, &code, out),
             (op, _) => self.idea_codex_failed(
                 op,
                 "Unconfirmed response; check receipt before retrying",
@@ -446,53 +398,7 @@ impl Engine {
         }
         Ok(())
     }
-    pub(super) fn idea_codex_not_sent(&mut self, op: &Operation) {
-        if let Operation::Send {
-            view,
-            intent,
-            check: false,
-            ..
-        } = op
-        {
-            if let Some(draft) = self
-                .drafts
-                .get_mut(&(String::new(), DraftContext::Idea(view.clone())))
-            {
-                if draft
-                    .idea_submission
-                    .as_ref()
-                    .is_some_and(|s| s.intent == *intent)
-                {
-                    draft.idea_submission = None;
-                }
-            }
-        }
-    }
-    pub(super) fn idea_codex_failed(
-        &mut self,
-        op: Operation,
-        message: &str,
-        out: &mut Vec<Effect>,
-    ) {
-        match op {
-            Operation::Send { view, .. } => {
-                if let Some(draft) = self
-                    .drafts
-                    .get_mut(&(String::new(), DraftContext::Idea(view)))
-                {
-                    draft.pending = None;
-                    // A transport failure is not evidence of non-delivery. Retain the
-                    // durable intent; only an explicit receipt can permit another send.
-                    draft.status = if draft.idea_submission.is_some() {
-                        format!("{message}; input retained — Check receipt")
-                    } else {
-                        format!("Not submitted: {message}; input retained")
-                    };
-                }
-            }
-            Operation::Show { .. } => out.push(Effect::Error {
-                message: format!("Codex: {message}"),
-            }),
-        }
+    pub(super) fn idea_codex_failed(&mut self, _op:Operation, message:&str, out:&mut Vec<Effect>) {
+        out.push(Effect::Error { message:format!("Codex: {message}") });
     }
 }

@@ -2,6 +2,7 @@ mod pty;
 mod lifetime;
 pub use lifetime::TerminalLifetimes;
 mod control;
+mod portable;
 pub use control::TerminalControl;
 mod registry;
 
@@ -82,6 +83,10 @@ pub async fn attach_terminal(
     let binding = consumer
         .binding()
         .context("terminal Consumer has no binding")?;
+    if let Some(source) = &binding.source {
+        portable::check_host(&targets, binding.execution_target.as_str(), source)?;
+        anyhow::ensure!(source.session.is_some(), "Original Session identity is unavailable; select an existing Session explicitly");
+    }
     let target = targets
         .get(binding.execution_target.as_str())
         .context("terminal target missing")?;
@@ -96,7 +101,7 @@ pub async fn attach_terminal(
             attach.transport_generation.as_ref(),
         )
         .await;
-    let previous = if attach.transport_generation.is_some() && !current {
+    let previous = if binding.source.is_none() && attach.transport_generation.is_some() && !current {
         lifecycle
             .previous_attachment_binding(
                 binding.execution_target.as_str(),
@@ -161,6 +166,7 @@ pub async fn attach_terminal(
             .await
         {
             Ok(Some(identity)) => identity,
+            Ok(None) if binding.source.is_some() => anyhow::bail!("The imported original Session has ended; its saved reference is retained"),
             Ok(None) => return Err(TerminalSessionEnded.into()),
             Err(error) => {
                 if let Ok(target) = polar_station_workspace::ExecutionTargetId::new(
@@ -172,6 +178,21 @@ pub async fn attach_terminal(
             }
         }
     };
+    if let Some(source) = &binding.source {
+        portable::check_host(&targets, binding.execution_target.as_str(), source)?;
+        portable::check_session(source, &identity)?;
+        if let Some(original) = &source.original_agent_id {
+            let sessions = attach.client.list_sessions().await?;
+            let current = sessions.iter().find(|s| s.id == identity.session_id)
+                .context("The original agent Session is no longer present")?;
+            anyhow::ensure!(polar_station_workspace::SessionKind::from_terminal_name(&current.name)
+                .is_some_and(|(_, id)| id == original), "The original agent Session no longer matches");
+        }
+        // A connection editor can replace a target while I/O was pending.
+        anyhow::ensure!(targets.get(binding.execution_target.as_str())
+            .is_some_and(|current| current.configuration_revision() == target.configuration_revision()),
+            "Host connection changed during imported Session validation");
+    }
     let plan = attach
         .client
         .prepare_terminal_session(&identity.session_id)?;

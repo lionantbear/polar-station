@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build Polar Station for Apple Silicon. See BUILD_MACOS.md for prerequisites."""
 import argparse
+import json
+import time
 import os
 from pathlib import Path
 import plistlib
@@ -11,7 +13,12 @@ import tempfile
 
 
 def run(*command, **kwargs):
-    subprocess.run([str(arg) for arg in command], check=True, **kwargs)
+    started = time.monotonic()
+    result = subprocess.run([str(arg) for arg in command], **kwargs)
+    print('STATION_BUILD_STEP=' + json.dumps({'tool': str(command[0]),
+          'elapsed_seconds': round(time.monotonic() - started, 3),
+          'exit_code': result.returncode}), flush=True)
+    result.check_returncode()
 
 
 # These component inputs are shared with the private cache adapter.
@@ -85,6 +92,7 @@ def main():
     sys.path[:0] = [str(root / 'apps/polar-tmux-shared/ghostty'),
                    str(root / 'apps/polar-graphics-native')]
     from overlay import install as apply_display
+    from build_cache import workspace, sync_tree, copy_changed, cache_framework, rust_cache_environment
     from resources_macos import package as package_graphics
     configuration = 'Debug' if args.debug else 'Release'
     profile = 'debug' if args.debug else 'release'
@@ -92,41 +100,48 @@ def main():
     target = root / 'target'
     target.mkdir(exist_ok=True)
     (target / 'deps').mkdir(exist_ok=True)
-    env = os.environ.copy()
+    env = rust_cache_environment(os.environ.copy())
+    if env.get('RUSTC_WRAPPER'):
+        print('STATION_RUSTC_WRAPPER=' + env['RUSTC_WRAPPER'], flush=True)
     env.update(SDKROOT=str(args.sdk.resolve()), MACOSX_DEPLOYMENT_TARGET='15.0')
     # Keep dependency edits/build outputs in this checkout's target directory.
-    with tempfile.TemporaryDirectory(prefix='station-', dir=target) as temporary:
-        work = Path(temporary)
-        for name, source, pin in (
-            ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
-            ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
-        ):
-            destination = target / 'deps/godot' if name == 'godot' else work / name
-            if not destination.exists():
-                run('git', 'clone', '--no-checkout', '--', source.resolve(), destination)
-                run('git', '-C', destination, 'checkout', '--detach', pin)
-            elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
-                raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
-        ghostty, godot = work / 'ghostty', target / 'deps/godot'
-        overlay = root / 'apps/polar-station-macos/ghostty-overlay/ghostty-v1.3.1.patch'
-        run('git', '-C', ghostty, 'apply', overlay)
-        project = ghostty / 'macos/Ghostty.xcodeproj/project.pbxproj'
-        text = project.read_text()
-        marker = 'relativePath = ../../../polarinfrav1/apps/polar-station-macos;'
-        if text.count(marker) != 1:
-            raise ValueError('pinned Swift package reference changed')
-        import json
-        relative = os.path.relpath(root / 'apps/polar-station-macos', ghostty / 'macos')
-        project.write_text(text.replace(marker, 'relativePath = ' + json.dumps(relative) + ';'))
-        apply_display(ghostty, 'macos')
-        module = ghostty / 'macos/Sources/PolarStation'
-        module.mkdir(parents=True, exist_ok=True)
-        for path in (root / 'apps/polar-station-macos/ghostty-module').iterdir():
-            if path.is_file():
-                shutil.copy2(path, module / path.name)
-        for path in (root / 'apps/polar-station-macos/Resources').iterdir():
-            if path.is_file():
-                shutil.copy2(path, module / path.name)
+    with workspace(root, 'macos') as work:
+        with tempfile.TemporaryDirectory(prefix='source-', dir=work) as temporary:
+            prepared = Path(temporary)
+            for name, source, pin in (
+                ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
+                ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
+            ):
+                destination = target / 'deps/godot' if name == 'godot' else prepared / name
+                if not destination.exists():
+                    run('git', 'clone', '--no-checkout', '--', source.resolve(), destination)
+                    run('git', '-C', destination, 'checkout', '--detach', pin)
+                elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
+                    raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
+            ghostty, godot = prepared / 'ghostty', target / 'deps/godot'
+            overlay = root / 'apps/polar-station-macos/ghostty-overlay/ghostty-v1.3.1.patch'
+            run('git', '-C', ghostty, 'apply', overlay)
+            project = ghostty / 'macos/Ghostty.xcodeproj/project.pbxproj'
+            text = project.read_text()
+            marker = 'relativePath = ../../../polarinfrav1/apps/polar-station-macos;'
+            if text.count(marker) != 1:
+                raise ValueError('pinned Swift package reference changed')
+            import json
+            relative = os.path.relpath(root / 'apps/polar-station-macos', work / 'ghostty/macos')
+            project.write_text(text.replace(marker, 'relativePath = ' + json.dumps(relative) + ';'))
+            apply_display(ghostty, 'macos')
+            run('git', '-C', ghostty, 'apply',
+                root / 'apps/polar-station-macos/ghostty-overlay/surface-callback-lifetime.patch')
+            module = ghostty / 'macos/Sources/PolarStation'
+            module.mkdir(parents=True, exist_ok=True)
+            for path in (root / 'apps/polar-station-macos/ghostty-module').iterdir():
+                if path.is_file():
+                    shutil.copy2(path, module / path.name)
+            for path in (root / 'apps/polar-station-macos/Resources').iterdir():
+                if path.is_file():
+                    shutil.copy2(path, module / path.name)
+            cache_framework(ghostty)
+            ghostty = sync_tree(ghostty, work / 'ghostty')
         entry = godot / GODOT_PATCH[0]
         text = entry.read_text()
         if text.count(GODOT_PATCH[1]) == 1:
@@ -141,40 +156,48 @@ def main():
             run('scons', '-C', godot, '-j', args.jobs, *GODOT_OPTIONS,
                 'custom_modules=' + str(root / 'apps/polar-graphics-native/godot-modules'), env=env)
         cargo = ['cargo', 'build', '--locked', '--manifest-path', root / 'Cargo.toml',
-                 '--target-dir', target / 'rust', '--target', 'aarch64-apple-darwin']
+                 '--target-dir', Path(env.get('CARGO_TARGET_DIR', target / 'rust')).resolve(), '--target', 'aarch64-apple-darwin']
         if not args.debug:
             cargo.append('--release')
         # Separate invocations prevent Host features from entering the desktop archive.
         run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', env=env)
         run(*cargo, '-p', 'polar-station-desktop-ffi', '--lib', env=env)
         run(*cargo, '-p', 'polar-graphics-godot', '--lib', env=env)
-        rust = target / 'rust/aarch64-apple-darwin' / profile
+        rust = Path(env.get('CARGO_TARGET_DIR', target / 'rust')).resolve() / 'aarch64-apple-darwin' / profile
         client = target / 'polar-station-client/current'
         client.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(rust / 'libpolar_station_desktop_ffi.a', client)
+        copy_changed(rust / 'libpolar_station_desktop_ffi.a', client / 'libpolar_station_desktop_ffi.a')
         env['POLAR_STATION_CLIENT_LIB_DIR'] = str(client)
         # The pinned Zig SDK query needs macOS 15 even when Xcode uses a newer SDK.
         wrapper = work / 'tools'
-        wrapper.mkdir()
+        wrapper.mkdir(exist_ok=True)
         (wrapper / 'xcrun').write_text('#!/bin/sh\nif [ "$*" = "--sdk macosx --show-sdk-path" ]; then\n'
                                      '  printf "%s\\n" "$SDKROOT"\nelse\n  exec /usr/bin/xcrun "$@"\nfi\n')
         (wrapper / 'xcrun').chmod(0o755)
         env['PATH'] = str(wrapper) + os.pathsep + env['PATH']
         run(args.zig, 'build', '-Dpolar-tmux=true', '-Demit-macos-app=false',
-            '-Dxcframework-target=native', '-Doptimize=' + optimize, cwd=ghostty, env=env)
+            '-Dxcframework-target=native', '-Doptimize=' + optimize, '--summary', 'all', cwd=ghostty, env=env)
         xcode_env = {key: os.environ[key] for key in ('HOME', 'DEVELOPER_DIR') if key in os.environ}
         xcode_env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin'
         run('xcodebuild', '-project', 'macos/Ghostty.xcodeproj', '-scheme', 'Ghostty',
-            '-configuration', configuration, 'SYMROOT=' + str(work / 'xcode'),
+            '-configuration', configuration, '-derivedDataPath', work / 'DerivedData',
+            'SYMROOT=' + str(work / 'xcode'), '-showBuildTimingSummary',
             'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=YES', 'MACOSX_DEPLOYMENT_TARGET=15.0',
             'ENABLE_CODE_COVERAGE=NO', 'CLANG_ENABLE_CODE_COVERAGE=NO',
             'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO', 'CODE_SIGN_IDENTITY=',
             'build', cwd=ghostty, env=xcode_env)
-        app = work / 'xcode' / configuration / 'Polar Station.app'
+        compiled_app = work / 'xcode' / configuration / 'Polar Station.app'
+        app = work / 'package' / configuration / compiled_app.name
+        app.parent.mkdir(parents=True, exist_ok=True)
+        if app.exists():
+            shutil.rmtree(app)
+        run('ditto', '--rsrc', '--extattr', compiled_app, app)
         resources = app / 'Contents/Resources'
+        graphics = work / 'graphics'
         package_graphics(root, godot / 'bin/libgodot.macos.template_release.arm64.dylib',
                          args.editor.resolve(), rust / 'libpolar_graphics_godot.dylib',
-                         args.graphviz.resolve(), resources / 'graphics')
+                         args.graphviz.resolve(), graphics)
+        run('ditto', '--rsrc', '--extattr', graphics, resources / 'graphics')
         helpers = app / 'Contents/Helpers'
         helpers.mkdir(exist_ok=True)
         shutil.copy2(rust / 'polar-tmux', helpers)

@@ -57,6 +57,8 @@ public actor PolarStationBackendSession {
     public func setExtensionInputHandler(_ handler: @escaping PolarTmuxHostClient.ExtensionInputHandler) async {
         await client.setExtensionInputHandler(handler)
     }
+    public func backendSocket() async -> URL? { await client.backendSocket() }
+    public func requestBackend(_ payload: Data) async throws -> Data { try await client.requestBackend(payload) }
     public func sendStationSession(_ payload: Data) async throws { try await client.sendStationSession(payload) }
     public func sendExtensionFrame(_ payload: Data) async throws { try await client.sendExtensionFrame(payload) }
 

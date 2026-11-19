@@ -43,6 +43,8 @@ pub fn shortcut() c.StationDictateShortcut {
     return c.polar_station_dictate_shortcut();
 }
 
+pub const Waveform = [c.POLAR_STATION_DICTATE_WAVEFORM_BARS]u8;
+
 pub const Controller = struct {
     pub const Delivery = enum { applied, unchanged, unknown, no_target };
     pub const NativeTarget = struct {
@@ -95,6 +97,7 @@ pub const Controller = struct {
     cancelled: bool = false,
     context: ?*anyopaque = null,
     changed: ?*const fn (?*anyopaque) void = null,
+    waveform_changed: ?*const fn (?*anyopaque, []const u8, Waveform) void = null,
     settings_context: ?*anyopaque = null,
     show_settings: ?*const fn (?*anyopaque) void = null,
     shown_setup: ?[]u8 = null,
@@ -193,6 +196,11 @@ pub const Controller = struct {
         c.polar_station_dictate_free(self.state);
         c.polar_station_dictate_speech_free(self.speech);
         a.destroy(self);
+    }
+    pub fn backendReady(self:*Controller) void {
+        if(!self.opened) self.input(.{.type="retry_open"});
+        self.reloadVoiceSettings();
+        self.refreshHistory();
     }
     pub fn refreshHistory(self: *Controller) void {
         c.polar_station_dictate_speech_set_history(self.speech, historyChanged, self);
@@ -685,7 +693,14 @@ pub const Controller = struct {
     fn audioChunk(data: ?*anyopaque, pcm: [*c]const u8, length: usize) callconv(.c) bool {
         const self: *Controller = @ptrCast(@alignCast(data orelse return false));
         const id = self.capture_id orelse return false;
-        return c.polar_station_dictate_speech_append(self.speech, id.ptr, id.len, pcm, length);
+        var waveform: c.PolarStationDictateWaveform = undefined;
+        const accepted = c.polar_station_dictate_speech_append_metered(self.speech, id.ptr, id.len, pcm, length, &waveform);
+        // Pulse capture is driven by this GTK main context.
+        if (accepted and waveform.updated) {
+            if (self.result_panel) |panel| panel.updateWaveform(id, waveform.levels);
+            if (self.waveform_changed) |changed| changed(self.context, id, waveform.levels);
+        }
+        return accepted;
     }
     fn audioEvent(data: ?*anyopaque, event: c_int) callconv(.c) void {
         const self: *Controller = @ptrCast(@alignCast(data orelse return));

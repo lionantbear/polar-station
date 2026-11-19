@@ -1,5 +1,6 @@
 #if POLAR_STATION
     import AppKit
+    import Darwin
     import AVFoundation
     import CPolarStationDesktopClient
     import PolarTmuxHostClient
@@ -133,11 +134,21 @@
 
         @ViewBuilder private func settingsPage(_ route:SettingsNavigation.Route) -> some View {
             switch route.page {
+            case "station_backend":
+                Color.clear.onAppear {
+                    PolarStationRuntime.shared.openBackendSettings()
+                    windowContext.settingsNavigation.completeBack()
+                }
+            case "workspaces":
+                Color.clear.onAppear {
+                    PolarStationRuntime.shared.openWorkspaceManager(in:windowContext)
+                    windowContext.settingsNavigation.completeBack()
+                }
             case "setup": PolarStationDiagnosticsRoot(model:model,remote:route.remote ?? false,context:windowContext)
             case "connections":
                 if let projection = model.projection {
                     ConnectionsView(interaction:windowContext.settingsConnections,formBuffer:windowContext.connectionsFormBuffer,projection:projection.connections,controlRevision:projection.controlRevision,
-                        close:windowContext.settingsNavigation.completeBack, requestCodex:model.requestCodex,
+                        close:windowContext.settingsNavigation.completeBack, requestCodex:model.requestCodex, requestHostTransfer:model.requestHostTransfer,
                         initialMachine:route.target ?? "local", initialPage:route.section == "codex" ? "Codex" : route.section == "polar" ? "Polar" : "Connection",
                         initialPolar:route.section == "polar" ? route.object : nil,initialEndpoint:route.section == "codex" ? route.object : nil,embedded:true,
                         submit:model.submitSSHTarget)
@@ -331,7 +342,7 @@
             case "edit_connection", "edit_polar_connection", "edit_codex_endpoint", "add_machine_connection":
                 if let projection = model.projection {
                     ConnectionsView(interaction:connectionsInteraction, formBuffer:context.connectionsFormBuffer, projection:projection.connections, controlRevision:projection.controlRevision,
-                        close:{editor=nil}, requestCodex:model.requestCodex, initialMachine:action.target_id ?? "local",
+                        close:{editor=nil}, requestCodex:model.requestCodex, requestHostTransfer:model.requestHostTransfer, initialMachine:action.target_id ?? "local",
                         initialPage:action.type == "edit_codex_endpoint" ? "Codex" : action.type == "edit_polar_connection" ? "Polar" : "Connection",
                         initialPolar:action.connection_id, initialEndpoint:action.endpoint_id,
                         embedded:true, newMachine:action.type == "add_machine_connection",
@@ -549,6 +560,9 @@
             ControlCenterWidthPolicy.maximumMapWidth
 
         private let model: ControlCenterStore
+        private let workspaceManager = WorkspaceManagerWindow()
+        private let backendWindow = StationBackendWindow()
+        private var backendSwitchInProgress = false
         private let primaryWindow = PolarStationWindowContext(executor: PolarStationNativeExecutor())
         private var additionalWindows: [PolarStationWindowContext] = []
         private weak var lastActiveWindow: PolarStationWindowContext?
@@ -566,6 +580,73 @@
         private func context(workspaceID: String) -> PolarStationWindowContext? {
             allWindows.first { $0.executor.initialControllerIsAttached && $0.executor.workspaceID == workspaceID }
         }
+        fileprivate func openBackendSettings() {
+            backendWindow.capture = { [weak self] in
+                guard let catalog = self?.primaryWindow.executor.managementCatalog else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                return try JSONEncoder().encode(catalog)
+            }
+            backendWindow.requestHost = { [weak self] request in
+                guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                return try await self.model.requestHostTransfer(request)
+            }
+            backendWindow.requestBackend = { [weak self] data in
+                guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                return try await self.model.requestBackend(data)
+            }
+            backendWindow.save = { [weak self] data in
+                guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                guard !self.lgpWorkspace.dictate.backendSwitchBlocked, self.lgpWorkspace.flushDrafts() else {
+                    throw NSError(domain:"Backend",code:1,userInfo:[NSLocalizedDescriptionKey:"Finish Dictate and save drafts before switching backends."])
+                }
+                try await self.primaryWindow.executor.manageBackendCatalog(data)
+            }
+            backendWindow.suspend = { [weak self] in
+                guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                guard await self.settingsText.confirmClose() else { throw CancellationError() }
+                for context in self.allWindows { guard await context.executor.confirmSetupTermination() else { throw CancellationError() } }
+                self.backendSwitchInProgress = true
+                for context in self.allWindows { await context.executor.suspendBackend() }
+            }
+            backendWindow.restore = { [weak self] in
+                guard let self else { return }
+                self.backendSwitchInProgress = false
+                for context in self.allWindows {
+                    if let projection = self.model.projection { context.executor.apply(projection) }
+                    context.executor.resumeBackend()
+                }
+                self.refreshWindowLayouts()
+            }
+            backendWindow.present(current:model.selectedBackendSocket?.path ?? PolarTmuxSocketPath.resolve().path)
+        }
+
+        fileprivate func openWorkspaceManager(in origin: PolarStationWindowContext) {
+            workspaceManager.ideaSources={ [weak self] in self?.lgpWorkspace.portableIdeaSources ?? [:] }
+            workspaceManager.connections=model.projection?.connections
+            workspaceManager.requestHostTransfer={ [weak self] request in
+                guard let self else {throw PolarStationNativeExecutorError.workspaceUnavailable}
+                return try await self.model.requestHostTransfer(request)
+            }
+            workspaceManager.dispatch = { [weak self, weak origin] action,id,name in
+                guard let self, let origin, !self.quitRequested else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                if action == "open" || action == "new" {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        self.performLocalWorkspaceOperation(action == "open" ? .selectWorkspace(workspaceID:id) : .createWorkspace(name:name),in:origin) { message in
+                            if let message { continuation.resume(throwing:NSError(domain:"Workspace",code:1,userInfo:[NSLocalizedDescriptionKey:message])) }
+                            else { continuation.resume() }
+                        }
+                    }
+                    if let native = TerminalController.all.first(where: { origin.executor.owns($0) })?.window {
+                        self.presentExplicitly(native)
+                    }
+                } else {
+                    let owner = self.context(workspaceID:id)?.executor ?? self.primaryWindow.executor
+                    try await owner.manageWorkspace(action,id:id,name:name)
+                }
+                self.workspaceManager.refresh(self.primaryWindow.executor.managementCatalog,machines:self.model.projection?.connections.machines,sessions:self.model.projection?.sessions.rows ?? [])
+            }
+            workspaceManager.present(catalog:primaryWindow.executor.managementCatalog,current:origin.executor.workspaceID,machines:model.projection?.connections.machines,sessions:model.projection?.sessions.rows ?? [])
+        }
+
         private var pendingUnboundWindows = 0
         private let closingWindows = NSHashTable<NSWindow>.weakObjects()
         private func ensureContext(for controller: TerminalController) -> PolarStationWindowContext? {
@@ -615,6 +696,7 @@
             }
             model.setNativeLayoutView(activeWindow.layout)
             if rememberWindows { rememberOpenWorkspaceWindows() }
+            workspaceManager.refresh(primaryWindow.executor.managementCatalog,machines:model.projection?.connections.machines,sessions:model.projection?.sessions.rows ?? [])
         }
         private let lgpWorkspace = PolarStationLgpWorkspace()
         private let widthPreferences = ControlCenterWidthPreferences()
@@ -703,11 +785,17 @@
 
         func configureDictateShortcut(_ text:String, reply:@escaping @MainActor ([String:Any])->Void) {lgpWorkspace.dictate.configureShortcut(text,reply:reply)}
         func recoverDictateRecording(_ id:String) {lgpWorkspace.dictate.recoverRecording(id)}
-        func dictateKeyEvent(_ event: NSEvent) -> Bool { lgpWorkspace.dictate.handleShortcut(event) }
+        func dictateKeyEvent(_ event: NSEvent) -> Bool { !backendSwitchInProgress && lgpWorkspace.dictate.handleShortcut(event) }
         func dictateShortcutStatus(_ status: String) { lgpWorkspace.dictate.shortcutStatus(status) }
-        func dictateShortcutLost() { lgpWorkspace.dictate.cancel(); lgpWorkspace.dictate.shortcut(pressed: false) }
+        func dictateShortcutLost() { lgpWorkspace.dictate.shortcutCaptureLost() }
 
         func start(ghostty: Ghostty.App) {
+            if ProcessInfo.processInfo.environment["POLAR_STATION_TEST_EXIT_TRACE"] == "1" {
+                atexit { NSLog("Station exit stack: %@", Thread.callStackSymbols.joined(separator: "\n")) }
+                NSSetUncaughtExceptionHandler { exception in
+                    NSLog("Station uncaught exception %@: %@\n%@", exception.name.rawValue, exception.reason ?? "", exception.callStackSymbols.joined(separator: "\n"))
+                }
+            }
             StationOperationTrace.record(1)
             stopping = false
             hostRestartAttempt = 0
@@ -1445,6 +1533,7 @@
 
         private func configureExecutor(_ context: PolarStationWindowContext) {
             let executor = context.executor
+            executor.backendSocket = { [weak self] in self?.model.selectedBackendSocket }
             executor.enqueueMutation = { [weak self, weak context] work, requireWindow, completion in
                 guard let self, let context, !self.quitSaveInFlight else { completion(PolarStationNativeExecutorError.workspaceUnavailable); return }
                 pendingLocalWorkspaceOperations.append(.init(window: context, generation: context.executor.windowGeneration,
@@ -1465,6 +1554,13 @@
                 self?.performLocalWorkspaceOperation(.toggleDisplayMode(tabID: tabID), in: context)
             }
             executor.displayCreated = { [weak self, weak context] id, content, display, window in
+                if content.kind == .unavailable,let reference=content.reference {
+                    if let bytes=try? JSONEncoder().encode(reference),let value=try? JSONSerialization.jsonObject(with:bytes),let view=try? WorkspaceManagerWindow.transfer(["action":"reference_view","reference":value]) {
+                        let text=NSTextField(wrappingLabelWithString:(view["title"] as? String ?? "")+"\n\n"+(view["message"] as? String ?? "")+"\n\n"+((view["details"] as? [String]) ?? []).joined(separator:"\n"))
+                        text.isSelectable=true;display.mountNativeContent(text)
+                    }
+                    return
+                }
                 if content.kind == .toolSetup,let copy=ToolSetupCopy.load() {
                     let text=NSTextField(wrappingLabelWithString:copy.restored_title+"\n\n"+copy.restored_detail)
                     text.isSelectable=true
@@ -1598,8 +1694,24 @@
             }
 
             configureExecutor(primaryWindow)
+            model.backendUnavailable = { [weak self] message in
+                guard let self, self.backendSwitchInProgress else { return }
+                self.backendWindow.failed(message)
+            }
+            model.backendReady = { [weak self] in
+                guard let self else { return }
+                self.lgpWorkspace.dictate.backendReady()
+                if !self.backendSwitchInProgress {
+                    for context in self.allWindows { context.executor.resumeBackend() }
+                }
+            }
             model.setProjectionSink { [weak self] projection in
                 guard let self else { return }
+                workspaceManager.connections = projection.connections
+                if backendSwitchInProgress {
+                    backendWindow.connected(socket:model.selectedBackendSocket?.path ?? "",connections:projection.connections)
+                    return
+                }
                 for context in allWindows {
                     context.executor.apply(projection)
                     context.executor.refreshNumberBadges()
@@ -1923,6 +2035,7 @@
             in context: PolarStationWindowContext? = nil,
             completion: (@MainActor (String?) -> Void)? = nil
         ) {
+            guard !backendSwitchInProgress else { completion?("Wait for the backend switch to finish."); return }
             guard !quitRequested else { completion?("Workspace saves are finishing before Quit."); return }
             let window = context ?? activeWindow
             if case let .selectWorkspace(id) = operation,

@@ -27,6 +27,7 @@ pub struct PolarVault {
 mod authorization;
 mod local_chat;
 mod public_state;
+pub use public_state::AuthenticatedPublicStateVersion;
 pub type AuthenticatedPublicStateSnapshot = (u64, Vec<(String, String, String)>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilitySecurityState {

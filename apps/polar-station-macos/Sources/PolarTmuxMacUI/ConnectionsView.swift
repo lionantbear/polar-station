@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import PolarTmuxHostClient
 
 /// Native window-local drafts; all validation, conflicts and references come from Host.
@@ -12,6 +14,9 @@ public struct ConnectionsView: View {
     let embedded: Bool
     let newMachine: Bool
     let close: (@MainActor () -> Void)?
+    let requestHostTransfer: HostTransferReader?
+    @State private var exportSelection = Set<String>()
+    @State private var choosingExport = false
     let requestCodex: CodexRequestHandler?
     let submit: @MainActor (ControlCenterIntentV1, @escaping @MainActor (String?) -> Void) -> Void
     @StateObject private var interaction: ConnectionsInteraction
@@ -30,7 +35,7 @@ public struct ConnectionsView: View {
     @Binding private var savedRevision: String?
     @Binding private var checkedTarget: String?
 
-    public init(interaction: ConnectionsInteraction? = nil, formBuffer: ConnectionsFormBuffer, projection: ConnectionsProjectionV1, controlRevision: UInt64, close: (@MainActor () -> Void)? = nil, requestCodex: CodexRequestHandler? = nil,
+    public init(interaction: ConnectionsInteraction? = nil, formBuffer: ConnectionsFormBuffer, projection: ConnectionsProjectionV1, controlRevision: UInt64, close: (@MainActor () -> Void)? = nil, requestCodex: CodexRequestHandler? = nil, requestHostTransfer: HostTransferReader? = nil,
                 initialMachine: String = "local", initialPage: String = "Connection",
                 initialPolar: String? = nil, initialEndpoint: String? = nil, embedded: Bool = false, newMachine: Bool = false,
                 submit: @escaping @MainActor (ControlCenterIntentV1, @escaping @MainActor (String?) -> Void) -> Void) {
@@ -63,7 +68,7 @@ public struct ConnectionsView: View {
         self._editing = Binding(get:{buffer.editing},set:{buffer.editing=$0})
         self._codexEditing = Binding(get:{buffer.codexEditing},set:{buffer.codexEditing=$0})
         self._interaction = StateObject(wrappedValue: interaction ?? ConnectionsInteraction())
-        self.projection = projection; self.controlRevision = controlRevision; self.close = close; self.requestCodex = requestCodex; self.submit = submit
+        self.projection = projection; self.controlRevision = controlRevision; self.close = close; self.requestCodex = requestCodex; self.requestHostTransfer = requestHostTransfer; self.submit = submit
     }
     @Binding private var routeEnabled: Bool
     @Binding private var routeExpanded: Bool
@@ -117,6 +122,12 @@ public struct ConnectionsView: View {
             Divider()
             }
             VStack(alignment: .leading, spacing: 16) {
+                if requestHostTransfer != nil {
+                    HStack {
+                        Button("Import Hosts…") { importHostsFile() }
+                        Button("Export Hosts…") { exportSelection=[selectedMachine]; choosingExport=true }
+                    }.disabled(editing || codexEditing || submitting || projection.hostTransferSupported != true)
+                }
                 if embedded && !newMachine {
                     Picker("Machine",selection:Binding(get:{selectedMachine},set:{id in selectedMachine=id; page="Connection"; selectMachine()})) {
                         Text("Local · This computer").tag("local")
@@ -201,6 +212,23 @@ public struct ConnectionsView: View {
                 }
             }.padding(20).frame(minWidth: embedded ? 0 : 440, maxWidth: .infinity, maxHeight: .infinity)
         }.frame(minWidth: embedded ? 0 : 700, minHeight: embedded ? 0 : 480)
+        .sheet(isPresented:Binding(get:{interaction.state?.host_import_plan != nil},set:{if !$0 { consume(interaction.action("cancel_host_import")) }})) {
+            HostImportReviewView(interaction:interaction,consume:consume)
+        }
+        .sheet(isPresented:$choosingExport) {
+            VStack(alignment:.leading,spacing:14) {
+                Text("Export Hosts").font(.title2)
+                Text("Connection configuration only. No passwords, private keys or OAuth.").foregroundStyle(.secondary)
+                List {
+                    exportToggle("local","This computer")
+                    ForEach(projection.machines) { item in exportToggle(item.id,item.displayName) }
+                }.frame(minHeight:180)
+                HStack {
+                    Button("Cancel") { choosingExport=false }; Spacer()
+                    Button("Export…") { choosingExport=false; consume(interaction.exportHosts(exportSelection.sorted())) }.disabled(exportSelection.isEmpty)
+                }
+            }.padding(24).frame(width:520)
+        }
         .interactiveDismissDisabled(editing || codexEditing || submitting)
         .onAppear {
             interaction.snapshot(projection)
@@ -223,7 +251,7 @@ public struct ConnectionsView: View {
             message = nil; checkedTarget = nil
             if value == "Connection" && !editing { selectMachine() }
         }
-        .onChange(of: projection.revision) { _ in interaction.snapshot(projection); resolveCreatedSelection() }
+        .onChange(of: projection) { latest in interaction.snapshot(latest); resolveCreatedSelection() }
         .onChange(of: projection.lastCheck) { value in
             if let value, value.targetID == checkedTarget, value.polar == editingPolar { message = value.summary }
         }
@@ -307,7 +335,16 @@ public struct ConnectionsView: View {
     }
     private func consume(_ effects: [ConnectionsInteraction.Effect]) {
         for effect in effects {
-            if effect.type == "close" { finish() }
+            if effect.type == "host_transfer", let token=effect.token, let request=effect.request, let requestHostTransfer {
+                submitting=true
+                Task { @MainActor in
+                    do { let result=try await requestHostTransfer(request); submitting=false; consume(interaction.transferComplete(token,result:result,error:nil)) }
+                    catch { submitting=false; consume(interaction.transferComplete(token,result:nil,error:error.localizedDescription)) }
+                    message=interaction.state?.message
+                }
+            }
+            else if effect.type == "write_host_export", let bundle=effect.bundle { saveHostsFile(bundle) }
+            else if effect.type == "close" { finish() }
             else if effect.type == "save_codex", let settings = effect.settings,
                     let revision = effect.codex_revision, let token = effect.token, let requestCodex {
                 submitting = true
@@ -328,6 +365,29 @@ public struct ConnectionsView: View {
             else if let change = effect.change, let token = effect.token, let revision = effect.expected_revision {
                 save(change, revision: revision, token: token)
             }
+        }
+    }
+    private func exportToggle(_ id:String,_ title:String) -> some View {
+        Toggle(title,isOn:Binding(get:{exportSelection.contains(id)},set:{if $0 {exportSelection.insert(id)} else {exportSelection.remove(id)}}))
+    }
+    private func importHostsFile() {
+        let panel=NSOpenPanel(); panel.canChooseDirectories=false; panel.allowsMultipleSelection=false; panel.allowedContentTypes=[.json]
+        panel.begin { response in
+            guard response == .OK, let url=panel.url else { return }
+            do {
+                let file=try FileHandle(forReadingFrom:url); defer { try? file.close() }
+                let bytes=try file.read(upToCount:524289) ?? Data()
+                guard bytes.count <= 524288 else { message="Host import file is too large."; return }
+                consume(interaction.importHosts(try JSONDecoder().decode(HostExportBundleV1.self,from:bytes)))
+            } catch { message="Cannot read Host import: " + error.localizedDescription }
+        }
+    }
+    private func saveHostsFile(_ bundle:HostExportBundleV1) {
+        let panel=NSSavePanel(); panel.nameFieldStringValue="hosts.polar-hosts.json"; panel.allowedContentTypes=[.json]
+        panel.begin { response in
+            guard response == .OK, let url=panel.url else { return }
+            do { let encoder=JSONEncoder(); encoder.outputFormatting=[.prettyPrinted,.sortedKeys]; try encoder.encode(bundle).write(to:url,options:.atomic); try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:url.path); message="Hosts exported." }
+            catch { message="Host export was not saved: " + error.localizedDescription }
         }
     }
     private func saveEdited(_ change: ConnectionChangeV1) {

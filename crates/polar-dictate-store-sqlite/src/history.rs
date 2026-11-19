@@ -33,7 +33,7 @@ fn index_record_with_pending(
                 && r.cleanup_error.is_none()
                 && !r.cleanup_running));
     let summary = item.summary();
-    let visible = !summary.is_test && (summary.has_text || summary.has_audio);
+    let visible = summary.visible();
     let recoverable = work
         || r.capture == CaptureState::Recording
         || r.cleanup_running
@@ -62,6 +62,23 @@ pub(super) fn backfill(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
         for (owner, id, payload) in rows {
             let r: Recording = serde_json::from_str(&payload).map_err(|e| sql_error(e.into()))?;
             index_record_with_pending(tx, &owner, &r, false).map_err(sql_error)?;
+            after = format!("{owner}\0{id}");
+        }
+    }
+    Ok(())
+}
+pub(super) fn refresh_visibility(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
+    // Declared once-only projection upgrade; keep payloads and audio untouched.
+    let mut after = String::new();
+    loop {
+        let mut stmt = tx.prepare("SELECT owner,id,summary FROM dictate_recording WHERE owner||char(0)||id>?1 ORDER BY owner,id LIMIT 200")?;
+        let rows = stmt.query_map([&after], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })?.collect::<rusqlite::Result<Vec<_>>>()?;
+        if rows.is_empty() { break; }
+        for (owner, id, json) in rows {
+            let summary: polar_dictate::HistorySummary = serde_json::from_str(&json).map_err(|e| sql_error(e.into()))?;
+            tx.execute("UPDATE dictate_recording SET visible=?3 WHERE owner=?1 AND id=?2", params![owner, id, summary.visible()])?;
             after = format!("{owner}\0{id}");
         }
     }

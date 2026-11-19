@@ -938,7 +938,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case lgpText = "lgp_text", ideaTree = "idea_tree"
         case localDiagnostics = "local_diagnostics", remoteHosts = "remote_hosts"
-        case settingsText = "settings_text", toolSetup = "tool_setup"
+        case settingsText = "settings_text", toolSetup = "tool_setup", unavailable
     }
     public let kind: Kind
     public let targetID: String
@@ -949,6 +949,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
     public let viewID: String
     public private(set) var setupID = ""
     public private(set) var executionTargetID = ""
+    public private(set) var reference: PortableContentV1? = nil
     public let settingsField: String
     public init(targetID: String, nodeID: String, owner: String, thread: String, actor: String) {
         self.settingsField = ""
@@ -978,6 +979,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
     public var fingerprintComponents: [String] {
         let identity: [String]
         switch kind {
+        case .unavailable: identity = [reference?.fingerprint ?? ""]
         case .toolSetup: identity = [setupID,executionTargetID]
         case .ideaTree: identity = [viewID]
         case .settingsText: identity = [settingsField]
@@ -987,6 +989,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
         return ["polar-station-pane-content-v1", kind.rawValue] + identity
     }
     public var isValid: Bool {
+        if kind == .unavailable { return reference != nil }
         if kind == .settingsText && !["cleanup","english"].contains(settingsField) {return false}
         let identity = Array(fingerprintComponents.dropFirst(2))
         return identity.allSatisfy {
@@ -994,7 +997,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
         }
     }
     enum CodingKeys: String, CodingKey {
-        case kind, owner, thread, actor
+        case kind, owner, thread, actor, reference
         case setupID = "setup_id", executionTargetID = "execution_target_id", command
         case targetID = "target_id", nodeID = "node_id", viewID = "view_id", settingsField = "field"
     }
@@ -1006,6 +1009,9 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
             throw DecodingError.dataCorruptedError(forKey:.setupID,in:values,debugDescription:"Only setup content owns an attempt identity")
         }
         switch kind {
+        case .unavailable:
+            self.init(diagnosticsKind:.unavailable)
+            self.reference=try values.decode(PortableContentV1.self,forKey:.reference)
         case .toolSetup:
             for key:CodingKeys in [.targetID,.nodeID,.owner,.thread,.actor,.viewID,.settingsField] where values.contains(key) {
                 throw DecodingError.dataCorruptedError(forKey:key,in:values,debugDescription:"Setup content has no terminal or conversation identity")
@@ -1045,6 +1051,7 @@ public struct StationPaneContentV1: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(kind, forKey: .kind)
+        if kind == .unavailable {try values.encode(reference,forKey:.reference);return}
         if kind == .localDiagnostics || kind == .remoteHosts { return }
         if kind == .toolSetup {
             try values.encode(setupID,forKey:.setupID);try values.encode(executionTargetID,forKey:.executionTargetID);return
@@ -2286,6 +2293,7 @@ public extension ControlCenterIntentOperationV1 {
 }
 
 public enum ControlCenterCommandV1: Encodable, Equatable, Sendable {
+    case hostTransfer(HostTransferRequestV1)
     case getProjection
     case sessionEditor(SessionEditorRequestV1)
     case submitIntent(ControlCenterHostIntentV1)
@@ -2302,6 +2310,9 @@ public enum ControlCenterCommandV1: Encodable, Equatable, Sendable {
         switch self {
         case .getProjection:
             try container.encode("get_projection", forKey: .type)
+        case .hostTransfer(let request):
+            try container.encode("host_transfer", forKey: .type)
+            try container.encode(request, forKey: .request)
         case .sessionEditor(let request):
             try container.encode("session_editor", forKey: .type)
             try container.encode(request, forKey: .request)
@@ -2371,6 +2382,7 @@ public struct SessionCreationItemV1: Decodable, Equatable, Sendable {
     public let error: ControlCenterErrorV1?
 }
 public enum ControlCenterResultV1: Decodable, Equatable, Sendable {
+    case hostTransfer(HostTransferResponseV1)
     case sessionEditor(SessionEditorResultV1)
     case projection(ControlCenterProjectionV1)
     case intentAccepted(ControlCenterProjectionV1)
@@ -2395,6 +2407,8 @@ public enum ControlCenterResultV1: Decodable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         switch try container.decode(String.self, forKey: .type) {
+        case "host_transfer":
+            self = try .hostTransfer(container.decode(HostTransferResponseV1.self, forKey: .result))
         case "session_editor":
             self = try .sessionEditor(container.decode(SessionEditorResultV1.self, forKey: .result))
         case "projection":

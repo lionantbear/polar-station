@@ -168,3 +168,55 @@ impl SocketReadiness {
         ))
     }
 }
+
+/// Runtime-local fanout. One OS watcher per directory, no global runtime handles.
+#[derive(Default)]
+pub struct DirectoryNotifications {
+    entries: std::collections::BTreeMap<std::path::PathBuf, std::sync::Weak<DirectoryWatch>>,
+}
+struct DirectoryWatch {
+    updates: tokio::sync::watch::Sender<Result<(), io::ErrorKind>>,
+    task: tokio::task::JoinHandle<()>,
+}
+impl Drop for DirectoryWatch {
+    fn drop(&mut self) { self.task.abort(); }
+}
+pub struct DirectorySubscription {
+    _owner: std::sync::Arc<DirectoryWatch>,
+    updates: tokio::sync::watch::Receiver<Result<(), io::ErrorKind>>,
+}
+impl DirectoryNotifications {
+    pub fn subscribe(&mut self, socket: &Path) -> io::Result<DirectorySubscription> {
+        let directory = socket.parent().ok_or_else(|| io::Error::other("socket parent missing"))?.to_path_buf();
+        self.entries.retain(|_, entry| entry.strong_count() > 0);
+        let owner = match self.entries.get(&directory).and_then(std::sync::Weak::upgrade) {
+            Some(owner) => owner,
+            None => {
+                let readiness = SocketReadiness::new(socket)?;
+                let (updates, _) = tokio::sync::watch::channel(Ok(()));
+                let sender = updates.clone();
+                let task = tokio::spawn(async move {
+                    loop {
+                        let result = readiness.changed().await.map_err(|error| error.kind());
+                        let _ = sender.send_replace(result);
+                        if result.is_err() { break; }
+                    }
+                });
+                let owner = std::sync::Arc::new(DirectoryWatch { updates, task });
+                self.entries.insert(directory, std::sync::Arc::downgrade(&owner));
+                owner
+            }
+        };
+        let updates = owner.updates.subscribe();
+        Ok(DirectorySubscription { _owner: owner, updates })
+    }
+}
+impl DirectorySubscription {
+    pub async fn changed(&mut self) -> io::Result<()> {
+        if let Err(error) = *self.updates.borrow() { return Err(error.into()); }
+        self.updates.changed().await.map_err(|_| io::Error::other("directory watcher stopped"))?;
+        (*self.updates.borrow_and_update()).map_err(io::Error::from)
+    }
+}
+
+

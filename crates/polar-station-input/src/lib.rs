@@ -1,11 +1,14 @@
 //! Shared Station input use cases. Content behavior stays in its existing owner.
 //!
-//! This first migration step routes the legacy content ABI through one input
-//! owner. Generic terminal input and native editor migration follow separately.
+//! All native input actions, projections and durable submission coordination
+//! enter here. Specialized domains retain their existing document ownership.
 use polar_station_lgp::{Effect, Engine, Input};
+pub mod actions;
 mod codex;
 pub mod generic;
 pub mod input;
+pub mod presentation;
+mod submission;
 pub use polar_transcreation::learning;
 pub mod terminal;
 
@@ -15,6 +18,7 @@ pub struct InputEngine {
     content: Engine,
     terminal: terminal::TerminalState,
     codex: codex::CodexState,
+    submissions: submission::SubmissionCoordinator,
     snapshot_revision: u64,
     now_ms:u64,
     reference_collection_enabled:bool,
@@ -29,14 +33,15 @@ impl InputEngine {
     }
 
     pub fn advance_clock(&mut self, now_ms:u64) { self.now_ms=self.now_ms.max(now_ms); self.content.advance_clock(self.now_ms); }
-    pub fn next_deadline_ms(&self)->Option<u64> { self.content.next_deadline_ms().into_iter().chain(self.generic.next_deadline_ms()).min() }
+    pub fn next_deadline_ms(&self)->Option<u64> { self.content.next_deadline_ms().into_iter().chain(self.generic.next_deadline_ms()).chain(self.codex_deadline()).min() }
 
     /// Shared native entrypoint; old content commands retain their wire shape.
     pub fn dispatch(&mut self, input: input::Input) -> Result<Vec<input::Effect>, String> {
         if let input::Input::Content(polar_station_lgp::Input::Tick{now_ms})=&input {self.advance_clock(*now_ms);}
         self.generic.now_ms=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0,|v|v.as_millis().min(u128::from(u64::MAX)) as u64);
+        let mut effects=self.expire_codex_requests()?;
         let expired=self.generic.expire_pending(self.now_ms);
-        let mut effects=self.dispatch_inner(input)?;
+        effects.extend(self.dispatch_inner(input)?);
         if expired { effects.extend(self.generic.active_views().into_iter().map(terminal::present)); }
         for sample in self.generic.learning_samples() {
             if self.learning_inflight.insert(sample.intent.clone()) {effects.push(input::Effect::Generic(input::GenericEffect::LearnRefine{sample}));}
@@ -57,6 +62,7 @@ impl InputEngine {
             }
             Input::Generic(value) => {
                 let view = match value {
+                    GenericInput::InputAction { window_id, pane_id, action } => return self.active_action(window_id, pane_id, action),
                     GenericInput::ReferenceCollection { enabled } => {
                         if self.reference_collection_enabled == enabled { return Ok(vec![]); }
                         self.reference_collection_enabled = enabled;
@@ -133,6 +139,10 @@ impl InputEngine {
     /// Compatibility boundary for existing Chat, Idea and Inquiry adapters.
     /// No second content engine, draft copy or request queue is created.
     pub fn dispatch_content(&mut self, input: Input) -> Result<Vec<Effect>, String> {
+        let effects = self.dispatch_content_domain(input)?;
+        self.content_submission_effects(effects)
+    }
+    fn dispatch_content_domain(&mut self, input: Input) -> Result<Vec<Effect>, String> {
         match input {
             Input::ExportDrafts => {
                 self.snapshot_revision = self
@@ -163,6 +173,7 @@ impl InputEngine {
                     drafts: drafts["content_drafts"].clone(),
                 })?;
                 self.generic = generic;
+                self.submissions.saving.clear();
                 Ok(effects)
             }
             Input::WindowClosed { window_id } => {

@@ -99,11 +99,30 @@ impl ResourceService {
         target_id: &str,
         candidates: &[FileReference],
     ) -> Result<Vec<FileReference>, &'static str> {
+        let mut grouped = BTreeMap::<String, Vec<Option<polar_station_resources::FileLocation>>>::new();
+        for candidate in candidates {
+            let locations = grouped.entry(candidate.path.clone()).or_default();
+            if !locations.contains(&candidate.location) { locations.push(candidate.location.clone()); }
+        }
+        let unique: Vec<_> = grouped.keys().map(|path| FileReference { path: path.clone(), location: None }).collect();
+        let found = self.probe_candidate_paths(target_id, &unique).await?;
+        let mut result = Vec::new();
+        for (index, path) in found {
+            for location in &grouped[&unique[index].path] {
+                let reference = FileReference { path: path.clone(), location: location.clone() };
+                if !result.contains(&reference) { result.push(reference); }
+            }
+        }
+        Ok(result)
+    }
+
+    async fn probe_candidate_paths(&self, target_id: &str, candidates: &[FileReference]) -> Result<Vec<(usize, String)>, &'static str> {
+        if candidates.is_empty() { return Ok(Vec::new()); }
         if target_id == crate::target_registry::LOCAL_TARGET_ID {
             let candidates = candidates.to_vec();
             return tokio::task::spawn_blocking(move || {
                 let mut existing = Vec::new();
-                for mut reference in candidates {
+                for (index, mut reference) in candidates.into_iter().enumerate() {
                     match std::fs::metadata(&reference.path) {
                         Ok(metadata) if metadata.is_file() => {
                             std::fs::File::open(&reference.path)
@@ -115,9 +134,7 @@ impl ResourceService {
                                     .ok_or("The source path is not UTF-8.")?
                                     .to_owned();
                             }
-                            if !existing.contains(&reference) {
-                                existing.push(reference);
-                            }
+                            existing.push((index, reference.path));
                         }
                         Ok(_) => {}
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -207,8 +224,7 @@ impl ResourceService {
             .map(|line| {
                 line.parse::<usize>()
                     .ok()
-                    .and_then(|i| candidates.get(i))
-                    .cloned()
+                    .and_then(|i| candidates.get(i).map(|r| (i, r.path.clone())))
                     .ok_or("Invalid source file check response.")
             })
             .collect()

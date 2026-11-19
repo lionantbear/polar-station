@@ -1,12 +1,12 @@
 # Build on macOS
 
 Apple Silicon and macOS 15 or later are required. Install Xcode, Rust (the
-repository's `rust-toolchain.toml` selects the version), Zig 0.15.2, Python 3.11+
-and Graphviz/gettext. The Zig build needs a compatible macOS 15 SDK; select the
+repository's `rust-toolchain.toml` selects the version), Zig 0.15.2, Python 3.11+,
+rsync and Graphviz/gettext. The Zig build needs a compatible macOS 15 SDK; select the
 SDK explicitly below. Xcode builds use your selected Xcode installation.
 
 ```sh
-brew install graphviz gettext
+brew install graphviz gettext sccache
 python3 -m venv .venv
 .venv/bin/pip install scons==4.9.1
 export PATH="$PWD/.venv/bin:$(brew --prefix gettext)/bin:$PATH"
@@ -14,7 +14,7 @@ rustup target add aarch64-apple-darwin
 ```
 
 Prepare these upstream sources outside this repository. The build reads their
-committed contents and applies Station changes in a disposable local clone;
+committed contents and applies Station changes in a managed build copy;
 it does not alter either supplied checkout.
 
 ```sh
@@ -56,3 +56,22 @@ If you already have a verified Station Godot dependency directory, add
 and local toolchain. The entry checks the library hash, arm64 architecture and
 required exports before reuse. The pinned Godot checkout is still required.
 Without this option, the entry builds Godot from source as above.
+
+Incremental rebuilds use fixed directories under
+`target/polar-station/native/`. Keep these directories between builds: they
+contain the managed Ghostty source, Zig compilation cache and native build
+outputs (including Xcode DerivedData on macOS). The entry updates changed source
+contents and removes deleted source files without rewriting unchanged inputs.
+A platform lock prevents two builds from modifying the same managed tree.
+Godot's SCons outputs remain in `target/deps/godot`; unchanged graphics resources
+are reused after checking their input identity and completed bundle digest.
+
+Rerun the same command after editing source. `CARGO_TARGET_DIR` selects an
+alternative persistent Cargo output directory; its default is unchanged.
+The console reports tool durations and Zig cache results. A fresh source
+checkout or missing cache still builds from source with the same command.
+
+If `sccache` is on PATH, the entry uses it for Rust compiler requests, including
+switches between the Host and desktop feature sets. Its persistent cache is
+shared across builds; an explicit `RUSTC_WRAPPER` takes precedence. This optional
+tool accelerates rebuilding and is not required to compile the source.

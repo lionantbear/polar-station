@@ -6,8 +6,13 @@
 const std = @import("std");
 
 pub const Binding = struct {
+    source: ?@import("portable_content.zig").Source = null,
     execution_target: []const u8,
     tmux_session_id: []const u8,
+    pub fn jsonStringify(self: Binding, writer: anytype) !void {
+        if (self.source) |source| return writer.write(.{ .execution_target = self.execution_target, .tmux_session_id = self.tmux_session_id, .source = source });
+        return writer.write(.{ .execution_target = self.execution_target, .tmux_session_id = self.tmux_session_id });
+    }
 };
 
 pub const Identity = struct {
@@ -97,6 +102,7 @@ fn Request(comptime Command: type) type {
 }
 
 const ResponseBinding = struct {
+    source: ?@import("portable_content.zig").Source = null,
     execution_target: []const u8,
     tmux_session_id: []const u8,
 };

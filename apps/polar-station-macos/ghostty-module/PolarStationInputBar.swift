@@ -29,7 +29,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     }
     var onExit: (() -> Void)?
     var onQuote: (() -> Void)?
-    var onDraft: ((String) -> Void)?; var onSend: (() -> Void)?
+    var onDraft: ((String) -> Void)?; var onSend: ((String) -> Void)?
     var onReferences: (() -> Void)?
     var onActivity: (() -> Void)?
     var onOlder: (() -> Void)?; var onRetry: (() -> Void)?; var onSearch: ((String) -> Void)?
@@ -506,9 +506,8 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     }
     func updateGeneric(_ view: [String:Any]) {
         hideInquiry()
-        guard let lease = view["lease"] as? [String:Any], let pane = lease["pane"] as? String else { return }
-        update(["pane_id":pane,"text":view["text"] as? String ?? "", "draft_revision":lease["draft_revision"] ?? 0,
-                "status":view["unavailable"] as? String ?? "Ready", "can_send":view["can_send"] as? Bool ?? false])
+        guard let lease = view["lease"] as? [String:Any] else { return }
+        update(view)
         genericLease = lease
         refineProject = view["project"] as? String
         conversationContext = view["conversation_context"] as? String
@@ -986,14 +985,13 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         _ = submitEditorDraft()
     }
     /// Use the same Rust submission path for a click and a verified Dictate insertion.
-    /// The existing draft/send callbacks already own the session binding.
+    /// Rust captures text and destination in one submission action.
     private func submitEditorDraft()->Bool {
         guard !activeTextEditor.hasMarkedText(),
               !ideaBlockEditors.values.contains(where: { $0.editor.hasMarkedText() }),
               ideaDetailEditor?.editor.hasMarkedText() != true,
-              let onDraft,let onSend else{return false}
-        onDraft(activeTextEditor.string)
-        onSend()
+              let onSend else{return false}
+        onSend(activeTextEditor.string)
         return true
     }
     @objc private func quotePressed() {

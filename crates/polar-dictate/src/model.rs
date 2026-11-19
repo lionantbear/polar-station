@@ -225,6 +225,13 @@ fn bounded_error(error: Option<String>) -> Option<String> {
     error.map(|s| s.chars().take(512).collect())
 }
 impl Recording {
+    /// The same failure reason is used by recording and history projections.
+    pub fn failure(&self) -> Option<&str> {
+        self.error.as_deref()
+            .or(self.cleanup_error.as_deref())
+            .or_else(|| self.segments.iter().find_map(|s| s.error.as_deref()))
+    }
+
     pub fn set_project(&mut self, project: Option<String>) -> Result<()> {
         ensure!(
             project.as_ref().is_none_or(|p| p.starts_with('/')
@@ -992,11 +999,7 @@ impl From<Recording> for RecordingSummary {
         Self {
             preview,
             has_text: !text.trim().is_empty(),
-            error: r
-                .error
-                .clone()
-                .or_else(|| r.cleanup_error.clone())
-                .or_else(|| r.segments.iter().find_map(|s| s.error.clone())),
+            error: r.failure().map(str::to_owned),
             retry_segmented_label: r
                 .can_retry_segmented()
                 .then(|| "Retry using segmented transcription".into()),

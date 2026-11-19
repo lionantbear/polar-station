@@ -10,6 +10,8 @@ mod codex_discovery;
 #[cfg(feature = "codex-control")]
 mod codex_endpoint;
 #[cfg(feature = "codex-control")]
+mod codex_connections;
+#[cfg(feature = "codex-control")]
 mod codex_file_references;
 #[cfg(feature = "codex-control")]
 mod codex_startup;
@@ -51,6 +53,7 @@ pub mod resource_service;
 pub mod session_fact_provider;
 pub mod session_lifecycle;
 mod target_directory;
+mod target_identity;
 mod target_tools;
 pub mod session_monitor;
 pub mod session_registry;

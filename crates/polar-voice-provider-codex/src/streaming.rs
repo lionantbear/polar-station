@@ -18,6 +18,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, mpsc, oneshot, watch};
+use tracing::Instrument;
+
+const RECOGNITION_REFERENCE_WAIT: Duration = Duration::from_secs(30);
 
 enum StreamingCommand {
     Packet {
@@ -169,7 +172,7 @@ impl VoiceStreamingTranscriptionProvider for CodexVoiceProvider {
             let actual=serde_json::json!({"role":"developer","channel":"commentary","text":text,"reference":reference});
             if let Some(o)=&observation{o.emit("session.context.append","prepared",actual.clone()).await;}
             let result = tokio::time::timeout(
-                TRANSCRIPT_WAIT,
+                RECOGNITION_REFERENCE_WAIT,
                 resources.sideband().writer()
                     .with_context_append_channel(RealtimeContextAppendChannel::Commentary)
                     .send_conversation_item_create(text, ConversationTextRole::Developer),
@@ -186,13 +189,14 @@ impl VoiceStreamingTranscriptionProvider for CodexVoiceProvider {
         let terminal_error = Arc::new(Mutex::new(None));
         let actor_terminal_error = Arc::clone(&terminal_error);
         let (updates, transcript) = watch::channel(TranscriptSnapshot::default());
+        let trace = resources.trace.clone();
         tokio::spawn(async move {
             let result = run_streaming_session(resources, command_rx, updates).await;
             if let Err(error) = result.as_ref() {
                 *actor_terminal_error.lock().await = Some(error.clone());
             }
             let _ = result_tx.send(result);
-        });
+        }.instrument(trace));
         Ok(Arc::new(CodexStreamingSession {
             transcript,
             commands: command_tx,
@@ -214,6 +218,7 @@ async fn run_streaming_session(
     mut commands: mpsc::Receiver<StreamingCommand>,
     updates: watch::Sender<TranscriptSnapshot>,
 ) -> Result<String, VoiceError> {
+    super::media_diagnostics::trace(&resources.peer().peer, "stream_begin").await;
     let mut jitter = ProviderJitterBuffer::default();
     let mut ingress_timing = ProviderIngressTiming::default();
     let mut maximum_media_write = Duration::ZERO;
@@ -260,6 +265,7 @@ async fn run_streaming_session(
                         &mut maximum_media_write,
                     ).await?,
                     JitterPlayout::Complete => {
+                        super::media_diagnostics::trace(&resources.peer().peer, "input_drained").await;
                         let snapshot = updates.borrow().clone();
                         tracing::info!(target: "polar_dictate::latency", event="voice.input_drained",
                             committed_packets=jitter.committed_packet_count,
@@ -276,6 +282,7 @@ async fn run_streaming_session(
         }
     }
     .await;
+    super::media_diagnostics::trace(&resources.peer().peer, "stream_finished").await;
     let stats = jitter.stats();
     let transcript = updates.borrow().clone();
     tracing::info!(
@@ -306,12 +313,16 @@ async fn finish_stream(
     updates: &watch::Sender<TranscriptSnapshot>,
     commands: &mut mpsc::Receiver<StreamingCommand>,
 ) -> Result<String, VoiceError> {
+    let close_started = Instant::now();
     resources
         .sideband()
         .writer()
         .send_payload(serde_json::json!({"type":"session.close"}).to_string())
         .await
         .map_err(|_| voice_failure("stream_finish", VoiceError::TranscriptionFailed))?;
+    tracing::info!(target: "polar_dictate::latency", event="voice.close_written",
+        elapsed_ms=close_started.elapsed().as_millis(), deadline_ms=TRANSCRIPT_WAIT.as_millis(),
+        "Realtime session.close written; awaiting final transcript and closure");
     tokio::select! {
         result=wait_for_transcript_updates(resources,Some(updates)) => result,
         _=commands.recv()=>Err(VoiceError::TranscriptionFailed),
@@ -401,10 +412,49 @@ where
         .map(|tx| tx.borrow().confirmed.clone())
         .unwrap_or_default();
     let mut pending = updates.is_some_and(|tx| tx.borrow().speech_pending);
+    let started = tokio::time::Instant::now();
+    let mut last_event_at = started;
+    let mut last_event = "none";
+    let mut first_transcript_ms = None;
+    let mut transcript_events = 0u64;
     loop {
         let event = tokio::time::timeout_at(deadline, next())
             .await
-            .map_err(|_| VoiceError::Timeout)??;
+            .map_err(|_| {
+                tracing::warn!(target: "polar_dictate::latency", event="voice.finalization_timeout",
+                    elapsed_ms=started.elapsed().as_millis(),
+                    last_event, last_event_age_ms=last_event_at.elapsed().as_millis(),
+                    first_transcript_ms, transcript_events,
+                    confirmed_segments=segments.len(), speech_pending=pending,
+                    "Realtime finalization deadline expired");
+                voice_failure("final_transcript_close", VoiceError::FinalTranscriptTimeout)
+            })??;
+        last_event = match &event {
+            Some(RealtimeEvent::InputAudioSpeechStarted(_)) => "speech_started",
+            Some(RealtimeEvent::InputTranscriptDelta(_)) => "transcript_delta",
+            Some(RealtimeEvent::InputTranscriptDone(_)) => "transcript_done",
+            Some(RealtimeEvent::Error(_)) => "provider_error",
+            Some(RealtimeEvent::SessionUpdated { .. }) => "session_updated",
+            Some(RealtimeEvent::ConversationItemAdded(_)) => "item_added",
+            Some(RealtimeEvent::ConversationItemDone { .. }) => "item_done",
+            Some(RealtimeEvent::ResponseCreated(_)) => "response_created",
+            Some(RealtimeEvent::ResponseDone(_)) => "response_done",
+            Some(RealtimeEvent::ResponseCancelled(_)) => "response_cancelled",
+            Some(_) => "other",
+            None => "closed",
+        };
+        last_event_at = tokio::time::Instant::now();
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        if matches!(&event, Some(RealtimeEvent::InputTranscriptDelta(_) | RealtimeEvent::InputTranscriptDone(_))) {
+            first_transcript_ms.get_or_insert(elapsed_ms);
+            transcript_events += 1;
+        }
+        if super::media_diagnostics::enabled() {
+            tracing::info!(target: "polar_dictate::latency", event="voice.finalization_event",
+                kind=last_event, elapsed_ms, first_transcript_ms, transcript_events,
+                confirmed_segments_before=segments.len(), speech_pending_before=pending,
+                "Realtime finalization event received");
+        }
         match event {
             Some(RealtimeEvent::InputAudioSpeechStarted(_)) => {
                 pending = true;

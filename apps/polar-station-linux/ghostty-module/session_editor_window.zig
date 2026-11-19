@@ -30,6 +30,7 @@ pub const State = struct {
     details_scroll: ?*gtk.ScrolledWindow = null,
     filters: ?*gtk.MenuButton = null,
     options_body: ?*gtk.Box = null,
+    yolo_slot: ?*gtk.Box = null,
     options_menu: ?*gtk.MenuButton = null,
     preferences_store: ?preferences.Preferences = null,
 };
@@ -359,6 +360,9 @@ pub fn create(comptime C: type, self: *C) void {
     target.as(gtk.Widget).setHexpand(1);
     target.as(gtk.Widget).addCssClass("dim-label");
     footer.append(target.as(gtk.Widget));
+    const yolo_slot = gtk.Box.new(.horizontal, 0);
+    footer.append(yolo_slot.as(gtk.Widget));
+    self.editor.yolo_slot = yolo_slot;
     const cancel = button("Cancel");
     const submit = button("New & Open");
     submit.as(gtk.Widget).addCssClass("suggested-action");
@@ -528,6 +532,18 @@ pub fn appendThread(self: anytype, thread: anytype) void {
 
 pub fn showHistoryOptions(self: anytype, history: bool) void {
     const body = self.editor.options_body orelse return;
+    const yolo = self.session_create_yolo.?;
+    const slot = self.editor.yolo_slot.?;
+    const parent = if (history) slot else body;
+    if (yolo.as(gtk.Widget).getParent() != parent.as(gtk.Widget)) {
+        _ = yolo.as(gobject.Object).ref();
+        (if (history) body else slot).remove(yolo.as(gtk.Widget));
+        parent.prepend(yolo.as(gtk.Widget));
+        yolo.as(gobject.Object).unref();
+    }
+    yolo.setLabel(if (history) "YOLO" else "YOLO · Skip approvals and sandbox");
+    yolo.as(gtk.Widget).setTooltipText("Skip approvals and sandbox");
+    slot.as(gtk.Widget).setVisible(@intFromBool(history));
     const popover = self.editor.options_menu.?.getPopover().?;
     const in_menu = popover.getChild() != null;
     if (history != in_menu) {

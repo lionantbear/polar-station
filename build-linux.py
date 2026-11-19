@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build Polar Station for Linux x86_64/Wayland. See BUILD_LINUX.md."""
 import argparse
+import json
+import time
 import os
 from pathlib import Path
 import shutil
@@ -10,7 +12,12 @@ import tempfile
 
 
 def run(*command, **kwargs):
-    subprocess.run([str(arg) for arg in command], check=True, **kwargs)
+    started = time.monotonic()
+    result = subprocess.run([str(arg) for arg in command], **kwargs)
+    print('STATION_BUILD_STEP=' + json.dumps({'tool': str(command[0]),
+          'elapsed_seconds': round(time.monotonic() - started, 3),
+          'exit_code': result.returncode}), flush=True)
+    result.check_returncode()
 
 
 def main():
@@ -41,13 +48,16 @@ def main():
     sys.path[:0] = [str(root / 'apps/polar-tmux-shared/ghostty'),
                    str(root / 'apps/polar-graphics-native')]
     from overlay import install as apply_display
+    from build_cache import workspace, sync_tree, copy_changed, rust_cache_environment
     from resources import build as package_graphics
     target = root / 'target'
     target.mkdir(exist_ok=True)
     (target / 'deps').mkdir(exist_ok=True)
     profile = 'debug' if args.debug else 'release'
     sysroot = args.sysroot.resolve()
-    env = os.environ.copy()
+    env = rust_cache_environment(os.environ.copy())
+    if env.get('RUSTC_WRAPPER'):
+        print('STATION_RUSTC_WRAPPER=' + env['RUSTC_WRAPPER'], flush=True)
     env.update(PATH=str(sysroot / 'usr/bin') + os.pathsep + env['PATH'],
                PYTHONPATH=str(sysroot / 'usr/lib/python3/dist-packages'),
                LD_LIBRARY_PATH=str(sysroot / 'usr/lib/x86_64-linux-gnu') +
@@ -55,68 +65,70 @@ def main():
                PKG_CONFIG_SYSROOT_DIR=str(sysroot),
                PKG_CONFIG_LIBDIR=str(sysroot / 'usr/lib/x86_64-linux-gnu/pkgconfig') +
                    os.pathsep + str(sysroot / 'usr/share/pkgconfig'))
-    with tempfile.TemporaryDirectory(prefix='station-', dir=target) as temporary:
-        work = Path(temporary)
-        for name, source, pin in (
-            ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
-            ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
-        ):
-            destination = target / 'deps/godot' if name == 'godot' else work / name
-            if not destination.exists():
-                run('git', 'clone', '--no-checkout', '--', source.resolve(), destination)
-                run('git', '-C', destination, 'checkout', '--detach', pin)
-            elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
-                raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
-        ghostty, godot = work / 'ghostty', target / 'deps/godot'
-        run('git', '-C', ghostty, 'apply',
-            root / 'apps/polar-station-linux/ghostty-overlay/ghostty-v1.3.1.patch')
-        apply_display(ghostty, 'linux')
-        module = ghostty / 'src/apprt/gtk/polar_tmux'
-        shutil.copytree(root / 'apps/polar-station-linux/ghostty-module', module)
-        for header in (root / 'apps/polar-tmux-shared/display/station_display.h',
-                       root / 'crates/polar-station-desktop-ffi/include/polar_station_desktop_client.h'):
-            shutil.copy2(header, module)
+    with workspace(root, 'linux') as work:
+        with tempfile.TemporaryDirectory(prefix='source-', dir=work) as temporary:
+            prepared = Path(temporary)
+            for name, source, pin in (
+                ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
+                ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
+            ):
+                destination = target / 'deps/godot' if name == 'godot' else prepared / name
+                if not destination.exists():
+                    run('git', 'clone', '--no-checkout', '--', source.resolve(), destination)
+                    run('git', '-C', destination, 'checkout', '--detach', pin)
+                elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
+                    raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
+            ghostty, godot = prepared / 'ghostty', target / 'deps/godot'
+            run('git', '-C', ghostty, 'apply',
+                root / 'apps/polar-station-linux/ghostty-overlay/ghostty-v1.3.1.patch')
+            apply_display(ghostty, 'linux')
+            module = ghostty / 'src/apprt/gtk/polar_tmux'
+            shutil.copytree(root / 'apps/polar-station-linux/ghostty-module', module)
+            for header in (root / 'apps/polar-tmux-shared/display/station_display.h',
+                           root / 'crates/polar-station-desktop-ffi/include/polar_station_desktop_client.h'):
+                shutil.copy2(header, module)
+            ghostty = sync_tree(ghostty, work / 'ghostty')
         run('scons', '-C', godot, '-j', args.jobs, 'platform=linuxbsd', 'arch=x86_64',
             'target=template_release', 'library_type=shared_library', 'vulkan=yes', 'opengl3=yes',
             'x11=no', 'wayland=no', 'debug_symbols=no', 'optimize=speed', 'disable_path_overrides=no',
             'module_jolt_physics_enabled=no', 'module_godot_physics_2d_enabled=no',
             'module_godot_physics_3d_enabled=no',
             'custom_modules=' + str(root / 'apps/polar-graphics-native/godot-modules'))
-        cargo = ['cargo', 'build', '--locked', '--manifest-path', root / 'Cargo.toml', '--target-dir', target]
+        rust_target = Path(os.environ.get('CARGO_TARGET_DIR', target)).resolve()
+        cargo = ['cargo', 'build', '--locked', '--manifest-path', root / 'Cargo.toml', '--target-dir', rust_target]
         if not args.debug:
             cargo.append('--release')
         # Keep Host and frontend feature resolution separate.
-        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux')
-        run(*cargo, '-p', 'polar-station-desktop-ffi', '-p', 'polar-station-client', '--lib')
-        run(*cargo, '-p', 'polar-graphics-godot', '--lib')
+        rust_env = rust_cache_environment(os.environ.copy())
+        run(*cargo, '-p', 'polar-tmux', '--bin', 'polar-tmux', env=rust_env)
+        run(*cargo, '-p', 'polar-station-desktop-ffi', '-p', 'polar-station-client', '--lib', env=rust_env)
+        run(*cargo, '-p', 'polar-graphics-godot', '--lib', env=rust_env)
         # Avoid exposing sysroot FreeType headers or absolute library RUNPATHs to Zig.
-        prefix = work / 'prefix/usr'
-        (prefix / 'include').mkdir(parents=True)
-        for name in ('bin', 'share'):
-            (prefix / name).symlink_to(sysroot / 'usr' / name, target_is_directory=True)
-        for path in (sysroot / 'usr/include').iterdir():
-            if path.name not in ('freetype', 'ft2build.h'):
-                (prefix / 'include' / path.name).symlink_to(path, target_is_directory=path.is_dir())
+        import hashlib
+        prefix = work / 'prefix' / hashlib.sha256(str(sysroot).encode()).hexdigest()[:16] / 'usr'
+        if not prefix.exists():
+            (prefix / 'include').mkdir(parents=True)
+            for name in ('bin', 'share'):
+                (prefix / name).symlink_to(sysroot / 'usr' / name, target_is_directory=True)
+            for path in (sysroot / 'usr/include').iterdir():
+                if path.name not in ('freetype', 'ft2build.h'):
+                    (prefix / 'include' / path.name).symlink_to(path, target_is_directory=path.is_dir())
         run(args.zig, 'build', '--search-prefix', prefix, '-Dpolar-tmux=true',
-            '-Dpolar-station-client-lib-dir=' + str(target / profile), '-Demit-exe=true',
+            '-Dpolar-station-client-lib-dir=' + str(rust_target / profile), '-Demit-exe=true',
             '-Dapp-runtime=gtk', '-fsys=fontconfig', '-fsys=harfbuzz',
             '-Dgtk-wayland=true', '-Dgtk-x11=false',
-            '-Doptimize=' + ('Debug' if args.debug else 'ReleaseFast'), cwd=ghostty, env=env)
+            '-Doptimize=' + ('Debug' if args.debug else 'ReleaseFast'), '--summary', 'all', cwd=ghostty, env=env)
         graphics = work / 'graphics'
-        old_env = os.environ.copy()
-        try:
-            os.environ.update(env)
-            package_graphics(root, graphics, godot / 'bin/libgodot.linuxbsd.template_release.x86_64.so',
-                             args.editor.resolve(), target / profile / 'libpolar_graphics_godot.so',
-                             args.graphviz.resolve())
-        finally:
-            os.environ.clear()
-            os.environ.update(old_env)
+        # Match Godot's native compiler environment; the Ghostty sysroot has a
+        # deliberately narrower pkg-config catalog than the graphics SDK.
+        package_graphics(root, graphics, godot / 'bin/libgodot.linuxbsd.template_release.x86_64.so',
+                         args.editor.resolve(), rust_target / profile / 'libpolar_graphics_godot.so',
+                         args.graphviz.resolve())
         output = target / 'linux' / profile
         if output.exists():
             shutil.rmtree(output)
         shutil.copytree(ghostty / 'zig-out', output)
-        shutil.copy2(target / profile / 'polar-tmux', output / 'bin')
+        shutil.copy2(rust_target / profile / 'polar-tmux', output / 'bin')
         shutil.copytree(graphics, output / 'bin/graphics')
         shutil.copytree(root / 'apps/polar-station-linux/gnome-extension',
                         output / 'share/polar-station/gnome-shortcuts')

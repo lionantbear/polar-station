@@ -33,6 +33,7 @@ pub const Event = union(enum) {
         generation: u64,
         payload: []u8,
     },
+    backend_completed: []u8,
     session_completed: []u8,
     content_completed: []u8,
     native_state_completed: []u8,
@@ -48,7 +49,7 @@ pub const Event = union(enum) {
             .request_failed => |value| { allocator.free(value.request_id); allocator.free(value.api); allocator.free(value.code); allocator.free(value.message); },
             .ready => |value| allocator.free(value.frame),
             .frame => |value| allocator.free(value.payload),
-            .content_completed, .native_state_completed, .session_completed => |value| allocator.free(value),
+            .content_completed, .native_state_completed, .session_completed, .backend_completed => |value| allocator.free(value),
             .unavailable => |value| allocator.free(value.message),
             .connecting => {},
         }
@@ -89,8 +90,11 @@ pub const Client = struct {
             .{},
         );
         defer parsed.deinit();
+        const native_path=try @import("native_workspace_store.zig").statePath(self.allocator);defer self.allocator.free(native_path);
+        const preferences=try std.fs.path.join(self.allocator,&.{std.fs.path.dirname(native_path).?,"client-preferences.json"});defer self.allocator.free(preferences);
         const config = try std.json.Stringify.valueAlloc(self.allocator, .{
             .socket_path = self.socket_path,
+            .client_state_path = preferences,
             .registration = parsed.value,
             .event_capacity = 256,
         }, .{});
@@ -133,6 +137,15 @@ pub const Client = struct {
         }
     }
 
+    pub fn backend(self:*Client,bytes:[]const u8) !void {
+        const json=try self.allocator.dupeZ(u8,bytes);defer self.allocator.free(json);
+        if(!c.polar_station_desktop_client_backend_json(self.handle,json.ptr))return error.BackendRequestBusy;
+    }
+    pub fn syncBackendSocket(self:*Client) !void {
+        const raw=c.polar_station_desktop_client_backend_socket(self.handle) orelse return error.BackendUnavailable;
+        defer c.polar_station_desktop_string_free(raw);
+        const owned=try self.allocator.dupe(u8,std.mem.span(raw));self.allocator.free(self.socket_path);self.socket_path=owned;
+    }
     pub fn currentGeneration(self: *Client) u64 { return c.polar_station_desktop_client_generation(self.handle); }
 
     pub fn cancelRequest(self: *Client, id: []const u8) void {
@@ -191,6 +204,8 @@ pub const Client = struct {
         defer parsed.deinit();
         const object = parsed.value.object;
         const event_type = (object.get("type") orelse return null).string;
+        if (std.mem.eql(u8, event_type, "backend_completed"))
+            return .{ .backend_completed = self.allocator.dupe(u8, std.mem.span(raw)) catch return null };
         if (std.mem.eql(u8, event_type, "session_completed"))
             return .{ .session_completed = self.allocator.dupe(u8, std.mem.span(raw)) catch return null };
         if (std.mem.eql(u8, event_type, "native_state_completed"))

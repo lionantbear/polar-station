@@ -228,7 +228,17 @@ impl Engine {
             }
             if let Some(target) = &idea_target { target.validate()?; }
             let idea_submission: Option<super::idea_codex::Submission> = serde_json::from_value(row.get("idea_submission").cloned().unwrap_or(Value::Null)).map_err(|_| "invalid Idea submission")?;
-            if let Some(submission) = &idea_submission { submission.target.validate()?; validate_id(&submission.intent)?; }
+            if let Some(submission) = &idea_submission {
+                submission.target.validate()?; validate_id(&submission.intent)?;
+                if let Some(command) = &submission.command {
+                    match command {
+                        polar_station_protocol::CodexCommandV1::SubmitThreadText { endpoint_id, thread_id, intent_id, text }
+                            if endpoint_id == &submission.target.endpoint_id && thread_id == &submission.target.thread_id
+                            && intent_id == &submission.intent && !text.trim().is_empty() && text.len() <= polar_station_protocol::CODEX_INPUT_MAX_BYTES => {},
+                        _ => return Err("invalid frozen Idea submission".into()),
+                    }
+                }
+            }
             restored.push((
                 key,
                 Draft {

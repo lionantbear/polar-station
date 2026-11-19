@@ -17,6 +17,11 @@ pub(crate) enum Pending {
     Thread(Box<ThreadLookup>),
     Resolved(Selection),
     Send(String),
+    RetryReceipt {
+        intent: String,
+        owner: String,
+        command: Box<CodexCommandV1>,
+    },
 }
 
 pub(crate) struct ThreadLookup {
@@ -31,9 +36,14 @@ impl Pending {
         match self {
             Self::Bindings(s) | Self::Settings(s) | Self::Resolved(s) => Some(s),
             Self::Thread(lookup) => Some(&lookup.selection),
-            Self::Send(_) => None,
+            Self::Send(_) | Self::RetryReceipt { .. } => None,
         }
     }
+}
+struct Request {
+    owner: String,
+    operation: Pending,
+    deadline: Option<u64>,
 }
 #[derive(Default)]
 pub(crate) struct CodexState {
@@ -41,9 +51,23 @@ pub(crate) struct CodexState {
     revision: u64,
     selected: BTreeMap<String, (String, Selection)>,
     dirty: BTreeSet<String>,
-    pending: BTreeMap<String, (String, Pending)>,
+    pending: BTreeMap<String, Request>,
 }
 impl InputEngine {
+    pub(crate) fn codex_deadline(&self)->Option<u64> {
+        self.codex.pending.values().filter_map(|r|r.deadline).min()
+    }
+    pub(crate) fn expire_codex_requests(&mut self)->Result<Vec<Effect>,String> {
+        let expired=self.codex.pending.iter().filter(|(_,r)|r.deadline.is_some_and(|d|d<=self.now_ms)).map(|(id,_)|id.clone()).collect::<Vec<_>>();
+        let mut out=Vec::new();
+        for id in expired {
+            if let Some(request)=self.codex.pending.remove(&id) {
+                out.extend(self.codex_result(request.operation,CodexResultV1::Error { code: "request_timed_out".into() })?);
+            }
+        }
+        Ok(out)
+    }
+
     pub(crate) fn has_codex_selection(&self, window: &str) -> bool {
         self.codex.selected.contains_key(window)
     }
@@ -53,7 +77,7 @@ impl InputEngine {
     pub(crate) fn forget_codex(&mut self, window: &str) {
         self.codex.selected.remove(window);
         self.codex.dirty.remove(window);
-        self.codex.pending.retain(|_, (_, p)| p.selection().is_none_or(|s| s.lease.window != window));
+        self.codex.pending.retain(|_, r| r.operation.selection().is_none_or(|s| s.lease.window != window));
     }
     pub(crate) fn refresh_codex(&mut self) -> Result<Vec<Effect>, String> {
         let selected = self.codex.selected.values().cloned().collect::<Vec<_>>();
@@ -61,7 +85,7 @@ impl InputEngine {
         for (owner, mut selection) in selected {
             let Some(view) = self.generic.view(&selection.lease.window) else { continue };
             if !view.lease.same_context(&selection.lease) { continue }
-            if self.codex.pending.values().any(|(_, p)| p.selection().is_some_and(|s| s.lease.window == selection.lease.window)) {
+            if self.codex.pending.values().any(|r| r.operation.selection().is_some_and(|s| s.lease.window == selection.lease.window)) {
                 self.codex.dirty.insert(selection.lease.window.clone());
             } else {
                 selection.lease = view.lease;
@@ -77,6 +101,9 @@ impl InputEngine {
         command: CodexCommandV1,
         pending: Pending,
     ) -> Result<Effect, String> {
+        self.codex_request_content(owner,command,pending).map(|e|Effect::Content(Box::new(e)))
+    }
+    pub(crate) fn codex_request_content(&mut self, owner:String, command:CodexCommandV1, pending:Pending) -> Result<polar_station_lgp::Effect,String> {
         if self.codex.pending.len() >= 256 {
             return Err("Too many pending Codex requests".into());
         }
@@ -93,10 +120,9 @@ impl InputEngine {
             request: ClientApplicationMessage::CodexV1(Box::new(request)),
         })
         .map_err(|e| e.to_string())?;
-        self.codex.pending.insert(id, (owner, pending));
-        Ok(Effect::Content(Box::new(
-            polar_station_lgp::Effect::Request { frame },
-        )))
+        let deadline=matches!(pending,Pending::Send(_)|Pending::RetryReceipt{..}).then_some(self.now_ms.saturating_add(30_000));
+        self.codex.pending.insert(id, Request { owner, operation:pending, deadline });
+        Ok(polar_station_lgp::Effect::Request { frame })
     }
     pub(crate) fn resolve_codex(
         &mut self,
@@ -164,9 +190,9 @@ impl InputEngine {
                 request_id,
                 ..
             } if *generation == self.codex.generation => {
-                if let Some((_, pending)) = self.codex.pending.remove(request_id) {
+                if let Some(request) = self.codex.pending.remove(request_id) {
                     return self.codex_result(
-                        pending,
+                        request.operation,
                         CodexResultV1::Error {
                             code: "request_not_admitted".into(),
                         },
@@ -194,11 +220,11 @@ impl InputEngine {
             .codex
             .pending
             .get(&response.request_id)
-            .is_none_or(|(owner, _)| owner != &response.owner_host_id)
+            .is_none_or(|r| r.owner != response.owner_host_id)
         {
             return Ok(vec![]);
         }
-        let (_, pending) = self
+        let request = self
             .codex
             .pending
             .remove(&response.request_id)
@@ -209,14 +235,14 @@ impl InputEngine {
                 .any(|state| state.binding.owner_host_id != response.owner_host_id)
             {
                 return self.codex_result(
-                    pending,
+                    request.operation,
                     CodexResultV1::Error {
                         code: "binding_owner_mismatch".into(),
                     },
                 );
             }
         }
-        self.codex_result(pending, response.result)
+        self.codex_result(request.operation, response.result)
     }
     fn next_thread_lookup(&mut self, lookup: ThreadLookup) -> Result<Vec<Effect>, String> {
         let command = CodexCommandV1::GetThreadBinding {
@@ -304,8 +330,43 @@ impl InputEngine {
                 self.generic.conversation_context(&selection.lease.window, conversation_context);
                 self.complete_input_resolution(selection,destination)
             }
+            Pending::RetryReceipt { intent, owner, command } => {
+                if !self.has_codex_submission(&intent) { return Ok(vec![]); }
+                let unsubmitted = match &result {
+                    CodexResultV1::Receipt { receipt: None } => true,
+                    CodexResultV1::Receipt { receipt: Some(receipt) } => {
+                        if receipt.intent_id != intent {
+                            return Err("Codex receipt identity mismatch".into());
+                        }
+                        receipt.status == CodexSubmissionStatusV1::Received
+                    }
+                    _ => false,
+                };
+                if !unsubmitted {
+                    return self.codex_result(Pending::Send(intent), result);
+                }
+                // Explicit Retry only: reuse the saved payload and intent. Host
+                // admission/ledger deduplication handles races with the first send.
+                let request = match self.codex_request(owner, *command, Pending::Send(intent.clone())) {
+                    Ok(request)=>request,
+                    Err(code)=>return self.codex_result(Pending::Send(intent),CodexResultV1::Error { code }),
+                };
+                self.generic.watch_pending(&intent, self.now_ms);
+                let mut out = vec![request];
+                out.extend(self.generic.active_views().into_iter().map(present));
+                Ok(out)
+            }
             Pending::Send(intent) => {
-                if !self.generic.has_pending(&intent) {return Ok(vec![]);}
+                if !self.has_codex_submission(&intent) {return Ok(vec![]);}
+                if self.content.idea_submission(&intent).is_some() {
+                    // A rejected receipt query says nothing about an earlier
+                    // send. Only a failed save/construction or Host receipt can
+                    // release the immutable domain intent.
+                    let mut out=self.content.complete_idea_submission(&intent,result,false)?
+                        .into_iter().map(|e|Effect::Content(Box::new(e))).collect();
+                    self.append_input_snapshot(&mut out);
+                    return Ok(out);
+                }
                 if let CodexResultV1::Receipt {
                     receipt: Some(receipt),
                 } = result
@@ -320,10 +381,10 @@ impl InputEngine {
                         CodexSubmissionStatusV1::Rejected => {
                             self.generic.reject(&intent,format!("Send failed: {}. Draft retained.",receipt.error_code.as_deref().unwrap_or(&receipt.label)))?
                         }
-                        _ => self.generic.submission_error(&intent,"Sending result is unconfirmed; Retry checks the original receipt without resending text".into()),
+                        _ => self.generic.submission_error(&intent,"Host has not confirmed the original send; Retry checks its status before continuing".into()),
                     }
                 } else {
-                    self.generic.submission_error(&intent,"Sending result is unconfirmed; Retry checks the original receipt without resending text".into());
+                    self.generic.submission_error(&intent,"Host has not confirmed the original send; Retry checks its status before continuing".into());
                 }
                 // Ambiguous/error outcomes retain the immutable intent for receipt lookup.
                 let mut out = self

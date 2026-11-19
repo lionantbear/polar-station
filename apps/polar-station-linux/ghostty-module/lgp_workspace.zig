@@ -82,10 +82,17 @@ pub const Workspace = struct {
     timer: c_uint = 0,
     flush_timer: c_uint = 0,
     draft_timer: c_uint = 0,
+    draft_persistence_failed:bool=false,
     clock: std.time.Timer,
     dictate_submit_editor:?*gtk.TextView=null,
 
 
+    pub fn portableIdeaSources(self:*Workspace,a:std.mem.Allocator) !Value {
+        var map=std.json.ObjectMap.init(a);
+        var iterator=self.panes.valueIterator();
+        while(iterator.next())|entry|if(entry.*.portable_sources)|paths|{try map.put(entry.*.content.view_id,paths.value);};
+        return .{.object=map};
+    }
     pub fn create(allocator: std.mem.Allocator, app: *Application, send: SendFn, open: OpenFn, context: ?*anyopaque) !*Workspace {
         const self = try allocator.create(Workspace);
         errdefer allocator.destroy(self);
@@ -94,7 +101,7 @@ pub const Workspace = struct {
         errdefer c.polar_station_input_free(engine);
         const dictate = try dictate_module.Controller.create();
         self.* = .{ .dictate = dictate, .allocator = allocator, .app = app, .send = send, .open = open, .context = context, .engine = engine, .clock = clock };
-        dictate.context = self; dictate.changed = dictateChanged; dictate.insert_current = insertDictateCurrent;dictate.submit_inserted=submitDictateInserted; dictate.current_project=currentDictateProject; dictate.current_conversation=currentDictateConversation; dictate.refined=refineApplied; dictate.learning_stored=learningStored;
+        dictate.context = self; dictate.changed = dictateChanged; dictate.waveform_changed = dictateWaveformChanged; dictate.insert_current = insertDictateCurrent;dictate.submit_inserted=submitDictateInserted; dictate.current_project=currentDictateProject; dictate.current_conversation=currentDictateConversation; dictate.refined=refineApplied; dictate.learning_stored=learningStored;
         self.restoreDrafts();
         return self;
     }
@@ -254,6 +261,14 @@ pub const Workspace = struct {
         c.polar_station_input_free(self.engine);
         self.allocator.destroy(self);
     }
+    fn dictateWaveformChanged(context: ?*anyopaque, id: []const u8, levels: dictate_module.Waveform) void {
+        const self: *Workspace = @ptrCast(@alignCast(context orelse return));
+        var composers = self.composers.valueIterator();
+        while (composers.next()) |composer| {
+            if (composer.*.dictate_panel) |panel| panel.updateWaveform(id, levels);
+        }
+    }
+
     fn dictateChanged(context: ?*anyopaque) void {
         const self: *Workspace = @ptrCast(@alignCast(context orelse return));
         const enabled=self.dictate.collectsContext();
@@ -486,8 +501,11 @@ pub const Workspace = struct {
             for(effects) |effect| if(std.mem.eql(u8,string(effect,"type") orelse "","inquiry")) {
                 if(boolean(field(effect,"view") orelse .null,"active")) {
                     const id=string(effect,"window_id") orelse continue;
-                    for(effects) |composer| if(std.mem.eql(u8,string(composer,"type") orelse "","composer") and std.mem.eql(u8,string(composer,"window_id") orelse "",id)) {
-                        if(self.composers.get(id)) |bar| bar.setInquiryText(string(composer,"text") orelse "");
+                    for(effects) |projection| if(std.mem.eql(u8,string(projection,"type") orelse "","input_bar")) {
+                        const composer=field(projection,"view") orelse continue;
+                        if(std.mem.eql(u8,string(composer,"window_id") orelse "",id)) {
+                            if(self.composers.get(id)) |bar| bar.setInquiryText(string(composer,"text") orelse "");
+                        }
                     };
                 }
                 self.consume(effect);
@@ -584,21 +602,22 @@ pub const Workspace = struct {
             if (entry.display.graphics_widget) |widget| graphics.command(widget, action, query);
         } else if (std.mem.eql(u8, kind, "input_bar")) {
             const view = field(effect, "view") orelse return;
-            const lease = field(view, "lease") orelse return;
-            const id = string(lease, "window") orelse return;
-            if (self.composers.get(id)) |composer| composer.updateGeneric(view);
-        } else if (std.mem.eql(u8, kind, "composer") or std.mem.eql(u8, kind, "idea_composer")) {
-            const id = string(effect, "window_id") orelse return;
-            if (std.mem.eql(u8, kind, "idea_composer")) {
-                self.saveSoon();
-                var entries = self.panes.valueIterator();
-                while (entries.next()) |entry| if (std.mem.eql(u8, entry.*.window_id, id)) {
-                    entry.*.display.surface.as(gtk.Widget).removeCssClass("station-chat-target");
-                    entry.*.display.surface.as(gtk.Widget).setTooltipText(null);
-                };
+            const id = string(view, "window_id") orelse return;
+            const mode = string(view, "kind") orelse return;
+            if (std.mem.eql(u8, mode, "generic")) {
+                if (self.composers.get(id)) |composer| composer.updateGeneric(view);
+            } else {
+                if (std.mem.eql(u8, mode, "idea")) {
+                    self.saveSoon();
+                    var entries = self.panes.valueIterator();
+                    while (entries.next()) |entry| if (std.mem.eql(u8, entry.*.window_id, id)) {
+                        entry.*.display.surface.as(gtk.Widget).removeCssClass("station-chat-target");
+                        entry.*.display.surface.as(gtk.Widget).setTooltipText(null);
+                    };
+                }
+                self.markComposerTarget(id,if (std.mem.eql(u8,mode,"chat")) string(view,"pane_id") else null);
+                if (self.composers.get(id)) |composer| composer.update(view);
             }
-            self.markComposerTarget(id,if (std.mem.eql(u8,kind,"composer")) string(effect,"pane_id") else null);
-            if (self.composers.get(id)) |composer| composer.update(effect);
         } else if (std.mem.eql(u8,kind,"ensure_terminal_visible")) {
             const id=string(effect,"window_id") orelse return;
             if (self.composers.get(id)) |composer| composer.beginTerminalView(effect) catch {
@@ -689,6 +708,10 @@ pub const Workspace = struct {
         self.input(.{ .type = "flush" });
         return 0;
     }
+    pub fn flushDrafts(self:*Workspace) bool {
+        if(self.draft_timer!=0){_=glib.Source.remove(self.draft_timer);self.draft_timer=0;}
+        self.draft_persistence_failed=false;self.input(.{.type="export_drafts"});return !self.draft_persistence_failed;
+    }
     pub fn saveSoon(self: *Workspace) void {
         if (self.draft_timer != 0) _ = glib.Source.remove(self.draft_timer);
         self.draft_timer = glib.timeoutAdd(350, exportDrafts, self);
@@ -714,6 +737,7 @@ pub const Workspace = struct {
     }
     fn saveDrafts(self: *Workspace, value: Value) void {
         self.saveDraftsChecked(value) catch {
+            self.draft_persistence_failed=true;
             self.showError("Draft persistence failed; keep this input open.");
             if (field(value,"snapshot_revision")) |revision| self.input(.{.type="snapshot_stored",.revision=revision,.success=false});
             return;
@@ -753,6 +777,7 @@ pub const Workspace = struct {
 };
 
 pub const Entry = struct {
+    portable_sources:?std.json.Parsed(Value)=null,
     instruction_request_id: u64 = 0,
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
@@ -936,6 +961,7 @@ pub const Entry = struct {
         return 0;
     }
     fn destroy(self: *Entry) void {
+        if(self.portable_sources)|v|v.deinit();
         if (self.display.graphics_widget) |widget| graphics.subscribe(widget, null, null);
         self.cancelAction();
         if (self.references) |references| references.destroy();
@@ -960,6 +986,11 @@ pub const Entry = struct {
         const parsed = std.json.parseFromSlice(Value, self.allocator, std.mem.span(bytes), .{}) catch return;
         defer parsed.deinit();
         if (field(parsed.value, "state")) |state| {
+            if(field(state,"source_paths"))|paths| {
+                const owned=std.json.Stringify.valueAlloc(self.allocator,paths,.{}) catch return;defer self.allocator.free(owned);
+                const next=std.json.parseFromSlice(Value,self.allocator,owned,.{.allocate=.alloc_always}) catch return;
+                if(self.portable_sources)|old|old.deinit();self.portable_sources=next;
+            }
             self.owner.input(.{ .type = "idea_state", .pane_id = self.pane, .view_id = self.content.view_id, .state = state });
             if(!boolean(state,"reader_open")) {
                 if(self.owner.composers.get(self.window_id)) |composer| if(composer.pane_id!=null and std.mem.eql(u8,composer.pane_id.?,self.pane)) composer.closeDetail();

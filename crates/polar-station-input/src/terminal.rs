@@ -28,7 +28,6 @@ enum Pending {
 pub(crate) struct TerminalState {
     selected: BTreeMap<String, Selection>,
     pending: BTreeMap<String, Pending>,
-    saving: BTreeMap<String, u64>,
 }
 fn id() -> String {
     polar_identity::generation::new_uuid_v7().to_string()
@@ -318,8 +317,21 @@ impl InputEngine {
         lease: Lease,
         press_enter: bool,
     ) -> Result<Vec<Effect>, String> {
-        if self.generic.pending_submission(&lease)?.is_some() {
-            return self.refresh_input(lease); // Query the original intent; never stage another write.
+        if let Some((intent, submission)) = self.generic.pending_submission(&lease)? {
+            if let Submission::Codex { owner_host_id, command } = submission {
+                let request = self.codex_request(
+                    owner_host_id.clone(),
+                    polar_station_protocol::CodexCommandV1::GetReceipt { intent_id: intent.clone() },
+                    crate::codex::Pending::RetryReceipt {
+                        intent: intent.clone(), owner: owner_host_id, command: Box::new(command),
+                    },
+                )?;
+                self.generic.watch_pending(&intent, self.now_ms);
+                let mut out = vec![request];
+                out.extend(self.generic.active_views().into_iter().map(present));
+                return Ok(out);
+            }
+            return self.refresh_input(lease);
         }
         if self.generic.needs_resolution(&lease)? {
             let out=self.refresh_input(lease.clone())?;
@@ -343,14 +355,13 @@ impl InputEngine {
         let intent = id();
         self.generic.stage(&lease, intent.clone(), press_enter)?;
         self.generic.watch_pending(&intent,self.now_ms);
-        let effects = match self.dispatch_content(polar_station_lgp::Input::ExportDrafts) {
+        let effects = match self.stage_submission_snapshot(intent.clone()) {
             Ok(effects) => effects,
             Err(error) => {
                 self.generic.resolve(&intent, false)?;
                 return Err(error);
             }
         };
-        self.terminal.saving.insert(intent, self.snapshot_revision);
         let mut out = effects
             .into_iter()
             .map(|e| Effect::Content(Box::new(e)))
@@ -361,78 +372,9 @@ impl InputEngine {
         Ok(out)
     }
 
-    pub(crate) fn snapshot_stored(
-        &mut self,
-        revision: u64,
-        success: bool,
-    ) -> Result<Vec<Effect>, String> {
-        if revision > self.snapshot_revision {
-            return Err("Unknown snapshot receipt".into());
-        }
-        let intents = self
-            .terminal
-            .saving
-            .iter()
-            .filter(|(_, saved)| **saved <= revision)
-            .map(|(intent, _)| intent.clone())
-            .collect::<Vec<_>>();
-        let mut out = vec![];
-        let mut restored_retry = false;
-        for intent in intents {
-            let Some(_) = self.terminal.saving.remove(&intent) else {
-                continue;
-            };
-            if !success {
-                self.generic.reject(&intent,"Could not save the submission; nothing was sent. Draft retained.".into())?;
-                restored_retry = true;
-                continue;
-            }
-            if let Some(submission) = self.generic.saved_submission(&intent) {
-                match submission {
-                    Submission::Terminal(input) => {
-                        let request_id = id();
-                        self.terminal.pending.insert(
-                            request_id.clone(),
-                            Pending::Send {
-                                intent,
-                                reference: input.reference.clone(),
-                            },
-                        );
-                        out.push(request(SessionJob {
-                            request_id,
-
-                            request: LocalRequest::Send {
-                                principal: "station-input".into(),
-                                input,
-                            },
-                        }));
-                    }
-                    Submission::Codex {
-                        owner_host_id,
-                        command,
-                    } => {
-                        match self.codex_request(owner_host_id,command,crate::codex::Pending::Send(intent.clone())) {
-                            Ok(effect)=>out.push(effect),
-                            Err(message)=>{
-                                // Request construction/admission failed before any native I/O effect.
-                                self.generic.reject(&intent,format!("Send was not dispatched: {message}. Draft retained."))?;
-                                restored_retry=true;
-                                out.push(Effect::Content(Box::new(polar_station_lgp::Effect::Error{message})));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if restored_retry {
-            out.extend(
-                self.terminal
-                    .selected
-                    .keys()
-                    .filter_map(|window| self.generic.view(window))
-                    .map(present),
-            );
-        }
-        Ok(out)
+    pub(crate) fn dispatch_saved_terminal(&mut self, intent:String, input:polar_station_session::SendRequest) -> Effect {
+        let request_id=id();
+        self.terminal.pending.insert(request_id.clone(),Pending::Send { intent,reference:input.reference.clone() });
+        request(SessionJob { request_id,request:LocalRequest::Send { principal:"station-input".into(),input } })
     }
 }

@@ -374,6 +374,30 @@ pub fn authorization_preimage(owner: NodeId, epoch: u64, t0: &[u8]) -> Result<[u
 /// Strict DER/profile, NodeId authorization, epoch floor, expiry and self-signature.
 /// `minimum_epoch` is supplied by the caller's authenticated persistent state.
 /// It does not substitute for key fingerprint revocation or Access Plane trust.
+/// Validate a public CA carried inside an already authenticated identity message.
+/// This checks certificate structure/profile/self-signature, NOT NodeId ownership;
+/// the caller must retain and verify the enclosing NodeId signature and approval.
+pub fn validate_identity_message_ca(der: &[u8]) -> Result<()> {
+    ensure!(
+        der.len() <= MAX_CA_CERTIFICATE_BYTES,
+        "CA certificate exceeds bound"
+    );
+    let cert = Certificate::from_der(der)?;
+    ensure!(cert.to_der()? == der, "noncanonical certificate DER");
+    ensure!(
+        cert.signature_algorithm == cert.tbs_certificate.signature,
+        "signature algorithm mismatch"
+    );
+    validate_ca_profile(&cert.tbs_certificate, OffsetDateTime::now_utc())?;
+    let (remaining, parsed) = x509_parser::parse_x509_certificate(der)
+        .map_err(|e| anyhow::anyhow!("certificate parse: {e}"))?;
+    ensure!(remaining.is_empty(), "trailing certificate bytes");
+    parsed
+        .verify_signature(None)
+        .context("invalid CA self-signature")?;
+    Ok(())
+}
+
 pub fn verify_authorized_ca_now(
     der: &[u8],
     oid: &AuthorizationOid,

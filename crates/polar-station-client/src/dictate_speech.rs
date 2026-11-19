@@ -63,6 +63,7 @@ fn history_input(slot: &HistorySlot, input: Value) {
 pub struct DictateSpeech {
     history_callback: HistorySlot,
     history_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    history_endpoint: Mutex<Option<std::path::PathBuf>>,
     progress: Arc<Mutex<Option<Progress>>>,
     playback: Mutex<Vec<tempfile::NamedTempFile>>,
     client: DictateClient,
@@ -78,8 +79,47 @@ struct SpeechWork {
     cancelled: Arc<AtomicBool>,
     finished: Option<watch::Receiver<bool>>,
 }
+pub const WAVEFORM_BARS: usize = 22;
+
+/// A display-only peak envelope sampled from the canonical 16 kHz PCM.
+#[derive(Default)]
+struct CaptureWaveform {
+    bars: [u8; WAVEFORM_BARS],
+    peak: u16,
+    samples: usize,
+    bins_until_emit: u8,
+}
+
+impl CaptureWaveform {
+    fn feed(&mut self, pcm: &[u8]) -> Option<[u8; WAVEFORM_BARS]> {
+        const BIN_SAMPLES: usize = 320;
+        const QUIET_PEAK: u16 = 164;
+        let mut emit = false;
+        for sample in pcm.chunks_exact(2) {
+            self.peak = self.peak.max(i16::from_le_bytes([sample[0], sample[1]]).unsigned_abs());
+            self.samples += 1;
+            if self.samples == BIN_SAMPLES {
+                let amplitude = f32::from(self.peak.saturating_sub(QUIET_PEAK))
+                    / f32::from(32768 - QUIET_PEAK);
+                self.bars.rotate_left(1);
+                self.bars[WAVEFORM_BARS - 1] = (amplitude.sqrt() * 255.0).round() as u8;
+                self.samples = 0;
+                self.peak = 0;
+                if self.bins_until_emit == 0 {
+                    self.bins_until_emit = 3;
+                    emit = true;
+                } else {
+                    self.bins_until_emit -= 1;
+                }
+            }
+        }
+        emit.then_some(self.bars)
+    }
+}
+
 struct Capture {
     id: String,
+    waveform: CaptureWaveform,
     sender: Option<mpsc::Sender<Vec<u8>>>,
     pending: Arc<AtomicUsize>,
     error: Arc<Mutex<Option<String>>>,
@@ -97,6 +137,7 @@ impl DictateSpeech {
         Ok(Self {
             history_callback: Arc::new(Mutex::new(None)),
             history_task: Mutex::new(None),
+            history_endpoint: Mutex::new(None),
             client: DictateClient::default(),
             progress: Arc::new(Mutex::new(None)),
             playback: Mutex::new(Vec::new()),
@@ -108,8 +149,11 @@ impl DictateSpeech {
     }
     pub fn with_socket_path(path: std::path::PathBuf) -> Result<Self, String> {
         let mut result = Self::local()?;
-        result.client.path = Some(path);
+        result.client = DictateClient::with_socket_path(path);
         Ok(result)
+    }
+    pub fn with_client(client: DictateClient) -> Result<Self, String> {
+        let mut result = Self::local()?; result.client = client; Ok(result)
     }
     /// Registration/removal synchronizes with in-flight callbacks. The native
     /// owner unregisters before destroying its borrowed callback context.
@@ -131,13 +175,20 @@ impl DictateSpeech {
             }
             return;
         }
+        let Ok(client) = self.client.snapshot() else { return; };
+        let endpoint = client.endpoint().ok();
+        if let Ok(mut previous) = self.history_endpoint.lock() {
+            if *previous != endpoint {
+                if let Some(old) = task.take() { old.abort(); }
+                *previous = endpoint;
+            }
+        }
         if task.as_ref().is_some_and(|t| !t.is_finished()) {
             return;
         }
         let Some(runtime) = &self.runtime else {
             return;
         };
-        let client = self.client.clone();
         let slot = self.history_callback.clone();
         *task = Some(runtime.spawn(async move {
             let result = client.observe_history(|event| {
@@ -156,6 +207,7 @@ impl DictateSpeech {
         }));
     }
     pub fn request(&self, payload: Value) -> Result<Value, String> {
+        let client = self.client.snapshot().map_err(|e|e.to_string())?;
         if payload.get("op").and_then(Value::as_str) == Some("export_audio") {
             let id = payload
                 .get("id")
@@ -166,14 +218,14 @@ impl DictateSpeech {
                 .and_then(Value::as_u64)
                 .unwrap_or(0);
             let pcm=self.runtime.as_ref().ok_or("Voice client stopped")?.block_on(async {
-                let response=self.client.call(json!({"op":"get","id":id})).await?;
+                let response=client.call(json!({"op":"get","id":id})).await?;
                 let record:polar_dictate::Recording=serde_json::from_value(response["recording"].clone())?;
                 anyhow::ensure!(record.capture!=polar_dictate::CaptureState::Recording && start<=record.saved_samples,"Stop recording before export");
                 let end=payload.get("sample_count").and_then(Value::as_u64).map(|n|start.saturating_add(n)).unwrap_or(record.saved_samples).min(record.saved_samples);
                 let mut pcm=Vec::new();let mut position=start;
                 while position<end {
                     let count=(end-position).min(16000);
-                    let response=self.client.call(json!({"op":"audio","id":id,"start_sample":position,"sample_count":count})).await?;
+                    let response=client.call(json!({"op":"audio","id":id,"start_sample":position,"sample_count":count})).await?;
                     let bytes:Vec<u8>=serde_json::from_value(response["pcm"].clone())?;
                     anyhow::ensure!(bytes.len() as u64==count*2,"Saved audio range is incomplete");
                     pcm.extend_from_slice(&bytes);position+=count;
@@ -186,7 +238,7 @@ impl DictateSpeech {
         self.runtime
             .as_ref()
             .ok_or("Voice client stopped")?
-            .block_on(self.client.call(payload))
+            .block_on(client.call(payload))
             .map_err(|e| e.to_string())
     }
     pub fn local_wav(&self, pcm: &[u8], destination: Option<&str>) -> Result<Value, String> {
@@ -259,7 +311,7 @@ impl DictateSpeech {
         let cancelled_writer = cancelled.clone();
         let (done, finished) = watch::channel(false);
         let operation = id.to_owned();
-        let client = self.client.clone();
+        let client = self.client.snapshot().map_err(|e|e.to_string())?;
         let progress = self.progress.clone();
         let history = self.history_callback.clone();
         let task=self.runtime.as_ref().ok_or("Voice client stopped")?.spawn(async move {
@@ -299,6 +351,7 @@ impl DictateSpeech {
         });
         *capture = Some(Capture {
             id: id.into(),
+            waveform: CaptureWaveform::default(),
             sender: Some(sender),
             pending,
             error,
@@ -309,13 +362,13 @@ impl DictateSpeech {
         Ok(())
     }
     /// Bounded enqueue without network I/O (at most two seconds unacknowledged).
-    pub fn append(&self, id: &str, pcm: &[u8]) -> Result<(), String> {
+    pub fn append(&self, id: &str, pcm: &[u8]) -> Result<Option<[u8; WAVEFORM_BARS]>, String> {
         if pcm.is_empty() || !pcm.len().is_multiple_of(2) || pcm.len() > 32000 {
             return Err("Invalid Dictate PCM audio block".into());
         }
-        let capture = self.capture.lock().map_err(|_| "Voice client stopped")?;
+        let mut capture = self.capture.lock().map_err(|_| "Voice client stopped")?;
         let capture = capture
-            .as_ref()
+            .as_mut()
             .filter(|c| c.id == id)
             .ok_or("Recording is not active")?;
         if let Some(error) = capture
@@ -345,7 +398,7 @@ impl DictateSpeech {
             capture.pending.fetch_sub(pcm.len(), Ordering::AcqRel);
             return Err("Audio storage queue is unavailable; saved audio retained".into());
         }
-        Ok(())
+        Ok(capture.waveform.feed(pcm))
     }
     /// Close native PCM input without waiting for recognition/refinement.
     /// The existing writer drains its queue and sends Stop; subscribers own results.
@@ -386,6 +439,7 @@ impl DictateSpeech {
         Ok(())
     }
     pub fn transcribe_reserved(&self, id: String, audio: Vec<u8>) -> Result<String, String> {
+        let client = self.client.snapshot().map_err(|e|e.to_string())?;
         let registration = {
             let mut active = self.active.lock().map_err(|_| "Voice client stopped")?;
             active
@@ -418,18 +472,18 @@ impl DictateSpeech {
                 // Compatibility for an older native capture adapter. New adapters
                 // stream blocks from the first second, never use this batch path.
                 if !(9600..=19_200_000).contains(&audio.len()) || !audio.len().is_multiple_of(2){return Err("Invalid Dictate PCM audio".into());}
-                self.client.call(json!({"op":"start","id":id,"now_ms":now_ms(),"cleanup":true,"context":null})).await.map_err(|e|e.to_string())?;
+                client.call(json!({"op":"start","id":id,"now_ms":now_ms(),"cleanup":true,"context":null})).await.map_err(|e|e.to_string())?;
                 for (i,block) in audio.chunks(32000).enumerate(){
-                    self.client.call(json!({"op":"append","block":{"recording_id":id,"sequence":i,"start_sample":i*16000,"pcm":block}})).await.map_err(|e|e.to_string())?;
+                    client.call(json!({"op":"append","block":{"recording_id":id,"sequence":i,"start_sample":i*16000,"pcm":block}})).await.map_err(|e|e.to_string())?;
                 }
-                self.client.call(json!({"op":"stop","id":id,"reason":null})).await.map_err(|e|e.to_string())?;
+                client.call(json!({"op":"stop","id":id,"reason":null})).await.map_err(|e|e.to_string())?;
             }
-            let value=self.client.call(json!({"op":"wait","id":id,"stage":"transcription"})).await.map_err(|e|e.to_string())?;
+            let value=client.call(json!({"op":"wait","id":id,"stage":"transcription"})).await.map_err(|e|e.to_string())?;
             let mut record:polar_dictate::Recording=serde_json::from_value(value).map_err(|e|e.to_string())?;
             // The isolated Voice test reports both stages together; production
             // capture returns original immediately so Use Original stays live.
             if record.is_test && record.original().is_some() {
-                record=serde_json::from_value(self.client.call(json!({"op":"wait","id":id})).await.map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+                record=serde_json::from_value(client.call(json!({"op":"wait","id":id})).await.map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
             }
             record.original().ok_or_else(||record.error.or_else(||record.segments.iter().find_map(|s|s.error.clone()))
                 .unwrap_or_else(||"Recording saved. Retry unfinished segments in Settings → Voice → Recordings".into()))
@@ -459,7 +513,7 @@ impl DictateSpeech {
         }
         if let Some(runtime) = &self.runtime {
             let id = id.to_owned();
-            let client = self.client.clone();
+            let Ok(client) = self.client.snapshot() else { return; };
             let drain = runtime.spawn(async move {
                 let _ = client.call(json!({"op":"pause","id":id})).await;
                 if let Some(mut finished) = finished {
@@ -526,5 +580,8 @@ impl Drop for DictateSpeech {
         }
     }
 }
+
+
+
 
 

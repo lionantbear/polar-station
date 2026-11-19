@@ -9,6 +9,7 @@ use crate::session::SessionPublicKey;
 
 pub(crate) fn signed_discovery_signable(
     identity: &NodeIdentity,
+    installation_generation: [u8; 16],
     timestamp: UnixTimestamp,
     intent: &str,
 ) -> Vec<u8> {
@@ -17,7 +18,11 @@ pub(crate) fn signed_discovery_signable(
     out.extend_from_slice(&sha256(identity.node_name.as_str().as_bytes()));
     out.extend_from_slice(identity.binding_pubkey.as_bytes());
     out.extend_from_slice(&timestamp.as_secs().to_be_bytes());
-    out.extend_from_slice(&sha256(intent.as_bytes()));
+    let mut announcement = Sha256::new();
+    announcement.update(b"PGENANN1");
+    announcement.update(installation_generation);
+    announcement.update(intent.as_bytes());
+    out.extend_from_slice(&announcement.finalize());
     out
 }
 

@@ -557,9 +557,13 @@ impl Engine {
         else {
             return serde_json::Value::Null;
         };
+        let timeout = entry.error.as_deref()
+            .filter(|_| entry.phase == Phase::Failed)
+            .and_then(preview::timeout_copy);
+        let can_retry = entry.phase == Phase::Failed && entry.host_recording && entry.saved_samples > 0;
         if self.hidden_panel.as_deref() == Some(&entry.operation_id)
             || matches!(entry.phase, Phase::Cancelled | Phase::Copied | Phase::Delivering | Phase::Delivered)
-            || (entry.phase == Phase::Failed && entry.saved_samples == 0 && entry.text.is_empty())
+            || (entry.phase == Phase::Failed && timeout.is_none() && entry.saved_samples == 0 && entry.text.is_empty())
         {
             return serde_json::Value::Null;
         }
@@ -582,23 +586,34 @@ impl Engine {
         } else {
             heading
         };
+        let heading = timeout.map_or(heading, |(title, _)| title.into());
+        let failure_notice = timeout.map(|(_, detail)| {
+            if can_retry { format!("{detail}\nYour recording is saved.") } else { detail.into() }
+        });
+        let status = if entry.phase == Phase::Recording {
+            self.presentation().status
+        } else if let Some(notice) = &failure_notice {
+            format!("{heading} · {}", notice.replace('\n', " ")).into()
+        } else {
+            entry.status()
+        };
         serde_json::json!({
-            "heading":heading,"output_mode":entry.output_mode,"transcription_mode":entry.transcription_mode,"reference":entry.reference,"copy_text":entry.delivery_text(),
+            "heading":heading,"failure_notice":failure_notice,"output_mode":entry.output_mode,"transcription_mode":entry.transcription_mode,"reference":entry.reference,"copy_text":entry.delivery_text(),
             "operation_id":entry.operation_id,"phase":entry.phase,"text":entry.text,
-            "status":if entry.phase == Phase::Recording { self.presentation().status } else { entry.status() },
+            "status":status,
             "can_stop":false,
             "can_cancel":active && !matches!(entry.phase,Phase::Delivering|Phase::Submitting),
             "can_copy":!entry.text.is_empty(),
             "can_edit":!active && entry.phase != Phase::Delivered && !entry.raw.is_empty(),
             "can_insert":!active && !matches!(entry.phase,Phase::Delivered|Phase::Unknown|Phase::Failed) && !entry.inserted && valid_text(&entry.text),
-            "can_retry":entry.phase == Phase::Failed && entry.host_recording && entry.saved_samples > 0,
+            "can_retry":can_retry,
             "can_available":matches!(entry.phase,Phase::Transcribing|Phase::Rewriting),
             "actions":preview::actions(entry,self.preview_actions.get(&entry.operation_id).map(|c|c.refine_mode),self.completion_available(entry)),
             "can_history":entry.phase==Phase::Failed && entry.saved_samples>0,"history_label":"History",
             "hide_after_ms":if preview::dismissible(entry) && !self.panel_interaction.contains(&entry.operation_id) {5000}else{0},"can_view_inputs":true,"inputs_label":"View inputs",
             "title":"Dictate","stop_label":"Stop","cancel_label":"Cancel",
             "copy_label":"Copy","edit_label":"Edit","insert_label":"Insert",
-            "retry_label":"Retry transcription","close_label":"Close","available_label":if valid_text(&entry.text) { "Use text now" } else { "Stop waiting" }
+            "retry_label":"Retry transcription","close_label":"Cancel and close","available_label":if valid_text(&entry.text) { "Use text now" } else { "Stop waiting" }
         })
     }
     pub fn entries(&self) -> &[Entry] {

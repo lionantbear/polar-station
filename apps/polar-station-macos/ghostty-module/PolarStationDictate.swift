@@ -79,6 +79,7 @@ final class PolarStationDictate {
     private(set) var error: String?
     private var ready = false
     private var stopped = false
+    var backendSwitchBlocked: Bool { captureID != nil || submittedID != nil }
     private var captureID: String?
     private var submittedID: String?
     private var heldID: String?
@@ -223,7 +224,7 @@ final class PolarStationDictate {
     // This is an input handle, not a second recording lifecycle.
     func shortcut(pressed: Bool) {
         guard !stopped else { return }
-        let intent = polar_station_shortcut_gesture_event(gesture, pressed ? 1 : 2,
+        let intent = polar_station_shortcut_gesture_event_at(gesture, pressed ? 1 : 2, UInt64(ProcessInfo.processInfo.systemUptime * 1000),
             submittedID != nil && presentation["action"] as? String != "wait",
             (enabled && presentation["action"] as? String == "start") || presentation["action"] as? String == "retry_open", presentation["use_available_id"] is String)
         if intent == 2 && pressed { heldID = submittedID }
@@ -259,14 +260,28 @@ final class PolarStationDictate {
            actions.contains(where:{$0["id"] as? String == "send_original" && $0["enabled"] as? Bool == true}) {
             if !event.isARepeat {previewSendHeld=true;panelAction("send_original")};return true
         }
-        return shortcutCapture.handle(event, binding: shortcutBinding) { [weak self] event in
-            guard let self else { return }
-            if event == 4 { cancel() }
-            let intent = polar_station_shortcut_gesture_event(gesture, event,
-                submittedID != nil && presentation["action"] as? String != "wait",
-                (enabled && presentation["action"] as? String == "start") || presentation["action"] as? String == "retry_open", presentation["use_available_id"] is String)
-            if intent == 2 && (event == 1 || event == 3) { heldID = submittedID }
-            executeShortcut(intent)
+        let eventMS = UInt64(max(0, event.timestamp) * 1000)
+        return shortcutCapture.handle(event, binding: shortcutBinding) { [weak self] edge in
+            // Return to the OS before AX/context capture, IPC or audio startup.
+            // Preserve the physical timestamp and the main queue's edge order.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.stopped else { return }
+                if edge == 4 { self.cancel() }
+                let intent = polar_station_shortcut_gesture_event_at(self.gesture, edge, eventMS,
+                    self.submittedID != nil && self.presentation["action"] as? String != "wait",
+                    (self.enabled && self.presentation["action"] as? String == "start") || self.presentation["action"] as? String == "retry_open", self.presentation["use_available_id"] is String)
+                if intent == 2 && (edge == 1 || edge == 3) { self.heldID = self.submittedID }
+                self.executeShortcut(intent)
+            }
+        }
+    }
+    func shortcutCaptureLost() {
+        shortcutCapture.reset()
+        NSLog("Dictate key capture interrupted; preserving the active recording")
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.stopped else { return }
+            _ = polar_station_shortcut_gesture_event_at(self.gesture, 4,
+                UInt64(ProcessInfo.processInfo.systemUptime * 1000), false, false, false)
         }
     }
     private func reloadVoiceSettings() {
@@ -353,6 +368,11 @@ final class PolarStationDictate {
         input(["type":"use_original", "operation_id":id])
     }
     func reviewResult(_ id:String) { input(["type":"show_panel","operation_id":id]) }
+    func backendReady() {
+        if !ready { input(["type":"retry_open"]) }
+        input(["type":"refresh_settings"])
+        refreshHistory()
+    }
     func refreshHistory() {
         polar_station_dictate_speech_set_history(worker.speech, { context, bytes, count in
             guard let context, let bytes,
@@ -461,13 +481,22 @@ final class PolarStationDictate {
             }
             let operation = Array(id.utf8)
             audio.start(operation: id, maximumMS: effect["maximum_ms"] as? Int ?? 600_000, deviceUID: voiceMicrophone,
-                chunk: { [worker] pcm in
-                    operation.withUnsafeBufferPointer { operation in
+                chunk: { [worker, weak self] pcm in
+                    var waveform = PolarStationDictateWaveform()
+                    let accepted = operation.withUnsafeBufferPointer { operation in
                         pcm.withUnsafeBytes { bytes in
-                            polar_station_dictate_speech_append(worker.speech, operation.baseAddress, operation.count,
-                                bytes.bindMemory(to: UInt8.self).baseAddress, pcm.count)
+                            polar_station_dictate_speech_append_metered(worker.speech, operation.baseAddress, operation.count,
+                                bytes.bindMemory(to: UInt8.self).baseAddress, pcm.count, &waveform)
                         }
                     }
+                    if accepted && waveform.updated {
+                        let levels = withUnsafeBytes(of: waveform.levels) { Array($0) }
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.captureID == id, !self.stopped else { return }
+                            self.recordingPanel?.updateWaveform(operation: id, levels: levels)
+                        }
+                    }
+                    return accepted
                 },
                 ready: { [weak self] id in
                     guard let self, self.captureID == id, !self.cancelled.contains(id) else { return }
@@ -475,6 +504,7 @@ final class PolarStationDictate {
                     self.input(["type":"capture_ready", "operation_id":id])
                 }, limit: { [weak self] _ in self?.finish() },
                 failed: { [weak self] id, message in
+                    NSLog("Dictate microphone failure %@: %@", id, message)
                     self?.audio.cancel(); self?.cancelSpeech(id); self?.captureID = nil
                     self?.input(["type":"failed", "operation_id":id, "error":message])
                     MicrophonePermissionPresentation.showCaptureFailureIfNeeded()
@@ -566,14 +596,42 @@ final class PolarStationDictate {
 }
 
 @MainActor
+private final class StationDictateWaveformView: NSView {
+    var levels: [UInt8] = [] {
+        didSet { if levels != oldValue { needsDisplay = true } }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let color = NSColor(srgbRed: 0.74, green: 0.66, blue: 0.99, alpha: 1)
+        if !levels.contains(where: { $0 != 0 }) {
+            color.withAlphaComponent(0.64).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 0, y: bounds.midY - 1, width: bounds.width, height: 2),
+                         xRadius: 1, yRadius: 1).fill()
+            return
+        }
+        color.setFill()
+        let step = bounds.width / CGFloat(levels.count)
+        for (i, level) in levels.enumerated() {
+            let height = max(2, CGFloat(level) * bounds.height / 255)
+            let bar = NSRect(x: (CGFloat(i) + 0.5) * step - 1,
+                             y: bounds.midY - height / 2, width: 2, height: height)
+            NSBezierPath(roundedRect: bar, xRadius: 1, yRadius: 1).fill()
+        }
+    }
+}
+
+@MainActor
 private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
+    private static let previewWidth:CGFloat=360
+    private let column=NSStackView()
     private let referenceLabel = NSTextField(labelWithString: "")
 
-    private let more=NSButton(title:"⋯",target:nil,action:nil)
     private let actions=NSStackView()
     private let failureActions=NSStackView()
     private var textHeight:NSLayoutConstraint!
     private let status=NSTextField(labelWithString:"")
+    private let waveform = StationDictateWaveformView()
+    private let failureNotice = NSTextField(wrappingLabelWithString: "")
     private let editor=NSTextView()
     private let scroll=NSScrollView()
     private let action:(String,String?)->Void
@@ -586,13 +644,12 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
     private var hideTimer:Timer?
     private var hidingID:String?
     private var hovering=false
-    private var menuOpen=false
     private var reportedInteraction=false
     override var canBecomeKey:Bool {editing}
     override var canBecomeMain:Bool {false}
     init(action:@escaping (String,String?)->Void) {
         self.action=action
-        super.init(contentRect:NSRect(x:0,y:0,width:360,height:48),styleMask:[.nonactivatingPanel,.borderless],backing:.buffered,defer:false)
+        super.init(contentRect:NSRect(x:0,y:0,width:StationDictateRecordingPanel.previewWidth,height:48),styleMask:[.nonactivatingPanel,.borderless],backing:.buffered,defer:false)
         title="Dictate";level = .floating;hidesOnDeactivate=false;isReleasedWhenClosed=false
         isOpaque=false;backgroundColor = .clear;hasShadow=true;isMovableByWindowBackground=true
         collectionBehavior=[.canJoinAllSpaces,.fullScreenAuxiliary]
@@ -609,15 +666,22 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         scroll.translatesAutoresizingMaskIntoConstraints=false
         textHeight=scroll.heightAnchor.constraint(equalToConstant:20);textHeight.isActive=true
         let header=NSStackView();header.orientation = .horizontal;header.distribution = .fill;header.spacing=6;header.addArrangedSubview(status)
+        waveform.translatesAutoresizingMaskIntoConstraints = false
+        waveform.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        waveform.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        waveform.setAccessibilityElement(false)
+        waveform.isHidden = true
+        header.addArrangedSubview(waveform)
+        failureNotice.textColor = .white
+        failureNotice.isHidden = true
         actions.orientation = .horizontal;actions.spacing=6
         failureActions.orientation = .horizontal;failureActions.spacing=12;failureActions.isHidden=true
-        for (kind,title) in [("cancel","Cancel"),("use_available","Use text now"),("copy","Copy"),("edit","Edit"),("insert_original","Insert"),("insert_refined","Refine and Insert"),("send_original","Insert and Send"),("send_refined","Refine and Send"),("retry_saved","Retry"),("view_history","History"),("hide_panel","Close"),("view_inputs","View inputs")] {
+        for (kind,title) in [("copy","Copy"),("edit","Edit"),("insert_original","Insert"),("insert_refined","Refine and Insert"),("send_original","Insert and Send"),("send_refined","Refine and Send"),("retry_saved","Retry"),("view_history","History"),("hide_panel","Cancel and close")] {
             let button=NSButton(title:title,target:self,action:#selector(clicked(_:)))
             button.identifier=NSUserInterfaceItemIdentifier(kind);button.refusesFirstResponder=true
             button.isBordered=false;button.contentTintColor = .white
             controls[kind]=button
-            if kind == "stop" {header.addArrangedSubview(button)}
-            else if kind == "retry_saved" || kind == "view_history" {failureActions.addArrangedSubview(button)}
+            if ["retry_saved","view_history","edit"].contains(kind) {failureActions.addArrangedSubview(button)}
             else if ["copy","insert_original","insert_refined","send_original","send_refined"].contains(kind) {
                 let symbols=["copy":"square.on.square","insert_original":"tray.and.arrow.down","insert_refined":"tray.and.arrow.down","send_original":"paperplane","send_refined":"paperplane"]
                 let base=NSImage(systemSymbolName:symbols[kind]!,accessibilityDescription:nil)
@@ -633,24 +697,34 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
                 actions.addArrangedSubview(button)
             }
         }
-        more.target=self;more.action=#selector(showMore(_:));more.refusesFirstResponder=true
-        more.isBordered=false;more.contentTintColor = .white;more.setAccessibilityLabel("More Dictate actions")
+        let spacer=NSView();spacer.setContentHuggingPriority(.defaultLow,for:.horizontal)
+        actions.addArrangedSubview(spacer)
+        if let close=controls["hide_panel"] {
+            close.title="";close.image=NSImage(systemSymbolName:"xmark",accessibilityDescription:nil)
+            close.toolTip="Cancel and close";close.setAccessibilityLabel("Cancel and close")
+            close.widthAnchor.constraint(equalToConstant:28).isActive=true
+            actions.addArrangedSubview(close)
+        }
         latest.target=self;latest.action=#selector(followLatest);latest.refusesFirstResponder=true;latest.isBordered=false;latest.contentTintColor = .white;latest.isHidden=true
         header.addArrangedSubview(latest)
         NotificationCenter.default.addObserver(self,selector:#selector(userScrolled),name:NSScrollView.didLiveScrollNotification,object:scroll)
-        header.addArrangedSubview(more)
         referenceLabel.maximumNumberOfLines=1;referenceLabel.lineBreakMode = .byTruncatingTail;referenceLabel.textColor = .lightGray;referenceLabel.setAccessibilityLabel("Quoted text")
-        let column=NSStackView(views:[header,referenceLabel,scroll,actions,failureActions]);column.orientation = .vertical;column.alignment = .leading;column.spacing=8
+        let rows:[NSView]=[header,referenceLabel,failureNotice,scroll,actions,failureActions]
+        for row in rows {column.addArrangedSubview(row)}
+        column.orientation = .vertical;column.alignment = .leading;column.spacing=8
+        column.translatesAutoresizingMaskIntoConstraints=false
+        column.widthAnchor.constraint(equalToConstant:Self.previewWidth).isActive=true
+        column.detachesHiddenViews=true
         column.edgeInsets=NSEdgeInsets(top:12,left:12,bottom:12,right:12)
         column.wantsLayer=true;column.layer?.backgroundColor=NSColor(calibratedWhite:0.09,alpha:0.8).cgColor
         column.layer?.cornerRadius=12;contentView=column
         column.addTrackingArea(NSTrackingArea(rect:.zero,options:[.mouseEnteredAndExited,.activeAlways,.inVisibleRect],owner:self,userInfo:nil))
-        for view in [header,referenceLabel,scroll] {view.widthAnchor.constraint(equalTo:column.widthAnchor,constant:-24).isActive=true}
+        for view in [header,referenceLabel,failureNotice,scroll,actions,failureActions] {view.widthAnchor.constraint(equalTo:column.widthAnchor,constant:-24).isActive=true}
     }
     override func mouseEntered(with event:NSEvent) {hovering=true;reportInteraction()}
     override func mouseExited(with event:NSEvent) {hovering=false;reportInteraction()}
     private func reportInteraction() {
-        let active=hovering || menuOpen || editing || editor.selectedRange().length>0
+        let active=hovering || editing || editor.selectedRange().length>0
         guard active != reportedInteraction else{return};reportedInteraction=active
         action(active ? "panel_interaction_on" : "panel_interaction_off",nil)
     }
@@ -674,17 +748,18 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         scroll.reflectScrolledClipView(scroll.contentView)
         updating=false;latest.isHidden=true
     }
-    @objc private func showMore(_ sender:NSButton) {
-        menuOpen=true;reportInteraction();defer{menuOpen=false;reportInteraction()}
-        let menu=NSMenu()
-        for kind in ["view_inputs","edit","use_available","retry_saved","cancel","hide_panel"] {
-            guard let control=controls[kind],!control.isHidden,!(kind == "retry_saved" && !failureActions.isHidden) else {continue}
-            let item=NSMenuItem(title:control.title,action:#selector(menuAction(_:)),keyEquivalent:"")
-            item.target=self;item.representedObject=kind;menu.addItem(item)
+    private func fittedContentHeight()->CGFloat {
+        // Resolve the viewport width before measuring wrapping. Only the text
+        // viewport needs a height constraint; the stack measures all other rows.
+        column.layoutSubtreeIfNeeded()
+        if !scroll.isHidden,let container=editor.textContainer,let layout=editor.layoutManager {
+            layout.ensureLayout(for:container)
+            let lineHeight=ceil(layout.defaultLineHeight(for:editor.font ?? .systemFont(ofSize:14)))
+            textHeight.constant=min(4*lineHeight,max(lineHeight,ceil(layout.usedRect(for:container).height)))
         }
-        menu.popUp(positioning:nil,at:NSPoint(x:0,y:sender.bounds.maxY),in:sender)
+        column.layoutSubtreeIfNeeded()
+        return ceil(column.fittingSize.height)
     }
-    @objc private func menuAction(_ sender:NSMenuItem) {if let kind=sender.representedObject as? String {performAction(kind)}}
     override func close(){ action("hide_panel",nil);orderOut(nil) }
     func textDidChange(_ notification:Notification){if !updating && editing {action("edit_draft",editor.string)}}
     @objc private func clicked(_ sender:NSButton) {
@@ -698,13 +773,24 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         default:action(kind,nil)
         }
     }
+    func updateWaveform(operation: String, levels: [UInt8]) {
+        guard currentID == operation, !waveform.isHidden else { return }
+        waveform.levels = levels
+    }
+
     func update(_ panel:[String:Any]?) {
-        guard let panel,let id=panel["operation_id"] as? String else {hideTimer?.invalidate();hideTimer=nil;hidingID=nil;orderOut(nil);return}
-        if currentID != id {currentID=id;editing=false;following=true;editor.isEditable=false;reportedInteraction=false;reportInteraction()}
+        guard let panel,let id=panel["operation_id"] as? String else {hideTimer?.invalidate();hideTimer=nil;hidingID=nil;waveform.isHidden=true;waveform.levels=[];orderOut(nil);return}
+        if currentID != id {currentID=id;waveform.levels=[];editing=false;following=true;editor.isEditable=false;reportedInteraction=false;reportInteraction()}
+        let phase = panel["phase"] as? String
+        waveform.isHidden = phase != "recording"
+        if waveform.isHidden { waveform.levels = [] }
         status.stringValue=panel["heading"] as? String ?? "Dictate"
         status.toolTip=panel["status"] as? String
+        let notice = panel["failure_notice"] as? String
+        failureNotice.stringValue = notice ?? ""
+        failureNotice.isHidden = notice == nil
         let body=panel["text"] as? String ?? ""
-        let text=body.isEmpty && panel["phase"] as? String == "failed" ? (panel["status"] as? String ?? "") : body
+        let text=body.isEmpty && phase == "failed" && notice == nil ? (panel["status"] as? String ?? "") : body
         if editor.string != text {
             let origin=scroll.contentView.bounds.origin
             let selection=editor.selectedRange()
@@ -714,13 +800,8 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
             if !following {editor.setSelectedRange(NSRange(location:min(selection.location,(text as NSString).length),length:min(selection.length,max(0,(text as NSString).length-selection.location))));scroll.contentView.scroll(to:origin)}
             updating=false
         }
-        if let container=editor.textContainer,let layout=editor.layoutManager {
-            layout.ensureLayout(for:container)
-            let lineHeight=ceil(layout.defaultLineHeight(for:editor.font ?? .systemFont(ofSize:14)))
-            textHeight.constant=min(4*lineHeight,max(lineHeight,ceil(layout.usedRect(for:container).height)))
-        }
         scroll.isHidden=text.isEmpty && !editing
-        for (kind,key,label) in [("view_history","can_history","history_label"),("view_inputs","can_view_inputs","inputs_label"),("stop","can_stop","stop_label"),("cancel","can_cancel","cancel_label"),("use_available","can_available","available_label"),("copy","can_copy","copy_label"),("edit","can_edit","edit_label"),("retry_saved","can_retry","retry_label")] {
+        for (kind,key,label) in [("view_history","can_history","history_label"),("edit","can_edit","edit_label"),("retry_saved","can_retry","retry_label")] {
             controls[kind]?.isHidden=panel[key] as? Bool != true
             controls[kind]?.title=panel[label] as? String ?? ""
         }
@@ -736,21 +817,19 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         referenceLabel.stringValue=panel["reference"] as? String ?? ""
         referenceLabel.toolTip=referenceLabel.stringValue
         referenceLabel.isHidden=referenceLabel.stringValue.isEmpty
-        actions.isHidden=panel["phase"] as? String == "failed" && panel["can_copy"] as? Bool != true
-        failureActions.isHidden=panel["can_history"] as? Bool != true
-        var height:CGFloat=48
-        if !referenceLabel.isHidden {height += 24}
-        if !scroll.isHidden {height += textHeight.constant+8}
-        if !actions.isHidden {height += 28}
-        if !failureActions.isHidden {height += 28}
+        actions.isHidden=false
+        failureActions.isHidden=["edit","retry_saved","view_history"].allSatisfy { controls[$0]?.isHidden != false }
+        controls["hide_panel"]?.toolTip=panel["close_label"] as? String
+        controls["hide_panel"]?.setAccessibilityLabel(panel["close_label"] as? String)
+        let height=fittedContentHeight()
         // Grow upward from the bottom anchor so newly revealed actions stay on screen.
         var origin=frame.origin
         if let visible=(screen ?? NSScreen.main)?.visibleFrame {
-            if !isVisible {origin=NSPoint(x:visible.midX-180,y:visible.minY+70)}
-            origin.x=max(visible.minX,min(origin.x,visible.maxX-360))
+            if !isVisible {origin=NSPoint(x:visible.midX-Self.previewWidth/2,y:visible.minY+70)}
+            origin.x=max(visible.minX,min(origin.x,visible.maxX-Self.previewWidth))
             origin.y=max(visible.minY,min(origin.y,visible.maxY-height))
         }
-        setFrame(NSRect(origin:origin,size:NSSize(width:360,height:height)),display:true)
+        setFrame(NSRect(origin:origin,size:NSSize(width:Self.previewWidth,height:height)),display:true)
         if !isVisible {orderFrontRegardless()}
         applyFollowing()
         let delay=panel["hide_after_ms"] as? Int ?? 0
@@ -811,6 +890,18 @@ private final class StationDictateHistoryRow: NSButton {
 }
 
 @MainActor
+private final class StationDictateHistoryView: NSStackView {
+    var moveSelection: ((String) -> Void)?
+    override var acceptsFirstResponder: Bool { true }
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126 {
+            moveSelection?(event.keyCode == 125 ? "down" : "up")
+        } else { super.keyDown(with: event) }
+    }
+}
+
+@MainActor
 final class StationDictateControls: NSStackView {
     var targets: (() -> [StationDictateTarget])?
     var activateInput: (() -> Void)?
@@ -833,7 +924,10 @@ final class StationDictateControls: NSStackView {
     private let inputStatus=NSTextField(wrappingLabelWithString:"")
     private let content = NSTextView()
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
-    private let shortcutLabel = NSTextField(wrappingLabelWithString: "")
+    private let detailHeading = NSTextField(labelWithString: "")
+    private let recoveryNotice = NSTextField(wrappingLabelWithString: "")
+    private let historyTextScroll = NSScrollView()
+    private let recordActions = NSButton(title:"⋯",target:nil,action:nil)
     private let emptyLabel = NSTextField(labelWithString: "")
     private var buttons: [String:NSButton] = [:]
     private var rows: [String:StationDictateHistoryRow] = [:]
@@ -867,12 +961,16 @@ final class StationDictateControls: NSStackView {
         return button
     }
     private func buildHistory() {
-        let column = NSStackView(); column.orientation = .vertical; column.alignment = .leading; column.spacing = 8
+        let column = StationDictateHistoryView(); column.orientation = .vertical; column.alignment = .leading; column.spacing = 8
+        column.moveSelection = { [weak self] direction in self?.dictate?.input(["type":"history_move", "direction":direction]) }
         column.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
-        column.addArrangedSubview(NSTextField(labelWithString: "Dictate history"))
-        shortcutLabel.maximumNumberOfLines=0; shortcutLabel.preferredMaxLayoutWidth=340
-        shortcutLabel.font = .systemFont(ofSize:NSFont.smallSystemFontSize)
-        column.addArrangedSubview(shortcutLabel)
+        let heading=NSStackView();heading.distribution = .fill;heading.spacing=8
+        let title=NSTextField(labelWithString:"Dictate History");title.font = .boldSystemFont(ofSize:16)
+        title.setContentHuggingPriority(.defaultLow,for:.horizontal);heading.addArrangedSubview(title)
+        heading.addArrangedSubview(button("settings") { [weak self] in
+            self?.popover.performClose(nil);self?.dictate?.showVoiceSettings?()
+        })
+        column.addArrangedSubview(heading)
         errorLabel.textColor = .systemOrange; errorLabel.maximumNumberOfLines=0; errorLabel.preferredMaxLayoutWidth=340; errorLabel.isHidden = true; column.addArrangedSubview(errorLabel)
         column.addArrangedSubview(button("retry_open") { [weak self] in self?.dictate?.historyCommand("retry_open") })
         list.orientation = .vertical; list.alignment = .leading; list.spacing = 4
@@ -880,10 +978,17 @@ final class StationDictateControls: NSStackView {
         listScroll.translatesAutoresizingMaskIntoConstraints = false
         list.translatesAutoresizingMaskIntoConstraints = false
         list.widthAnchor.constraint(equalTo: listScroll.contentView.widthAnchor).isActive = true
-        listScroll.heightAnchor.constraint(equalToConstant: 130).isActive = true
+        listScroll.heightAnchor.constraint(equalToConstant: 180).isActive = true
         column.addArrangedSubview(listScroll)
         column.addArrangedSubview(button("more") { [weak self] in self?.dictate?.historyCommand("history_more") })
         detail.orientation = .vertical; detail.alignment = .leading; detail.spacing = 6
+        let detailHeader=NSStackView();detailHeader.distribution = .fill
+        detailHeading.font = .systemFont(ofSize:NSFont.smallSystemFontSize);detailHeading.lineBreakMode = .byTruncatingTail
+        detailHeading.setContentHuggingPriority(.defaultLow,for:.horizontal);detailHeader.addArrangedSubview(detailHeading)
+        recordActions.target=self;recordActions.action=#selector(showRecordActions(_:));recordActions.refusesFirstResponder=true
+        detailHeader.addArrangedSubview(recordActions);detail.addArrangedSubview(detailHeader)
+        recoveryNotice.maximumNumberOfLines=0;recoveryNotice.preferredMaxLayoutWidth=420;recoveryNotice.textColor = .systemOrange
+        detail.addArrangedSubview(recoveryNotice)
         variants.target = self; variants.action = #selector(variantChanged); detail.addArrangedSubview(variants)
         inputControls.orientation = .vertical;inputControls.alignment = .leading;inputControls.spacing=4
         inputStage.target=self;inputStage.action=#selector(stageChanged)
@@ -900,7 +1005,7 @@ final class StationDictateControls: NSStackView {
         content.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude,height: CGFloat.greatestFiniteMagnitude)
         content.textContainer?.containerSize = NSSize(width:340,height:CGFloat.greatestFiniteMagnitude)
         content.textContainer?.widthTracksTextView = true
-        let scroll = NSScrollView(); scroll.hasVerticalScroller = true; scroll.documentView = content
+        let scroll = historyTextScroll; scroll.hasVerticalScroller = true; scroll.documentView = content
         scroll.heightAnchor.constraint(equalToConstant: 140).isActive = true
         detail.addArrangedSubview(scroll)
         let operations = NSStackView(); operations.spacing = 6
@@ -912,14 +1017,15 @@ final class StationDictateControls: NSStackView {
             }else{self.dictate?.historyCommand("history_copy",id:id,original:self.variants.selectedSegment==0)}
         })
         for (key, command) in [("insert","history_insert"),("retry","history_retry"),("dismiss","history_dismiss")] {
-            operations.addArrangedSubview(button(key) { [weak self] in
+            let control=button(key) { [weak self] in
                 guard let self, let id = self.selectedID else { return }
                 // Close before resolving the current visible input; the popover
                 // is a reader and must never become the insertion destination.
                 self.popover.performClose(nil)
                 if command == "history_insert" { self.activateInput?() }
                 self.dictate?.historyCommand(command, id: id)
-            })
+            }
+            if key != "dismiss" {operations.addArrangedSubview(control)}
         }
         detail.addArrangedSubview(operations)
         let maintenance=NSStackView();maintenance.spacing=6
@@ -933,20 +1039,26 @@ final class StationDictateControls: NSStackView {
             alert.addButton(withTitle:ui["confirm_label"] as? String ?? "");alert.addButton(withTitle:ui["cancel_label"] as? String ?? "")
             if alert.runModal() == .alertFirstButtonReturn {self.dictate?.input(["type":"history_delete","operation_id":id,"confirmation":true])}
         })
-        detail.addArrangedSubview(maintenance);column.addArrangedSubview(detail)
+        // The reader's viewport owns geometry, independently of the selected
+        // record's controls, failure notice and transcript length.
+        let detailViewport = NSScrollView()
+        detailViewport.translatesAutoresizingMaskIntoConstraints = false
+        detailViewport.hasVerticalScroller = true
+        detailViewport.drawsBackground = false
+        detailViewport.documentView = detail
+        detail.translatesAutoresizingMaskIntoConstraints = false
+        detail.widthAnchor.constraint(equalTo: detailViewport.contentView.widthAnchor).isActive = true
+        detailViewport.heightAnchor.constraint(equalToConstant: 300).isActive = true
+        column.addArrangedSubview(detailViewport)
         let separator = NSBox(); separator.boxType = .separator; column.addArrangedSubview(separator)
         column.addArrangedSubview(button("cleanup") { [weak self] in
             self?.cleanupRequested=true;self?.dictate?.input(["type":"cleanup_preview"])
         })
-        column.addArrangedSubview(button("settings") { [weak self] in
-            guard let self else { return }
-            self.popover.performClose(nil); self.dictate?.showVoiceSettings?()
-        })
-        column.widthAnchor.constraint(equalToConstant: 360).isActive = true
-        for view in [shortcutLabel,errorLabel,listScroll,detail,separator] {
+        column.widthAnchor.constraint(equalToConstant: 440).isActive = true
+        for view in [heading,errorLabel,listScroll,detailViewport,separator] {
             view.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -20).isActive = true
         }
-        for view in [scroll,operations] { view.widthAnchor.constraint(equalTo: detail.widthAnchor).isActive = true }
+        for view in [detailHeader,recoveryNotice,scroll,operations] { view.widthAnchor.constraint(equalTo: detail.widthAnchor).isActive = true }
         let controller = NSViewController(); controller.view = column; popover.contentViewController = controller
     }
     func refresh() {
@@ -964,7 +1076,6 @@ final class StationDictateControls: NSStackView {
         microphone.image = NSImage(systemSymbolName: state == "recording" ? "stop.fill" : state == "unavailable" ? "mic.slash" : "mic.fill", accessibilityDescription: label)
         microphone.contentTintColor = state == "recording" ? .systemRed : state == "ready" ? .controlAccentColor : .secondaryLabelColor
         history.toolTip = presentation["history_title"] as? String; history.setAccessibilityLabel(history.toolTip)
-        shortcutLabel.stringValue = (presentation["shortcut_status"] as? String ?? "") + "\n" + (presentation["shortcut_hint"] as? String ?? "")
         if let id=dictate.view["copy_completed"] as? String,id==selectedID {popover.performClose(nil)}
         if cleanupRequested,let response=dictate.view["cleanup_preview"] as? [String:Any],let ui=response["presentation"] as? [String:Any] {
             cleanupRequested=false
@@ -1015,7 +1126,9 @@ final class StationDictateControls: NSStackView {
     }
     @objc private func openHistory() {
         dictate?.refreshHistory(); updateHistory()
+        popover.contentSize = popover.contentViewController?.view.fittingSize ?? NSSize(width:440,height:600)
         popover.show(relativeTo: bounds, of: self, preferredEdge: .maxY)
+        popover.contentViewController?.view.window?.makeFirstResponder(popover.contentViewController?.view)
     }
     private func updateHistory() {
         guard let dictate else { return }
@@ -1044,7 +1157,11 @@ final class StationDictateControls: NSStackView {
             if let existing = rows[id] { row = existing }
             else {
                 row = StationDictateHistoryRow(target: self, action: #selector(historyAction(_:)))
-                rows[id] = row; actions[row] = { [weak self] in self?.dictate?.historyCommand("history_select",id:id) }
+                rows[id] = row; actions[row] = { [weak self] in
+                    guard let self else { return }
+                    self.popover.contentViewController?.view.window?.makeFirstResponder(self.popover.contentViewController?.view)
+                    self.dictate?.historyCommand("history_select",id:id)
+                }
                 list.addArrangedSubview(row)
                 row.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
             }
@@ -1059,17 +1176,30 @@ final class StationDictateControls: NSStackView {
             let kind = item["kind"] as? String == "text" ? ui["text"] ?? "" : String(format:"%d:%02d",seconds/60000,(seconds/1000)%60)
             row.update(preview: item["preview"] as? String ?? "", metadata: "\(date) · \(kind) · \(item["mode_label"] as? String ?? "") · \(item["status"] as? String ?? "")")
         }
-        buttons["more"]?.isHidden = view["history_more"] as? Bool != true
+        buttons["more"]?.isEnabled = view["history_more"] as? Bool == true
         let value = view["history_detail"] as? [String:Any]
         let nextID = value?["operation_id"] as? String
+        let selectedRow=items.first(where:{$0["operation_id"] as? String == nextID})
+        if let ms=selectedRow?["created_at_ms"] as? NSNumber {
+            let date=DateFormatter.localizedString(from:Date(timeIntervalSince1970:ms.doubleValue/1000),dateStyle:.short,timeStyle:.short)
+            let seconds=(selectedRow?["duration_ms"] as? NSNumber)?.intValue ?? 0
+            detailHeading.stringValue=date+String(format:" · %d:%02d",seconds/60000,(seconds/1000)%60)
+        } else {detailHeading.stringValue=ui["earlier"] ?? ""}
+        let notice=value?["notice"] as? String ?? ""
+        recoveryNotice.stringValue=[value?["notice_title"] as? String ?? "",notice,value?["error"] as? String ?? ""].filter{!$0.isEmpty}.joined(separator:"\n")
+        recoveryNotice.isHidden=recoveryNotice.stringValue.isEmpty
+        recordActions.toolTip=ui["secondary"];recordActions.setAccessibilityLabel(ui["secondary"])
         if selectedID != nextID { variants.selectedSegment = value?["can_refined"] as? Bool == true ? 1 : 0 }
         let inputs=view["inputs"] as? [String:Any] ?? [:]
         let inspecting=inputs["visible"] as? Bool == true && inputs["operation_id"] as? String == nextID
         if inspecting {variants.selectedSegment=2}
         else if variants.selectedSegment==2 {variants.selectedSegment=value?["can_refined"] as? Bool == true ? 1 : 0}
+        let selectionChanged = selectedID != nextID
         selectedID = nextID; detail.isHidden = value == nil
         variants.setLabel(ui["inputs"] ?? "Inputs",forSegment:2);variants.setEnabled(nextID != nil,forSegment:2)
         inputControls.isHidden = !inspecting
+        historyTextScroll.isHidden = !inspecting && value?["has_transcript"] as? Bool != true
+        recoveryNotice.isHidden = inspecting || recoveryNotice.stringValue.isEmpty
         updateChoices(inputStage,values:inputs["stages"] as? [[String:String]] ?? [],key:"id",selected:inputs["stage"] as? String)
         updateChoices(inputRequest,values:inputs["requests"] as? [[String:String]] ?? [],key:"key",selected:inputs["selected_key"] as? String)
         inputView.selectedSegment=inputs["sources"] as? Bool == true ? 0 : 1
@@ -1079,6 +1209,7 @@ final class StationDictateControls: NSStackView {
         variants.setEnabled(value?["can_original"] as? Bool == true,forSegment:0)
         variants.setEnabled(value?["can_refined"] as? Bool == true,forSegment:1)
         buttons["copy"]?.isEnabled = value?["can_copy"] as? Bool == true
+        buttons["copy"]?.isHidden = !inspecting && value?["has_transcript"] as? Bool != true
         buttons["insert"]?.isHidden = value?["can_recover"] as? Bool != true && value?["can_insert"] as? Bool != true
         buttons["retry"]?.title = value?["retry_label"] as? String ?? "Retry"
         buttons["retry"]?.isHidden = value?["can_retry"] as? Bool != true
@@ -1091,7 +1222,12 @@ final class StationDictateControls: NSStackView {
         list.layoutSubtreeIfNeeded()
         list.setFrameSize(NSSize(width:listScroll.contentSize.width,height:list.fittingSize.height))
         listScroll.contentView.scroll(to: previous); listScroll.reflectScrolledClipView(listScroll.contentView)
-        popover.contentSize = popover.contentViewController?.view.fittingSize ?? NSSize(width:360,height:260)
+        detail.layoutSubtreeIfNeeded()
+        detail.setFrameSize(NSSize(width:detail.bounds.width,height:detail.fittingSize.height))
+        if selectionChanged, let id=selectedID, let row=rows[id] { row.scrollToVisible(row.bounds) }
+        if selectionChanged, let viewport=detail.enclosingScrollView {
+            viewport.contentView.scroll(to: .zero); viewport.reflectScrolledClipView(viewport.contentView)
+        }
     }
     private func updateChoices(_ control:NSPopUpButton,values:[[String:String]],key:String,selected:String?) {
         if control.numberOfItems != values.count || zip(control.itemArray,values).contains(where:{$0.0.title != $0.1["label"] || $0.0.representedObject as? String != $0.1[key]}) {
@@ -1123,6 +1259,18 @@ final class StationDictateControls: NSStackView {
         buttons["copy"]?.isEnabled = value?[variants.selectedSegment == 0 ? "can_copy_original" : "can_copy"] as? Bool == true
         let text = value?[variants.selectedSegment == 0 ? "raw" : "text"] as? String ?? ""
         if content.string != text { content.string = text }
+    }
+    @objc private func showRecordActions(_ sender:NSButton) {
+        let menu=NSMenu()
+        for key in ["pin","dismiss","delete"] {
+            guard let button=buttons[key],!button.isHidden else{continue}
+            let item=NSMenuItem(title:button.title,action:#selector(recordAction(_:)),keyEquivalent:"")
+            item.target=self;item.isEnabled=button.isEnabled;item.representedObject=key;menu.addItem(item)
+        }
+        menu.autoenablesItems=false;menu.popUp(positioning:nil,at:NSPoint(x:0,y:sender.bounds.maxY),in:sender)
+    }
+    @objc private func recordAction(_ sender:NSMenuItem) {
+        if let key=sender.representedObject as? String,let button=buttons[key] {actions[button]?()}
     }
     @objc private func historyAction(_ sender: NSButton) { actions[sender]?() }
 }

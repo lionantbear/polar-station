@@ -307,17 +307,20 @@ pub async fn run(
     host_socket: &Path,
     initial_execution_target: Option<&str>,
     initial_session: Option<&str>,
+    initial_source: Option<polar_station_protocol::TerminalSourceV1>,
 ) -> Result<()> {
     use polar_station_protocol::TerminalRecoveryPhaseV1 as Phase;
     use std::sync::atomic::{AtomicU64, Ordering};
     let mut channel = ContentChannel::new(channel_id, channel_generation)
         .map_err(|error| anyhow::anyhow!("invalid pane-host identity: {error:?}"))?;
-    if let Some(request) = initial_request(
+    if let Some(mut request) = initial_request(
         channel.channel_id(),
         channel.channel_generation(),
         initial_execution_target,
         initial_session,
     )? {
+        if let PaneContentCommandV1::Bind { binding } = &mut request.command { binding.source = initial_source; }
+        request.validate()?;
         let transition = channel
             .begin(&request)
             .map_err(|e| anyhow::anyhow!("initial binding: {e:?}"))?;
@@ -372,7 +375,7 @@ pub async fn run(
             let resize_sender = connection.as_ref().filter(|_| resize_pending && ready).map(|c| c.outbound.clone());
             tokio::select! {
                 _ = tokio::time::sleep_until(reconnect_at), if connection.is_none() && connecting.is_none() => {
-                    let hello = TerminalBridgeHelloV1 {
+                    let hello = TerminalBridgeHelloV1 { portable_binding_version: channel.binding().and_then(|binding| binding.source.as_ref().map(|_| 1)),
                         recovery_feedback: true, initial_content_generation: channel.content_revision().max(1),
                         protocol_version: PROTOCOL_VERSION, session_runtime_api_version: SESSION_RUNTIME_API_VERSION,
                         consumer_id: identity.consumer_id().to_owned(), consumer_generation: identity.consumer_generation(),
@@ -547,6 +550,11 @@ pub async fn run(
                                 };
                                 view.content_generation = channel.content_revision().max(1);
                                 views.send_replace(view);
+                                // Imported bindings must negotiate the source guard, including
+                                // when an existing unguarded surface is rebound.
+                                if !retained && channel.binding().is_some_and(|binding| binding.source.is_some()) {
+                                    connection = None;
+                                }
                                 if let (Some(c), Some(frame)) = (&connection, frame) {
                                     if c.outbound.try_send(frame).is_err() { connection = None; }
                                 }
@@ -887,7 +895,7 @@ fn initial_request(
         channel_generation,
         content_revision: 1,
         command: PaneContentCommandV1::Bind {
-            binding: PaneContentBindingV1 {
+            binding: PaneContentBindingV1 { source: None,
                 execution_target: ExecutionTarget::new(execution_target)?,
                 tmux_session_id: tmux_session_id.to_owned(),
             },

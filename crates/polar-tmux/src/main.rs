@@ -89,6 +89,8 @@ enum Commands {
         initial_execution_target: Option<String>,
         #[arg(long, requires = "initial_execution_target")]
         initial_session: Option<String>,
+        #[arg(long, requires = "initial_session")]
+        initial_source: Option<String>,
     },
     PairingPayload,
     Availability,
@@ -265,6 +267,7 @@ async fn run_cli() -> Result<()> {
             host_socket,
             initial_execution_target,
             initial_session,
+            initial_source,
         } => {
             #[cfg(unix)]
             {
@@ -279,6 +282,7 @@ async fn run_cli() -> Result<()> {
                     &host_socket,
                     initial_execution_target.as_deref(),
                     initial_session.as_deref(),
+                    initial_source.as_deref().map(serde_json::from_str).transpose()?,
                 )
                 .await
             }
@@ -291,6 +295,7 @@ async fn run_cli() -> Result<()> {
                     host_socket,
                     initial_execution_target,
                     initial_session,
+                    initial_source,
                 );
                 bail!("pane-host mode is unavailable on this platform")
             }

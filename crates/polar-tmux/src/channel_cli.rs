@@ -180,6 +180,7 @@ impl Host {
         let signal = wake.clone();
         let mut client = DesktopClient::new(
             DesktopClientConfig {
+            client_state_path: None,
                 socket_path: local_ipc::default_socket_path()?,
                 registration: LocalClientFrame::Register {
                     frontend_id: format!("station-cli-{}", random_uuid_v4()),

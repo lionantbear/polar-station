@@ -92,6 +92,7 @@ pub const Executor = struct {
     managed_window: ?*Window = null,
     current: ?AppliedRenderState = null,
     applying_physical_snapshot: bool = false,
+    backend_suspended: bool = false,
     workspace: workspace_state.State,
     workspace_store: ?native_workspace_store.Store = null,
     persistence_revision: u64 = 0,
@@ -183,7 +184,10 @@ pub const Executor = struct {
     }
 
     pub fn lifecycleDecision(self: *const Executor, action: []const u8, target: ?[]const u8) !std.json.Parsed(@import("workspace_lifecycle.zig").Decision) {
-        const catalog = self.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable;
+        return self.lifecycleDecisionFromCatalog(self.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable, action, target);
+    }
+
+    fn lifecycleDecisionFromCatalog(self: *const Executor, catalog: native_workspace_store.Catalog, action: []const u8, target: ?[]const u8) !std.json.Parsed(@import("workspace_lifecycle.zig").Decision) {
         const ids = try self.allocator.alloc([]const u8, catalog.workspaces.len);
         defer self.allocator.free(ids);
         for (catalog.workspaces, 0..) |workspace, i| ids[i] = workspace.workspace_id;
@@ -194,12 +198,25 @@ pub const Executor = struct {
     }
 
     pub fn archiveOrRestore(self: *Executor, archive: bool, target: []const u8) !void {
+        return self.changeArchived(archive, target, false);
+    }
+
+    pub fn manageArchived(self: *Executor, archive: bool, target: []const u8) !void {
+        return self.changeArchived(archive, target, true);
+    }
+
+    fn changeArchived(self: *Executor, archive: bool, target: []const u8, management: bool) !void {
         const root = self.catalog_owner orelse self;
         if (root.pending_lifecycle != null) return error.NativeTransactionInProgress;
-        var decision = try self.lifecycleDecision(if (archive) "archive" else "restore", target);
+        // Settings edits process-wide definitions; a window-local catalog view
+        // overlays selection and must not become the management write candidate.
+        var catalog = if (management)
+            (root.workspace.catalog orelse return error.NativeWorkspaceUnavailable).value
+        else
+            self.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable;
+        var decision = try self.lifecycleDecisionFromCatalog(catalog, if (archive) (if (management) "manage_archive" else "archive") else "restore", target);
         defer decision.deinit();
         if (decision.value.@"error" != null) return error.WorkspaceActionRejected;
-        var catalog = self.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable;
         // Freeze the root window binding before changing the process selection.
         if (!root.workspace.unbound and root.workspace.workspace_id == null) {
             root.workspace.workspace_id = try root.allocator.dupe(u8, root.workspace.snapshot().?.workspace_id);
@@ -221,10 +238,89 @@ pub const Executor = struct {
         errdefer candidate.deinit();
         try self.workspace.begin();
         errdefer self.workspace.end();
-        const ask = archive and (@import("main.zig").settingsPromptInWindow(self.managed_window) or self.setupRemoved(null));
+        const retiring = archive and if (self.nativeWorkspaceSnapshot()) |snapshot| std.mem.eql(u8, snapshot.workspace_id, target) else false;
+        const ask = retiring and (@import("main.zig").settingsPromptInWindow(self.managed_window) or self.setupRemoved(null));
         if (!ask) try root.enqueueNativeState(candidate.value);
-        root.pending_lifecycle = .{ .candidate = candidate, .owner = self, .archive = archive, .revision = root.persistence_revision, .awaiting_editor=ask };
+        root.pending_lifecycle = .{ .candidate = candidate, .owner = if (retiring) self else null, .archive = archive, .revision = root.persistence_revision, .awaiting_editor=ask };
         if(ask) @import("main.zig").confirmSettingsPromptRetirement(root);
+    }
+
+    /// Rename only saved metadata through the same serialized catalog writer.
+    pub fn suspendBackend(self:*Executor) void {
+        self.backend_suspended = true;
+        if(self.current)|*current|{
+            current.retireAllPaneContent(self.lifecycle());
+            for(current.panes.items)|*pane|if(pane.isTerminal()){pane.backend_socket="retired-backend";};
+        }
+        self.retryContentRetirements();
+    }
+    pub fn manageBackendCatalog(self:*Executor,bytes:[]const u8) !u64 {
+        const root=self.catalog_owner orelse self;
+        if(root.pending_lifecycle!=null)return error.NativeTransactionInProgress;
+        var candidate=try native_workspace_store.decodeCatalog(self.allocator,bytes);errdefer candidate.deinit();
+        const current=if(root.workspace.catalog)|v|v.value else return error.NativeWorkspaceUnavailable;
+        if(candidate.value.catalog_revision!=current.catalog_revision)return error.WorkspaceChanged;
+        candidate.value.catalog_revision=try std.math.add(u64,current.catalog_revision,1);
+        try root.workspace.begin();errdefer root.workspace.end();try root.enqueueNativeState(candidate.value);
+        root.pending_lifecycle=.{.candidate=candidate,.owner=root,.archive=false,.revision=root.persistence_revision};
+        return root.persistence_revision;
+    }
+    pub fn manageReplace(self:*Executor,bytes:[]const u8) !u64 {
+        const root=self.catalog_owner orelse self;
+        if(root.pending_lifecycle!=null)return error.NativeTransactionInProgress;
+        var updated=try native_workspace_store.decodeWorkspace(self.allocator,bytes);defer updated.deinit();
+        const saved=if(root.workspace.catalog)|*v|v.value else return error.NativeWorkspaceUnavailable;
+        const workspaces=try self.allocator.dupe(renderpkg.Snapshot,saved.workspaces);defer self.allocator.free(workspaces);
+        var found=false;
+        for(workspaces)|*w|if(std.mem.eql(u8,w.workspace_id,updated.value.workspace_id)){
+            updated.value.workspace_revision=try std.math.add(u64,w.workspace_revision,1);w.*=updated.value;found=true;break;
+        };
+        if(!found)return error.WorkspaceNotFound;
+        var catalog=saved;catalog.workspaces=workspaces;catalog.catalog_revision=try std.math.add(u64,catalog.catalog_revision,1);
+        var candidate=try native_workspace_store.OwnedCatalog.clone(self.allocator,catalog);errdefer candidate.deinit();
+        try self.workspace.begin();errdefer self.workspace.end();try root.enqueueNativeState(candidate.value);
+        root.pending_lifecycle=.{.candidate=candidate,.owner=null,.archive=false,.revision=root.persistence_revision};return catalog.catalog_revision;
+    }
+
+    pub fn manageImport(self:*Executor,bytes:[]const u8) !void {
+        const root=self.catalog_owner orelse self;
+        if(root.pending_lifecycle!=null) return error.NativeTransactionInProgress;
+        var imported=try native_workspace_store.decodeWorkspace(self.allocator,bytes);defer imported.deinit();
+        const saved=if(root.workspace.catalog)|*v|v.value else return error.NativeWorkspaceUnavailable;
+        for(saved.workspaces)|w|if(std.mem.eql(u8,w.workspace_id,imported.value.workspace_id))return error.DuplicateWorkspace;
+        const workspaces=try self.allocator.alloc(renderpkg.Snapshot,saved.workspaces.len+1);defer self.allocator.free(workspaces);
+        @memcpy(workspaces[0..saved.workspaces.len],saved.workspaces);workspaces[saved.workspaces.len]=imported.value;
+        var catalog=saved;catalog.workspaces=workspaces;catalog.catalog_revision=try std.math.add(u64,catalog.catalog_revision,1);
+        var candidate=try native_workspace_store.OwnedCatalog.clone(self.allocator,catalog);errdefer candidate.deinit();
+        try self.workspace.begin();errdefer self.workspace.end();try root.enqueueNativeState(candidate.value);
+        root.pending_lifecycle=.{.candidate=candidate,.owner=null,.archive=false,.revision=root.persistence_revision};
+    }
+
+    pub fn manageRename(self: *Executor, target: []const u8, name: []const u8) !void {
+        const root = self.catalog_owner orelse self;
+        if (root.pending_lifecycle != null) return error.NativeTransactionInProgress;
+        if (std.mem.trim(u8, name, " \t\r\n").len == 0) return error.InvalidWorkspaceName;
+        const saved = if (root.workspace.catalog) |*value| value.value else return error.NativeWorkspaceUnavailable;
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var catalog = saved;
+        const workspaces = try arena.allocator().dupe(renderpkg.Snapshot, saved.workspaces);
+        var found = false;
+        for (workspaces) |*workspace| {
+            if (!std.mem.eql(u8, workspace.workspace_id, target)) continue;
+            workspace.workspace_name = name;
+            workspace.workspace_revision = try std.math.add(u64, workspace.workspace_revision, 1);
+            found = true;
+        }
+        if (!found) return error.WorkspaceNotFound;
+        catalog.workspaces = workspaces;
+        catalog.catalog_revision = try std.math.add(u64, catalog.catalog_revision, 1);
+        var candidate = try native_workspace_store.OwnedCatalog.clone(self.allocator, catalog);
+        errdefer candidate.deinit();
+        try self.workspace.begin();
+        errdefer self.workspace.end();
+        try root.enqueueNativeState(candidate.value);
+        root.pending_lifecycle = .{ .candidate = candidate, .owner = null, .archive = false, .revision = root.persistence_revision };
     }
 
     pub fn unbindWorkspace(self: *Executor) !void {
@@ -854,6 +950,11 @@ pub const Executor = struct {
         try root.enqueueNativeState(candidate.value);
         root.pending_lifecycle = .{ .candidate = candidate, .owner = self, .archive = false, .revision = root.persistence_revision, .transfer = true };
     }
+    pub fn resumeBackend(self: *Executor) !void {
+        self.backend_suspended = false;
+        try self.refreshTransferredWorkspace();
+    }
+
     pub fn refreshTransferredWorkspace(self: *Executor) !void {
         if (self.nativeWorkspaceSnapshot()) |snapshot| try self.applySnapshot(snapshot, .force);
     }
@@ -1127,7 +1228,7 @@ pub const Executor = struct {
         var previous = try self.commitNativeWorkspace(plan.snapshot, .force);
         defer if (previous) |*value| value.deinit();
         if (self.current) |*current| try current.focusTab(plan.tab_id, plan.pane_id);
-        if (content.kind == .local_diagnostics or content.kind == .remote_hosts or content.kind == .settings_text or content.kind == .tool_setup) {
+        if (content.kind == .local_diagnostics or content.kind == .remote_hosts or content.kind == .settings_text or content.kind == .tool_setup or content.kind == .unavailable) {
             if (self.managed_window) |window| self.content_hooks.nonInput(window, plan.pane_id);
         } else {
             self.content_hooks.selected(plan.pane_id);
@@ -1406,6 +1507,7 @@ pub const Executor = struct {
         snapshot: renderpkg.Snapshot,
         selection_policy: SelectionPolicy,
     ) !void {
+        if (self.backend_suspended) return;
         self.applying_physical_snapshot = true;
         defer self.applying_physical_snapshot = false;
         @import("ipc_client.zig").trace(15, "", snapshot.workspace_revision);
@@ -1480,7 +1582,11 @@ pub const Executor = struct {
                         else self.content_hooks.selected(pane.pane_id);
                     },
                     .setup => self.content_hooks.nonInput(current.window,pane.pane_id),
-                    .terminal => |terminal| self.content_hooks.deselected(current.window, pane.pane_id, terminal.execution_target_id, terminal.tmux_session_id),
+                    .terminal => |terminal| {
+                        if (self.backend_suspended or (terminal.source != null and !terminal.view_ready))
+                            self.content_hooks.nonInput(current.window, pane.pane_id)
+                        else self.content_hooks.deselected(current.window, pane.pane_id, terminal.execution_target_id, terminal.tmux_session_id);
+                    },
                 }
                 return;
             }
@@ -1512,7 +1618,9 @@ pub const Executor = struct {
                     if (!pane.active or !pane.isTerminal() or !std.mem.eql(u8, pane.content_state.terminal.content_channel_id, channel_id) or generation != pane.content_state.terminal.content_channel_generation or revision < pane.content_state.terminal.content_revision) continue;
                     const view = (result.get("view") orelse return error.InvalidContentResponse).object;
                     const phase = (view.get("phase") orelse return error.InvalidContentResponse).string;
+                    const was_ready = pane.content_state.terminal.view_ready;
                     pane.content_state.terminal.view_ready = std.mem.eql(u8,phase,"hidden");
+                    if (pane.content_state.terminal.source != null and was_ready != pane.content_state.terminal.view_ready) self.activateSelectedConversation();
                     if (std.mem.eql(u8, phase, "hidden") or std.mem.eql(u8, phase, "recovered")) pane.content_state.terminal.focus_listener.ready(revision);
                     const child = pane.surface.as(adw.Bin).getChild() orelse continue;
                     const overlay = gobject.ext.cast(gtk.Overlay, child) orelse continue;
@@ -1666,6 +1774,7 @@ const AppliedRenderState = struct {
     };
 
     const TerminalBinding = struct {
+        source: ?@import("portable_content.zig").Source = null,
         execution_target_id: []const u8,
         tmux_session_id: []const u8,
         content_channel_id: []const u8,
@@ -1686,6 +1795,7 @@ const AppliedRenderState = struct {
         tab_id: []const u8,
         tab: *Tab,
         attach_fingerprint: []const u8,
+        backend_socket: []const u8 = "",
         surface: *Surface,
         trace_identity_emitted: bool = false,
         active: bool = true,
@@ -2256,12 +2366,14 @@ const AppliedRenderState = struct {
             ),
             .tab_id = try self.arena.allocator().dupe(u8, tab_id),
             .tab = tab.tab,
+            .backend_socket = if(self.hooks.host_socket)|get|try self.arena.allocator().dupe(u8,get(self.hooks.context)) else "",
             .attach_fingerprint = try self.arena.allocator().dupe(
                 u8,
                 desired.attach_fingerprint,
             ),
             .surface = surface,
             .content_state = .{ .terminal = .{
+                .source = if (desired.source) |source| try source.clone(self.arena.allocator()) else null,
                 .execution_target_id = try self.arena.allocator().dupe(
                     u8,
                     desired.execution_target_id,
@@ -2288,6 +2400,12 @@ const AppliedRenderState = struct {
         lifecycle: *content_lifecycle.Lifecycle,
     ) !bool {
         if (self.findPane(desired.id)) |existing| {
+            if(existing.isTerminal()) if(self.hooks.host_socket)|get| if(!std.mem.eql(u8,existing.backend_socket,get(self.hooks.context))) {
+                self.queuePaneRetirement(lifecycle,existing.*);
+                self.deactivatePaneID(desired.id);
+                try self.createSurface(tab_id,desired,lifecycle);
+                return true;
+            };
             if (!self.tabExists(existing.tab) or
                 !self.surfaceExists(existing.tab, existing.surface))
             {
@@ -2369,6 +2487,7 @@ const AppliedRenderState = struct {
                 .content_revision = revision,
             },
             .{
+                .source = desired.source,
                 .execution_target = desired.execution_target_id,
                 .tmux_session_id = desired.tmux_session_id,
             },
@@ -2379,6 +2498,7 @@ const AppliedRenderState = struct {
         const fingerprint = try self.arena.allocator().dupe(u8, desired.attach_fingerprint);
         const pending = try self.arena.allocator().dupe(u8, request_id);
         try lifecycle.submit(existing.content_state.terminal.content_control_socket, request);
+        existing.content_state.terminal.source = if (desired.source) |source| try source.clone(self.arena.allocator()) else null;
         existing.content_state.terminal.execution_target_id = target;
         existing.content_state.terminal.tmux_session_id = session;
         existing.attach_fingerprint = fingerprint;
@@ -2406,6 +2526,7 @@ const AppliedRenderState = struct {
                     .content_revision = revision,
                 },
                 .{
+                    .source = pane.content_state.terminal.source,
                     .execution_target = pane.content_state.terminal.execution_target_id,
                     .tmux_session_id = pane.content_state.terminal.tmux_session_id,
                 },
@@ -2513,7 +2634,7 @@ const AppliedRenderState = struct {
             "XDG_RUNTIME_DIR",
         );
         const channel = try lifecycle.allocateChannel(allocator, runtime_dir);
-        const host_socket = if (std.process.getEnvVarOwned(
+        const host_socket = if(self.hooks.host_socket)|get|try allocator.dupe(u8,get(self.hooks.context)) else if (std.process.getEnvVarOwned(
             allocator,
             "POLAR_TMUX_IPC_SOCKET",
         )) |path|
@@ -2534,7 +2655,8 @@ const AppliedRenderState = struct {
             error.EnvironmentVariableNotFound => "polar-tmux",
             else => return error_value,
         };
-        const args = [_][]const u8{
+        const source_json = if (desired.source) |source| try std.json.Stringify.valueAlloc(allocator, source, .{}) else null;
+        const base_args = [_][]const u8{
             "pane-host",
             "--channel-id",
             channel.channel_id,
@@ -2549,6 +2671,9 @@ const AppliedRenderState = struct {
             "--initial-session",
             desired.tmux_session_id,
         };
+        var args: std.ArrayList([]const u8) = .empty;
+        try args.appendSlice(allocator, &base_args);
+        if (source_json) |bytes| try args.appendSlice(allocator, &.{ "--initial-source", bytes });
         return .{
             .channel_id = channel.channel_id,
             .channel_generation = channel.channel_generation,
@@ -2556,7 +2681,7 @@ const AppliedRenderState = struct {
             .command = try DirectCommand.init(
                 allocator,
                 executable,
-                &args,
+                args.items,
             ),
         };
     }
@@ -2954,6 +3079,9 @@ const AppliedRenderState = struct {
             for (desired.panes) |pane| {
                 const binding = self.findPane(pane.id) orelse
                     return error.PaneMissing;
+                if (binding.isTerminal()) if (self.hooks.host_socket) |get| {
+                    if (!std.mem.eql(u8, binding.backend_socket, get(self.hooks.context))) return error.PaneBindingMismatch;
+                };
                 if (binding.tab != tab.tab or
                     !std.mem.eql(
                         u8,

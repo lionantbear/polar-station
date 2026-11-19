@@ -10,6 +10,8 @@ import CPolarStationDesktopClient
 /// All FFI calls are main-thread synchronous and effects contain no authority.
 @MainActor
 final class PolarStationLgpWorkspace: NSObject {
+    private(set) var portableIdeaSources: [String:[String]] = [:]
+
     let dictate = PolarStationDictate()
     var manageConnections: (() -> Void)?
     var focusInputSource: ((NSWindow,String) -> Void)?
@@ -37,6 +39,12 @@ final class PolarStationLgpWorkspace: NSObject {
     private let clockStart = ProcessInfo.processInfo.systemUptime
     private var leaseTimer: Timer?
     private var flushScheduled = false
+    private var draftPersistenceFailed = false
+    func flushDrafts() -> Bool {
+        saveWork?.cancel(); saveWork = nil; draftPersistenceFailed = false
+        input(["type":"export_drafts"])
+        return !draftPersistenceFailed
+    }
     private var saveWork: DispatchWorkItem?
     private var inputQueue: [Data] = []
     private var dispatching = false
@@ -146,6 +154,7 @@ final class PolarStationLgpWorkspace: NSObject {
             display.subscribeIdea { [weak self] event in
                 guard let self, self.panes[paneID]?.content.viewID == content.viewID else { return }
                 if let state = event["state"] as? [String: Any] {
+                    if let paths=state["source_paths"] as? [String] {self.portableIdeaSources[content.viewID]=paths}
                     if self.composers[windowID]?.paneID == paneID {
                         self.composers[windowID]?.setIdeaReaderOpen(state["reader_open"] as? Bool ?? false)
                     }
@@ -234,11 +243,9 @@ final class PolarStationLgpWorkspace: NSObject {
                 self?.input(["type":"refined_input","lease":lease,"original":original,"text":text,"english":english])
             }
             panel.onDraft = { [weak self, weak panel] text in
-                if let lease = panel?.genericLease {
-                    self?.input(["type":"edit_input", "lease":lease, "text":text])
-                } else {
-                    self?.input(["type": "draft", "window_id": windowID, "text": text])
-                }
+                guard let pane = panel?.paneID else { return }
+                self?.input(["type":"input_action", "window_id":windowID, "pane_id":pane,
+                    "action":["kind":"edit", "text":text]])
                 self?.scheduleDraftSave()
             }
             panel.onNativeIdeaCommand = { [weak self, weak panel] action, query in
@@ -248,13 +255,11 @@ final class PolarStationLgpWorkspace: NSObject {
             panel.onIdeaAction = { [weak self] action, query in
                 self?.input(["type": "idea_action", "window_id": windowID, "action": action, "query": query])
             }
-            panel.onSend = { [weak self, weak panel] in
-                if let lease = panel?.genericLease {
-                    self?.input(["type":"submit_input","lease":lease,"press_enter":true])
-                } else {
-                    self?.input(["type": "send", "window_id": windowID,
-                        "created_at_secs": UInt64(Date().timeIntervalSince1970)])
-                }
+            panel.onSend = { [weak self, weak panel] text in
+                guard let pane = panel?.paneID else { return }
+                self?.input(["type":"input_action", "window_id":windowID, "pane_id":pane,
+                    "action":["kind":"submit", "text":text, "created_at_secs":UInt64(Date().timeIntervalSince1970)]])
+                self?.scheduleDraftSave()
             }
             panel.onExit = { [weak self, weak panel] in
                 guard let panel, let window=panel.window, let pane=panel.paneID else {return}
@@ -269,8 +274,9 @@ final class PolarStationLgpWorkspace: NSObject {
                 guard let id = panel?.paneID else { return }; self?.input(["type": "older", "pane_id": id])
             }
             panel.onRetry = { [weak self, weak panel] in
-                if let lease = panel?.genericLease { self?.input(["type":"refresh_input","lease":lease]); return }
-                guard let id = panel?.paneID else { return }; self?.input(["type": "retry", "pane_id": id])
+                guard let pane = panel?.paneID else { return }
+                self?.input(["type":"input_action", "window_id":windowID, "pane_id":pane,
+                    "action":["kind":"refresh"]])
             }
             panel.onReferences = { [weak self, weak panel] in
                 guard let id = panel?.paneID else { return }; self?.input(["type": "references", "pane_id": id])
@@ -442,7 +448,7 @@ final class PolarStationLgpWorkspace: NSObject {
             let effects = object["effects"] as? [[String:Any]] ?? []
             for e in effects where e["type"] as? String == "inquiry" {
                 if let id=e["window_id"] as? String, let view=e["view"] as? [String:Any], view["active"] as? Bool == true,
-                   let composer=effects.last(where:{$0["type"] as? String == "composer" && $0["window_id"] as? String == id}), let text=composer["text"] as? String {
+                   let composer=effects.last(where:{$0["type"] as? String == "input_bar" && ($0["view"] as? [String:Any])?["window_id"] as? String == id})?["view"] as? [String:Any], let text=composer["text"] as? String {
                     composers[id]?.setInquiryText(text)
                 }
                 consume(e)
@@ -545,14 +551,6 @@ final class PolarStationLgpWorkspace: NSObject {
                   let action = (value["action"] as? String) ?? (value["type"] as? String == "idea_locate_reference" ? "locate_reference" : nil) else { return }
             let reference = value["reference"].flatMap { try? JSONSerialization.data(withJSONObject:$0) }.flatMap { String(data:$0,encoding:.utf8) }
             pane.display.ideaCommand(action, query: reference ?? value["query"] as? String ?? "")
-        case "idea_composer":
-            guard let id = value["window_id"] as? String else { return }
-            for (_, pane) in panes where pane.windowID == id {
-                pane.display.view.layer?.borderWidth = 0
-                pane.display.view.setAccessibilityLabel(pane.content.kind == .ideaTree ? "Idea Tree" : "Conversation")
-            }
-            composers[id]?.updateIdea(value)
-            scheduleDraftSave()
         case "ensure_terminal_visible":
             guard let window = value["window_id"] as? String, let pane = value["pane_id"] as? String,
                   let token = value["token"] as? String, let target = (value["target"] as? [String:Any])?["client_view"] as? [String:Any] else { return }
@@ -570,12 +568,21 @@ final class PolarStationLgpWorkspace: NSObject {
             guard let id = value["window_id"] as? String, let view = value["view"] as? [String:Any] else { return }
             composers[id]?.updateInquiry(view, focus: value["focus"] as? Bool == true)
         case "input_bar":
-            guard let view = value["view"] as? [String:Any], let lease = view["lease"] as? [String:Any], let id = lease["window"] as? String else { return }
-            composers[id]?.updateGeneric(view)
-        case "composer":
-            guard let id = value["window_id"] as? String else { return }
-            markComposerTarget(id,selected:value["pane_id"] as? String)
-            composers[id]?.update(value)
+            guard let view = value["view"] as? [String:Any], let id = view["window_id"] as? String else { return }
+            switch view["kind"] as? String {
+            case "generic": composers[id]?.updateGeneric(view)
+            case "idea":
+                for (_, pane) in panes where pane.windowID == id {
+                    pane.display.view.layer?.borderWidth = 0
+                    pane.display.view.setAccessibilityLabel(pane.content.kind == .ideaTree ? "Idea Tree" : "Conversation")
+                }
+                composers[id]?.updateIdea(view)
+                scheduleDraftSave()
+            case "chat":
+                markComposerTarget(id, selected:view["pane_id"] as? String)
+                composers[id]?.update(view)
+            default: break
+            }
         case "focus_composer":
             guard let window = value["window_id"] as? String, let pane=value["pane_id"] as? String, composers[window]?.paneID == pane else { return }
             composers[window]?.activate()
@@ -646,7 +653,7 @@ final class PolarStationLgpWorkspace: NSObject {
     private func saveDrafts(_ value: Any) {
         let revision = (value as? [String:Any])?["snapshot_revision"] as? NSNumber
         var saved = false
-        defer { if let revision { input(["type":"snapshot_stored","revision":revision,"success":saved]) } }
+        defer { draftPersistenceFailed = !saved; if let revision { input(["type":"snapshot_stored","revision":revision,"success":saved]) } }
         guard let url = draftURL, let data = try? JSONSerialization.data(withJSONObject: value), data.count <= 1_048_576 else { return }
         do {
             let directory = url.deletingLastPathComponent()

@@ -17,18 +17,22 @@ public struct PolarTmuxPaneContentBinding:
 {
     public let executionTarget: String
     public let tmuxSessionID: String
+    public let source: TerminalSourceV1?
 
     public init(
         executionTarget: String,
-        tmuxSessionID: String
+        tmuxSessionID: String,
+        source: TerminalSourceV1? = nil
     ) {
         self.executionTarget = executionTarget
         self.tmuxSessionID = tmuxSessionID
+        self.source = source
     }
 
     enum CodingKeys: String, CodingKey {
         case executionTarget = "execution_target"
         case tmuxSessionID = "tmux_session_id"
+        case source
     }
 }
 
@@ -181,7 +185,8 @@ public struct PolarTmuxPaneContentRequest:
         channelGeneration: UInt64,
         contentRevision: UInt64,
         executionTarget: String,
-        tmuxSessionID: String
+        tmuxSessionID: String,
+        source: TerminalSourceV1? = nil
     ) -> Self {
         .init(
             requestID: requestID,
@@ -190,7 +195,8 @@ public struct PolarTmuxPaneContentRequest:
             contentRevision: contentRevision,
             command: .bind(.init(
                 executionTarget: executionTarget,
-                tmuxSessionID: tmuxSessionID
+                tmuxSessionID: tmuxSessionID,
+                source: source
             ))
         )
     }
@@ -231,7 +237,8 @@ public struct PolarTmuxPaneContentRequest:
         channelGeneration: UInt64,
         contentRevision: UInt64,
         executionTarget: String,
-        tmuxSessionID: String
+        tmuxSessionID: String,
+        source: TerminalSourceV1? = nil
     ) -> Self {
         .init(
             requestID: requestID,
@@ -240,7 +247,8 @@ public struct PolarTmuxPaneContentRequest:
             contentRevision: contentRevision,
             command: .reconnect(.init(
                 executionTarget: executionTarget,
-                tmuxSessionID: tmuxSessionID
+                tmuxSessionID: tmuxSessionID,
+                source: source
             ))
         )
     }

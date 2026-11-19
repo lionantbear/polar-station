@@ -19,6 +19,24 @@ impl PreviewAction {
     }
 }
 
+pub(super) fn timeout_copy(code: &str) -> Option<(&'static str, &'static str)> {
+    match code {
+        "voice.audio_connection_timeout" => Some((
+            "Audio connection timed out",
+            "The audio connection could not be established.",
+        )),
+        "voice.final_transcript_timeout" => Some((
+            "Final transcript timed out",
+            "Audio was sent. The final text did not arrive.",
+        )),
+        "voice.timeout" => Some((
+            "Recording processing timed out",
+            "The voice service did not finish in time.",
+        )),
+        _ => None,
+    }
+}
+
 pub fn dismissible(entry: &Entry) -> bool {
     entry.phase == Phase::Failed && !valid_text(&entry.text) && entry.saved_samples > 0
 }

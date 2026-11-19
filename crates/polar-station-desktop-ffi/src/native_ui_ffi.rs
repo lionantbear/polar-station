@@ -50,22 +50,27 @@ pub unsafe extern "C" fn polar_station_file_input_valid(bytes: *const u8, len: u
     let Ok(text) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes, len) }) else { return false; };
     polar_station_resources::FileReferenceInput::from_capture(text.into()).is_ok()
 }
-/// Test whether native clicked text has bounded filesystem candidates. No IO.
+/// Recognize once and carry the typed result to Host. The native caller only
+/// maps the returned original-text ranges to terminal cells.
 /// # Safety
-/// `bytes` must contain `len` readable bytes; `hit` is a UTF-8 byte offset.
+/// `bytes` has `len` readable bytes. Free output with desktop_string_free.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn polar_station_file_context_candidate(bytes: *const u8, len: usize, hit: usize) -> bool {
-    if bytes.is_null() || len == 0 || len > 16384 { return false; }
-    let Ok(text) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes,len) }) else { return false; };
-    !polar_station_resources::click_file_candidates(&polar_station_resources::FileClickContext { text: text.into(), hit }).is_empty()
+pub unsafe extern "C" fn polar_station_file_capture(bytes: *const u8, len: usize) -> *mut c_char {
+    if bytes.is_null() || len == 0 || len > 65536 { return std::ptr::null_mut(); }
+    std::panic::catch_unwind(|| {
+        let input = serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) }).ok()?;
+        let result = polar_station_resources::recognize_file_capture(input, polar_station_resources::PathFlavor::Posix).ok()?;
+        CString::new(serde_json::to_vec(&result).ok()?).ok().map(CString::into_raw)
+    }).ok().flatten().unwrap_or(std::ptr::null_mut())
 }
+
+/// Whether a native URL match belongs to the external URI handler.
+/// # Safety
+/// `bytes` has `len` readable bytes.
 #[unsafe(no_mangle)]
-pub extern "C" fn polar_station_resource_file_rule_count()->usize {polar_station_resources::file_link_rules().len()}
-#[unsafe(no_mangle)]
-pub extern "C" fn polar_station_resource_file_rule_at(index:usize)->*const c_char {
-    static RULES:OnceLock<Vec<CString>>=OnceLock::new();
-    RULES.get_or_init(||polar_station_resources::file_link_rules().iter().map(|v|CString::new(*v).expect("static file rule")).collect())
-        .get(index).map_or(std::ptr::null(),|s|s.as_ptr())
+pub unsafe extern "C" fn polar_station_external_link(bytes: *const u8, len: usize) -> bool {
+    if bytes.is_null() || len == 0 || len > 16384 { return false; }
+    std::str::from_utf8(unsafe { std::slice::from_raw_parts(bytes, len) }).is_ok_and(polar_station_resources::is_external_file_link)
 }
 pub struct ResourceFileOpenHandle(polar_station_resources::FileOpenFlow);
 #[unsafe(no_mangle)]
@@ -491,6 +496,61 @@ pub unsafe extern "C" fn polar_station_workspace_lifecycle(
         .unwrap_or(std::ptr::null_mut())
 }
 
+/// Projects Settings metadata without owning the native Workspace catalog.
+/// # Safety
+/// `bytes` points to `len` readable bytes. Free result with desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_workspace_manager_view(
+    bytes: *const u8,
+    len: usize,
+) -> *mut c_char {
+    let result = std::panic::catch_unwind(|| {
+        if bytes.is_null() || len == 0 || len > 16 * 1024 * 1024 {
+            return Err("Invalid catalog input".to_string());
+        }
+        let input = serde_json::from_slice::<polar_station_workspace::workspace_manager::Input>(unsafe {
+            std::slice::from_raw_parts(bytes, len)
+        })
+        .map_err(|e| e.to_string())?;
+        serde_json::to_value(polar_station_workspace::workspace_manager::project(input))
+            .map_err(|e| e.to_string())
+    })
+    .unwrap_or_else(|_| Err("Catalog projection failed".into()));
+    let value = result.unwrap_or_else(|error| serde_json::json!({"error":error}));
+    serde_json::to_string(&value)
+        .ok()
+        .and_then(|s| CString::new(s).ok())
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// Transforms local Workspace exchange files; never contacts the Host.
+/// # Safety
+/// `bytes` points to `len` readable bytes. Free result with desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_workspace_transfer(
+    bytes: *const u8,
+    len: usize,
+) -> *mut c_char {
+    let result = std::panic::catch_unwind(|| {
+        if bytes.is_null() || len == 0 || len > 16 * 1024 * 1024 {
+            return Err("Invalid catalog input".to_string());
+        }
+        let input = serde_json::from_slice::<polar_station_workspace::portable_workspace::native::Request>(unsafe {
+            std::slice::from_raw_parts(bytes, len)
+        })
+        .map_err(|e| e.to_string())?;
+        polar_station_workspace::portable_workspace::native::dispatch(input)
+    })
+    .unwrap_or_else(|_| Err("Catalog projection failed".into()));
+    let value = result.unwrap_or_else(|error| serde_json::json!({"error":error}));
+    serde_json::to_string(&value)
+        .ok()
+        .and_then(|s| CString::new(s).ok())
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
 /// Window-local interaction handle; callers serialize dispatch/destruction on the UI thread.
 pub struct AttentionHandle(polar_station_workspace::AttentionEngine);
 #[unsafe(no_mangle)]
@@ -549,10 +609,20 @@ pub extern "C" fn polar_station_shortcut_gesture_new() -> *mut StationShortcutGe
 /// discrete nonrepeat activation=3, cancel=4. Returns none=0/start=1/stop=2/use-original=3.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_shortcut_gesture_event(handle: *mut StationShortcutGesture, event: u32, recording: bool, can_start: bool, can_use_available: bool) -> u32 {
+    let Some(handle) = (unsafe { handle.as_mut() }) else { return 0; };
+    let event_ms = handle.clock.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+    unsafe { polar_station_shortcut_gesture_event_at(handle, event, event_ms, recording, can_start, can_use_available) }
+}
+/// Uses the physical event's monotonic timestamp, not its callback arrival time.
+/// Use one clock epoch per handle; do not mix timed and untimed calls.
+/// # Safety
+/// Handle is live and exclusively borrowed, as for the untimed entrypoint.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_shortcut_gesture_event_at(handle: *mut StationShortcutGesture, event: u32, event_ms: u64, recording: bool, can_start: bool, can_use_available: bool) -> u32 {
     use polar_station_workspace::shortcuts::ShortcutEvent;
     let Some(handle) = (unsafe { handle.as_mut() }) else { return 0; };
     let event = match event { 1 => ShortcutEvent::Press, 2 => ShortcutEvent::Release, 3 => ShortcutEvent::Activate, _ => ShortcutEvent::Cancel };
-    handle.gesture.interpret(event, handle.clock.elapsed().as_millis().min(u128::from(u64::MAX)) as u64, recording, can_start, can_use_available) as u32
+    handle.gesture.interpret(event, event_ms, recording, can_start, can_use_available) as u32
 }
 /// # Safety
 /// Handle is null or uniquely owned and live; no calls race destruction.
@@ -606,4 +676,19 @@ pub unsafe extern "C" fn polar_station_settings_edit_dispatch(handle:*mut Settin
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_settings_edit_free(handle:*mut SettingsEditHandle) {
     if !handle.is_null(){drop(unsafe{Box::from_raw(handle)});}
+}
+
+
+
+/// Shared local backend preview presentation, without filesystem or network IO.
+/// # Safety
+/// Bytes must be readable for len. Free returned text with desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_backend_view(bytes:*const u8,len:usize)->*mut c_char {
+    if bytes.is_null()||len>128*1024{return std::ptr::null_mut();}
+    std::panic::catch_unwind(||{
+        let input=serde_json::from_slice(unsafe{std::slice::from_raw_parts(bytes,len)}).ok()?;
+        let view=polar_station_workspace::backend_selection::project(input);
+        CString::new(serde_json::to_vec(&view).ok()?).ok().map(CString::into_raw)
+    }).ok().flatten().unwrap_or(std::ptr::null_mut())
 }

@@ -177,7 +177,9 @@ impl CodexControlService {
         })
     }
 
-    // Called under the same mutation boundary as binding/settings changes.
+    // Direct original-thread input is independent of observer recovery. Durable
+    // intent/digest checks and the Received->Submitting CAS fence delivery.
+    // Binding-based control operations retain their existing mutation boundary.
     pub(super) async fn submit(
         &self,
         principal: &str,
@@ -233,6 +235,7 @@ impl CodexControlService {
             false
         };
         let direct = matches!(command, CodexCommandV1::SubmitThreadText { .. });
+        let mut direct_route=None;
         let (binding_id, revision, text, expected_turn, endpoint, thread) =
             if let CodexCommandV1::SubmitThreadText {
                 endpoint_id,
@@ -243,6 +246,7 @@ impl CodexControlService {
             {
                 // Validate the configured route before persisting anything. No observation
                 // subscription, history reconciliation or notification setup is needed.
+                direct_route=Some(self.config.read().await.endpoints.iter().find(|e|e.id==endpoint_id).cloned().ok_or("endpoint_not_found")?);
                 self.endpoint(&endpoint_id).await?;
                 let row = self.sender_binding(&endpoint_id, &thread_id).await?;
                 (
@@ -307,7 +311,7 @@ impl CodexControlService {
         let row = CodexSubmissionRow {
             intent_id: intent_id.clone(),
             principal: principal.into(),
-            binding_id: Some(binding_id),
+            binding_id: Some(binding_id.clone()),
             binding_revision: Some(revision.try_into().map_err(|_| "invalid_revision")?),
             operation_kind: kind.into(),
             expected_turn_id: expected_turn.clone(),
@@ -335,23 +339,6 @@ impl CodexControlService {
         {
             return self.receipt(principal, &intent_id);
         }
-        if !self
-            .ledger
-            .transition_submission(
-                &intent_id,
-                "received",
-                SubmissionTransition {
-                    status: "submitting".into(),
-                    queue_id: None,
-                    turn_id: None,
-                    error_code: None,
-                    at_ms: now,
-                },
-            )
-            .map_err(|_| "ledger_unavailable")?
-        {
-            return self.receipt(principal, &intent_id);
-        }
         let input = text
             .map(|text| json!([{"type":"text","text":text,"text_elements":[]}]))
             .unwrap_or(Value::Null);
@@ -375,7 +362,7 @@ impl CodexControlService {
                 json!({"threadId":thread,"turnId":expected_turn}),
             ),
         };
-        let preparation = if direct {
+        let mut preparation = if direct {
             match super::codex_control::loaded(&client).await {
                 Ok(threads) if threads.contains(&thread) => Ok(()),
                 Ok(_) => Self::resume_original_thread(&client, &thread)
@@ -386,25 +373,51 @@ impl CodexControlService {
         } else {
             Ok(())
         };
+        if preparation.is_ok() {
+            if let Some(route)=direct_route {
+                let config=self.config.read().await;
+                if !config.enabled { preparation=Err("control_disabled"); }
+                else if !config.endpoints.contains(&route) { preparation=Err("settings_conflict"); }
+                else {
+                    let binding=self.ledger.binding(&binding_id).map_err(|_|"ledger_unavailable")?;
+                    if binding.is_none_or(|b|!b.enabled || b.owner_host_id!=self.owner || b.endpoint_id!=endpoint || b.thread_id!=thread) {
+                        preparation=Err("thread_released");
+                    }
+                }
+            }
+        }
         if let Err(code) = preparation {
-            self.ledger
-                .transition_submission(
+            // Preparation has not submitted user text. A lost list/resume reply
+            // leaves the original intent Received, eligible for explicit Retry.
+            if code != "codex_result_unknown" {
+                self.ledger.transition_submission(
                     &intent_id,
-                    "submitting",
+                    "received",
                     SubmissionTransition {
-                        status: if code == "codex_result_unknown" {
-                            "unknown"
-                        } else {
-                            "rejected"
-                        }
-                        .into(),
-                        queue_id: None,
-                        turn_id: None,
-                        error_code: Some(code.into()),
-                        at_ms: now_ms(),
+                        status: "rejected".into(), queue_id: None, turn_id: None,
+                        error_code: Some(code.into()), at_ms: now_ms(),
                     },
-                )
-                .map_err(|_| "ledger_unavailable")?;
+                ).map_err(|_| "ledger_unavailable")?;
+            }
+            return self.receipt(principal, &intent_id);
+        }
+        // Only crossing the text submission boundary makes a missing response
+        // an uncertain delivery. Persist that boundary before issuing the RPC.
+        if !self
+            .ledger
+            .transition_submission(
+                &intent_id,
+                "received",
+                SubmissionTransition {
+                    status: "submitting".into(),
+                    queue_id: None,
+                    turn_id: None,
+                    error_code: None,
+                    at_ms: now,
+                },
+            )
+            .map_err(|_| "ledger_unavailable")?
+        {
             return self.receipt(principal, &intent_id);
         }
         let result = client.request(method, params).await;

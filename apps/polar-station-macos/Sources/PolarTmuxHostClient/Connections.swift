@@ -27,6 +27,8 @@ public struct MachineConnectionStatusV1: Codable, Equatable, Sendable, Identifia
     public let connection: ConnectionStatusProjectionV1
 }
 public struct ConnectionsProjectionV1: Codable, Equatable, Sendable {
+    public var hostTransferSupported: Bool? = nil
+    public var workspaceTransferSupported: Bool? = nil
     public var revision: String
     public var machineStatuses: [MachineConnectionStatusV1]? = nil
     public var lastCheck: ConnectionCheckV1? = nil
@@ -35,7 +37,7 @@ public struct ConnectionsProjectionV1: Codable, Equatable, Sendable {
     public init(revision: String = "", machines: [MachineConnectionV1] = [], polarInstances: [PolarConnectionV1] = []) {
         self.revision = revision; self.machines = machines; self.polarInstances = polarInstances
     }
-    enum CodingKeys: String, CodingKey { case revision, machines; case machineStatuses = "machine_statuses"; case lastCheck = "last_check"; case polarInstances = "polar_instances" }
+    enum CodingKeys: String, CodingKey { case workspaceTransferSupported = "workspace_transfer_supported"; case hostTransferSupported = "host_transfer_supported"; case revision, machines; case machineStatuses = "machine_statuses"; case lastCheck = "last_check"; case polarInstances = "polar_instances" }
 }
 public enum ConnectionChangeV1: Codable, Equatable, Sendable {
     case saveMachine(MachineConnectionV1), savePolar(PolarConnectionV1), removeMachine(String), removePolar(String)

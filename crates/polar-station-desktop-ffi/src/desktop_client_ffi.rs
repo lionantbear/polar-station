@@ -17,6 +17,15 @@ use crate::desktop_client::{
     DesktopClient, DesktopClientConfig, DesktopContentRequest, DesktopNativeStateRequest,
 };
 
+// One process-wide desktop owns backend selection. Legacy Voice factories
+// borrow its endpoint reader; this is dependency wiring, not another selector.
+static SELECTED_BACKEND: std::sync::OnceLock<Mutex<Option<polar_station_client::dictate_client::EndpointReader>>> = std::sync::OnceLock::new();
+pub(crate) fn selected_backend_socket() -> polar_station_client::dictate_client::EndpointResult {
+    let reader = SELECTED_BACKEND.get_or_init(||Mutex::new(None)).lock().unwrap_or_else(|v|v.into_inner()).clone()
+        .ok_or_else(||std::io::Error::other("Station client is not ready"))?;
+    reader()
+}
+
 pub type DesktopClientWakeFn = Option<extern "C" fn(*mut c_void)>;
 
 /// Opt-in native invocation boundaries. Sequence correlates concurrent calls,
@@ -244,6 +253,7 @@ pub unsafe extern "C" fn polar_station_desktop_client_new(
             }
         })
         .ok()?;
+        *SELECTED_BACKEND.get_or_init(||Mutex::new(None)).lock().unwrap_or_else(|v|v.into_inner()) = Some(client.backend_socket_reader());
         Some(Box::into_raw(Box::new(DesktopClientHandle {
             client: Mutex::new(client),
         })))
@@ -572,4 +582,30 @@ pub unsafe extern "C" fn polar_station_desktop_client_session_json(handle: *mut 
         let Ok(request) = serde_json::from_str::<crate::station_input_client::DesktopSessionRequest>(bytes) else {return false};
         handle.client.lock().unwrap_or_else(|value|value.into_inner()).try_session(request).is_ok()
     })).unwrap_or(false)
+}
+
+/// Enqueue a local backend preview or explicitly confirmed switch.
+/// # Safety
+/// Handle must be live and JSON readable/NUL-terminated for this call.
+#[no_mangle]
+pub unsafe extern "C" fn polar_station_desktop_client_backend_json(handle: *mut DesktopClientHandle, request_json: *const c_char) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        let Some(handle)=(unsafe {handle.as_ref()}) else {return false};
+        if request_json.is_null() {return false;}
+        let Ok(json)=(unsafe {CStr::from_ptr(request_json)}).to_str() else {return false};
+        let Ok(request)=serde_json::from_str(json) else {return false};
+        handle.client.lock().unwrap_or_else(|v|v.into_inner()).try_backend(request).is_ok()
+    })).unwrap_or(false)
+}
+
+/// Current process-wide endpoint for native Pane launch adapters.
+/// # Safety
+/// Handle must remain live for this call; free the result with desktop_string_free.
+#[no_mangle]
+pub unsafe extern "C" fn polar_station_desktop_client_backend_socket(handle:*mut DesktopClientHandle)->*mut c_char {
+    catch_unwind(AssertUnwindSafe(|| {
+        let handle=unsafe {handle.as_ref()}?;
+        let path=handle.client.lock().unwrap_or_else(|v|v.into_inner()).backend_socket();
+        CString::new(path.to_str()?).ok().map(CString::into_raw)
+    })).ok().flatten().unwrap_or(ptr::null_mut())
 }

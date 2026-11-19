@@ -1,8 +1,9 @@
 //! One pure workflow for a file-open intent. Source lookup, parsing, probing,
 //! Resource execution and OS opening are separate operations with typed results.
 use crate::{
-    FileAccess, FileAccessPlan, FileOpenFailure, FileOpenResolution, FileOpenStage, FileReference,
-    FileReferenceInput, OpenStrategy, ResolvedFile, ResolvedFileSource, ResourceId,
+    FileAccess, FileAccessPlan, FileOpenContext, FileOpenFailure, FileOpenResolution,
+    FileOpenStage, FileReference, FileReferenceInput, OpenStrategy, ResolvedFile,
+    ResolvedFileSource, ResourceId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -126,7 +127,10 @@ enum Phase {
         file: ResolvedFile,
         action: MappingWait,
     },
-    Opening,
+    Opening {
+        file: ResolvedFile,
+        local_path: String,
+    },
     Failed,
 }
 struct Pending {
@@ -154,6 +158,25 @@ impl FileOpenFlow {
             .is_some_and(|p| !matches!(p.phase, Phase::Failed))
     }
     fn fail(p: &mut Pending, failure: FileOpenFailure) -> Vec<FileOpenEffect> {
+        let context = match &p.phase {
+            Phase::Planning { file, .. } | Phase::Waiting { file, .. } => FileOpenContext {
+                origin: file.source.origin.clone(),
+                paths: vec![file.reference.path.clone()],
+                local_path: None,
+            },
+            Phase::Opening { file, local_path } => FileOpenContext {
+                origin: file.source.origin.clone(),
+                paths: vec![file.reference.path.clone()],
+                local_path: Some(local_path.clone()),
+            },
+            _ => FileOpenContext {
+                origin: p.origin.clone(),
+                paths: vec![],
+                local_path: None,
+            },
+        };
+        let failure = failure.with_context(context);
+        let message = failure.display_message();
         p.phase = Phase::Failed;
         vec![
             FileOpenEffect::DismissProgress {
@@ -163,7 +186,7 @@ impl FileOpenFlow {
                 request_id: p.request_id.clone(),
                 stage: failure.stage,
                 code: failure.code,
-                message: failure.message,
+                message,
                 can_retry: true,
             },
         ]
@@ -348,7 +371,7 @@ impl FileOpenFlow {
                 request_id,
                 accepted,
                 message,
-            } if p.request_id == request_id && matches!(p.phase, Phase::Opening) => {
+            } if p.request_id == request_id && matches!(p.phase, Phase::Opening { .. }) => {
                 if accepted {
                     return vec![FileOpenEffect::DismissProgress { request_id }];
                 }
@@ -399,7 +422,10 @@ impl FileOpenFlow {
                         FileAccessPlan::NativeLocal { local_path }
                         | FileAccessPlan::MappedReady { local_path, .. } => {
                             let strategy = crate::select_opener(&file.reference, self.rules);
-                            p.phase = Phase::Opening;
+                            p.phase = Phase::Opening {
+                                file: file.clone(),
+                                local_path: local_path.clone(),
+                            };
                             vec![
                                 FileOpenEffect::DismissProgress {
                                     request_id: request_id.clone(),

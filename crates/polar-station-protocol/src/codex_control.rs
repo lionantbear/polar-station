@@ -154,7 +154,7 @@ pub enum CodexCommandV1 {
         yolo: bool,
     },
     /// Observe and resume an existing original Thread, without a terminal.
-    OpenThread { endpoint_id: String, thread_id: String },
+    OpenThread { endpoint_id: String, thread_id: String, #[serde(default)] yolo: bool },
     /// Submit visible text to exactly this original Thread; resume only when unloaded.
     SubmitThreadText { endpoint_id: String, thread_id: String, intent_id: String, text: String },
     GetThreadBinding { endpoint_id: String, thread_id: String },
@@ -322,7 +322,7 @@ impl CodexCommandV1 {
                 }
                 Ok(())
             }
-            Self::OpenThread { endpoint_id, thread_id }
+            Self::OpenThread { endpoint_id, thread_id, .. }
             | Self::GetThreadBinding { endpoint_id, thread_id }
             | Self::ReadThread { endpoint_id, thread_id, .. }
             | Self::ReadHistoryDetail { endpoint_id, thread_id } => {

@@ -31,8 +31,8 @@ size_t polar_station_shortcut_count(void);
 char *polar_station_resource_image_path(const uint8_t *bytes, size_t len);
 char *polar_station_resource_file_path(const uint8_t *bytes, size_t len);
 bool polar_station_file_input_valid(const uint8_t *bytes, size_t len);
-size_t polar_station_resource_file_rule_count(void);
-const char *polar_station_resource_file_rule_at(size_t index);
+char *polar_station_file_capture(const uint8_t *bytes, size_t len);
+bool polar_station_external_link(const uint8_t *bytes, size_t len);
 typedef struct ResourceEditorHandle ResourceEditorHandle;
 ResourceEditorHandle *polar_station_resource_editor_new(void);
 char *polar_station_resource_editor_dispatch(ResourceEditorHandle *, const uint8_t *, size_t);
@@ -88,6 +88,11 @@ uint64_t polar_station_desktop_client_generation(DesktopClientHandle *handle);
 void polar_station_desktop_client_cancel_request(DesktopClientHandle *handle, uint64_t generation, const char *request_id);
 char *polar_station_terminal_status_unavailable_json(void);
 char *polar_station_desktop_client_pop_event_json(DesktopClientHandle *handle);
+char *polar_station_backend_view(const uint8_t *bytes, size_t len);
+char *polar_station_desktop_client_backend_socket(DesktopClientHandle *handle);
+
+bool polar_station_desktop_client_backend_json(DesktopClientHandle *handle, const char *request_json);
+
 bool polar_station_desktop_client_session_json(DesktopClientHandle *handle, const char *request_json);
 
 bool polar_station_desktop_client_native_state_json(DesktopClientHandle *handle, const char *request_json);
@@ -113,6 +118,8 @@ StationDictateShortcut polar_station_dictate_shortcut(void);
 typedef struct StationShortcutGesture StationShortcutGesture;
 StationShortcutGesture *polar_station_shortcut_gesture_new(void);
 uint32_t polar_station_shortcut_gesture_event(StationShortcutGesture *, uint32_t event, bool recording, bool can_start, bool can_use_original);
+/* Physical monotonic event time in milliseconds; use one epoch per handle. */
+uint32_t polar_station_shortcut_gesture_event_at(StationShortcutGesture *, uint32_t event, uint64_t event_ms, bool recording, bool can_start, bool can_use_original);
 void polar_station_shortcut_gesture_free(StationShortcutGesture *);
 typedef struct DictateHandle DictateHandle;
 DictateHandle *polar_station_dictate_new(void);
@@ -125,6 +132,12 @@ DictateSpeech *polar_station_dictate_speech_new(void);
 char *polar_station_dictate_local_wav(const DictateSpeech *handle, const uint8_t *pcm, size_t length);
 char *polar_station_dictate_service_request(const DictateSpeech *handle, const uint8_t *json, size_t length);
 bool polar_station_dictate_speech_append(const DictateSpeech *handle, const uint8_t *id, size_t id_length, const uint8_t *pcm, size_t pcm_length);
+#define POLAR_STATION_DICTATE_WAVEFORM_BARS 22
+typedef struct {
+    bool updated;
+    uint8_t levels[POLAR_STATION_DICTATE_WAVEFORM_BARS];
+} PolarStationDictateWaveform;
+bool polar_station_dictate_speech_append_metered(const DictateSpeech *handle, const uint8_t *id, size_t id_length, const uint8_t *pcm, size_t pcm_length, PolarStationDictateWaveform *waveform);
 /* Reserve synchronously before dispatching a worker; every successful reserve
  * requires exactly one transcribe call, even if cancelled before it starts. */
 bool polar_station_dictate_speech_finish(const DictateSpeech *handle, const uint8_t *id, size_t length);
@@ -189,6 +202,8 @@ char *polar_station_diagnostics_dispatch(DiagnosticsHandle *handle, const uint8_
 void polar_station_diagnostics_free(DiagnosticsHandle *handle);
 char *polar_station_diagnostics_project(const uint8_t *bytes, size_t len);
 char *polar_station_workspace_lifecycle(const uint8_t *bytes, size_t len);
+char *polar_station_workspace_manager_view(const uint8_t *bytes, size_t len);
+char *polar_station_workspace_transfer(const uint8_t *bytes, size_t len);
 void polar_station_desktop_string_free(char *value);
 
 #ifdef __cplusplus

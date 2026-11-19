@@ -1,6 +1,7 @@
 //! Window-local Connections interaction. No I/O, credentials, or Workspace geometry.
 use polar_station_settings::{CodexControlModeV1, CodexControlSettingsV1, CodexEndpointSettingsV1};
-use polar_station_protocol::{ConnectionChangeV1, ConnectionsProjectionV1};
+use polar_station_protocol::{ConnectionChangeV1, ConnectionsProjectionV1, HostExportBundleV1, HostImportPlanV1, HostImportDecisionV1, HostTransferRequestV1, HostTransferResponseV1};
+mod transfer;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -30,6 +31,13 @@ impl Default for Selection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConnectionsInput {
+    ExportHosts { target_ids: Vec<String> },
+    ImportHosts { bundle: HostExportBundleV1 },
+    CompareHostImport { source: polar_station_protocol::HostRefV1, target_id: String },
+    ChooseHostImport { decision: HostImportDecisionV1 },
+    ApplyHostImport,
+    CancelHostImport,
+    TransferComplete { token: u64, result: Option<HostTransferResponseV1>, error: Option<String> },
     Snapshot {
         facts: ConnectionsProjectionV1,
     },
@@ -71,6 +79,8 @@ pub enum ConnectionsInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConnectionsEffect {
+    HostTransfer { token: u64, request: HostTransferRequestV1 },
+    WriteHostExport { bundle: HostExportBundleV1 },
     SaveCodex {
         token: u64,
         expected_revision: u64,
@@ -85,6 +95,9 @@ pub enum ConnectionsEffect {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionsView {
+    pub host_import_plan: Option<HostImportPlanV1>,
+    pub host_import_decisions: Vec<HostImportDecisionV1>,
+    pub host_import_can_apply: bool,
     pub selection: Selection,
     pub editing: bool,
     pub dirty: bool,
@@ -171,6 +184,10 @@ impl CodexDraft {
 }
 #[derive(Debug, Default)]
 pub struct ConnectionsEngine {
+    transfer_bundle: Option<HostExportBundleV1>,
+    transfer_plan: Option<HostImportPlanV1>,
+    transfer_decisions: Vec<HostImportDecisionV1>,
+    transfer_request: Option<HostTransferRequestV1>,
     facts: ConnectionsProjectionV1,
     codex_settings: Option<CodexControlSettingsV1>,
     codex_owner: String,
@@ -196,6 +213,9 @@ impl ConnectionsEngine {
     }
     pub fn view(&self) -> ConnectionsView {
         ConnectionsView {
+            host_import_plan: self.transfer_plan.clone(),
+            host_import_decisions: self.transfer_decisions.clone(),
+            host_import_can_apply: self.can_apply_import(),
             selection: self.selection.clone(),
             editing: self.editing(),
             dirty: self.dirty(),
@@ -226,6 +246,7 @@ impl ConnectionsEngine {
         }
     }
     pub fn dispatch(&mut self, input: ConnectionsInput) -> Vec<ConnectionsEffect> {
+        if let Some(effects) = self.dispatch_transfer(&input) { return effects; }
         // Host refreshes and correlated results remain admissible while saving.
         match input {
             ConnectionsInput::CodexSnapshot { settings, owner } => {
@@ -425,7 +446,10 @@ impl ConnectionsEngine {
                     }];
                 }
             }
-            ConnectionsInput::Snapshot { .. }
+            ConnectionsInput::ExportHosts { .. } | ConnectionsInput::ImportHosts { .. }
+            | ConnectionsInput::CompareHostImport { .. } | ConnectionsInput::ChooseHostImport { .. } | ConnectionsInput::ApplyHostImport
+            | ConnectionsInput::CancelHostImport | ConnectionsInput::TransferComplete { .. }
+            | ConnectionsInput::Snapshot { .. }
             | ConnectionsInput::CodexSnapshot { .. }
             | ConnectionsInput::Complete { .. } => unreachable!(),
         }

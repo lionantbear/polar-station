@@ -12,10 +12,11 @@ struct PolarStationNativePane: Codable, Equatable, Sendable {
     let executionTargetID: String?
     let tmuxSessionID: String?
     var content: StationPaneContentV1? = nil
+    var source: TerminalSourceV1? = nil
     var transportStatus: SessionRowProjectionV1.TransportStatus = .offline
 
     enum CodingKeys: String, CodingKey {
-        case id, content
+        case id, content, source
         case executionTargetID = "execution_target_id"
         case tmuxSessionID = "tmux_session_id"
     }
@@ -85,6 +86,7 @@ struct PolarStationNativePhysicalTreeSignature: Equatable {
         let id: String
         let executionTargetID: String?
         let tmuxSessionID: String?
+        let source: TerminalSourceV1?
         let content: StationPaneContentV1?
     }
 
@@ -159,6 +161,8 @@ struct PolarStationNativeProjectionDelta: Equatable {
 }
 
 struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
+    var portableHosts: [PortableHostV1]? = nil
+    var portableSourceWorkspaceID: String? = nil
     let id: String
     var name: String
     var revision: UInt64
@@ -192,6 +196,7 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case portableHosts = "portable_hosts", portableSourceWorkspaceID = "portable_source_workspace_id"
         case id
         case name
         case revision
@@ -376,6 +381,7 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
                             id: pane.id,
                             executionTargetID: pane.executionTargetID,
                             tmuxSessionID: pane.tmuxSessionID,
+                            source: pane.source,
                             content: pane.content
                         )
                     }
@@ -1000,8 +1006,8 @@ struct PolarStationNativeWorkspaceCatalog: Codable, Equatable, Sendable {
         self = next
     }
 
-    mutating func archive(_ workspaceID: String) throws {
-        let decision = try lifecycle("archive", bound: workspaceID, target: workspaceID)
+    mutating func archive(_ workspaceID: String, management: Bool = false) throws {
+        let decision = try lifecycle(management ? "manage_archive" : "archive", bound: management ? nil : workspaceID, target: workspaceID)
         try requireRevisionCapacity(if: true)
         archivedWorkspaceIDs = (archivedWorkspaceIDs ?? []) + [workspaceID]
         openWorkspaceIDs?.removeAll { $0 == workspaceID }

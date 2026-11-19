@@ -8,6 +8,10 @@ import shutil
 import subprocess
 import tempfile
 from resources import digest, materialize_browsing_config
+try:
+    from build_cache import graphics_inputs, graphics_reusable, record_graphics
+except ImportError:
+    from build_cache import graphics_inputs, graphics_reusable, record_graphics
 
 
 def run(*args: str, **kwargs):
@@ -15,6 +19,9 @@ def run(*args: str, **kwargs):
 
 
 def package(source: Path, godot: Path, editor: Path, extension: Path, graphviz: Path, output: Path):
+    inputs = graphics_inputs(source, godot, editor, extension, graphviz, __file__)
+    if graphics_reusable(output, inputs, digest):
+        return
     version = subprocess.check_output([str(editor), '--version'], text=True).strip()
     if not version.startswith('4.7.2.stable'):
         raise ValueError('Expected pinned Godot 4.7.2 editor')
@@ -98,6 +105,7 @@ exec "$base/bin/dot.bin" -Kdot "$@"
         if output.exists():
             output.rename(Path(temporary) / 'old')
         stage.rename(output)
+    record_graphics(output, inputs, digest)
     print(digest(output))
 
 

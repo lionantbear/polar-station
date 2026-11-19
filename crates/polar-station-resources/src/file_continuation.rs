@@ -1,141 +1,136 @@
-//! Display continuation recovery only. Representation parsing is a separate
-//! operation; no Cartesian row combinations and no filesystem access.
-use crate::{file_text::reference_at, parse_source_reference, FileReference, PathFlavor};
+//! Reconstruct only the adjoining text around a hit. No path candidates or I/O.
+use crate::{DisplayRowBoundary, PathFlavor, TextRange};
 
-pub(crate) fn recover_display_candidates(
-    text: &str,
-    hit: usize,
-    flavor: PathFlavor,
-) -> Vec<FileReference> {
-    if text.len() > 16384
-        || hit >= text.len()
-        || !text.is_char_boundary(hit)
-        || text
-            .chars()
-            .any(|c| c.is_control() && !matches!(c, '\r' | '\n'))
-    {
-        return vec![];
-    }
-    let rows: Vec<_> = text
-        .split_inclusive('\n')
-        .scan(0usize, |offset, row| {
-            let start = *offset;
-            *offset += row.len();
-            Some((start, row.trim_end_matches(['\r', '\n'])))
-        })
-        .collect();
-    let Some(index) = rows
-        .iter()
-        .position(|(start, row)| *start <= hit && hit < start + row.len())
-    else {
-        return vec![];
-    };
-    let mut result = Vec::new();
-    let exact = reference_at(text, hit, flavor);
-    if let Some(found) = &exact {
-        result.push(found.reference.clone());
-        // A closing wrapper, or further content on the same physical row,
-        // bounds the reference. Neighboring list items cannot extend it.
-        let row_end = rows[index].0 + rows[index].1.len();
-        if found.range.end < row_end && !text[found.range.end..row_end].trim().is_empty() {
-            return result;
-        }
-        let start = found.range.start;
-        if text
-            .as_bytes()
-            .get(start)
-            .is_some_and(|b| matches!(b, b'\'' | b'"' | b'`' | b'['))
-        {
-            return result;
-        }
-    }
-    let row = rows[index].1;
-    if row.contains("://") && !row.trim_start().starts_with("file:") {
-        return vec![];
-    }
-    let mut first = index;
-    let mut last = index;
-    let mut begin = exact.as_ref().map_or_else(
-        || row.len() - row.trim_start_matches(' ').len(),
-        |m| m.range.start.saturating_sub(rows[index].0),
-    );
-    if starts_root(row.trim_start_matches(' ')) {
-        begin = row.len() - row.trim_start_matches(' ').len();
-    }
-    // Walk one adjoining chain backwards, stopping at a real path prefix or
-    // a display boundary. The first row may have prose before its final token.
-    while first > index.saturating_sub(8) {
-        let current = &rows[first].1[begin..];
-        if (first < index && starts_root(current))
-            || begin > rows[first].1.len() - rows[first].1.trim_start_matches(' ').len()
-        {
-            break;
-        }
-        let previous = rows[first - 1].1;
-        if display_boundary(previous) {
-            break;
-        }
-        let trimmed = previous.trim_end_matches(' ');
-        let start = trimmed
-            .rfind(|c: char| c.is_whitespace() || matches!(c, '(' | '[' | '`' | '"' | '\'' | '│'))
-            .map_or(0, |i| i + trimmed[i..].chars().next().unwrap().len_utf8());
-        if start == trimmed.len() {
-            break;
-        }
-        first -= 1;
-        begin = start;
-    }
-    // A continuation begins at the next row's first content cell. List items,
-    // empty rows and closed reference delimiters terminate the chain.
-    while last + 1 < rows.len().min(index + 9) {
-        let current = rows[last].1.trim_end_matches(' ');
-        if current.ends_with([')', ']', '`', '"', '\'']) || display_boundary(rows[last + 1].1) {
-            break;
-        }
-        let next = rows[last + 1].1.trim();
-        if next.chars().any(char::is_whitespace) && !next.contains(['/', '.', '\\']) {
-            break;
-        }
-        last += 1;
-    }
-    if first == last {
-        return result;
-    }
-    for strip_padding in [false, true] {
-        let joined: String = rows[first..=last]
-            .iter()
-            .enumerate()
-            .map(|(i, (_, row))| {
-                let part = if i == 0 { &row[begin..] } else { *row };
-                if strip_padding {
-                    part.trim_matches(' ')
-                } else {
-                    part
-                }
-            })
-            .collect();
-        if let Some(reference) = parse_source_reference(joined.trim(), flavor) {
-            if !result.contains(&reference) {
-                result.push(reference);
+pub(crate) struct LogicalText {
+    pub text: String,
+    pub hit: usize,
+    offsets: Vec<usize>,
+    pub continued: bool,
+}
+impl LogicalText {
+    pub fn ranges(&self, range: TextRange) -> Vec<TextRange> {
+        let mut result: Vec<TextRange> = Vec::new();
+        for &offset in &self.offsets[range.start..range.end] {
+            if let Some(last) = result.last_mut().filter(|r| r.end == offset) {
+                last.end += 1;
+            } else {
+                result.push(TextRange {
+                    start: offset,
+                    end: offset + 1,
+                });
             }
         }
+        result
     }
-    result
 }
 
-fn starts_root(text: &str) -> bool {
-    text.starts_with('/')
-        || text.starts_with("./")
-        || text.starts_with("../")
-        || text.starts_with("~/")
-        || text.starts_with("file:")
+struct Row<'a> {
+    start: usize,
+    text: &'a str,
+    soft: bool,
 }
-fn display_boundary(row: &str) -> bool {
-    let row = row.trim();
-    row.is_empty()
-        || row.starts_with(['•', '│', '>', '#'])
-        || row.starts_with("- ")
-        || row.starts_with("* ")
-        || row.starts_with("$ ")
-        || row.contains("://")
+
+/// Native soft wraps are authoritative. Hard rows use adjoining reference
+/// boundaries; no permutations of first/last rows and no original-message search.
+pub(crate) fn reconstruct(
+    text: &str,
+    hit: usize,
+    boundaries: &[DisplayRowBoundary],
+    selection: bool,
+    flavor: PathFlavor,
+) -> Option<LogicalText> {
+    let mut start = 0;
+    let mut boundary = boundaries.iter().peekable();
+    let rows: Vec<_> = text
+        .split_inclusive('\n')
+        .map(|part| {
+            let end = start + part.len();
+            while boundary.peek().is_some_and(|b| b.end < end) {
+                boundary.next();
+            }
+            let soft = boundary.peek().is_some_and(|b| b.end == end && b.soft_wrap);
+            let row = Row {
+                start,
+                text: part.trim_end_matches(['\r', '\n']),
+                soft,
+            };
+            start = end;
+            row
+        })
+        .collect();
+    let clicked = rows
+        .iter()
+        .position(|r| r.start <= hit && hit < r.start + r.text.len())?;
+    let (mut first, mut last) = (clicked, clicked);
+    while first > 0 && (selection || connects(&rows[first - 1], &rows[first], flavor)) {
+        first -= 1;
+    }
+    while last + 1 < rows.len() && (selection || connects(&rows[last], &rows[last + 1], flavor)) {
+        last += 1;
+    }
+    let mut joined = String::new();
+    let mut offsets = Vec::new();
+    for index in first..=last {
+        let row = &rows[index];
+        let mut part = row.text;
+        // Only display-edge whitespace is removed. Preserve row-internal spaces,
+        // and all spaces on a known soft wrap.
+        if index > first && !rows[index - 1].soft {
+            part = part.trim_start_matches([' ', '\t']);
+        }
+        if index < last && !row.soft {
+            part = part.trim_end_matches([' ', '\t']);
+        }
+        let begin = part.as_ptr() as usize - row.text.as_ptr() as usize;
+        joined.push_str(part);
+        offsets.extend((0..part.len()).map(|i| row.start + begin + i));
+    }
+    let mapped_hit = offsets.iter().position(|&p| p == hit)?;
+    Some(LogicalText {
+        text: joined,
+        hit: mapped_hit,
+        offsets,
+        continued: first != last,
+    })
+}
+
+fn connects(previous: &Row<'_>, next: &Row<'_>, flavor: PathFlavor) -> bool {
+    if previous.soft {
+        return true;
+    }
+    let left = previous.text.trim_end();
+    let right = next.text.trim();
+    if left.trim().is_empty() || right.is_empty() || independent_row(right) {
+        return false;
+    }
+    // A trailing outer delimiter closes the reference; a balanced pair inside
+    // a filename does not. The lexer makes that distinction on the physical row.
+    if let Some((last, _)) = left.char_indices().next_back() {
+        if let Some(found) = crate::file_matcher::reference_at(left, last, flavor) {
+            if left.starts_with(['\'', '"', '`', '[']) && found.range.end == left.len() {
+                return false;
+            }
+        } else if left.ends_with([')', ']', '"', '\'', '`']) {
+            return false;
+        }
+    }
+    // Ordinary multiword prose is a paragraph boundary. A filename can have
+    // spaces, so a path-shaped trailing word remains part of the same chain.
+    let last_word = right.split_whitespace().next_back().unwrap_or(right);
+    if right.split_whitespace().count() > 1 && !last_word.contains(['/', '\\', '.']) {
+        return false;
+    }
+    true
+}
+fn independent_row(text: &str) -> bool {
+    if text.starts_with(['•', '│', '>'])
+        || text.starts_with("# ")
+        || text.starts_with("- ")
+        || text.starts_with("* ")
+        || text.starts_with("$ ")
+    {
+        return true;
+    }
+    let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+    digits > 0 && (text[digits..].starts_with(". ") || text[digits..].starts_with(") "))
 }

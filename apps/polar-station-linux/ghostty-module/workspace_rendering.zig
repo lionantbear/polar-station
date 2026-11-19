@@ -58,6 +58,7 @@ pub const TransportStatus = enum {
 pub const Content = @import("station_content.zig").Content;
 
 pub const Pane = struct {
+    source: ?@import("portable_content.zig").Source = null,
     id: []const u8,
     execution_target_id: []const u8,
     tmux_session_id: []const u8,
@@ -88,6 +89,8 @@ pub const Tab = struct {
 };
 
 pub const Snapshot = struct {
+    portable_hosts: std.json.Value = .null,
+    portable_source_workspace_id: ?[]const u8 = null,
     layout_map_visible: ?bool = null,
     inbox_visible: ?bool = null,
     workspace_id: []const u8,

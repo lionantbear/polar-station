@@ -5,6 +5,7 @@ import AppKit
 final class StationDictateKeyCapture {
     private var held = false
     private var globeHeld = false
+    func reset() { held = false; globeHeld = false }
     /// A missing setting uses an OS-dependent default; it is not proof that
     /// the Globe short-tap action has been disabled. Never write this domain.
     static var systemGlobeActionDisabled: Bool {

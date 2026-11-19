@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWrite;
 use tokio::sync::{mpsc, watch, Notify};
 
+pub mod backend;
+mod preferences;
 mod requests;
 pub use requests::RequestFailure;
 
@@ -33,6 +35,7 @@ const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(4);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DesktopClientEvent {
+    BackendCompleted {request_id:String,switched:bool,preview:Option<backend::BackendPreview>,error:Option<String>},
     SessionCompleted {request_id:String,value:Option<serde_json::Value>,error:Option<String>},
     RequestFailed { generation: u64, failure: RequestFailure },
     NativeStateCompleted {
@@ -73,6 +76,10 @@ pub enum DesktopClientEvent {
 pub struct DesktopClientStateMachine {
     generation: u64,
     registered: bool,
+    expected_host_id: Option<String>,
+    settings_revision: u64,
+    backend_settings_revision: u64,
+    settings_snapshot: Option<polar_station_protocol::SettingsV1>,
     requests: requests::Requests,
     offered_extensions: Vec<polar_station_protocol::LocalExtensionOfferV1>,
     negotiated_extensions: Vec<polar_station_protocol::LocalExtensionOfferV1>,
@@ -91,6 +98,8 @@ impl DesktopClientStateMachine {
         Self {
             generation: 0,
             registered: false,
+            expected_host_id: None,
+            settings_revision: 0, backend_settings_revision: 0, settings_snapshot: None,
             requests: requests::Requests::default(),
             offered_extensions: Vec::new(),
             negotiated_extensions: Vec::new(),
@@ -181,6 +190,7 @@ impl DesktopClientStateMachine {
                 host_control_versions,
                 extensions,
             } if !self.registered && protocol_version == PROTOCOL_VERSION => {
+                if self.expected_host_id.as_ref().is_some_and(|expected|expected!=&host_id) {return false;}
                 if polar_station_protocol::validate_extension_ack(&self.offered_extensions, &extensions).is_err() {
                     return false;
                 }
@@ -292,6 +302,8 @@ fn default_event_capacity() -> usize {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesktopClientConfig {
+    #[serde(default)]
+    pub client_state_path: Option<PathBuf>,
     pub socket_path: PathBuf,
     pub registration: LocalClientFrame,
     #[serde(default = "default_event_capacity")]
@@ -300,6 +312,7 @@ pub struct DesktopClientConfig {
 
 impl DesktopClientConfig {
     pub fn validate(&self) -> Result<()> {
+        if self.client_state_path.as_ref().is_some_and(|p|!p.is_absolute() || p.file_name().is_none_or(|n|n!="client-preferences.json")) {bail!("Invalid client preference path");}
         if self.socket_path.as_os_str().is_empty() {
             bail!("desktop client socket path must not be empty");
         }
@@ -339,12 +352,15 @@ pub struct DesktopNativeStateRequest {
 }
 
 enum DesktopWorkerRequest {
-    Session(crate::station_input_client::DesktopSessionRequest),
+    Preferences(preferences::Change),
+    Backend(backend::BackendRequest),
+    Session(crate::station_input_client::DesktopSessionRequest, PathBuf),
     Content(DesktopContentRequest),
     NativeState(DesktopNativeStateRequest),
 }
 
 pub struct DesktopClient {
+    backend: Arc<Mutex<backend::BackendState>>,
     config: DesktopClientConfig,
     state: Arc<Mutex<DesktopClientStateMachine>>,
     wake: Wake,
@@ -367,7 +383,10 @@ impl DesktopClient {
         if let LocalClientFrame::Register { frontend_instance_id, .. } = &mut config.registration {
             *frontend_instance_id = Some(polar_identity::generation::new_uuid_v4().to_string());
         }
+        let mut backend=backend::BackendState::new(config.socket_path.clone());
+        backend.initialized=config.client_state_path.is_none();
         Ok(Self {
+            backend: Arc::new(Mutex::new(backend)),
             state: Arc::new(Mutex::new(DesktopClientStateMachine::new_with_extensions(
                 config.event_capacity,
                 match &config.registration {
@@ -398,6 +417,10 @@ impl DesktopClient {
         let state = Arc::clone(&self.state);
         let wake = Arc::clone(&self.wake);
         let content_drained = self.content_drained.clone();
+        let backend = self.backend.clone();
+        let backend_retry = retry.clone();
+        let worker_content=content.clone();
+        let instance = match &config.registration {LocalClientFrame::Register {frontend_instance_id,..}=>frontend_instance_id.clone().unwrap_or_default(),_=>String::new()};
         let worker = thread::Builder::new()
             .name("polar-station-desktop-client".to_owned())
             .spawn(move || {
@@ -406,6 +429,17 @@ impl DesktopClient {
                     .build();
                 match runtime {
                     Ok(runtime) => runtime.block_on(async {
+                        match preferences::load(config.client_state_path.clone()).await {
+                            Ok(saved)=>{
+                                let mut backend=backend.lock().unwrap_or_else(|v|v.into_inner());
+                                if let Some(endpoint)=&saved.selected_backend {backend.endpoint=endpoint.clone();}
+                                backend.preferences=saved;backend.initialized=true;
+                            },
+                            Err(error)=>{
+                                state.lock().unwrap_or_else(|v|v.into_inner()).content_events.push_back(DesktopClientEvent::BackendCompleted {request_id:"client-preferences".into(),switched:false,preview:None,error:Some(format!("Cannot read saved client preferences: {error}"))});
+                                wake();return;
+                            }
+                        }
                         // Both lanes run on the existing one desktop thread.
                         // A stalled content endpoint cannot block Host events.
                         tokio::join!(
@@ -414,10 +448,10 @@ impl DesktopClient {
                                 state.clone(),
                                 wake.clone(),
                                 content_drained,
-                                config.socket_path.clone(),
+                                backend.clone(), backend_retry, instance, config.client_state_path.clone(),
                                 stop_rx.clone()
                             ),
-                            run_worker(config, state, wake, outbound_rx, retry_rx, stop_rx),
+                            run_worker(config, backend, state, wake, outbound_rx, retry_rx, stop_rx,worker_content),
                         );
                     }),
                     Err(error) => {
@@ -459,11 +493,12 @@ impl DesktopClient {
         })
     }
 
-    fn admit_outbound(&self, frame: LocalClientFrame) -> std::result::Result<(), DesktopSendError> {
+    fn admit_outbound(&self, mut frame: LocalClientFrame) -> std::result::Result<(), DesktopSendError> {
         frame.validate().map_err(|_| DesktopSendError::InvalidRequest)?;
         if matches!(frame, LocalClientFrame::Register { .. }) {
             return Err(DesktopSendError::InvalidRequest);
         }
+        if self.backend.lock().unwrap_or_else(|v|v.into_inner()).switching {return Err(DesktopSendError::NotReady);}
         let Some(outbound) = &self.outbound else {
             return Err(DesktopSendError::Unavailable);
         };
@@ -481,6 +516,22 @@ impl DesktopClient {
         }
         state.validate_outbound_extension(&frame).map_err(|_| DesktopSendError::InvalidRequest)?;
         if state.requests.len() + state.request_events.len() >= requests::LIMIT { return Err(DesktopSendError::QueueFull); }
+        if self.config.client_state_path.is_some() {
+            if let LocalClientFrame::ApplicationRequest {request:polar_station_protocol::ClientApplicationMessage::SettingsV1(request)}=&mut frame {
+                if let Some(expected)=request.expected_revision {
+                    if expected!=state.settings_revision {return Err(DesktopSendError::InvalidRequest);}
+                    if matches!(request.command,polar_station_protocol::SettingsCommandV1::UpdateAppearance {..}) {
+                        let local=request.as_ref().clone();
+                        let id=state.requests.admit(&frame,tokio::time::Instant::now())?;
+                        let result=self.content.as_ref().ok_or(DesktopSendError::Unavailable)?
+                            .try_send(DesktopWorkerRequest::Preferences(preferences::Change::Appearance(local))).map_err(|_|DesktopSendError::QueueFull);
+                        if result.is_err(){if let Some(id)=id{state.requests.rollback(&id);}}
+                        return result;
+                    }
+                    request.expected_revision=Some(state.backend_settings_revision);
+                }
+            }
+        }
         let id = state.requests.admit(&frame, tokio::time::Instant::now())?;
         let generation = state.current_generation();
         let result = outbound.try_send((generation, frame)).map_err(|error| match error {
@@ -516,6 +567,8 @@ impl DesktopClient {
     }
 
     pub fn try_send_content(&self, request: DesktopContentRequest) -> Result<()> {
+        let backend=self.backend.lock().unwrap_or_else(|v|v.into_inner());
+        anyhow::ensure!((!backend.switching && !backend.transitioning) || matches!(request.request.command,polar_station_protocol::PaneContentCommandV1::Retire | polar_station_protocol::PaneContentCommandV1::UnobserveRecovery),"Backend switch is in progress; terminal operation was not sent");
         request
             .request
             .validate()
@@ -531,9 +584,11 @@ impl DesktopClient {
     }
 
     pub fn try_session(&self, request: crate::station_input_client::DesktopSessionRequest) -> Result<()> {
+        let backend=self.backend.lock().unwrap_or_else(|v|v.into_inner());
+        anyhow::ensure!(backend.initialized && !backend.switching && !backend.transitioning,"Backend switch is in progress; input was not sent");
         polar_station_protocol::validate_stable_identifier(&request.request_id,"session operation")?;
         self.content.as_ref().context("desktop client is not started")?
-            .try_send(DesktopWorkerRequest::Session(request))
+            .try_send(DesktopWorkerRequest::Session(request,backend.endpoint.socket_path.clone()))
             .map_err(|_|anyhow::anyhow!("desktop worker is busy"))
     }
 
@@ -590,6 +645,7 @@ impl DesktopClient {
     }
 
     pub fn stop(&mut self) {
+        self.backend.lock().unwrap_or_else(|v|v.into_inner()).transitioning=true;
         self.outbound = None;
         self.content = None;
         self.retry = None;
@@ -618,20 +674,26 @@ fn reject_content_request(request: &PaneContentRequestV1, code: &str, message: &
 }
 
 enum ContentWorkerResult {
+    Backend {request:backend::BackendRequest,result:Result<backend::BackendPreview>},
     Content {key:(String,u64,u8), revision:u64, response:PaneContentResponseV1},
     Session(DesktopClientEvent),
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_content_worker(
     mut incoming: mpsc::Receiver<DesktopWorkerRequest>,
     state: Arc<Mutex<DesktopClientStateMachine>>,
     wake: Wake,
     drained: Arc<Notify>,
-    host_socket: PathBuf,
+    backend: Arc<Mutex<backend::BackendState>>,
+    retry: mpsc::Sender<()>,
+    instance: String,
+    client_state_path: Option<PathBuf>,
     mut stop: watch::Receiver<bool>,
 ) {
     use std::collections::BTreeMap;
     let mut jobs = tokio::task::JoinSet::new();
+    let mut directory_notifications = crate::local_ipc::socket_readiness::DirectoryNotifications::default();
     let mut persistence = tokio::task::JoinSet::new();
     let mut pending_native = std::collections::VecDeque::new();
     let mut current = BTreeMap::<(String, u64, u8), (u64, tokio::task::AbortHandle, Option<PaneContentRequestV1>)>::new();
@@ -647,14 +709,32 @@ async fn run_content_worker(
             value = incoming.recv(), if room => {
                 let Some(value) = value else { break; };
                 let job = match value {
+                    DesktopWorkerRequest::Preferences(change) => {
+                        preferences::save(change,client_state_path.clone(),&backend,&state,&wake).await;
+                        continue;
+                    },
+                    DesktopWorkerRequest::Backend(request) => {
+                        let destination = {
+                            let backend=backend.lock().unwrap_or_else(|v|v.into_inner());
+                            match &request.command {
+                                backend::BackendCommand::Inspect {socket_path,sources}=>Some((socket_path.clone(),sources.clone())),
+                                backend::BackendCommand::Switch {preview_id}=>backend.preview.as_ref().filter(|p| &p.preview_id==preview_id).map(|p|(p.socket_path.clone(),p.sources.clone())),
+                            }
+                        };
+                        let instance=instance.clone();
+                        jobs.spawn(async move {
+                            let result=match destination {Some((path,sources))=>backend::inspect(path,instance,request.request_id.clone(),sources).await,None=>Err(anyhow::anyhow!("Preview the selected backend again"))};
+                            ContentWorkerResult::Backend {request,result}
+                        });
+                        continue;
+                    },
                     DesktopWorkerRequest::Content(job) => job,
-                    DesktopWorkerRequest::Session(job) => {
+                    DesktopWorkerRequest::Session(job,host_socket) => {
                         if jobs.len() >= 64 {
                             state.lock().unwrap_or_else(|v|v.into_inner()).content_events.push_back(DesktopClientEvent::SessionCompleted {
                                 request_id:job.request_id,value:None,error:Some("Desktop worker capacity reached; operation not sent".into())});
                             wake();
                         } else {
-                            let host_socket=host_socket.clone();
                             jobs.spawn(async move {ContentWorkerResult::Session(crate::station_input_client::execute(job,host_socket).await)});
                         }
                         continue;
@@ -703,14 +783,27 @@ async fn run_content_worker(
                 let watch_state = state.clone();
                 let watch_wake = wake.clone();
                 let watch_drained = drained.clone();
+                let readiness = if lane == 1 { directory_notifications.subscribe(&job.socket_path).ok() } else { None };
                 let handle = jobs.spawn(async move {
-                    let response = if lane == 1 { observe_content_recovery(&job, watch_state, watch_wake, watch_drained).await } else { exchange_content(&job).await };
+                    let response = if lane == 1 { observe_content_recovery(&job, watch_state, watch_wake, watch_drained, readiness).await } else { exchange_content(&job).await };
                     ContentWorkerResult::Content {key:return_key, revision, response}
                 });
                 current.insert(key, (revision, handle, receipt));
             }
             Some(result) = jobs.join_next(), if !jobs.is_empty() && room => {
                 match result {
+                    Ok(ContentWorkerResult::Backend {request,result}) => {
+                        let idle=jobs.len()==current.values().filter(|(_,_,receipt)|receipt.is_none()).count()
+                            && current.keys().all(|key|key.2==1) && persistence.is_empty() && pending_native.is_empty();
+                        let event=backend::finish(request,result,&backend,&state,&retry,idle);
+                        if matches!(event,DesktopClientEvent::BackendCompleted {switched:true,..}) {
+                            for (_,handle,_) in current.values() {handle.abort();}
+                            current.clear();
+                            state.lock().unwrap_or_else(|v|v.into_inner()).content_events.retain(|e|!matches!(e,DesktopClientEvent::ContentCompleted {..}));
+                        }
+                        state.lock().unwrap_or_else(|v|v.into_inner()).content_events.push_back(event);
+                        wake();
+                    },
                     Ok(ContentWorkerResult::Session(event)) => {
                         state.lock().unwrap_or_else(|v|v.into_inner()).content_events.push_back(event);
                         wake();
@@ -739,8 +832,10 @@ async fn run_content_worker(
     // Drain every already-admitted snapshot on shutdown in admission order.
     // Each accepted transaction retains its completion. Content jobs are cancelled rather than touching Sessions.
     while let Ok(request) = incoming.try_recv() {
-        if let DesktopWorkerRequest::NativeState(job) = request {
-            pending_native.push_back(job);
+        match request {
+            DesktopWorkerRequest::NativeState(job)=>pending_native.push_back(job),
+            DesktopWorkerRequest::Preferences(change)=>preferences::save(change,client_state_path.clone(),&backend,&state,&wake).await,
+            _=>{},
         }
     }
     jobs.abort_all();
@@ -802,13 +897,12 @@ async fn observe_content_recovery(
     state: Arc<Mutex<DesktopClientStateMachine>>,
     wake: Wake,
     drained: Arc<Notify>,
+    mut readiness: Option<crate::local_ipc::socket_readiness::DirectorySubscription>,
 ) -> PaneContentResponseV1 {
     let mut delay = INITIAL_RECONNECT_DELAY;
     // Hidden native Tabs may not start their Pane Host for minutes. Arm the
     // existing OS socket notification before attempting the connection; its
     // publication wakes this observer even after the retry budget grew.
-    let mut readiness =
-        crate::local_ipc::socket_readiness::SocketReadiness::new(&job.socket_path).ok();
     let mut revision = job.request.content_revision;
     loop {
         let mut unavailable = polar_tmux_types::terminal_feedback(
@@ -877,7 +971,7 @@ async fn observe_content_recovery(
         }
         .await;
         tracing::debug!(
-            failed = result.is_err(),
+            error = ?result.as_ref().err(),
             channel = job.request.channel_id,
             "terminal status subscription reconnecting"
         );
@@ -904,7 +998,7 @@ async fn observe_content_recovery(
             &drained,
         )
         .await;
-        if let Some(notification) = &readiness {
+        if let Some(notification) = &mut readiness {
             if wait_for_content_publication(notification, job, delay)
                 .await
                 .is_err()
@@ -920,7 +1014,7 @@ async fn observe_content_recovery(
 }
 
 async fn wait_for_content_publication(
-    readiness: &crate::local_ipc::socket_readiness::SocketReadiness,
+    readiness: &mut crate::local_ipc::socket_readiness::DirectorySubscription,
     job: &DesktopContentRequest,
     delay: Duration,
 ) -> std::io::Result<()> {
@@ -1007,24 +1101,29 @@ async fn exchange_content(job: &DesktopContentRequest) -> PaneContentResponseV1 
     response
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_worker(
     config: DesktopClientConfig,
+    backend: Arc<Mutex<backend::BackendState>>,
     state: Arc<Mutex<DesktopClientStateMachine>>,
     wake: Wake,
     mut outbound: mpsc::Receiver<(u64, LocalClientFrame)>,
     mut retry: mpsc::Receiver<()>,
     mut stop: watch::Receiver<bool>,
+    content: mpsc::Sender<DesktopWorkerRequest>,
 ) {
     let mut reconnect_delay = INITIAL_RECONNECT_DELAY;
     let mut attempt = 0_u32;
     while !*stop.borrow() {
         attempt = attempt.saturating_add(1).max(1);
+        let endpoint=backend.lock().unwrap_or_else(|v|v.into_inner()).endpoint.clone();
         let generation = {
             let mut state = state.lock().unwrap_or_else(|value| value.into_inner());
+            state.expected_host_id=endpoint.host_id.clone();
             state.begin_connection(attempt)
         };
         wake();
-        if let Err(error) = validate_socket_endpoint(&config.socket_path) {
+        if let Err(error) = validate_socket_endpoint(&endpoint.socket_path) {
             publish_unavailable(
                 &state,
                 &wake,
@@ -1043,7 +1142,7 @@ async fn run_worker(
             }
         }
         tracing::info!(target: "polar_station_operation", component="Desktop", event="ipc_connect", generation, attempt);
-        let connect = tokio::net::UnixStream::connect(&config.socket_path);
+        let connect = tokio::net::UnixStream::connect(&endpoint.socket_path);
         let stream = tokio::select! {
             _ = stop.changed() => break,
             value = retry.recv() => {
@@ -1166,7 +1265,7 @@ async fn run_worker(
                                 break (format!("Host heartbeat reply failed: {error}"), false);
                             }
                         }
-                        Ok(Some(frame)) => {
+                        Ok(Some(mut frame)) => {
                             if let LocalHostFrame::Registered { host_control_versions, .. } = &frame {
                                 if host_control_versions.and_then(|v| v.desktop) != Some(polar_station_protocol::DESKTOP_CONTROL_CONTRACT_VERSION) {
                                     break ("Desktop/Host IPC contract mismatch. Install the matching Polar Station desktop and managed Host artifacts together.".into(), false);
@@ -1184,6 +1283,30 @@ async fn run_worker(
                                 Ok(Some(false)) => continue,
                                 Err(reason) => break (format!("Host response identity error: {reason}"), false),
                                 _ => {},
+                            }
+                            if config.client_state_path.is_some() {
+                                if let LocalHostFrame::ApplicationResponse {response:polar_station_protocol::HostApplicationMessage::SettingsV1(response)}=&mut frame {
+                                    let appearance=backend.lock().unwrap_or_else(|v|v.into_inner()).preferences.appearance.clone();
+                                    if let polar_station_protocol::SettingsResultV1::Projection {projection,theme_projection}=&mut response.result {
+                                        if let Some(value)=appearance {projection.appearance=value;}
+                                        else {let _=content.try_send(DesktopWorkerRequest::Preferences(preferences::Change::Initialize(projection.appearance.clone())));}
+                                        **theme_projection=projection.appearance.theme.projection();
+                                        let mut state=state.lock().unwrap_or_else(|v|v.into_inner());
+                                        state.backend_settings_revision=projection.revision;
+                                        state.present_settings(projection);
+                                        response.revision=projection.revision;
+                                    } else if let polar_station_protocol::SettingsResultV1::Error {projection:Some(projection),..}=&mut response.result {
+                                        if let Some(value)=appearance {projection.appearance=value;}
+                                        let mut state=state.lock().unwrap_or_else(|v|v.into_inner());
+                                        state.backend_settings_revision=projection.revision;
+                                        state.present_settings(projection);
+                                        response.revision=projection.revision;
+                                    } else {
+                                        let mut state=state.lock().unwrap_or_else(|v|v.into_inner());
+                                        state.backend_settings_revision=response.revision;
+                                        response.revision=state.settings_revision;
+                                    }
+                                }
                             }
                             let accepted = state
                                 .lock()
@@ -1215,7 +1338,10 @@ async fn run_worker(
                                 .is_ready()
                             {
                                 if !registered {
+                                    backend.lock().unwrap_or_else(|v|v.into_inner()).transitioning=false;
                                     tracing::info!(target: "polar_station_operation", component="Desktop", event="ipc_registered", generation);
+                                    if config.client_state_path.is_some() && endpoint.host_id.is_some() {let _=content.try_send(DesktopWorkerRequest::Preferences(preferences::Change::Connected(endpoint.clone())));}
+
                                 }
                                 registered = true;
                                 reconnect_delay = INITIAL_RECONNECT_DELAY;

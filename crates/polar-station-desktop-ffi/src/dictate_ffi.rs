@@ -265,8 +265,14 @@ pub unsafe extern "C" fn polar_station_dictate_service_request(
         .map(CString::into_raw)
         .unwrap_or(std::ptr::null_mut())
 }
-/// Nonblocking bounded canonical PCM ingestion. False means stop capture and
-/// retain the Host's acknowledged prefix; no unbounded native queue is created.
+#[repr(C)]
+pub struct PolarStationDictateWaveform {
+    updated: bool,
+    levels: [u8; polar_station_client::dictate_speech::WAVEFORM_BARS],
+}
+
+/// Nonblocking bounded canonical PCM ingestion. False stops capture and
+/// retains the Host's acknowledged prefix.
 /// # Safety
 /// Handle, ID and PCM are readable for their lengths. Free cannot race.
 #[unsafe(no_mangle)]
@@ -276,6 +282,26 @@ pub unsafe extern "C" fn polar_station_dictate_speech_append(
     id_length: usize,
     pcm: *const u8,
     pcm_length: usize,
+) -> bool {
+    unsafe {
+        polar_station_dictate_speech_append_metered(
+            handle, id, id_length, pcm, pcm_length, std::ptr::null_mut(),
+        )
+    }
+}
+
+/// Accepts the same PCM and optionally writes a display-only peak snapshot.
+/// # Safety
+/// Same requirements as append. A non-null output is writable for one snapshot
+/// and must not overlap the inputs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_dictate_speech_append_metered(
+    handle: *const DictateSpeech,
+    id: *const u8,
+    id_length: usize,
+    pcm: *const u8,
+    pcm_length: usize,
+    waveform: *mut PolarStationDictateWaveform,
 ) -> bool {
     if handle.is_null()
         || id.is_null()
@@ -289,9 +315,20 @@ pub unsafe extern "C" fn polar_station_dictate_speech_append(
     let Ok(id) = std::str::from_utf8(unsafe { std::slice::from_raw_parts(id, id_length) }) else {
         return false;
     };
-    unsafe { &*handle }
-        .append(id, unsafe { std::slice::from_raw_parts(pcm, pcm_length) })
-        .is_ok()
+    let Ok(levels) = (unsafe { &*handle }).append(
+        id, unsafe { std::slice::from_raw_parts(pcm, pcm_length) },
+    ) else {
+        return false;
+    };
+    if !waveform.is_null() {
+        unsafe {
+            waveform.write(PolarStationDictateWaveform {
+                updated: levels.is_some(),
+                levels: levels.unwrap_or_default(),
+            });
+        }
+    }
+    true
 }
 
 /// Local microphone-test playback only. Does not contact a Host or provider.

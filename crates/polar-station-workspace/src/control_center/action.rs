@@ -261,8 +261,9 @@ pub fn decide_workspace_lifecycle(input: WorkspaceLifecycleInput) -> WorkspaceLi
                 result.selected = target.unwrap().clone(); None
             }
             "archive" if target != input.bound.as_ref() || target.is_none() => Some("The Workspace that requested archive is no longer bound to this window."),
-            "archive" if active.len() == 1 => Some("Keep at least one unarchived Workspace."),
-            "archive" => {
+            "manage_archive" if !target.is_some_and(|id| active.contains(&id)) => Some("The selected Workspace is no longer active."),
+            "archive" | "manage_archive" if active.len() == 1 => Some("Keep at least one unarchived Workspace."),
+            "archive" | "manage_archive" => {
                 result.effect = "archive".into();
                 if target == Some(&input.selected) {
                     result.selected = (*active.iter().find(|id| Some(**id) != target).expect("another active Workspace")).clone();

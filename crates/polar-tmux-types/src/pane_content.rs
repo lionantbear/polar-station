@@ -24,11 +24,14 @@ pub enum PaneContentApiV1 {
 pub struct PaneContentBindingV1 {
     pub execution_target: ExecutionTarget,
     pub tmux_session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<crate::TerminalSourceV1>,
 }
 
 impl PaneContentBindingV1 {
     pub fn validate(&self) -> Result<(), ProtocolValidationError> {
         self.execution_target.validate()?;
+        if let Some(source) = &self.source { source.validate()?; }
         validate_stable_identifier(&self.tmux_session_id, "tmux Session ID")
     }
 }

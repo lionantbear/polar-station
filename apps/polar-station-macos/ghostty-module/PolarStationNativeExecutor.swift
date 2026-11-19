@@ -1007,6 +1007,72 @@
             catalog = candidate
         }
 
+        var backendSocket: (() -> URL?)? { didSet { surfaceCoordinator.backendSocket = backendSocket } }
+        var backendSuspended = false
+        func suspendBackend() async {
+            backendSuspended = true
+            await surfaceCoordinator.suspendBackend()
+            installedTabStructures.removeAll()
+        }
+        func resumeBackend() {
+            surfaceCoordinator.resumeBackend()
+            backendSuspended = false
+            installedTabStructures.removeAll()
+            refreshTransferredWorkspace()
+        }
+        func manageBackendCatalog(_ data:Data) async throws {
+            if !StationMutationScope.active {
+                return try await serialized({ [self] in try await manageBackendCatalog(data) },requireWindow:false)
+            }
+            var candidate = try JSONDecoder().decode(PolarStationNativeWorkspaceCatalog.self,from:data)
+            guard candidate.revision == managementCatalog?.revision, candidate.revision < UInt64.max else {
+                throw PolarStationNativeExecutorError.workspaceChanged
+            }
+            candidate.revision += 1
+            try candidate.validate()
+            try await persistLifecycle(candidate)
+        }
+
+        var managementCatalog: PolarStationNativeWorkspaceCatalog? { (catalogOwner ?? self).ownedCatalog }
+
+        /// Settings edits saved definitions through the existing runtime FIFO.
+        func manageWorkspace(_ action: String, id: String, name: String = "") async throws {
+            if !StationMutationScope.active {
+                return try await serialized({ [self] in try await manageWorkspace(action, id: id, name: name) }, requireWindow: false)
+            }
+            guard var candidate = managementCatalog else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+            let boundID = workspaceID
+            let retiring = action == "archive" && boundID == id
+            switch action {
+            case "resolve_commit":
+                var updated=try JSONDecoder().decode(PolarStationNativeWorkspace.self,from:Data(name.utf8))
+                guard let index=candidate.workspaces.firstIndex(where:{$0.id==updated.id}),candidate.revision<UInt64.max,candidate.workspaces[index].revision<UInt64.max else {throw PolarStationNativeWorkspaceError.invalidStructure}
+                updated.revision=candidate.workspaces[index].revision+1;candidate.workspaces[index]=updated;candidate.revision += 1;try candidate.validate()
+            case "import_commit":
+                let imported=try JSONDecoder().decode(PolarStationNativeWorkspace.self,from:Data(name.utf8))
+                guard !candidate.workspaces.contains(where:{$0.id==imported.id}),candidate.revision<UInt64.max else {throw PolarStationNativeWorkspaceError.invalidStructure}
+                candidate.workspaces.append(imported);candidate.revision += 1;try candidate.validate()
+            case "archive":
+                try candidate.archive(id, management: true)
+                if retiring, !(await confirmRetirement()) { return }
+            case "restore": try candidate.restore(id)
+            case "rename":
+                guard let index = candidate.workspaces.firstIndex(where: { $0.id == id }), candidate.revision < UInt64.max else {
+                    throw PolarStationNativeWorkspaceError.invalidStructure
+                }
+                try candidate.workspaces[index].apply(.renameWorkspace(name))
+                candidate.revision += 1
+                try candidate.validate()
+            default: throw PolarStationNativeWorkspaceError.invalidStructure
+            }
+            try await persistLifecycle(candidate)
+            selectedWorkspaceID = boundID
+            if retiring { await unbindWorkspace() }
+            else if let boundID { workspace = candidate.workspaces.first { $0.id == boundID } }
+            if action=="resolve_commit" {refreshTransferredWorkspace()}
+            catalogChanged?()
+        }
+
         private func performArchiveWorkspace(_ id: String) async throws {
             guard var candidate = catalog, workspaceID == id else { throw PolarStationNativeExecutorError.workspaceChanged }
             try candidate.archive(id)

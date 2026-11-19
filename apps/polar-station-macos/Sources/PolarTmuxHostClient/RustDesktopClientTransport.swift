@@ -94,6 +94,7 @@ public final class PolarTmuxRustDesktopTransport:
             "socket_path": socketURL.path,
             "registration": fields,
             "event_capacity": 256,
+            "client_state_path": FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("com.polarealm.PolarStation/client-preferences.json").path,
         ]
         let configData = try JSONSerialization.data(withJSONObject: config)
         let configJSON = String(decoding: configData, as: UTF8.self)
@@ -156,6 +157,19 @@ public final class PolarTmuxRustDesktopTransport:
         guard let active = activeHandle() else { throw PolarTmuxLocalIPCError.connectionClosed }
         let accepted = String(decoding:payload,as:UTF8.self).withCString { polar_station_desktop_client_session_json(active.pointer,$0) }
         guard accepted else { throw PolarTmuxDesktopSendError(code:2) }
+    }
+
+    public func sendBackend(_ payload: Data) throws {
+        guard let active = activeHandle() else { throw PolarTmuxLocalIPCError.connectionClosed }
+        let accepted = String(decoding:payload,as:UTF8.self).withCString {
+            polar_station_desktop_client_backend_json(active.pointer,$0)
+        }
+        guard accepted else { throw PolarTmuxDesktopSendError(code:2) }
+    }
+    public func backendSocket() -> URL? {
+        guard let active = activeHandle(), let raw = polar_station_desktop_client_backend_socket(active.pointer) else { return nil }
+        defer { polar_station_desktop_string_free(raw) }
+        return URL(fileURLWithPath:String(cString:raw))
     }
 
     public func sendContent(socketURL: URL, request: PolarTmuxPaneContentRequest) throws {
@@ -243,7 +257,7 @@ public final class PolarTmuxRustDesktopTransport:
         -> PolarTmuxLocalIPCTransportEvent
     {
         let data = Data(json.utf8)
-        if let object = try JSONSerialization.jsonObject(with:data) as? [String:Any], object["type"] as? String == "session_completed" { return .session(data) }
+        if let object = try JSONSerialization.jsonObject(with:data) as? [String:Any], ["session_completed", "backend_completed"].contains(object["type"] as? String ?? "") { return .session(data) }
         if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            object["type"] as? String == "content_completed", let response = object["response"] {
             return .content(try JSONDecoder().decode(PolarTmuxPaneContentResponse.self, from: JSONSerialization.data(withJSONObject: response)))

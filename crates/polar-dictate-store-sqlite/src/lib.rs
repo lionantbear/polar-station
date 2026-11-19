@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 mod history;
 mod inspection;
+const HISTORY_VISIBILITY: &str = include_str!("../migrations/006_history_visibility.sql");
 const INPUTS_SCHEMA: &str = include_str!("../migrations/005_inputs.sql");
 const DELETED_IMPORTS_SCHEMA: &str = include_str!("../migrations/004_deleted_imports.sql");
 const LEGACY_RETENTION_SCHEMA: &str = include_str!("../migrations/003_legacy_retention.sql");
@@ -89,6 +90,19 @@ impl SqliteDictateStore {
                 SqliteMigration {
                     descriptor: MigrationDescriptor { backend:StorageBackend::Sqlite, component:"polar-dictate".into(), version:5, name:"inputs".into(), path:"polar-dictate/005_inputs.sql".into(), sha256:format!("{:x}",Sha256::digest(INPUTS_SCHEMA)), transaction_mode:TransactionMode::Required },
                     sql:INPUTS_SCHEMA, post_apply:None,
+                },
+                SqliteMigration {
+                    descriptor: MigrationDescriptor {
+                        backend: StorageBackend::Sqlite,
+                        component: "polar-dictate".into(),
+                        version: 6,
+                        name: "history-visibility".into(),
+                        path: "polar-dictate/006_history_visibility.sql".into(),
+                        sha256: format!("{:x}", Sha256::digest(HISTORY_VISIBILITY)),
+                        transaction_mode: TransactionMode::Required,
+                    },
+                    sql: HISTORY_VISIBILITY,
+                    post_apply: Some(history::refresh_visibility),
                 },
             ],
         )?;
