@@ -3,6 +3,8 @@
 //! Native composition and measurement live here; Host facts, command meaning,
 //! confirmation, tmux and SSH execution remain in shared Rust.
 
+const global = @import("../../../global.zig");
+
 const connections_window = @import("connections_window.zig");
 const auxiliary = @import("auxiliary_window.zig");
 const editor_interaction = @import("session_editor_interaction.zig");
@@ -1229,10 +1231,9 @@ pub const Controller = struct {
             else
                 "warning",
         );
-        const loading_tooltip = self.allocator.dupeZ(
+        const loading_tooltip = self.allocator.dupeSentinel(
             u8,
-            self.model.last_error orelse "SSH target status is loading",
-        ) catch return;
+            self.model.last_error orelse "SSH target status is loading", 0) catch return;
         defer self.allocator.free(loading_tooltip);
         self.connection_badge.as(gtk.Widget).setTooltipText(
             loading_tooltip,
@@ -1382,10 +1383,9 @@ pub const Controller = struct {
                 ) catch return;
                 const actions = gtk.Box.new(.horizontal, 6);
                 const cancel = gtk.Button.newWithLabel("Cancel");
-                const confirm_label = self.allocator.dupeZ(
+                const confirm_label = self.allocator.dupeSentinel(
                     u8,
-                    confirmation.confirm_label,
-                ) catch return;
+                    confirmation.confirm_label, 0) catch return;
                 defer self.allocator.free(confirm_label);
                 const confirm = gtk.Button.newWithLabel(confirm_label);
                 if (self.native_executor) |executor| if (executor.nativeWorkspaceSnapshot()) |snapshot| {
@@ -1428,7 +1428,7 @@ pub const Controller = struct {
         connect(button, Controller, workspacePreviewClicked, self);
         self.workspace_menu_box.append(button.as(gtk.Widget));
         if (selected) {
-            const selected_name = self.allocator.dupeZ(u8, name) catch return;
+            const selected_name = self.allocator.dupeSentinel(u8, name, 0) catch return;
             defer self.allocator.free(selected_name);
             self.workspace_menu_label.setLabel(selected_name);
         }
@@ -1542,10 +1542,9 @@ pub const Controller = struct {
         )) {
             self.connection_status_image.as(gtk.Widget).addCssClass("error");
         }
-        const connection_tooltip = self.allocator.dupeZ(
+        const connection_tooltip = self.allocator.dupeSentinel(
             u8,
-            projection.header.connection.accessibility_label,
-        ) catch null;
+            projection.header.connection.accessibility_label, 0) catch null;
         defer if (connection_tooltip) |text| self.allocator.free(text);
         if (connection_tooltip) |text| {
             self.connection_badge.as(gtk.Widget).setTooltipText(text);
@@ -1704,12 +1703,12 @@ pub const Controller = struct {
 
     fn matchesSessionHost(self: *Controller, host_id: []const u8, label_text: []const u8) bool {
         const text = std.mem.trim(u8, std.mem.span(self.sessions_host_filter.as(gtk.Editable).getText()), " ");
-        return text.len == 0 or std.ascii.indexOfIgnoreCase(host_id, text) != null or std.ascii.indexOfIgnoreCase(label_text, text) != null;
+        return text.len == 0 or std.ascii.findIgnoreCase(host_id, text) != null or std.ascii.findIgnoreCase(label_text, text) != null;
     }
 
     fn matchesSessionProject(self: *Controller, project: ?[]const u8) bool {
         const text = std.mem.trim(u8, std.mem.span(self.sessions_project_filter.as(gtk.Editable).getText()), " ");
-        return text.len == 0 or std.ascii.indexOfIgnoreCase(project orelse "", text) != null;
+        return text.len == 0 or std.ascii.findIgnoreCase(project orelse "", text) != null;
     }
 
     fn appendSessionsByTab(self: *Controller, projection: *const control.Projection) void {
@@ -1751,7 +1750,7 @@ pub const Controller = struct {
     fn catalogHeading(self: *Controller, key: []const u8, title: []const u8, expanded: bool, count: ?usize) void {
         const button = gtk.Button.new();
         setWidgetName(self.allocator, button.as(gtk.Widget), key) catch return;
-        const detail = self.allocator.dupeZ(u8, key) catch return;
+        const detail = self.allocator.dupeSentinel(u8, key, 0) catch return;
         defer self.allocator.free(detail);
         button.as(gtk.Widget).setTooltipText(detail);
         const text = if (count) |value|
@@ -1895,7 +1894,7 @@ pub const Controller = struct {
         const data = std.json.Stringify.valueAlloc(self.allocator, agent, .{}) catch return;
         defer self.allocator.free(data);
         setWidgetName(self.allocator, button.as(gtk.Widget), data) catch return;
-        const age: ?i64 = if (metadata.updated_at) |updated| @max(0, std.time.timestamp() - updated) else null;
+        const age: ?i64 = if (metadata.updated_at) |updated| @max(0, std.Io.Timestamp.now(global.io(), .real).toSeconds() - updated) else null;
         const stamp = if (age) |seconds| (if (seconds < 60) self.allocator.dupe(u8, "now") else if (seconds < 3600) std.fmt.allocPrint(self.allocator, "{d}m", .{@divTrunc(seconds, 60)}) else if (seconds < 86400) std.fmt.allocPrint(self.allocator, "{d}h", .{@divTrunc(seconds, 3600)}) else std.fmt.allocPrint(self.allocator, "{d}d", .{@divTrunc(seconds, 86400)})) catch return else self.allocator.dupe(u8, "") catch return;
         defer self.allocator.free(stamp);
         var assigned = false;
@@ -2126,7 +2125,7 @@ pub const Controller = struct {
             if (!terminal_command and !std.mem.eql(u8, kind, value) and !(std.mem.startsWith(u8, kind, value) and std.mem.endsWith(u8, kind, "_plane"))) return false;
         }
         const query = std.mem.trim(u8, std.mem.span(self.sessions_search.as(gtk.Editable).getText()), " ");
-        return query.len == 0 or std.ascii.indexOfIgnoreCase(name, query) != null;
+        return query.len == 0 or std.ascii.findIgnoreCase(name, query) != null;
     }
 
     fn agentSessionClicked(button: *gtk.Button, self: *Controller) callconv(.c) void {
@@ -2358,7 +2357,7 @@ pub const Controller = struct {
                                 if (std.mem.eql(u8, pane.execution_target_id, replacement.execution_target_id) and std.mem.eql(u8, pane.tmux_session_id, replacement.tmux_session_id)) existing = true;
                             };
                             const replace = gtk.MenuButton.new();
-                            const replacement_label = self.allocator.dupeZ(u8, action.label) catch continue;
+                            const replacement_label = self.allocator.dupeSentinel(u8, action.label, 0) catch continue;
                             defer self.allocator.free(replacement_label);
                             replace.setLabel(replacement_label);
                             replace.as(gtk.Widget).setSensitive(@intFromBool(action.enabled and !(old and existing) and context.replacement_json != null));
@@ -2370,7 +2369,7 @@ pub const Controller = struct {
                                 const message = ownedLabel(self.allocator, confirmation.message, "body") catch continue;
                                 message.setWrap(1);
                                 const cancel = gtk.Button.newWithLabel("Cancel");
-                                const submit_label = self.allocator.dupeZ(u8, confirmation.confirm_label) catch continue;
+                                const submit_label = self.allocator.dupeSentinel(u8, confirmation.confirm_label, 0) catch continue;
                                 defer self.allocator.free(submit_label);
                                 const submit = gtk.Button.newWithLabel(submit_label);
                                 box.append(title.as(gtk.Widget));
@@ -2894,10 +2893,9 @@ pub const Controller = struct {
             );
             const delete_actions = gtk.Box.new(.horizontal, 6);
             const delete_cancel = gtk.Button.newWithLabel("Cancel");
-            const confirm_label = try self.allocator.dupeZ(
+            const confirm_label = try self.allocator.dupeSentinel(
                 u8,
-                confirmation.confirm_label,
-            );
+                confirmation.confirm_label, 0);
             defer self.allocator.free(confirm_label);
             const delete_submit = gtk.Button.newWithLabel(confirm_label);
             delete_submit.as(gtk.Widget).addCssClass("destructive-action");
@@ -3252,14 +3250,14 @@ pub const Controller = struct {
                 };
                 const entry = seen.getOrPut(value) catch continue;
                 if (entry.found_existing) continue;
-                const id = self.allocator.dupeZ(u8, value) catch continue;
+                const id = self.allocator.dupeSentinel(u8, value, 0) catch continue;
                 defer self.allocator.free(id);
-                const title = self.allocator.dupeZ(u8, if (i == 2) item.task_label else value) catch continue;
+                const title = self.allocator.dupeSentinel(u8, if (i == 2) item.task_label else value, 0) catch continue;
                 defer self.allocator.free(title);
                 combo.append(id, title);
             };
             if (i == 2) combo.append("disconnected", "Observation disconnected");
-            const selected = self.allocator.dupeZ(u8, self.inbox_filter_values[i] orelse "") catch continue;
+            const selected = self.allocator.dupeSentinel(u8, self.inbox_filter_values[i] orelse "", 0) catch continue;
             defer self.allocator.free(selected);
             if (combo.as(gtk.ComboBox).setActiveId(selected) == 0) {
                 combo.append(selected, selected);
@@ -3417,7 +3415,7 @@ pub const Controller = struct {
         defer choices.unref();
         var selected: u32 = 0;
         for (groups.value, 0..) |group, i| {
-            const z = self.allocator.dupeZ(u8, group.title) catch continue;
+            const z = self.allocator.dupeSentinel(u8, group.title, 0) catch continue;
             defer self.allocator.free(z);
             choices.append(z);
             if (std.mem.eql(u8, group.id, target_id)) selected = @intCast(i);
@@ -3519,7 +3517,7 @@ pub const Controller = struct {
         }
         const owned_target = try target.clone(self.allocator);
         errdefer owned_target.deinit(self.allocator);
-        const current_name = try self.allocator.dupeZ(u8, current);
+        const current_name = try self.allocator.dupeSentinel(u8, current, 0);
         defer self.allocator.free(current_name);
         if (self.rename_window == null) {
             const window = auxiliary.create(self.app);
@@ -3807,10 +3805,9 @@ pub const Controller = struct {
             self.ssh_target_save.?,
             std.mem.span(recovery.save_label),
         ) catch return;
-        const destination = self.allocator.dupeZ(
+        const destination = self.allocator.dupeSentinel(
             u8,
-            self.ssh_target_draft.destination orelse "",
-        ) catch return;
+            self.ssh_target_draft.destination orelse "", 0) catch return;
         defer self.allocator.free(destination);
         self.ssh_target_syncing = true;
         self.ssh_target_entry.?.as(gtk.Editable).setText(destination);
@@ -3897,7 +3894,7 @@ pub const Controller = struct {
     ) void {
         if (destination.* == null) {
             const window = auxiliary.create(self.app);
-            const title_text = self.allocator.dupeZ(u8, surface.title) catch return;
+            const title_text = self.allocator.dupeSentinel(u8, surface.title, 0) catch return;
             defer self.allocator.free(title_text);
             window.as(gtk.Window).setTitle(title_text);
             window.as(gtk.Window).setIconName("com.polarealm.PolarStation");
@@ -4140,7 +4137,7 @@ pub const Controller = struct {
         self.pending_tab_move_index = null;
         self.active_tab_drag_index = context.tab_index;
         self.active_drag_source = source;
-        const text = self.allocator.dupeZ(u8, context.tab_id) catch {
+        const text = self.allocator.dupeSentinel(u8, context.tab_id, 0) catch {
             self.allocator.free(self.active_tab_drag.?);
             self.active_tab_drag = null;
             self.active_drag_source = null;
@@ -4192,7 +4189,7 @@ pub const Controller = struct {
             .{ context.tab_id, context.pane_id },
         ) catch return null;
         defer context.allocator.free(payload);
-        const payload_z = context.allocator.dupeZ(u8, payload) catch return null;
+        const payload_z = context.allocator.dupeSentinel(u8, payload, 0) catch return null;
         defer context.allocator.free(payload_z);
         var value = gobject.ext.Value.newFrom(payload_z);
         defer value.unset();
@@ -4642,7 +4639,7 @@ pub const Controller = struct {
     ) callconv(.c) void {
         const controller = context.controller;
         if (controller.suppress_pane_click or controller.active_pane_drag != null) return;
-        const now_us = std.time.microTimestamp();
+        const now_us = @as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toMicroseconds()));
         const is_double = pane_interaction.isDoubleClick(
             if (controller.last_pane_click_id) |value| value else null,
             controller.last_pane_click_at_us,
@@ -5102,7 +5099,7 @@ pub const Controller = struct {
                 const kind = (operation.object.get("intent") orelse continue).string;
                 inline for (.{ .kill_session, .end_agent_session }) |tag| {
                     if (std.mem.eql(u8, kind, @tagName(tag))) {
-                        const value = std.json.parseFromValue(std.meta.TagPayload(Action, tag), self.allocator, operation, .{ .ignore_unknown_fields = true }) catch return;
+                        const value = std.json.parseFromValue(@FieldType(Action, @tagName(tag)), self.allocator, operation, .{ .ignore_unknown_fields = true }) catch return;
                         defer value.deinit();
                         self.dispatch(@unionInit(Action, @tagName(tag), value.value));
                     }
@@ -5640,7 +5637,7 @@ pub const Controller = struct {
                 const operation_type = (operation.object.get("intent") orelse continue).string;
                 inline for (.{ .create_session, .create_codex_session, .create_agent_session }) |tag| {
                     if (std.mem.eql(u8, operation_type, @tagName(tag))) {
-                        const value = std.json.parseFromValue(std.meta.TagPayload(Action, tag), self.allocator, operation, .{ .ignore_unknown_fields = true }) catch return;
+                        const value = std.json.parseFromValue(@FieldType(Action, @tagName(tag)), self.allocator, operation, .{ .ignore_unknown_fields = true }) catch return;
                         defer value.deinit();
                         self.dispatch(@unionInit(Action, @tagName(tag), value.value));
                     }
@@ -5673,7 +5670,7 @@ pub const Controller = struct {
             rows.append(empty.as(gtk.Widget));
         }
         for (view.known_sessions) |candidate| {
-            const title = self.allocator.dupeZ(u8, candidate.display_name) catch return;
+            const title = self.allocator.dupeSentinel(u8, candidate.display_name, 0) catch return;
             defer self.allocator.free(title);
             const button = gtk.Button.newWithLabel(title);
             const content = gtk.Box.new(.horizontal, 5);
@@ -5706,7 +5703,7 @@ pub const Controller = struct {
         if(self.editor.prepare_tools) |button| {
             button.as(gtk.Widget).setVisible(@intFromBool(view.prepare_label!=null));
             button.as(gtk.Widget).setSensitive(@intFromBool(view.can_prepare));
-            const caption=self.allocator.dupeZ(u8,view.prepare_label orelse "Prepare tools") catch return;defer self.allocator.free(caption);button.setLabel(caption);
+            const caption=self.allocator.dupeSentinel(u8,view.prepare_label orelse "Prepare tools", 0) catch return;defer self.allocator.free(caption);button.setLabel(caption);
         }
         const next_endpoints=std.json.Stringify.valueAlloc(self.allocator,view.endpoints,.{}) catch return;defer self.allocator.free(next_endpoints);
         const old_endpoints=if(self.session_create_endpoints) |old| std.json.Stringify.valueAlloc(self.allocator,old.value,.{}) catch return else self.allocator.dupe(u8,"[]") catch return;defer self.allocator.free(old_endpoints);
@@ -5715,7 +5712,7 @@ pub const Controller = struct {
             if(self.session_create_endpoints) |old| old.deinit();self.session_create_endpoints=parsed;
             const choices=gtk.StringList.new(null);defer choices.unref();
             for(view.endpoints) |endpoint| if(std.mem.eql(u8,endpoint.execution_target_id,d.target)) {
-                const name=self.allocator.dupeZ(u8,endpoint.id) catch continue;defer self.allocator.free(name);choices.append(name);
+                const name=self.allocator.dupeSentinel(u8,endpoint.id, 0) catch continue;defer self.allocator.free(name);choices.append(name);
             };
             self.session_create_endpoint.?.setModel(choices.as(@import("gio").ListModel));
         }
@@ -5725,7 +5722,7 @@ pub const Controller = struct {
             button.as(gtk.Widget).setVisible(@intFromBool(start or view.can_check_endpoint or view.endpoint_checking));
             button.as(gtk.Widget).setSensitive(@intFromBool(view.can_start_local_server or view.can_check_endpoint));
             button.setIconName(if (start) "system-shutdown-symbolic" else "network-transmit-receive-symbolic");
-            const title = self.allocator.dupeZ(u8, if (start) view.server_start_label else "Check connection") catch return;
+            const title = self.allocator.dupeSentinel(u8, if (start) view.server_start_label else "Check connection", 0) catch return;
             defer self.allocator.free(title);
             button.as(gtk.Widget).setTooltipText(title);
         }
@@ -5757,7 +5754,7 @@ pub const Controller = struct {
         if(self.editor.yolo_slot) |slot| slot.as(gtk.Widget).setVisible(@intFromBool(!d.bind_only and std.mem.eql(u8,d.session_type,"codex") and std.mem.eql(u8,d.mode,"resume")));
         self.session_create_window.?.as(gtk.Window).setTitle(if(d.bind_only) "Bind Codex session" else "Add Session");
         self.session_create_submit.?.as(gtk.Widget).setSensitive(@intFromBool(view.can_submit));
-        const caption = self.allocator.dupeZ(u8, view.submit_label) catch return;
+        const caption = self.allocator.dupeSentinel(u8, view.submit_label, 0) catch return;
         defer self.allocator.free(caption);
         self.session_create_submit.?.setLabel(caption);
         setLabel(self.allocator, self.session_create_error.?, view.message orelse view.history_error orelse "") catch {};
@@ -5912,7 +5909,7 @@ pub const Controller = struct {
         defer endpoints.unref();
         if (self.session_create_endpoints) |configured| for (configured.value) |e| {
             if (!std.mem.eql(u8, e.execution_target_id, group.id)) continue;
-            const name = self.allocator.dupeZ(u8, e.id) catch continue;
+            const name = self.allocator.dupeSentinel(u8, e.id, 0) catch continue;
             defer self.allocator.free(name);
             endpoints.append(name);
         };
@@ -6459,7 +6456,7 @@ fn appendRow(box: *gtk.Box, first: *gtk.Widget, second: *gtk.Widget) void {
 }
 
 fn setEntryText(allocator: std.mem.Allocator, entry: *gtk.Entry, value: []const u8) !void {
-    const owned = try allocator.dupeZ(u8, value);
+    const owned = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(owned);
     entry.as(gtk.Editable).setText(owned);
 }
@@ -6545,7 +6542,7 @@ fn ownedLabel(
     text_value: []const u8,
     css_class: [*:0]const u8,
 ) !*gtk.Label {
-    const text = try allocator.dupeZ(u8, text_value);
+    const text = try allocator.dupeSentinel(u8, text_value, 0);
     defer allocator.free(text);
     return label(text, css_class);
 }
@@ -6585,7 +6582,7 @@ fn setLabel(
     target: *gtk.Label,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setLabel(text);
 }
@@ -6595,7 +6592,7 @@ fn setButtonLabel(
     target: *gtk.Button,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setLabel(text);
 }
@@ -6605,7 +6602,7 @@ fn setWindowTitle(
     target: *adw.Window,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.as(gtk.Window).setTitle(text);
 }
@@ -6615,7 +6612,7 @@ fn setEntryPlaceholder(
     target: *gtk.Entry,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setPlaceholderText(text);
 }
@@ -6625,7 +6622,7 @@ fn setWidgetName(
     target: *gtk.Widget,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setName(text);
 }
@@ -6638,7 +6635,7 @@ fn renderActionButton(
     setButtonLabel(allocator, button, action.label) catch {};
     button.as(gtk.Widget).setSensitive(@intFromBool(action.enabled));
     const tooltip = action.disabled_reason orelse action.accessibility_label;
-    const text = allocator.dupeZ(u8, tooltip) catch return;
+    const text = allocator.dupeSentinel(u8, tooltip, 0) catch return;
     defer allocator.free(text);
     button.as(gtk.Widget).setTooltipText(text);
 }
@@ -6653,7 +6650,7 @@ fn renderActionState(
     );
     const tooltip = action.disabled_reason orelse
         action.accessibility_label;
-    const text = allocator.dupeZ(u8, tooltip) catch return;
+    const text = allocator.dupeSentinel(u8, tooltip, 0) catch return;
     defer allocator.free(text);
     button.as(gtk.Widget).setTooltipText(text);
 }
@@ -6668,7 +6665,7 @@ fn renderMenuButtonState(
     );
     const tooltip = action.disabled_reason orelse
         action.accessibility_label;
-    const text = allocator.dupeZ(u8, tooltip) catch return;
+    const text = allocator.dupeSentinel(u8, tooltip, 0) catch return;
     defer allocator.free(text);
     button.as(gtk.Widget).setTooltipText(text);
 }
@@ -6686,10 +6683,9 @@ fn renderToggleState(
     );
     const tooltip = action.disabled_reason orelse
         action.accessibility_label;
-    const tooltip_text = allocator.dupeZ(
+    const tooltip_text = allocator.dupeSentinel(
         u8,
-        tooltip,
-    ) catch return;
+        tooltip, 0) catch return;
     defer allocator.free(tooltip_text);
     button.as(gtk.Widget).setTooltipText(tooltip_text);
 }
@@ -6699,13 +6695,13 @@ fn renderToggle(
     button: *gtk.ToggleButton,
     action: *const control.Action,
 ) void {
-    const text = allocator.dupeZ(u8, action.label) catch return;
+    const text = allocator.dupeSentinel(u8, action.label, 0) catch return;
     defer allocator.free(text);
     button.as(gtk.Button).setLabel(text);
     button.setActive(@intFromBool(action.selected));
     button.as(gtk.Widget).setSensitive(@intFromBool(action.enabled));
     const tooltip = action.disabled_reason orelse action.accessibility_label;
-    const tooltip_text = allocator.dupeZ(u8, tooltip) catch return;
+    const tooltip_text = allocator.dupeSentinel(u8, tooltip, 0) catch return;
     defer allocator.free(tooltip_text);
     button.as(gtk.Widget).setTooltipText(tooltip_text);
 }

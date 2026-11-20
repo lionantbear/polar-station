@@ -1,9 +1,7 @@
 //! Native serialization only; Resource draft and confirmation policy is Rust.
 const std = @import("std");
 const resource = @import("resources.zig");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 pub const Output = struct {
     view: struct {
         catalog: resource.Catalog,

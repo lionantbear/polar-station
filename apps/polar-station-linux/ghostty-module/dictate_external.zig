@@ -95,8 +95,8 @@ pub const Watcher = struct {
         }
         self.clear();
         if (std.mem.len(name) > 128 or std.mem.len(path) > 1024) return;
-        self.name = a.dupeZ(u8, std.mem.span(name)) catch return;
-        self.path = a.dupeZ(u8, std.mem.span(path)) catch {
+        self.name = a.dupeSentinel(u8, std.mem.span(name), 0) catch return;
+        self.path = a.dupeSentinel(u8, std.mem.span(path), 0) catch {
             self.clear();
             return;
         };
@@ -114,7 +114,7 @@ pub const Watcher = struct {
         const begin=selection.getChildValue(0);defer begin.unref();const end=selection.getChildValue(1);defer end.unref();
         const first=begin.getInt32();const last=end.getInt32();if(first<0 or last<=first or last-first>16384)return null;
         const reply=snapshot.call(text_interface,"GetText",glib.Variant.newParsed("(%i, %i)",first,last),"(s)") orelse return null;defer reply.unref();
-        const text=reply.getChildValue(0);defer text.unref();return a.dupeZ(u8,std.mem.span(text.getString(null))) catch null;
+        const text=reply.getChildValue(0);defer text.unref();return a.dupeSentinel(u8,std.mem.span(text.getString(null)), 0) catch null;
     }
     pub fn capture(self: *Watcher) ?*Snapshot {
         return Snapshot.create(self.bus, self.name orelse return null, self.path orelse return null);
@@ -152,8 +152,8 @@ pub const Snapshot = struct {
         return value.getInt32();
     }
     fn foreground(self:*const Snapshot) bool {
-        var name=a.dupeZ(u8,self.name) catch return false;defer a.free(name);
-        var path=a.dupeZ(u8,self.path) catch return false;defer a.free(path);
+        var name=a.dupeSentinel(u8,self.name, 0) catch return false;defer a.free(name);
+        var path=a.dupeSentinel(u8,self.path, 0) catch return false;defer a.free(path);
         for(0..32) |_| {
             const role=invoke(self.bus,name,path,accessible,"GetRoleName",null,"(s)") orelse return false;defer role.unref();
             const child=role.getChildValue(0);defer child.unref();const kind=std.mem.span(child.getString(null));
@@ -166,8 +166,8 @@ pub const Snapshot = struct {
             const wrapped=parent.getChildValue(0);defer wrapped.unref();const pair=wrapped.getVariant();defer pair.unref();
             if(!same(std.mem.span(pair.getTypeString()),"(so)"))return false;
             const n=pair.getChildValue(0);defer n.unref();const p=pair.getChildValue(1);defer p.unref();
-            const next_name=a.dupeZ(u8,std.mem.span(n.getString(null))) catch return false;
-            const next_path=a.dupeZ(u8,std.mem.span(p.getString(null))) catch {a.free(next_name);return false;};
+            const next_name=a.dupeSentinel(u8,std.mem.span(n.getString(null)), 0) catch return false;
+            const next_path=a.dupeSentinel(u8,std.mem.span(p.getString(null)), 0) catch {a.free(next_name);return false;};
             a.free(name);a.free(path);name=next_name;path=next_path;
             if(name.len==0 or same(path,"/org/a11y/atspi/null"))return false;
         }
@@ -208,23 +208,23 @@ pub const Snapshot = struct {
         defer value.unref();
         const text = std.mem.span(value.getString(null));
         if (text.len > 65536 or !std.unicode.utf8ValidateSlice(text)) return null;
-        return a.dupeZ(u8, text) catch null;
+        return a.dupeSentinel(u8, text, 0) catch null;
     }
     fn create(bus: *gio.DBusConnection, name: [:0]const u8, path: [:0]const u8) ?*Snapshot {
         const self = a.create(Snapshot) catch return null;
-        const owned_name = a.dupeZ(u8, name) catch {
+        const owned_name = a.dupeSentinel(u8, name, 0) catch {
             a.destroy(self);
             return null;
         };
         _ = bus.ref();
         self.* = .{ .bus = bus, .name = owned_name, .path = undefined, .original = undefined, .caret = 0, .offset = 0 };
-        self.path = a.dupeZ(u8, path) catch {
+        self.path = a.dupeSentinel(u8, path, 0) catch {
             bus.unref();
             a.free(self.name);
             a.destroy(self);
             return null;
         };
-        self.original = a.dupeZ(u8, "") catch {
+        self.original = a.dupeSentinel(u8, "", 0) catch {
             bus.unref();
             a.free(self.name);
             a.free(self.path);
@@ -284,7 +284,7 @@ pub const Snapshot = struct {
         if (!same(before, self.original)) return .unchanged;
         const expected = std.fmt.allocPrint(a, "{s}{s}{s}", .{ self.original[0..self.offset], text, self.original[self.offset..] }) catch return .unchanged;
         defer a.free(expected);
-        const content = a.dupeZ(u8, text) catch return .unchanged;
+        const content = a.dupeSentinel(u8, text, 0) catch return .unchanged;
         defer a.free(content);
         const reply = self.call("org.a11y.atspi.EditableText", "InsertText", glib.Variant.newParsed("(%i, %s, %i)", self.caret, content.ptr, @as(i32, @intCast(text.len))), "(b)") orelse return .unknown;
         defer reply.unref();

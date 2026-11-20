@@ -107,7 +107,7 @@ pub const Browser = struct {
             return;
         };
         const status = if (state.loading) "Reading the selected machine…" else if (state.@"error") |message| message else if (state.listing != null and state.listing.?.directories.len == 0) "No subfolders" else "";
-        const status_z = try self.allocator.dupeZ(u8, status);
+        const status_z = try self.allocator.dupeSentinel(u8, status, 0);
         defer self.allocator.free(status_z);
         self.status.setLabel(status_z);
         self.status.as(gtk.Widget).setVisible(@intFromBool(status.len != 0));
@@ -151,7 +151,7 @@ pub const Browser = struct {
 
         try self.folders.ensureTotalCapacity(self.allocator, listing.directories.len);
         for (listing.directories) |path| {
-            const name_z = try self.allocator.dupeZ(u8, std.fs.path.basename(path));
+            const name_z = try self.allocator.dupeSentinel(u8, std.fs.path.basename(path), 0);
             defer self.allocator.free(name_z);
             const row = gtk.Box.new(.horizontal, 6);
             self.list.append(row.as(gtk.Widget));
@@ -178,7 +178,7 @@ pub const Browser = struct {
     }
 
     fn appendNavigation(self: *Browser, label: []const u8, path: ?[]const u8) !void {
-        const title = try self.allocator.dupeZ(u8, label);
+        const title = try self.allocator.dupeSentinel(u8, label, 0);
         defer self.allocator.free(title);
         const button = gtk.Button.newWithLabel(title);
         self.toolbar.append(button.as(gtk.Widget));

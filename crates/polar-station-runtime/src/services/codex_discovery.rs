@@ -5,7 +5,7 @@ use super::codex_control::{
 };
 use super::imessage_sender::now_ms;
 use polar_station_settings::CodexControlModeV1;
-use polar_station_store_sqlite::{CodexBindingRow, CodexCheckpointRow};
+use polar_station_store_sqlite::CodexBindingRow;
 use polar_station_protocol::{ApplicationStateApiV1, CodexConnectionStateV1};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -210,18 +210,7 @@ impl CodexControlService {
                     // observation now so its first later completion is not
                     // mistaken for historical work when a status event rejoins.
                     if let Ok(row) = self.persist_binding(&id) {
-                        if matches!(self.ledger.checkpoint(&id), Ok(None)) {
-                            let _ = self.ledger.record_completion(
-                                CodexCheckpointRow {
-                                    binding_id: id,
-                                    binding_revision: row.revision,
-                                    last_reconciled_turn: None,
-                                    bound_at_ms: row.bound_at_ms,
-                                    reconcile_status: "current".into(),
-                                },
-                                vec![],
-                            );
-                        }
+                        let _ = self.anchor_empty_history(&row);
                     }
                 }
             }
@@ -316,6 +305,10 @@ impl CodexControlService {
         // may not have a rollout yet; wait for global active/idle status to retry
         // a rejected join, without turning recovery into inventory polling.
         if let Some(state) = self.states.write().await.get_mut(&id) {
+            // A Thread started through our own connection is already subscribed.
+            if state.connection == CodexConnectionStateV1::Connected {
+                return;
+            }
             apply_thread_metadata(state, thread);
             state.thread_name = thread_name(&thread["name"]).or_else(|| state.thread_name.clone());
             apply_status(state, &thread["status"]);
@@ -324,7 +317,6 @@ impl CodexControlService {
             if let Some(state) = self.states.write().await.get_mut(&id) {
                 state.connection = CodexConnectionStateV1::Stale;
                 state.error_code = Some(code.into());
-                permissions(state);
             }
         }
         if let Some(state) = self.states.write().await.get_mut(&id) {

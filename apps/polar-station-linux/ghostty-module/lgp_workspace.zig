@@ -2,6 +2,8 @@
 //! state, network loop, terminal application, or screen-scraping lives here.
 //! The executor owns DisplaySurface; this adapter only borrows it until the
 //! matching physical retirement callback and owns native inputs/browsers.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const gdk = @import("gdk");
@@ -18,9 +20,7 @@ const graphics = @import("graphics_surface.zig");
 const dictate_module = @import("dictate.zig");
 const Content = @import("station_content.zig").Content;
 const Hooks = @import("native_content_hooks.zig").Hooks;
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const Value = std.json.Value;
 const Composer = @import("input_bar.zig").InputBar;
 const Browser = @import("input_bar.zig").Browser;
@@ -83,20 +83,20 @@ pub const Workspace = struct {
     flush_timer: c_uint = 0,
     draft_timer: c_uint = 0,
     draft_persistence_failed:bool=false,
-    clock: std.time.Timer,
+    clock: std.Io.Clock.Timestamp,
     dictate_submit_editor:?*gtk.TextView=null,
 
 
     pub fn portableIdeaSources(self:*Workspace,a:std.mem.Allocator) !Value {
-        var map=std.json.ObjectMap.init(a);
+        var map=std.json.ObjectMap{};
         var iterator=self.panes.valueIterator();
-        while(iterator.next())|entry|if(entry.*.portable_sources)|paths|{try map.put(entry.*.content.view_id,paths.value);};
+        while(iterator.next())|entry|if(entry.*.portable_sources)|paths|{try map.put(a, entry.*.content.view_id,paths.value);};
         return .{.object=map};
     }
     pub fn create(allocator: std.mem.Allocator, app: *Application, send: SendFn, open: OpenFn, context: ?*anyopaque) !*Workspace {
         const self = try allocator.create(Workspace);
         errdefer allocator.destroy(self);
-        const clock = try std.time.Timer.start();
+        const clock = std.Io.Clock.Timestamp.now(global.io(), .awake);
         const engine = c.polar_station_input_new() orelse return error.LgpEngineUnavailable;
         errdefer c.polar_station_input_free(engine);
         const dictate = try dictate_module.Controller.create();
@@ -483,7 +483,7 @@ pub const Workspace = struct {
         while (self.queue.items.len > 0) {
             const next = self.queue.orderedRemove(0);
             defer self.allocator.free(next);
-            const response = c.polar_station_input_dispatch_at(self.engine, next.ptr, next.len, self.clock.read() / std.time.ns_per_ms) orelse {
+            const response = c.polar_station_input_dispatch_at(self.engine, next.ptr, next.len, @as(u64, @intCast(self.clock.untilNow(global.io()).raw.toMilliseconds()))) orelse {
                 self.showError("LGP state unavailable");
                 continue;
             };
@@ -513,7 +513,7 @@ pub const Workspace = struct {
             for(effects) |effect| if(!std.mem.eql(u8,string(effect,"type") orelse "","inquiry")) {self.consume(effect);};
             if (self.timer != 0) { _ = glib.Source.remove(self.timer); self.timer = 0; }
             if (field(parsed.value, "next_deadline_ms")) |deadline| if (deadline == .integer) {
-                const now = self.clock.read() / std.time.ns_per_ms;
+                const now = @as(u64, @intCast(self.clock.untilNow(global.io()).raw.toMilliseconds()));
                 const due: u64 = @intCast(@max(0, deadline.integer));
                 self.timer = glib.timeoutAdd(@intCast(@min(std.math.maxInt(c_uint), @max(1, due -| now))), maintenance, self);
             };
@@ -580,7 +580,7 @@ pub const Workspace = struct {
             const entry = self.panes.get(string(effect, "pane_id") orelse return) orelse return;
             entry.hint_retry = boolean(effect, "retry");
             if (entry.reading_hint) |button| {
-                const label = self.allocator.dupeZ(u8, string(effect, "label") orelse "Back to latest") catch return;
+                const label = self.allocator.dupeSentinel(u8, string(effect, "label") orelse "Back to latest", 0) catch return;
                 defer self.allocator.free(label);
                 button.setLabel(label);
                 button.as(gtk.Widget).setVisible(@intFromBool(boolean(effect, "visible")));
@@ -596,11 +596,11 @@ pub const Workspace = struct {
         } else if (std.mem.eql(u8, kind, "idea_command") or std.mem.eql(u8,kind,"idea_locate_reference")) {
             const entry = self.panes.get(string(effect, "pane_id") orelse return) orelse return;
             if (entry.content.kind != .idea_tree or !std.mem.eql(u8, entry.content.view_id, string(effect, "view_id") orelse return)) return;
-            const action = self.allocator.dupeZ(u8, string(effect, "action") orelse "locate_reference") catch return;
+            const action = self.allocator.dupeSentinel(u8, string(effect, "action") orelse "locate_reference", 0) catch return;
             defer self.allocator.free(action);
             const reference_json = if (field(effect,"reference")) |ref| std.json.Stringify.valueAlloc(self.allocator,ref,.{}) catch return else null;
             defer if (reference_json) |bytes| self.allocator.free(bytes);
-            const query = self.allocator.dupeZ(u8, reference_json orelse string(effect, "query") orelse "") catch return;
+            const query = self.allocator.dupeSentinel(u8, reference_json orelse string(effect, "query") orelse "", 0) catch return;
             defer self.allocator.free(query);
             if (entry.display.graphics_widget) |widget| graphics.command(widget, action, query);
         } else if (std.mem.eql(u8, kind, "input_bar")) {
@@ -658,7 +658,7 @@ pub const Workspace = struct {
             self.open(self.context, composer.host, content, null) catch self.showError("Cannot open reference Thread");
         } else if (std.mem.eql(u8, kind, "copy_source")) {
             const entry = self.panes.get(string(effect, "pane_id") orelse return) orelse return;
-            const text = self.allocator.dupeZ(u8, string(effect, "text") orelse return) catch return;
+            const text = self.allocator.dupeSentinel(u8, string(effect, "text") orelse return, 0) catch return;
             defer self.allocator.free(text);
             entry.display.surface.as(gtk.Widget).getClipboard().setText(text);
         } else if (std.mem.eql(u8, kind, "activity")) {
@@ -695,7 +695,7 @@ pub const Workspace = struct {
         const self: *Workspace = @ptrCast(@alignCast(context orelse return 0));
         if (self.stopped) return 0;
         self.timer = 0;
-        self.input(.{ .type = "tick", .now_ms = self.clock.read() / std.time.ns_per_ms });
+        self.input(.{ .type = "tick", .now_ms = @as(u64, @intCast(self.clock.untilNow(global.io()).raw.toMilliseconds())) });
         return 0;
     }
     fn flush(context: ?*anyopaque) callconv(.c) c_int {
@@ -726,9 +726,9 @@ pub const Workspace = struct {
         return 0;
     }
     fn draftPath(self: *Workspace) ![]u8 {
-        const base = std.process.getEnvVarOwned(self.allocator, "XDG_STATE_HOME") catch |err| switch (err) {
-            error.EnvironmentVariableNotFound => blk: {
-                const home = try std.process.getEnvVarOwned(self.allocator, "HOME");
+        const base = global.environ().getAlloc(self.allocator, "XDG_STATE_HOME") catch |err| switch (err) {
+            error.EnvironmentVariableMissing => blk: {
+                const home = try global.environ().getAlloc(self.allocator, "HOME");
                 defer self.allocator.free(home);
                 break :blk try std.fs.path.join(self.allocator, &.{ home, ".local", "state" });
             },
@@ -754,23 +754,21 @@ pub const Workspace = struct {
         const path = try self.draftPath();
         defer self.allocator.free(path);
         const parent = std.fs.path.dirname(path) orelse return error.InvalidStateDirectory;
-        try std.fs.cwd().makePath(parent);
+        try std.Io.Dir.cwd().createDirPath(global.io(), parent);
         // Unique exclusive temporary file, never a predictable shared '.tmp'.
-        const tmp = try std.fmt.allocPrint(self.allocator, "{s}.{x}.tmp", .{ path, std.crypto.random.int(u64) });
+        const tmp = try std.fmt.allocPrint(self.allocator, "{s}.{x}.tmp", .{ path, @import("station_random.zig").int(u64) });
         defer self.allocator.free(tmp);
-        var file = try std.fs.createFileAbsolute(tmp, .{ .exclusive = true, .mode = 0o600 });
-        defer file.close();
-        errdefer std.fs.deleteFileAbsolute(tmp) catch {};
-        try file.writeAll(bytes);
-        try file.sync();
-        try std.fs.renameAbsolute(tmp, path);
+        const file = try std.Io.Dir.createFileAbsolute(global.io(), tmp, .{ .exclusive = true, .permissions = .fromMode(0o600) });
+        defer file.close(global.io());
+        errdefer std.Io.Dir.deleteFileAbsolute(global.io(), tmp) catch {};
+        try file.writeStreamingAll(global.io(), bytes);
+        try file.sync(global.io());
+        try std.Io.Dir.renameAbsolute(tmp, path, global.io());
     }
     fn restoreDrafts(self: *Workspace) void {
         const path = self.draftPath() catch return;
         defer self.allocator.free(path);
-        var file = std.fs.openFileAbsolute(path, .{}) catch return;
-        defer file.close();
-        const bytes = file.readToEndAlloc(self.allocator, 1024 * 1024) catch return;
+        const bytes = std.Io.Dir.cwd().readFileAlloc(global.io(), path, self.allocator, .limited(1024 * 1024)) catch return;
         defer self.allocator.free(bytes);
         var parsed = std.json.parseFromSlice(Value, self.allocator, bytes, .{}) catch return;
         defer parsed.deinit();
@@ -1007,7 +1005,7 @@ pub const Entry = struct {
         } else if (std.mem.eql(u8, string(parsed.value, "kind") orelse "", "open_source")) {
             const path=string(parsed.value,"path") orelse return;
             if (!std.fs.path.isAbsolute(path)) return;
-            const filename=self.allocator.dupeZ(u8,path) catch return;
+            const filename=self.allocator.dupeSentinel(u8,path, 0) catch return;
             defer self.allocator.free(filename);
             const file=gio.File.newForPath(filename);defer file.as(gobject.Object).unref();
             const uri=file.getUri();defer glib.free(uri);
@@ -1134,7 +1132,7 @@ pub fn array(v: ?Value) []const Value {
     return if (x == .array) x.array.items else &.{};
 }
 pub fn setLabel(allocator: std.mem.Allocator, label: *gtk.Label, text: []const u8) void {
-    const z = allocator.dupeZ(u8, text) catch return;
+    const z = allocator.dupeSentinel(u8, text, 0) catch return;
     defer allocator.free(z);
     label.setLabel(z);
 }

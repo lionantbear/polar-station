@@ -1,4 +1,5 @@
 //! Shared GTK input shell; specialized content controls reuse the same editor.
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const gdk = @import("gdk");
@@ -15,9 +16,7 @@ const graphics = @import("graphics_surface.zig");
 const dictate_module = @import("dictate.zig");
 const Content = @import("station_content.zig").Content;
 const Hooks = @import("native_content_hooks.zig").Hooks;
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const Value = std.json.Value;
 const TerminalWait = @import("lgp_workspace.zig").TerminalWait;
 const TerminalViewState = @import("lgp_workspace.zig").TerminalViewState;
@@ -525,15 +524,15 @@ pub const InputBar = struct {
         self.update(view);
         const send_label=string(view,"send_label") orelse "Send";
         {
-            const label_=self.owner.allocator.dupeZ(u8,send_label) catch return;
+            const label_=self.owner.allocator.dupeSentinel(u8,send_label, 0) catch return;
             defer self.owner.allocator.free(label_);self.send_button.setLabel(label_);
         }
         self.setSendMode(self.owner.modified_send);
-        const label = self.owner.allocator.dupeZ(u8,string(view,"target_status") orelse string(view,"target_label") orelse "Terminal input") catch return;
+        const label = self.owner.allocator.dupeSentinel(u8,string(view,"target_status") orelse string(view,"target_label") orelse "Terminal input", 0) catch return;
         defer self.owner.allocator.free(label);
         self.target.setLabel(label);
         self.more.as(gtk.Widget).setVisible(1);
-        const explanation=self.owner.allocator.dupeZ(u8,string(view,"unavailable") orelse string(view,"target_label") orelse "Terminal input") catch return;
+        const explanation=self.owner.allocator.dupeSentinel(u8,string(view,"unavailable") orelse string(view,"target_label") orelse "Terminal input", 0) catch return;
         defer self.owner.allocator.free(explanation);self.target.as(gtk.Widget).setTooltipText(explanation);
         setLabel(self.owner.allocator, self.hint, "Input…");
         self.retry.setLabel("↻");
@@ -571,7 +570,7 @@ pub const InputBar = struct {
             const title = std.fmt.allocPrintSentinel(self.owner.allocator, "{s}{s}{s} · {s}",
                 .{ action, if (action.len > 0) " · " else "", status, preview }, 0) catch continue;
             defer self.owner.allocator.free(title);
-            const name = self.owner.allocator.dupeZ(u8, intent) catch continue;
+            const name = self.owner.allocator.dupeSentinel(u8, intent, 0) catch continue;
             defer self.owner.allocator.free(name);
             const button = gtk.Button.newWithLabel(title);
             button.as(gtk.Widget).setName(name);
@@ -601,7 +600,7 @@ pub const InputBar = struct {
     }
 
     pub fn copySendText(self: *InputBar, value: []const u8) void {
-        const text = self.owner.allocator.dupeZ(u8, value) catch return;
+        const text = self.owner.allocator.dupeSentinel(u8, value, 0) catch return;
         defer self.owner.allocator.free(text);
         self.container.as(gtk.Widget).getClipboard().setText(text);
     }
@@ -645,7 +644,7 @@ pub const InputBar = struct {
         const current = buffer.getText(&start, &end, 1);
         defer glib.free(current);
         if (!self.composing and !std.mem.eql(u8, std.mem.span(current), incoming)) {
-            const z = self.owner.allocator.dupeZ(u8, incoming) catch return;
+            const z = self.owner.allocator.dupeSentinel(u8, incoming, 0) catch return;
             defer self.owner.allocator.free(z);
             buffer.setText(z, @intCast(incoming.len));
         }
@@ -654,7 +653,7 @@ pub const InputBar = struct {
         if (self.is_idea) {
             if (changed_target) { self.idea_search.as(gtk.Editable).setText(""); if (self.picker) |picker| { picker.destroy(); self.picker = null; } }
             self.updateIdeaControls(effect);
-            const editor_hint = self.owner.allocator.dupeZ(u8, string(effect, "placeholder") orelse "") catch return;
+            const editor_hint = self.owner.allocator.dupeSentinel(u8, string(effect, "placeholder") orelse "", 0) catch return;
             defer self.owner.allocator.free(editor_hint);
             self.text.as(gtk.Widget).setTooltipText(editor_hint);
             setLabel(self.owner.allocator, self.hint, string(effect, "placeholder") orelse "Idea Tree instruction");
@@ -662,13 +661,15 @@ pub const InputBar = struct {
             self.status_button.setLabel("●");
         self.status_button.as(gtk.Widget).setVisible(0);
             self.send_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(effect,"can_send")));
-            const target_label=self.owner.allocator.dupeZ(u8,string(effect,"target_label") orelse "Bind Codex…") catch return;
+            const target_label=self.owner.allocator.dupeSentinel(u8,string(effect,"target_label") orelse "Bind Codex…", 0) catch return;
             defer self.owner.allocator.free(target_label);self.target.setLabel(if(self.host.as(gtk.Widget).getWidth()<760) "Codex" else target_label);
-            const target_hint=std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s}",.{string(effect,"target_label") orelse "Codex",string(effect,"status") orelse ""},0) catch return;
+            const target_hint=std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s}",.{string(effect,"target_label") orelse "Codex",@as([]const u8,string(effect,"status") orelse "")},0) catch return;
             defer self.owner.allocator.free(target_hint);self.target.as(gtk.Widget).setTooltipText(target_hint);
             self.updateReferences(effect);
             self.updateNodeEditors(effect);
-            self.idea_attach.as(gtk.Widget).setSensitive(@intFromBool((string(field(effect,"selected_node") orelse .null,"node_uuid") orelse "").len > 0));
+            const selected_node = field(effect, "selected_node") orelse .null;
+            const selected_id: []const u8 = string(selected_node, "node_uuid") orelse "";
+            self.idea_attach.as(gtk.Widget).setSensitive(@intFromBool(selected_id.len != 0));
 
             self.retry.as(gtk.Widget).setVisible(0);
             self.container.as(gtk.Widget).setVisible(1);
@@ -757,7 +758,7 @@ pub const InputBar = struct {
     }
     fn ideaInputButton(self:*InputBar,box:*gtk.Box,label:[]const u8,value:anytype) void {
         const a=self.owner.allocator;
-        const z=a.dupeZ(u8,label) catch return;defer a.free(z);
+        const z=a.dupeSentinel(u8,label, 0) catch return;defer a.free(z);
         const bytes=std.json.Stringify.valueAlloc(a,value,.{}) catch return;
         const data=a.create(IdeaInput) catch {a.free(bytes);return;};data.*=.{.composer=self,.allocator=a,.bytes=bytes};
         const button=gtk.Button.newWithLabel(z);
@@ -831,7 +832,7 @@ pub const InputBar = struct {
         fn focused(_: *gtk.EventControllerFocus,self:*NodeEditor) callconv(.c) void {self.composer.last_editor=self.text;}
         fn locateClicked(_: *gtk.Button,self:*NodeEditor) callconv(.c) void {
             const cview=self.composer;const entry=cview.owner.panes.get(cview.pane_id orelse return) orelse return;
-            const uuid=cview.owner.allocator.dupeZ(u8,self.uuid) catch return;defer cview.owner.allocator.free(uuid);
+            const uuid=cview.owner.allocator.dupeSentinel(u8,self.uuid, 0) catch return;defer cview.owner.allocator.free(uuid);
             if(entry.display.graphics_widget) |widget| graphics.command(widget,"locate_node",uuid);
         }
         pub fn destroy(self:*NodeEditor) void {
@@ -844,7 +845,7 @@ pub const InputBar = struct {
             const current=b.getText(&start,&end,1);defer glib.free(current);
             if(std.mem.eql(u8,std.mem.span(current),value)) return;
             self.syncing=true;defer self.syncing=false;
-            const z=self.composer.owner.allocator.dupeZ(u8,value) catch return;defer self.composer.owner.allocator.free(z);
+            const z=self.composer.owner.allocator.dupeSentinel(u8,value, 0) catch return;defer self.composer.owner.allocator.free(z);
             b.setText(z,@intCast(value.len));
         }
         fn edited(buffer:*gtk.TextBuffer,self:*NodeEditor) callconv(.c) void {
@@ -1001,7 +1002,7 @@ pub const InputBar = struct {
     }
     fn copyIdeaDraft(_: *gtk.Button,self:*InputBar) callconv(.c) void {
         const metadata=self.metadata orelse return;
-        const value=self.owner.allocator.dupeZ(u8,string(metadata.value,"document_text") orelse "") catch return;
+        const value=self.owner.allocator.dupeSentinel(u8,string(metadata.value,"document_text") orelse "", 0) catch return;
         defer self.owner.allocator.free(value);
         self.container.as(gtk.Widget).getClipboard().setText(value);self.idea_menu.popdown();
     }
@@ -1076,7 +1077,7 @@ pub const InputBar = struct {
             const action = string(control, "action") orelse continue;
             const group = string(control,"group") orelse "";
             if (group.len>0) {
-                if (self.owner.allocator.dupeZ(u8,group)) |label| {
+                if (self.owner.allocator.dupeSentinel(u8,group, 0)) |label| {
                     defer self.owner.allocator.free(label);self.idea_configuration_menu.setLabel(label);
                 } else |_| {}
                 self.idea_configuration_menu.as(gtk.Widget).setVisible(1);
@@ -1085,11 +1086,11 @@ pub const InputBar = struct {
             var found: ?*IdeaBinding = null;
             for (self.idea_bindings.items) |binding| if (std.mem.eql(u8, binding.action, action) and std.mem.eql(u8, binding.query, query)) { found = binding; break; };
             const binding = found orelse blk: {
-                const label = self.owner.allocator.dupeZ(u8, string(control, "label") orelse action) catch continue;
+                const label = self.owner.allocator.dupeSentinel(u8, string(control, "label") orelse action, 0) catch continue;
                 defer self.owner.allocator.free(label);
                 const binding = self.owner.allocator.create(IdeaBinding) catch continue;
-                const name = self.owner.allocator.dupeZ(u8, action) catch { self.owner.allocator.destroy(binding); continue; };
-                const argument = self.owner.allocator.dupeZ(u8, query) catch { self.owner.allocator.free(name); self.owner.allocator.destroy(binding); continue; };
+                const name = self.owner.allocator.dupeSentinel(u8, action, 0) catch { self.owner.allocator.destroy(binding); continue; };
+                const argument = self.owner.allocator.dupeSentinel(u8, query, 0) catch { self.owner.allocator.free(name); self.owner.allocator.destroy(binding); continue; };
                 const button = gtk.Button.newWithLabel(if(std.mem.eql(u8,action,"back")) "‹" else if(std.mem.eql(u8,action,"forward")) "›" else label);
                 button.as(gtk.Widget).setTooltipText(label);
                 const container=if(group.len>0) self.idea_configuration else if(std.mem.eql(u8,action,"open_files")) self.idea_files else if (std.mem.startsWith(u8,action,"theme_") or std.mem.eql(u8,action,"select_theme")) self.idea_themes else self.idea_overflow;
@@ -1099,11 +1100,11 @@ pub const InputBar = struct {
                 _ = gtk.Button.signals.clicked.connect(button, *IdeaBinding, ideaPressed, binding, .{});
                 break :blk binding;
             };
-            if (self.owner.allocator.dupeZ(u8, string(control, "label") orelse action)) |label| {
+            if (self.owner.allocator.dupeSentinel(u8, string(control, "label") orelse action, 0)) |label| {
                 defer self.owner.allocator.free(label);
                 binding.button.setLabel(if (std.mem.eql(u8, action, "back")) "‹" else if (std.mem.eql(u8, action, "forward")) "›" else label);
                 const tip=string(control,"tooltip") orelse "";
-                if (self.owner.allocator.dupeZ(u8, if(tip.len>0) tip else label)) |tooltip| {
+                if (self.owner.allocator.dupeSentinel(u8, if(tip.len>0) tip else label, 0)) |tooltip| {
                     defer self.owner.allocator.free(tooltip);binding.button.as(gtk.Widget).setTooltipText(tooltip);
                 } else |_| {}
             } else |_| {}
@@ -1132,7 +1133,7 @@ pub const InputBar = struct {
     pub fn showStatus(self: *InputBar, message: []const u8) void {
         setLabel(self.owner.allocator, self.status, message);
         self.status.as(gtk.Widget).setVisible(@intFromBool(message.len > 0));
-        const tooltip = self.owner.allocator.dupeZ(u8, message) catch return;
+        const tooltip = self.owner.allocator.dupeSentinel(u8, message, 0) catch return;
         defer self.owner.allocator.free(tooltip);
         self.status_button.as(gtk.Widget).setTooltipText(tooltip);
         self.status_button.setLabel("●");
@@ -1177,7 +1178,7 @@ pub const InputBar = struct {
         if(std.mem.eql(u8,microphone_state,"recording"))self.dictate_button.as(gtk.Widget).addCssClass("destructive-action") else self.dictate_button.as(gtk.Widget).removeCssClass("destructive-action");
         const tooltip = std.fmt.allocPrintSentinel(self.owner.allocator,"{s} · {s} · Hold to choose mode · {s}",.{dictate_module.string(presentation,"button_label"),dictate_module.string(state.view(),"output_mode_label"),state.status()},0) catch return;
         defer self.owner.allocator.free(tooltip); self.dictate_button.as(gtk.Widget).setTooltipText(tooltip);
-        const history_title = self.owner.allocator.dupeZ(u8,dictate_module.string(presentation,"history_title")) catch return;
+        const history_title = self.owner.allocator.dupeSentinel(u8,dictate_module.string(presentation,"history_title"), 0) catch return;
         defer self.owner.allocator.free(history_title); self.dictate_menu.as(gtk.Widget).setTooltipText(history_title);
         if (self.dictate_history.popup.as(gtk.Widget).getVisible()!=0 or dictate_module.boolean(dictate_module.field(state.view(),"inputs"),"open_requested")) self.dictate_history.refresh();
     }
@@ -1228,8 +1229,8 @@ pub const InputBar = struct {
                 if(!std.mem.eql(u8,std.mem.span(current),combined))return .unknown;
                 // Seed the existing editor's undo history without publishing an
                 // intermediate draft. Undo later uses its normal onChange path.
-                const old=self.owner.allocator.dupeZ(u8,before) catch return .applied;defer self.owner.allocator.free(old);
-                const addition=self.owner.allocator.dupeZ(u8,combined[before.len..]) catch return .applied;defer self.owner.allocator.free(addition);
+                const old=self.owner.allocator.dupeSentinel(u8,before, 0) catch return .applied;defer self.owner.allocator.free(old);
+                const addition=self.owner.allocator.dupeSentinel(u8,combined[before.len..], 0) catch return .applied;defer self.owner.allocator.free(addition);
                 node.syncing=true;defer node.syncing=false;
                 buffer.setText(old,@intCast(before.len));buffer.getEndIter(&last);buffer.placeCursor(&last);
                 buffer.beginUserAction();buffer.insertAtCursor(addition,@intCast(addition.len));buffer.endUserAction();
@@ -1429,7 +1430,7 @@ pub const InputBar = struct {
         const text=buffer.getText(&start,&end,1);defer glib.free(text);
         self.owner.input(.{ .type="input_action", .window_id=self.id,
             .pane_id=self.pane_id orelse return false,
-            .action=.{ .kind="submit", .text=std.mem.span(text), .created_at_secs=@as(u64,@intCast(@max(1,std.time.timestamp()))) } });
+            .action=.{ .kind="submit", .text=std.mem.span(text), .created_at_secs=@as(u64,@intCast(@max(1,std.Io.Timestamp.now(global.io(), .real).toSeconds()))) } });
         self.owner.saveSoon();
         return true;
     }
@@ -1453,7 +1454,7 @@ pub const InputBar = struct {
         b.composer.owner.input(.{.type="inquiry_action",.window_id=b.composer.id,.action=b.action,.token=b.token,.value=b.value});
     }
     fn inquiryButton(self:*InputBar,label:[]const u8,action:[]const u8,value:?[]const u8,enabled:bool) ?*gtk.Button {
-        const a=self.owner.allocator;const z=a.dupeZ(u8,label) catch return null;defer a.free(z);
+        const a=self.owner.allocator;const z=a.dupeSentinel(u8,label, 0) catch return null;defer a.free(z);
         const data=self.inquiry_data orelse return null;
         const b=a.create(InquiryBinding) catch return null;
         const token=a.dupe(u8,string(data.value,"token") orelse "") catch {a.destroy(b);return null;};
@@ -1473,7 +1474,7 @@ pub const InputBar = struct {
         var start:gtk.TextIter=undefined;var end:gtk.TextIter=undefined;buffer.getBounds(&start,&end);
         const current=buffer.getText(&start,&end,1);defer glib.free(current);
         if(std.mem.eql(u8,std.mem.span(current),value)) return;
-        const z=self.owner.allocator.dupeZ(u8,value) catch return;defer self.owner.allocator.free(z);
+        const z=self.owner.allocator.dupeSentinel(u8,value, 0) catch return;defer self.owner.allocator.free(z);
         buffer.setText(z,@intCast(value.len));
     }
     fn inquiryPreedit(_: *gtk.TextView, preedit: [*:0]const u8,self:*InputBar) callconv(.c) void {
@@ -1508,7 +1509,7 @@ pub const InputBar = struct {
         self.send_button.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
         self.mode_button.as(gtk.Widget).setVisible(@intFromBool(!self.inquiry_active));
         const count=number(value,"count");self.inquiry_entry.as(gtk.Widget).setVisible(@intFromBool(count>0 or self.inquiry_active or boolean(value,"has_history")));
-        const entry=self.owner.allocator.dupeZ(u8,string(value,"entry_title") orelse "Inquiry") catch return;
+        const entry=self.owner.allocator.dupeSentinel(u8,string(value,"entry_title") orelse "Inquiry", 0) catch return;
         defer self.owner.allocator.free(entry);self.inquiry_entry.setLabel(entry);
         self.text.setEditable(@intFromBool(!self.inquiry_active));
         self.inquiry_text.setEditable(@intFromBool(self.inquiry_active and boolean(value,"editable")));
@@ -1702,7 +1703,7 @@ pub const InputBar = struct {
             if(!std.mem.eql(u8,string(current,key) orelse "",string(lease,key) orelse "")) return;
         }
         if(number(current,"context_revision")!=number(lease,"context_revision") or number(current,"draft_revision")!=number(lease,"draft_revision")) return;
-        const insertion = self.owner.allocator.dupeZ(u8,selection) catch return;
+        const insertion = self.owner.allocator.dupeSentinel(u8,selection, 0) catch return;
         defer self.owner.allocator.free(insertion);
         const buffer = self.text.getBuffer();
         // Replacement emits delete and insert signals. Publish only the completed
@@ -1930,7 +1931,7 @@ const Picker = struct {
         }) orelse return;
         const title = string(value, "display_name") orelse id;
         const row = a.create(Row) catch return;
-        row.* = .{ .picker = self, .kind = kind, .id = a.dupeZ(u8, id) catch return, .label = a.dupeZ(u8, title) catch return };
+        row.* = .{ .picker = self, .kind = kind, .id = a.dupeSentinel(u8, id, 0) catch return, .label = a.dupeSentinel(u8, title, 0) catch return };
         const selected = switch (kind) {
             .target => std.mem.eql(u8, id, self.target),
             .channel => std.mem.eql(u8, id, self.channel),
@@ -2146,7 +2147,7 @@ pub const Browser = struct {
     }
     pub fn consume(self: *Browser, effect: Value) void {
         if (field(effect, "context")) |context| {
-            if ((string(context, "window_id") orelse "").len != 0) return;
+            if (if (string(context, "window_id")) |window_id| window_id.len != 0 else false) return;
         }
         const kind = string(effect, "type") orelse return;
         if (std.mem.eql(u8, kind, "targets")) {
@@ -2164,9 +2165,9 @@ pub const Browser = struct {
             for (items) |item| {
                 const id = string(item, "target_id") orelse continue;
                 const text = string(item, "display_name") orelse id;
-                const label = a.dupeZ(u8, text) catch continue;
+                const label = a.dupeSentinel(u8, text, 0) catch continue;
                 const click = a.create(TargetClick) catch continue;
-                click.* = .{ .browser = self, .id = a.dupeZ(u8, id) catch continue };
+                click.* = .{ .browser = self, .id = a.dupeSentinel(u8, id, 0) catch continue };
                 const button = gtk.Button.newWithLabel(label);
                 self.targets_box.append(button.as(gtk.Widget));
                 _ = gtk.Button.signals.clicked.connect(button, *TargetClick, targetClicked, click, .{});
@@ -2194,7 +2195,7 @@ pub const Browser = struct {
         const a = self.arena.allocator();
         const click = a.create(Click) catch return;
         click.* = .{ .browser = self, .json = std.json.Stringify.valueAlloc(a, object, .{}) catch return, .open = open };
-        const z = a.dupeZ(u8, label) catch return;
+        const z = a.dupeSentinel(u8, label, 0) catch return;
         const button = gtk.Button.newWithLabel(z);
         self.rows.append(button.as(gtk.Widget));
         _ = gtk.Button.signals.clicked.connect(button, *Click, clicked, click, .{});
@@ -2234,7 +2235,7 @@ pub const Browser = struct {
     fn targetClicked(_: *gtk.Button, click: *TargetClick) callconv(.c) void {
         // Copy before dispatch because native effects may rebuild the list.
         const browser = click.browser;
-        const id = browser.owner.allocator.dupeZ(u8, click.id) catch return;
+        const id = browser.owner.allocator.dupeSentinel(u8, click.id, 0) catch return;
         defer browser.owner.allocator.free(id);
         browser.connectTarget(id);
     }
@@ -2243,7 +2244,7 @@ pub const Browser = struct {
         if (self.return_pane) |old| self.owner.allocator.free(old);
         self.return_pane = copy;
         self.clear();
-        const panel_title = self.owner.allocator.dupeZ(u8, string(items, "title") orelse "Tool activity") catch return;
+        const panel_title = self.owner.allocator.dupeSentinel(u8, string(items, "title") orelse "Tool activity", 0) catch return;
         defer self.owner.allocator.free(panel_title);
         self.window.as(gtk.Window).setTitle(panel_title);
         self.targets_scroll.as(gtk.Widget).setVisible(0);
@@ -2253,7 +2254,7 @@ pub const Browser = struct {
             if (field(row, "input")) |action| {
                 self.add(title, action, false);
             } else {
-                const z = self.arena.allocator().dupeZ(u8, title) catch continue;
+                const z = self.arena.allocator().dupeSentinel(u8, title, 0) catch continue;
                 const label = gtk.Label.new(z);
                 label.setWrap(1); label.setSelectable(1); label.setXalign(0);
                 self.rows.append(label.as(gtk.Widget));
@@ -2266,7 +2267,7 @@ pub const Browser = struct {
         setLabel(self.owner.allocator, self.status, "Search results in locally loaded messages only");
         for (array(field(items, "items"))) |row| {
             const text = string(row, "text") orelse "";
-            const z = self.arena.allocator().dupeZ(u8, text) catch continue;
+            const z = self.arena.allocator().dupeSentinel(u8, text, 0) catch continue;
             const label = gtk.Label.new(z);
             label.setWrap(1);
             label.setSelectable(1);

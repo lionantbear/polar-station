@@ -1,5 +1,7 @@
 //! One native logical Workspace owner and pure command planning. No GTK objects,
 //! Host Workspace projections, content transport or physical execution live here.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const renderpkg = @import("workspace_rendering.zig");
 const native_workspace_store = @import("native_workspace_store.zig");
@@ -786,7 +788,7 @@ fn newEmptyNativeWorkspace(
 
 pub fn newNativeIdentifier(allocator: std.mem.Allocator) ![]u8 {
     var bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&bytes);
+    global.io().random(&bytes);
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     return std.fmt.allocPrint(

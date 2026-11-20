@@ -4,6 +4,8 @@
 //! selection, mode, and Pane-to-Session bindings. Backend lifecycle and
 //! physical Ghostty identities are deliberately excluded.
 
+const global = @import("../../../global.zig");
+
 const std = @import("std");
 const renderpkg = @import("workspace_rendering.zig");
 
@@ -220,12 +222,10 @@ pub const Store = struct {
     }
 
     pub fn load(self: *const Store) !?OwnedCatalog {
-        var file = std.fs.openFileAbsolute(self.path, .{}) catch |err| switch (err) {
+        const content = std.Io.Dir.cwd().readFileAlloc(global.io(), self.path, self.allocator, .limited(1024 * 1024)) catch |err| switch (err) {
             error.FileNotFound => return null,
             else => return err,
         };
-        defer file.close();
-        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
         defer self.allocator.free(content);
         return try decodeCatalog(self.allocator, content);
     }
@@ -241,25 +241,22 @@ pub const Store = struct {
         defer self.allocator.free(document);
         const parent = std.fs.path.dirname(self.path) orelse
             return error.InvalidPath;
-        std.fs.cwd().makePath(parent) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
+        try std.Io.Dir.cwd().createDirPath(global.io(), parent);
         const temporary_path = try std.fmt.allocPrint(
             self.allocator,
             "{s}.tmp",
             .{self.path},
         );
         defer self.allocator.free(temporary_path);
-        var file = try std.fs.createFileAbsolute(temporary_path, .{
+        const file = try std.Io.Dir.createFileAbsolute(global.io(), temporary_path, .{
             .truncate = true,
-            .mode = 0o600,
+            .permissions = .fromMode(0o600),
         });
-        errdefer std.fs.deleteFileAbsolute(temporary_path) catch {};
-        defer file.close();
-        try file.writeAll(document);
-        try file.sync();
-        try std.fs.renameAbsolute(temporary_path, self.path);
+        errdefer std.Io.Dir.deleteFileAbsolute(global.io(), temporary_path) catch {};
+        defer file.close(global.io());
+        try file.writeStreamingAll(global.io(), document);
+        try file.sync(global.io());
+        try std.Io.Dir.renameAbsolute(temporary_path, self.path, global.io());
         var read_back = (try self.load()) orelse return error.ReadBackMismatch;
         defer read_back.deinit();
         if (!catalogEqual(catalog, read_back.value)) {
@@ -765,12 +762,12 @@ fn cloneStrings(
 }
 
 pub fn statePath(allocator: std.mem.Allocator) ![]u8 {
-    const base = std.process.getEnvVarOwned(
+    const base = global.environ().getAlloc(
         allocator,
         "XDG_STATE_HOME",
     ) catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => blk: {
-            const home = try std.process.getEnvVarOwned(allocator, "HOME");
+        error.EnvironmentVariableMissing => blk: {
+            const home = try global.environ().getAlloc(allocator, "HOME");
             defer allocator.free(home);
             break :blk try std.fs.path.join(
                 allocator,

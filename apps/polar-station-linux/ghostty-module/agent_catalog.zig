@@ -1,6 +1,6 @@
 //! JSON/C ABI only. Graph, search and family reference rules are shared Rust.
 const std = @import("std");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 pub const Row = struct { root: usize, parent: ?usize, key: []const u8, group: []const u8, matches: bool, rank: ?usize };
 pub fn project(allocator: std.mem.Allocator, input: anytype) !std.json.Parsed([]const Row) {
     const bytes = try std.json.Stringify.valueAlloc(allocator, input, .{ .emit_null_optional_fields = false });

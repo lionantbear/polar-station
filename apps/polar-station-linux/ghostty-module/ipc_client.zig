@@ -4,10 +4,10 @@
 //! generation fencing, and bounded queues belong to Rust. This module owns no
 //! control IPC state machine and never carries Pane Host terminal bytes.
 
+const global = @import("../../../global.zig");
+
 const std = @import("std");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 
 pub fn trace(stage: u32, identity: []const u8, generation: u64) void {
     c.polar_station_trace_native(stage, identity.ptr, identity.len, generation);
@@ -99,7 +99,7 @@ pub const Client = struct {
             .event_capacity = 256,
         }, .{});
         defer self.allocator.free(config);
-        const config_z = try self.allocator.dupeZ(u8, config);
+        const config_z = try self.allocator.dupeSentinel(u8, config, 0);
         defer self.allocator.free(config_z);
         const handle = c.polar_station_desktop_client_new(
             config_z.ptr,
@@ -125,7 +125,7 @@ pub const Client = struct {
 
     pub fn sendJson(self: *Client, payload: []const u8) !void {
         const handle = self.handle orelse return error.NotStarted;
-        const payload_z = try self.allocator.dupeZ(u8, payload);
+        const payload_z = try self.allocator.dupeSentinel(u8, payload, 0);
         defer self.allocator.free(payload_z);
         switch (c.polar_station_desktop_client_send_json_status(handle, payload_z.ptr)) {
             0 => {},
@@ -138,7 +138,7 @@ pub const Client = struct {
     }
 
     pub fn backend(self:*Client,bytes:[]const u8) !void {
-        const json=try self.allocator.dupeZ(u8,bytes);defer self.allocator.free(json);
+        const json=try self.allocator.dupeSentinel(u8,bytes, 0);defer self.allocator.free(json);
         if(!c.polar_station_desktop_client_backend_json(self.handle,json.ptr))return error.BackendRequestBusy;
     }
     pub fn syncBackendSocket(self:*Client) !void {
@@ -150,7 +150,7 @@ pub const Client = struct {
 
     pub fn cancelRequest(self: *Client, id: []const u8) void {
         const handle = self.handle orelse return;
-        const id_z = self.allocator.dupeZ(u8, id) catch return;
+        const id_z = self.allocator.dupeSentinel(u8, id, 0) catch return;
         defer self.allocator.free(id_z);
         c.polar_station_desktop_client_cancel_request(handle, c.polar_station_desktop_client_generation(handle), id_z.ptr);
     }
@@ -163,14 +163,14 @@ pub const Client = struct {
 
     pub fn sendSessionJson(self: *Client, request: []const u8) !void {
         const handle = self.handle orelse return error.NotStarted;
-        const json = try self.allocator.dupeZ(u8, request);
+        const json = try self.allocator.dupeSentinel(u8, request, 0);
         defer self.allocator.free(json);
         if (!c.polar_station_desktop_client_session_json(handle,json.ptr)) return error.OutboundQueueFull;
     }
 
     pub fn nativeStateJson(self: *Client, request: []const u8) !void {
         const handle = self.handle orelse return error.NotStarted;
-        const json = try self.allocator.dupeZ(u8, request);
+        const json = try self.allocator.dupeSentinel(u8, request, 0);
         defer self.allocator.free(json);
         if (!c.polar_station_desktop_client_native_state_json(handle, json.ptr)) return error.OutboundUnavailable;
     }
@@ -184,7 +184,7 @@ pub const Client = struct {
             .request = parsed.value,
         }, .{});
         defer self.allocator.free(payload);
-        const payload_z = try self.allocator.dupeZ(u8, payload);
+        const payload_z = try self.allocator.dupeSentinel(u8, payload, 0);
         defer self.allocator.free(payload_z);
         if (!c.polar_station_desktop_client_send_content_json(handle, payload_z.ptr)) return error.ContentQueueBusy;
     }
@@ -294,17 +294,17 @@ pub const Client = struct {
 };
 
 pub fn resolveSocketPath(allocator: std.mem.Allocator) ![]u8 {
-    if (std.process.getEnvVarOwned(allocator, "POLAR_TMUX_IPC_SOCKET")) |path| {
+    if (global.environ().getAlloc(allocator, "POLAR_TMUX_IPC_SOCKET")) |path| {
         if (path.len == 0) {
             allocator.free(path);
             return error.InvalidSocketPath;
         }
         return path;
     } else |error_value| switch (error_value) {
-        error.EnvironmentVariableNotFound => {},
+        error.EnvironmentVariableMissing => {},
         else => return error_value,
     }
-    const runtime_dir = try std.process.getEnvVarOwned(allocator, "XDG_RUNTIME_DIR");
+    const runtime_dir = try global.environ().getAlloc(allocator, "XDG_RUNTIME_DIR");
     defer allocator.free(runtime_dir);
     if (runtime_dir.len == 0) return error.InvalidSocketPath;
     return std.fs.path.join(allocator, &.{ runtime_dir, "polar-tmux", "host.sock" });

@@ -1,4 +1,6 @@
 //! Native Host import/export review. Matching, choices and apply eligibility stay in Rust.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const adw = @import("adw");
@@ -61,7 +63,7 @@ pub const Review = struct {
     pub fn create(a: std.mem.Allocator, context: ?*anyopaque, dispatch: Dispatch) !*Review {
         const self = try a.create(Review);
         errdefer a.destroy(self);
-        const frontend_id = try std.fmt.allocPrint(a, "host-transfer-ui-{x}", .{std.crypto.random.int(u64)});
+        const frontend_id = try std.fmt.allocPrint(a, "host-transfer-ui-{x}", .{@import("station_random.zig").int(u64)});
         self.* = .{ .allocator = a, .context = context, .dispatch = dispatch, .frontend_id = frontend_id };
         return self;
     }
@@ -94,7 +96,7 @@ pub const Review = struct {
         self.dispatch(self.context, bytes);
     }
     pub fn problem(self: *Review, message: []const u8) void {
-        const z = self.allocator.dupeZ(u8, message) catch return;
+        const z = self.allocator.dupeSentinel(u8, message, 0) catch return;
         defer self.allocator.free(z);
         if (self.status) |status| status.setText(z);
         if (self.inline_parent != null) return;
@@ -106,7 +108,7 @@ pub const Review = struct {
     }
     pub fn request(self: *Review, token: u64, transfer_request: Value) void {
         if (self.pending_id != null) return;
-        const id = std.fmt.allocPrint(self.allocator, "host-transfer-{x}", .{std.crypto.random.int(u64)}) catch return;
+        const id = std.fmt.allocPrint(self.allocator, "host-transfer-{x}", .{@import("station_random.zig").int(u64)}) catch return;
         self.pending_id = id;
         self.pending_token = token;
         const payload = std.json.Stringify.valueAlloc(self.allocator, .{ .type = "application_request", .request = .{ .protocol_version = @as(u32, 1), .api = "control_center_v1", .request_id = id, .frontend_session_id = self.frontend_id, .expected_control_revision = @as(?u64, null), .command = .{ .type = "host_transfer", .request = transfer_request } } }, .{}) catch {
@@ -236,7 +238,7 @@ pub const Review = struct {
         self.status = null;
     }
     fn label(self: *Review, box: *gtk.Box, text: []const u8) *gtk.Label {
-        const z = self.allocator.dupeZ(u8, text) catch return gtk.Label.new("");
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return gtk.Label.new("");
         defer self.allocator.free(z);
         const l = gtk.Label.new(z);
         l.setXalign(0);
@@ -293,7 +295,7 @@ pub const Review = struct {
                 self.allocator.destroy(context);
                 continue;
             };
-            const z = self.allocator.dupeZ(u8, string(field(row, "host"), "display_name")) catch continue;
+            const z = self.allocator.dupeSentinel(u8, string(field(row, "host"), "display_name"), 0) catch continue;
             defer self.allocator.free(z);
             const b = gtk.Button.newWithLabel(z);
             if (index == self.selected) b.as(gtk.Widget).addCssClass("suggested-action");
@@ -320,7 +322,7 @@ pub const Review = struct {
             names.append("Choose an existing Host…");
             var selected: u32 = 0;
             for (targets, 0..) |item, index| {
-                const z = self.allocator.dupeZ(u8, string(item, "display_name")) catch continue;
+                const z = self.allocator.dupeSentinel(u8, string(item, "display_name"), 0) catch continue;
                 defer self.allocator.free(z);
                 names.append(z);
                 const target_id = self.selected_target_id orelse string(candidate, "target_id");
@@ -367,7 +369,7 @@ pub const Review = struct {
         };
     }
     fn cell(self: *Review, grid: *gtk.Grid, col: c_int, row: c_int, text: []const u8) void {
-        const z = self.allocator.dupeZ(u8, text) catch return;
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
         defer self.allocator.free(z);
         const l = gtk.Label.new(z);
         l.setXalign(0);
@@ -451,7 +453,7 @@ pub const Review = struct {
         box.append(local.as(gtk.Widget));
         self.addCheck("local", local);
         for (facts.machines) |m| {
-            const z = self.allocator.dupeZ(u8, m.display_name) catch continue;
+            const z = self.allocator.dupeSentinel(u8, m.display_name, 0) catch continue;
             defer self.allocator.free(z);
             const c = gtk.CheckButton.newWithLabel(z);
             box.append(c.as(gtk.Widget));
@@ -512,22 +514,24 @@ pub const Review = struct {
                 self.allocator.free(bytes);
                 self.export_bytes = null;
             }
-            var write_buffer: [4096]u8 = undefined;
-            var out = std.fs.cwd().atomicFile(name, .{ .mode = 0o600, .write_buffer = &write_buffer }) catch {
+            var out = std.Io.Dir.cwd().createFileAtomic(global.io(), name, .{
+                .permissions = .fromMode(0o600),
+                .replace = true,
+            }) catch {
                 self.problem("Cannot open export file.");
                 return;
             };
-            defer out.deinit();
-            out.file_writer.interface.writeAll(bytes) catch {
+            defer out.deinit(global.io());
+            out.file.writeStreamingAll(global.io(), bytes) catch {
                 self.problem("Cannot write export file.");
                 return;
             };
-            out.finish() catch {
+            out.replace(global.io()) catch {
                 self.problem("Cannot finish export.");
                 return;
             };
         } else {
-            const bytes = std.fs.cwd().readFileAlloc(self.allocator, name, 524288) catch {
+            const bytes = std.Io.Dir.cwd().readFileAlloc(global.io(), name, self.allocator, .limited(524288)) catch {
                 self.problem("Cannot read Host file (maximum 512 KiB).");
                 return;
             };

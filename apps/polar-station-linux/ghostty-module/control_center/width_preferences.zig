@@ -4,6 +4,8 @@
 //! Pane bindings, and physical Ghostty geometry never enter the Rust IPC
 //! payload; only this GTK-native preference owns the user's width choice.
 
+const global = @import("../../../../global.zig");
+
 const std = @import("std");
 const layout_policy = @import("layout_policy.zig");
 
@@ -28,16 +30,14 @@ pub const Preferences = struct {
         visible_width: c_int,
     ) c_int {
         const fallback = layout_policy.adaptiveMapWidth(visible_width);
-        var file = std.fs.openFileAbsolute(self.path, .{}) catch return fallback;
-        defer file.close();
-        const content = file.readToEndAlloc(self.allocator, 4096) catch return fallback;
+        const content = std.Io.Dir.cwd().readFileAlloc(global.io(), self.path, self.allocator, .limited(4096)) catch return fallback;
         defer self.allocator.free(content);
         const stored = parseMapWidth(content) orelse return fallback;
         return layout_policy.clampMapWidth(stored);
     }
 
     pub fn loadWidth(self: *const Preferences, key: []const u8) ?c_int {
-        const bytes = std.fs.cwd().readFileAlloc(self.allocator, self.path, 4096) catch return null;
+        const bytes = std.Io.Dir.cwd().readFileAlloc(global.io(), self.path, self.allocator, .limited(4096)) catch return null;
         defer self.allocator.free(bytes);
         const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, bytes, .{}) catch return null;
         defer parsed.deinit();
@@ -50,10 +50,7 @@ pub const Preferences = struct {
     /// compositor crash from leaving a partial JSON document behind.
     pub fn save(self: *const Preferences, map_width: c_int) !void {
         const parent = std.fs.path.dirname(self.path) orelse return error.InvalidPath;
-        std.fs.cwd().makePath(parent) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
+        try std.Io.Dir.cwd().createDirPath(global.io(), parent);
 
         const temporary_path = try std.fmt.allocPrint(
             self.allocator,
@@ -62,31 +59,31 @@ pub const Preferences = struct {
         );
         defer self.allocator.free(temporary_path);
 
-        var file = try std.fs.createFileAbsolute(temporary_path, .{
+        const file = try std.Io.Dir.createFileAbsolute(global.io(), temporary_path, .{
             .truncate = true,
-            .mode = 0o600,
+            .permissions = .fromMode(0o600),
         });
-        errdefer std.fs.deleteFileAbsolute(temporary_path) catch {};
-        defer file.close();
+        errdefer std.Io.Dir.deleteFileAbsolute(global.io(), temporary_path) catch {};
+        defer file.close(global.io());
         const document = try self.mergedValues(&.{.{ .key = "map_width", .value = layout_policy.clampMapWidth(map_width) }});
         defer self.allocator.free(document);
-        try file.writeAll(document);
-        try file.sync();
-        try std.fs.renameAbsolute(temporary_path, self.path);
+        try file.writeStreamingAll(global.io(), document);
+        try file.sync(global.io());
+        try std.Io.Dir.renameAbsolute(temporary_path, self.path, global.io());
     }
     const Value = struct { key: []const u8, value: c_int };
     fn mergedValues(self: *const Preferences, values: []const Value) ![]u8 {
-        const old = std.fs.cwd().readFileAlloc(self.allocator, self.path, 4096) catch try self.allocator.dupe(u8, "{}");
+        const old = std.Io.Dir.cwd().readFileAlloc(global.io(), self.path, self.allocator, .limited(4096)) catch try self.allocator.dupe(u8, "{}");
         defer self.allocator.free(old);
         var parsed = std.json.parseFromSlice(std.json.Value, self.allocator, old, .{ .allocate = .alloc_always }) catch try std.json.parseFromSlice(std.json.Value, self.allocator, "{}", .{});
         defer parsed.deinit();
         if (parsed.value != .object) return error.InvalidPreferences;
         _ = parsed.value.object.swapRemove("inbox_width");
-        for (values) |value| try parsed.value.object.put(value.key, .{ .integer = value.value });
+        for (values) |value| try parsed.value.object.put(parsed.arena.allocator(), value.key, .{ .integer = value.value });
         return std.json.Stringify.valueAlloc(self.allocator, parsed.value, .{});
     }
     pub fn loadEditorSize(self: *const Preferences, _: bool) ?[2]c_int {
-        const bytes = std.fs.cwd().readFileAlloc(self.allocator, self.path, 4096) catch return null;
+        const bytes = std.Io.Dir.cwd().readFileAlloc(global.io(), self.path, self.allocator, .limited(4096)) catch return null;
         defer self.allocator.free(bytes);
         const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, bytes, .{}) catch return null;
         defer parsed.deinit();
@@ -97,7 +94,7 @@ pub const Preferences = struct {
         return .{ @intCast(width.integer), @intCast(height.integer) };
     }
     pub fn editorMaximized(self: *const Preferences) bool {
-        const bytes = std.fs.cwd().readFileAlloc(self.allocator, self.path, 4096) catch return false;
+        const bytes = std.Io.Dir.cwd().readFileAlloc(global.io(), self.path, self.allocator, .limited(4096)) catch return false;
         defer self.allocator.free(bytes);
         const parsed = std.json.parseFromSlice(std.json.Value, self.allocator, bytes, .{}) catch return false;
         defer parsed.deinit();
@@ -120,21 +117,21 @@ pub const Preferences = struct {
     }
     fn writeEditorPreferences(self: *const Preferences, document: []const u8) !void {
         const parent = std.fs.path.dirname(self.path) orelse return error.InvalidPath;
-        try std.fs.cwd().makePath(parent);
+        try std.Io.Dir.cwd().createDirPath(global.io(), parent);
         const temporary = try std.fmt.allocPrint(self.allocator, "{s}.tmp", .{self.path});
         defer self.allocator.free(temporary);
-        var file = try std.fs.createFileAbsolute(temporary, .{ .mode = 0o600 });
-        defer file.close();
-        try file.writeAll(document);
-        try file.sync();
-        try std.fs.renameAbsolute(temporary, self.path);
+        const file = try std.Io.Dir.createFileAbsolute(global.io(), temporary, .{ .permissions = .fromMode(0o600) });
+        defer file.close(global.io());
+        try file.writeStreamingAll(global.io(), document);
+        try file.sync(global.io());
+        try std.Io.Dir.renameAbsolute(temporary, self.path, global.io());
     }
 };
 
 fn statePath(allocator: std.mem.Allocator) ![]u8 {
-    const base = std.process.getEnvVarOwned(allocator, "XDG_STATE_HOME") catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => blk: {
-            const home = try std.process.getEnvVarOwned(allocator, "HOME");
+    const base = global.environ().getAlloc(allocator, "XDG_STATE_HOME") catch |err| switch (err) {
+        error.EnvironmentVariableMissing => blk: {
+            const home = try global.environ().getAlloc(allocator, "HOME");
             defer allocator.free(home);
             break :blk try std.fs.path.join(allocator, &.{ home, ".local", "state" });
         },

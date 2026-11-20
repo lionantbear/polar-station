@@ -141,7 +141,7 @@ pub const Page = struct {
             hosts.append("Select authorized Station Host");
             var selected: u32 = 0;
             if (self.settings) |s| for (s.value.host_connections, 0..) |h, i| {
-                const z = self.allocator.dupeZ(u8, h.host_id) catch continue;
+                const z = self.allocator.dupeSentinel(u8, h.host_id, 0) catch continue;
                 defer self.allocator.free(z);
                 hosts.append(z);
                 if (std.mem.eql(u8, h.id, e.peer_connection_ref orelse "")) selected = @intCast(i + 1);
@@ -166,7 +166,7 @@ pub const Page = struct {
                 if (std.mem.eql(u8, id, e.id)) index = @intCast(self.ids.items.len);
             }
             self.ids.append(self.allocator, e.id) catch continue;
-            const z = self.allocator.dupeZ(u8, e.id) catch continue;
+            const z = self.allocator.dupeSentinel(u8, e.id, 0) catch continue;
             defer self.allocator.free(z);
             choices.append(z);
         };
@@ -184,7 +184,7 @@ pub const Page = struct {
                 if (!std.mem.eql(u8, id, e.id)) continue;
                 const text = std.fmt.allocPrint(self.allocator, "{s}\nConnection: {s}\nSocket: {s}\nConnection is checked when a session uses this app-server.", .{ e.id, e.control_mode, e.socket_path }) catch return;
                 defer self.allocator.free(text);
-                const z = self.allocator.dupeZ(u8, text) catch return;
+                const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
                 defer self.allocator.free(z);
                 self.detail.setText(z);
                 break;
@@ -262,7 +262,7 @@ pub const Page = struct {
         return std.mem.span(e.as(gtk.Editable).getText());
     }
     fn entry(self: *Page, e: *gtk.Entry, value: []const u8) void {
-        const z = self.allocator.dupeZ(u8, value) catch return;
+        const z = self.allocator.dupeSentinel(u8, value, 0) catch return;
         defer self.allocator.free(z);
         e.as(gtk.Editable).setText(z);
     }

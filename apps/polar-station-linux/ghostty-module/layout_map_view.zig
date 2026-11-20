@@ -377,7 +377,7 @@ fn ownedLabel(
     text_value: []const u8,
     css_class: [*:0]const u8,
 ) !*gtk.Label {
-    const text = try allocator.dupeZ(u8, text_value);
+    const text = try allocator.dupeSentinel(u8, text_value, 0);
     defer allocator.free(text);
     return label(text, css_class);
 }
@@ -402,7 +402,7 @@ fn setLabel(
     target: *gtk.Label,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setLabel(text);
 }
@@ -412,7 +412,7 @@ fn setButtonLabel(
     target: *gtk.Button,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setLabel(text);
 }
@@ -422,7 +422,7 @@ fn setWidgetName(
     target: *gtk.Widget,
     value: []const u8,
 ) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setName(text);
 }

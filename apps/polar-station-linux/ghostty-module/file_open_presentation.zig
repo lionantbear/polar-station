@@ -97,7 +97,7 @@ pub const Presentation = struct {
 
     fn errorLabel(self: *Presentation, text: []const u8) *gtk.Label {
         const label = gtk.Label.new(null);
-        if (self.allocator.dupeZ(u8, text)) |value| {
+        if (self.allocator.dupeSentinel(u8, text, 0)) |value| {
             defer self.allocator.free(value);
             label.setText(value);
         } else |_| {}
@@ -167,7 +167,7 @@ pub const Presentation = struct {
     }
 
     fn showError(self: *Presentation, window: *Window, effect: std.json.Value) void {
-        const details = self.allocator.dupeZ(u8, dict.string(effect, "copy_details")) catch return;
+        const details = self.allocator.dupeSentinel(u8, dict.string(effect, "copy_details"), 0) catch return;
         const source = window.as(gtk.Window);
         const anchor = window.getTabView().as(gtk.Widget);
         const width = @min(@max(anchor.getWidth() - 32, 1), 590);
@@ -218,7 +218,7 @@ pub const Presentation = struct {
         editor.setWrapMode(.word_char);
         editor.getBuffer().setEnableUndo(1);
         const original = dict.string(effect, "edit_text");
-        if (self.allocator.dupeZ(u8, original)) |initial| {
+        if (self.allocator.dupeSentinel(u8, original, 0)) |initial| {
             defer self.allocator.free(initial);
             editor.getBuffer().setText(initial, @intCast(original.len));
         } else |_| {}
@@ -303,7 +303,7 @@ pub const Presentation = struct {
             const anchor = self.anchor orelse { self.cancelled(); return true; };
             const popup = gtk.Popover.new(); popup.setAutohide(0); popup.setHasArrow(0);
             const row = gtk.Box.new(.horizontal, 10);
-            const message = self.allocator.dupeZ(u8, dict.string(effect, "message")) catch return true; defer self.allocator.free(message);
+            const message = self.allocator.dupeSentinel(u8, dict.string(effect, "message"), 0) catch return true; defer self.allocator.free(message);
             const label = gtk.Label.new(message); label.setWrap(1); label.setMaxWidthChars(36); row.append(label.as(gtk.Widget));
             const cancel = gtk.Button.newWithLabel("Cancel"); row.append(cancel.as(gtk.Widget));
             const value = self.callback(id, .cancel) orelse return true;
@@ -324,7 +324,7 @@ pub const Presentation = struct {
             const names = gtk.StringList.new(null);
             const candidates = dict.field(effect, "candidates");
             if (candidates == .array) for (candidates.array.items) |file| {
-                const path = self.allocator.dupeZ(u8, dict.string(file, "path")) catch continue; defer self.allocator.free(path); names.append(path);
+                const path = self.allocator.dupeSentinel(u8, dict.string(file, "path"), 0) catch continue; defer self.allocator.free(path); names.append(path);
             };
             const gio = @import("gio");
             value.picker = gtk.DropDown.new(names.as(gio.ListModel), null); dialog.setExtraChild(value.picker.?.as(gtk.Widget));

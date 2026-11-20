@@ -56,8 +56,8 @@ pub const Panel = struct {
     appearance_value: settings.Appearance = .{},
     rendering: bool = false,
     theme_follow: ?*gtk.CheckButton = null,
-    theme_preview_css: [6]?*gtk.CssProvider = .{null} ** 6,
-    theme_buttons: [6]?*gtk.Button = .{null} ** 6,
+    theme_preview_css: [6]?*gtk.CssProvider = @splat(null),
+    theme_buttons: [6]?*gtk.Button = @splat(null),
     theme_contexts: [6]ThemeChoice = undefined,
     theme_list: std.ArrayListUnmanaged([:0]u8) = .empty,
     theme_dropdown: ?*gtk.DropDown = null,
@@ -183,7 +183,7 @@ pub const Panel = struct {
         self.theme_dropdown.?.setSelected(selected);
         self.edit_lease.observe(projection.revision);
         self.rebase.?.as(gtk.Widget).setVisible(@intFromBool(self.edit_lease.canRebase()));
-        const rebase_label=self.allocator.dupeZ(u8,self.edit_lease.rebaseLabel()) catch return;
+        const rebase_label=self.allocator.dupeSentinel(u8,self.edit_lease.rebaseLabel(), 0) catch return;
         defer self.allocator.free(rebase_label);self.rebase.?.setLabel(rebase_label);
         if(self.edit_lease.replaces(.appearance)) {
         const adaptive = projection.appearance.layout_map_width == null;
@@ -550,7 +550,7 @@ pub const Panel = struct {
         tmux.append(self.tmux_warning.?.as(gtk.Widget));
         self.tmux_fields = settings.tmuxStatusView(self.allocator, &.{}, null, null) catch null;
         if (self.tmux_fields) |fields| for (fields.value.fields) |field| {
-            const title = self.allocator.dupeZ(u8, field.label) catch break;
+            const title = self.allocator.dupeSentinel(u8, field.label, 0) catch break;
             defer self.allocator.free(title);
             self.tmux_toggles.ensureUnusedCapacity(self.allocator, 1) catch break;
             const button = gtk.ToggleButton.new();
@@ -751,7 +751,7 @@ fn text(value: *gtk.Entry) []const u8 {
     return std.mem.span(value.as(gtk.Editable).getText());
 }
 fn setEntry(allocator: std.mem.Allocator, target: *gtk.Entry, value: []const u8) !void {
-    const owned = try allocator.dupeZ(u8, value);
+    const owned = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(owned);
     target.as(gtk.Editable).setText(owned);
 }
@@ -763,7 +763,7 @@ fn label(text_value: [*:0]const u8, class: [*:0]const u8) *gtk.Label {
     return value;
 }
 fn setLabel(allocator: std.mem.Allocator, target: *gtk.Label, value: []const u8) !void {
-    const owned = try allocator.dupeZ(u8, value);
+    const owned = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(owned);
     target.setLabel(owned);
 }

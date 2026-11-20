@@ -1,0 +1,2086 @@
+diff --git a/include/ghostty.h b/include/ghostty.h
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -1177,6 +1177,9 @@
+ 
+ GHOSTTY_API ghostty_surface_t ghostty_surface_new(ghostty_app_t,
+                                                      const ghostty_surface_config_s*);
++GHOSTTY_API ghostty_surface_t ghostty_surface_new_display(ghostty_app_t, const ghostty_surface_config_s*);
++GHOSTTY_API bool ghostty_surface_display_geometry(ghostty_surface_t, double*, double*, double*, double*);
++GHOSTTY_API bool ghostty_surface_display_text(ghostty_surface_t, uint32_t, const uint8_t*, uintptr_t);
+ GHOSTTY_API void ghostty_surface_free(ghostty_surface_t);
+ GHOSTTY_API void* ghostty_surface_userdata(ghostty_surface_t);
+ GHOSTTY_API ghostty_app_t ghostty_surface_app(ghostty_surface_t);
+@@ -1188,6 +1191,8 @@
+ GHOSTTY_API void ghostty_surface_draw(ghostty_surface_t);
+ GHOSTTY_API void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
+ GHOSTTY_API void ghostty_surface_set_focus(ghostty_surface_t, bool);
++GHOSTTY_API void ghostty_surface_set_polar_native_control(ghostty_surface_t, bool);
++GHOSTTY_API bool ghostty_surface_synchronize_polar_font_size(ghostty_surface_t, float);
+ GHOSTTY_API void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
+ GHOSTTY_API void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
+ GHOSTTY_API ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
+diff --git a/macos/Ghostty-Info.plist b/macos/Ghostty-Info.plist
+--- a/macos/Ghostty-Info.plist
++++ b/macos/Ghostty-Info.plist
+@@ -2,6 +2,31 @@
+ <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+ <plist version="1.0">
+ <dict>
++	<key>CFBundleIconFile</key>
++	<string>PolarStation</string>
++	<key>NSMicrophoneUsageDescription</key>
++	<string>Record speech for Dictate and insert the transcribed text into your selected input.</string>
++	<key>NSPrincipalClass</key>
++	<string>PolarStationApplication</string>
++	<key>UTExportedTypeDeclarations</key>
++	<array>
++		<dict>
++			<key>UTTypeIdentifier</key>
++			<string>com.polarealm.polar-station.tab-move</string>
++			<key>UTTypeDescription</key>
++			<string>Polar Station Tab move</string>
++			<key>UTTypeConformsTo</key>
++			<array><string>public.json</string></array>
++		</dict>
++		<dict>
++			<key>UTTypeIdentifier</key>
++			<string>com.polarealm.polar-station.pane-move</string>
++			<key>UTTypeDescription</key>
++			<string>Polar Station Pane move</string>
++			<key>UTTypeConformsTo</key>
++			<array><string>public.json</string></array>
++		</dict>
++	</array>
+ 	<key>NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac</key>
+ 	<true/>
+ 	<key>NSDockTilePlugIn</key>
+diff --git a/macos/Ghostty.xcodeproj/project.pbxproj b/macos/Ghostty.xcodeproj/project.pbxproj
+--- a/macos/Ghostty.xcodeproj/project.pbxproj
++++ b/macos/Ghostty.xcodeproj/project.pbxproj
+@@ -15,6 +15,8 @@
+ 		8F3A9B4C2FA6B88000A18D13 /* Ghostty.sdef in Resources */ = {isa = PBXBuildFile; fileRef = 8F3A9B4B2FA6B88000A18D13 /* Ghostty.sdef */; };
+ 		9351BE8E3D22937F003B3499 /* nvim in Resources */ = {isa = PBXBuildFile; fileRef = 9351BE8E2D22937F003B3499 /* nvim */; };
+ 		A51BFC272B30F1B800E92F16 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A51BFC262B30F1B800E92F16 /* Sparkle */; };
++		5053544154494F4E00000001 /* PolarTmuxHostClient in Frameworks */ = {isa = PBXBuildFile; productRef = 5053544154494F4E00000011 /* PolarTmuxHostClient */; };
++		5053544154494F4E00000002 /* PolarTmuxMacUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5053544154494F4E00000012 /* PolarTmuxMacUI */; };
+ 		A546F1142D7B68D7003B11A0 /* locale in Resources */ = {isa = PBXBuildFile; fileRef = A546F1132D7B68D7003B11A0 /* locale */; };
+ 		A553F4142E06EB1600257779 /* Ghostty.icon in Resources */ = {isa = PBXBuildFile; fileRef = A553F4122E06EB1600257779 /* Ghostty.icon */; };
+ 		A56B880B2A840447007A0E29 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A56B880A2A840447007A0E29 /* Carbon.framework */; };
+@@ -149,6 +151,8 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				5053544154494F4E00000001 /* PolarTmuxHostClient in Frameworks */,
++				5053544154494F4E00000002 /* PolarTmuxMacUI in Frameworks */,
+ 				A51BFC272B30F1B800E92F16 /* Sparkle in Frameworks */,
+ 				A56B880B2A840447007A0E29 /* Carbon.framework in Frameworks */,
+ 				A571AB1D2A206FCF00248498 /* GhosttyKit.xcframework in Frameworks */,
+@@ -302,6 +306,8 @@
+ 			);
+ 			name = Ghostty;
+ 			packageProductDependencies = (
++				5053544154494F4E00000011 /* PolarTmuxHostClient */,
++				5053544154494F4E00000012 /* PolarTmuxMacUI */,
+ 				A51BFC262B30F1B800E92F16 /* Sparkle */,
+ 			);
+ 			productName = Ghostty;
+@@ -345,6 +351,7 @@
+ 			);
+ 			mainGroup = A5B30528299BEAAA0047F10C;
+ 			packageReferences = (
++				5053544154494F4E00000010 /* XCLocalSwiftPackageReference "PolarTmuxMac" */,
+ 				A51BFC252B30F1B700E92F16 /* XCRemoteSwiftPackageReference "Sparkle" */,
+ 			);
+ 			productRefGroup = A5B30532299BEAAA0047F10C /* Products */;
+@@ -763,7 +770,7 @@
+ 				SWIFT_EMIT_LOC_STRINGS = NO;
+ 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+ 				SWIFT_VERSION = 5.0;
+-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ghostty.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ghostty";
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Polar Station.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Polar Station";
+ 			};
+ 			name = Debug;
+ 		};
+@@ -786,7 +793,7 @@
+ 				SWIFT_EMIT_LOC_STRINGS = NO;
+ 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+ 				SWIFT_VERSION = 5.0;
+-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ghostty.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ghostty";
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Polar Station.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Polar Station";
+ 			};
+ 			name = Release;
+ 		};
+@@ -933,7 +940,7 @@
+ 		A5B30541299BEAAB0047F10C /* Debug */ = {
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
+-				ASSETCATALOG_COMPILER_APPICON_NAME = Ghostty;
++				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+ 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+ 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+ 				CLANG_ENABLE_MODULES = YES;
+@@ -947,12 +954,12 @@
+ 				DEVELOPMENT_TEAM = "";
+ 				ENABLE_HARDENED_RUNTIME = YES;
+ 				ENABLE_PREVIEWS = YES;
+-				EXECUTABLE_NAME = ghostty;
++				EXECUTABLE_NAME = "Polar Station";
+ 				GENERATE_INFOPLIST_FILE = YES;
+ 				INFOPLIST_FILE = "Ghostty-Info.plist";
+-				INFOPLIST_KEY_CFBundleDisplayName = "Ghostty[DEBUG]";
++				INFOPLIST_KEY_CFBundleDisplayName = "Polar Station";
++				INFOPLIST_KEY_CFBundleIconFile = PolarStation;
+ 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "A program running within Ghostty would like to use AppleScript.";
+ 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "A program running within Ghostty would like to use Bluetooth.";
+ 				INFOPLIST_KEY_NSCalendarsUsageDescription = "A program running within Ghostty would like to access your Calendar.";
+ 				INFOPLIST_KEY_NSCameraUsageDescription = "A program running within Ghostty would like to use the camera.";
+@@ -976,8 +983,10 @@
+ 				MACOSX_DEPLOYMENT_TARGET = 13.0;
+ 				MARKETING_VERSION = 0.1;
+ 				"OTHER_LDFLAGS[arch=*]" = "-lstdc++";
+-				PRODUCT_BUNDLE_IDENTIFIER = com.mitchellh.ghostty.debug;
+-				PRODUCT_NAME = "$(TARGET_NAME)";
++				PRODUCT_BUNDLE_IDENTIFIER = com.polarealm.polar-station;
++				PRODUCT_MODULE_NAME = Ghostty;
++				PRODUCT_NAME = "Polar Station";
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "POLAR_STATION DEBUG";
+ 				SWIFT_EMIT_LOC_STRINGS = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/ghostty-bridging-header.h";
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+@@ -988,7 +997,7 @@
+ 		A5B30542299BEAAB0047F10C /* Release */ = {
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
+-				ASSETCATALOG_COMPILER_APPICON_NAME = Ghostty;
++				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+ 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+ 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+ 				CLANG_ENABLE_MODULES = YES;
+@@ -1001,13 +1010,13 @@
+ 				DEVELOPMENT_TEAM = "";
+ 				ENABLE_HARDENED_RUNTIME = YES;
+ 				ENABLE_PREVIEWS = YES;
+-				EXECUTABLE_NAME = ghostty;
++				EXECUTABLE_NAME = "Polar Station";
+ 				GCC_OPTIMIZATION_LEVEL = fast;
+ 				GENERATE_INFOPLIST_FILE = YES;
+ 				INFOPLIST_FILE = "Ghostty-Info.plist";
+-				INFOPLIST_KEY_CFBundleDisplayName = Ghostty;
++				INFOPLIST_KEY_CFBundleDisplayName = "Polar Station";
++				INFOPLIST_KEY_CFBundleIconFile = PolarStation;
+ 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+-				INFOPLIST_KEY_NSAppleEventsUsageDescription = "A program running within Ghostty would like to use AppleScript.";
+ 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "A program running within Ghostty would like to use Bluetooth.";
+ 				INFOPLIST_KEY_NSCalendarsUsageDescription = "A program running within Ghostty would like to access your Calendar.";
+ 				INFOPLIST_KEY_NSCameraUsageDescription = "A program running within Ghostty would like to use the camera.";
+@@ -1031,8 +1040,10 @@
+ 				MACOSX_DEPLOYMENT_TARGET = 13.0;
+ 				MARKETING_VERSION = 0.1;
+ 				"OTHER_LDFLAGS[arch=*]" = "-lstdc++";
+-				PRODUCT_BUNDLE_IDENTIFIER = com.mitchellh.ghostty;
+-				PRODUCT_NAME = "$(TARGET_NAME)";
++				PRODUCT_BUNDLE_IDENTIFIER = com.polarealm.polar-station;
++				PRODUCT_MODULE_NAME = Ghostty;
++				PRODUCT_NAME = "Polar Station";
++				SWIFT_ACTIVE_COMPILATION_CONDITIONS = POLAR_STATION;
+ 				SWIFT_EMIT_LOC_STRINGS = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "Sources/App/ghostty-bridging-header.h";
+ 				SWIFT_VERSION = 5.0;
+@@ -1094,6 +1105,13 @@
+ 		};
+ /* End XCConfigurationList section */
+ 
++/* Begin XCLocalSwiftPackageReference section */
++		5053544154494F4E00000010 /* XCLocalSwiftPackageReference "PolarTmuxMac" */ = {
++			isa = XCLocalSwiftPackageReference;
++			relativePath = ../../../polarinfrav1/apps/polar-station-macos;
++		};
++/* End XCLocalSwiftPackageReference section */
++
+ /* Begin XCRemoteSwiftPackageReference section */
+ 		A51BFC252B30F1B700E92F16 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+ 			isa = XCRemoteSwiftPackageReference;
+@@ -1106,6 +1124,14 @@
+ /* End XCRemoteSwiftPackageReference section */
+ 
+ /* Begin XCSwiftPackageProductDependency section */
++		5053544154494F4E00000011 /* PolarTmuxHostClient */ = {
++			isa = XCSwiftPackageProductDependency;
++			productName = PolarTmuxHostClient;
++		};
++		5053544154494F4E00000012 /* PolarTmuxMacUI */ = {
++			isa = XCSwiftPackageProductDependency;
++			productName = PolarTmuxMacUI;
++		};
+ 		A51BFC262B30F1B800E92F16 /* Sparkle */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			package = A51BFC252B30F1B700E92F16 /* XCRemoteSwiftPackageReference "Sparkle" */;
+diff --git a/macos/Sources/App/AppDelegate.swift b/macos/Sources/App/AppDelegate.swift
+--- a/macos/Sources/App/AppDelegate.swift
++++ b/macos/Sources/App/AppDelegate.swift
+@@ -334,6 +334,9 @@
+ 
+         switch Ghostty.launchSource {
+         case .app:
++#if POLAR_STATION
++            PolarStationRuntime.shared.start(ghostty: ghostty)
++#endif
+             // Don't have to do anything.
+             break
+ 
+@@ -382,10 +385,17 @@
+     }
+ 
+     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
++#if POLAR_STATION
++        return false
++#else
+         return derivedConfig.shouldQuitAfterLastWindowClosed
++#endif
+     }
+ 
+     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
++        #if POLAR_STATION
++        return PolarStationRuntime.shared.prepareToTerminate()
++        #else
+         let windows = NSApplication.shared.windows
+         if windows.isEmpty { return .terminateNow }
+ 
+@@ -417,9 +427,14 @@
+         if !ghostty.needsConfirmQuit { return .terminateNow }
+ 
+         return terminate()
++        #endif
+     }
+ 
+     func applicationWillTerminate(_ notification: Notification) {
++#if POLAR_STATION
++        PolarStationRuntime.shared.stop()
++        PolarStationGraphicsEngine.shared.shutdown()
++#endif
+         // We have no notifications we want to persist after death,
+         // so remove them all now. In the future we may want to be
+         // more selective and only remove surface-targeted notifications.
+@@ -429,6 +444,10 @@
+     /// This is called when the application is already open and someone double-clicks the icon
+     /// or clicks the dock icon.
+     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
++#if POLAR_STATION
++        PolarStationRuntime.shared.reopen(ghostty: ghostty)
++        return false
++#else
+         // If we have visible windows then we allow macOS to do its default behavior
+         // of focusing one of them.
+         guard !flag else { return true }
+@@ -470,6 +489,7 @@
+         // No visible windows, open a new one.
+         _ = TerminalController.newWindow(ghostty)
+         return false
++#endif
+     }
+ 
+     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+@@ -779,12 +799,22 @@
+     }
+ 
+     @objc private func ghosttyNewWindow(_ notification: Notification) {
++        #if POLAR_STATION
++        Task { @MainActor in PolarStationRuntime.shared.requestManagedNewWindow() }
++        return
++        #endif
+         let configAny = notification.userInfo?[Ghostty.Notification.NewSurfaceConfigKey]
+         let config = configAny as? Ghostty.SurfaceConfiguration
+         _ = TerminalController.newWindow(ghostty, withBaseConfig: config)
+     }
+ 
+     @objc private func ghosttyNewTab(_ notification: Notification) {
++#if POLAR_STATION
++        Task { @MainActor in
++            PolarStationRuntime.shared.requestManagedNewTab()
++        }
++        return
++#endif
+         guard let surfaceView = notification.object as? Ghostty.SurfaceView else { return }
+         guard let window = surfaceView.window else { return }
+ 
+@@ -1010,10 +1040,20 @@
+     }
+ 
+     @IBAction func newWindow(_ sender: Any?) {
++        #if POLAR_STATION
++        Task { @MainActor in PolarStationRuntime.shared.requestManagedNewWindow() }
++        return
++        #endif
+         _ = TerminalController.newWindow(ghostty)
+     }
+ 
+     @IBAction func newTab(_ sender: Any?) {
++#if POLAR_STATION
++        Task { @MainActor in
++            PolarStationRuntime.shared.requestManagedNewTab()
++        }
++        return
++#endif
+         _ = TerminalController.newTab(
+             ghostty,
+             from: TerminalController.preferredParent?.window
+@@ -1073,12 +1113,29 @@
+         NSApplication.shared.arrangeInFront(sender)
+     }
+ 
++    #if POLAR_STATION
++    private var stationMenuUndoManager: UndoManager? {
++        if let editor = NSApp.keyWindow?.firstResponder as? NSTextView {
++            return editor.undoManager
++        }
++        return undoManager
++    }
++    #endif
++
+     @IBAction func undo(_ sender: Any?) {
++        #if POLAR_STATION
++        stationMenuUndoManager?.undo()
++        #else
+         undoManager.undo()
++        #endif
+     }
+ 
+     @IBAction func redo(_ sender: Any?) {
++        #if POLAR_STATION
++        stationMenuUndoManager?.redo()
++        #else
+         undoManager.redo()
++        #endif
+     }
+ 
+     private struct DerivedConfig {
+@@ -1203,6 +1260,14 @@
+     @MainActor private func syncMenuShortcuts(_ config: Ghostty.Config) {
+         guard ghostty.readiness == .ready else { return }
+ 
++        #if POLAR_STATION
++        if let copy = menuCopy, let edit = copy.menu,
++           !edit.items.contains(where: { $0.action == #selector(NSText.cut(_:)) }) {
++            let cut = NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
++            cut.keyEquivalentModifierMask = [.command]
++            edit.insertItem(cut, at: edit.index(of: copy))
++        }
++        #endif
+         menuShortcutManager.reset()
+ 
+         syncMenuShortcut(config, action: "check_for_updates", menuItem: self.menuCheckForUpdates)
+@@ -1221,12 +1286,42 @@
+         syncMenuShortcut(config, action: "new_split:down", menuItem: self.menuSplitDown)
+         syncMenuShortcut(config, action: "new_split:up", menuItem: self.menuSplitUp)
+ 
++        #if POLAR_STATION
++        // Native editors use AppKit's responder chain, not terminal bindings.
++        self.menuUndo?.keyEquivalent = "z"
++        self.menuUndo?.keyEquivalentModifierMask = [.command]
++        #else
+         syncMenuShortcut(config, action: "undo", menuItem: self.menuUndo)
++        #endif
++        #if POLAR_STATION
++        // Native editors use AppKit's responder chain, not terminal bindings.
++        self.menuRedo?.keyEquivalent = "z"
++        self.menuRedo?.keyEquivalentModifierMask = [.command, .shift]
++        #else
+         syncMenuShortcut(config, action: "redo", menuItem: self.menuRedo)
++        #endif
++        #if POLAR_STATION
++        // Native editors use AppKit's responder chain, not terminal bindings.
++        self.menuCopy?.keyEquivalent = "c"
++        self.menuCopy?.keyEquivalentModifierMask = [.command]
++        #else
+         syncMenuShortcut(config, action: "copy_to_clipboard", menuItem: self.menuCopy)
++        #endif
++        #if POLAR_STATION
++        // Native editors use AppKit's responder chain, not terminal bindings.
++        self.menuPaste?.keyEquivalent = "v"
++        self.menuPaste?.keyEquivalentModifierMask = [.command]
++        #else
+         syncMenuShortcut(config, action: "paste_from_clipboard", menuItem: self.menuPaste)
++        #endif
+         syncMenuShortcut(config, action: "paste_from_selection", menuItem: self.menuPasteSelection)
++        #if POLAR_STATION
++        // Native editors use AppKit's responder chain, not terminal bindings.
++        self.menuSelectAll?.keyEquivalent = "a"
++        self.menuSelectAll?.keyEquivalentModifierMask = [.command]
++        #else
+         syncMenuShortcut(config, action: "select_all", menuItem: self.menuSelectAll)
++        #endif
+         syncMenuShortcut(config, action: "start_search", menuItem: self.menuFind)
+         syncMenuShortcut(config, action: "end_search", menuItem: self.menuHideFindBar)
+         syncMenuShortcut(config, action: "search_selection", menuItem: self.menuSelectionForFind)
+@@ -1342,20 +1437,40 @@
+             return NSApp.keyWindow is TerminalWindow
+ 
+         case #selector(undo(_:)):
++            #if POLAR_STATION
++            let manager = stationMenuUndoManager
++            if let manager, manager.canUndo {
++                item.title = "Undo \(manager.undoActionName)"
++            } else {
++                item.title = "Undo"
++            }
++            return manager?.canUndo ?? false
++            #else
+             if undoManager.canUndo {
+                 item.title = "Undo \(undoManager.undoActionName)"
+             } else {
+                 item.title = "Undo"
+             }
+             return undoManager.canUndo
++            #endif
+ 
+         case #selector(redo(_:)):
++            #if POLAR_STATION
++            let manager = stationMenuUndoManager
++            if let manager, manager.canRedo {
++                item.title = "Redo \(manager.redoActionName)"
++            } else {
++                item.title = "Redo"
++            }
++            return manager?.canRedo ?? false
++            #else
+             if undoManager.canRedo {
+                 item.title = "Redo \(undoManager.redoActionName)"
+             } else {
+                 item.title = "Redo"
+             }
+             return undoManager.canRedo
++            #endif
+ 
+         default:
+             return true
+diff --git a/macos/Sources/Features/Global Keybinds/GlobalEventTap.swift b/macos/Sources/Features/Global Keybinds/GlobalEventTap.swift
+--- a/macos/Sources/Features/Global Keybinds/GlobalEventTap.swift
++++ b/macos/Sources/Features/Global Keybinds/GlobalEventTap.swift
+@@ -21,6 +21,24 @@
+ 
+     // Polls Accessibility permission before enabling the global event tap.
+     private var enableTimer: Timer?
++
++    #if POLAR_STATION
++    private var stationActivation: NSObjectProtocol?
++    func enableStationDictate(prompt: Bool = true) {
++        if stationActivation == nil {
++            stationActivation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
++                object: nil, queue: .main) { [weak self] _ in self?.enableStationDictate(prompt: false) }
++        }
++        // Reuse this event tap. Permission changes are retried on activation,
++        // never by introducing a second tap or permission polling loop.
++        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary
++        let trusted = AXIsProcessTrustedWithOptions(options)
++        let ready = trusted && (eventTap != nil || tryEnable())
++        MainActor.assumeIsolated {
++            PolarStationRuntime.shared.dictateShortcutStatus(ready ? "ready" : (trusted ? "unavailable" : "permission_required"))
++        }
++    }
++    #endif
+ 
+     // Private init so it can't be constructed outside of our singleton
+     private init() {}
+@@ -64,7 +82,10 @@
+     }
+ 
+     // Disable the global event tap. This is safe to call if it is already disabled.
+-    func disable() {
++    func disable(force: Bool = false) {
++        #if POLAR_STATION
++        if stationActivation != nil && !force { return }
++        #endif
+         // Stop our enable timer if it is on
+         if let enableTimer {
+             enableTimer.invalidate()
+@@ -82,9 +103,11 @@
+     // Try to enable the global event type, returns false if it fails.
+     private func tryEnable() -> Bool {
+         // The events we care about
+-        let eventMask = [
+-            CGEventType.keyDown
+-        ].reduce(CGEventMask(0), { $0 | (1 << $1.rawValue)})
++        var eventTypes = [CGEventType.keyDown]
++        #if POLAR_STATION
++        eventTypes += [.keyUp, .flagsChanged]
++        #endif
++        let eventMask = eventTypes.reduce(CGEventMask(0), { $0 | (1 << $1.rawValue)})
+ 
+         // Try to create it
+         guard let eventTap = CGEvent.tapCreate(
+@@ -129,6 +152,25 @@
+ ) -> Unmanaged<CGEvent>? {
+     let result = Unmanaged.passUnretained(cgEvent)
+ 
++    #if POLAR_STATION
++    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
++        MainActor.assumeIsolated { PolarStationRuntime.shared.dictateShortcutLost() }
++        GlobalEventTap.shared.disable(force: true)
++        GlobalEventTap.shared.enableStationDictate(prompt: false)
++        return result
++    }
++    if type == .flagsChanged, let event = NSEvent(cgEvent: cgEvent),
++       event.keyCode == 63,
++       event.modifierFlags.intersection([.control, .option, .shift, .command, .function]) == [.function],
++       let delegate = NSApplication.shared.delegate as? AppDelegate,
++       let config = delegate.ghostty.config.config, ghostty_config_key_is_binding(config, event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)) {
++        MainActor.assumeIsolated { PolarStationRuntime.shared.dictateShortcutStatus("conflict") }
++        return result
++    }
++    if let event = NSEvent(cgEvent: cgEvent), MainActor.assumeIsolated({
++        PolarStationRuntime.shared.dictateKeyEvent(event)
++    }) { return nil }
++    #endif
+     // macOS disables the event tap if the callback is too slow or for other
+     // internal reasons. When that happens it sends this event type. We need
+     // to re-enable the tap or it stays dead forever.
+diff --git a/macos/Sources/Features/Splits/SplitView.swift b/macos/Sources/Features/Splits/SplitView.swift
+--- a/macos/Sources/Features/Splits/SplitView.swift
++++ b/macos/Sources/Features/Splits/SplitView.swift
+@@ -100,6 +100,9 @@
+                     split = new / size.height
+                 }
+             }
++            #if POLAR_STATION
++            .onEnded { _ in PolarStationRuntime.shared.nativeSplitResizeEnded() }
++            #endif
+     }
+ 
+     /// Calculates the bounding rect for the left view.
+diff --git a/macos/Sources/Features/Terminal/BaseTerminalController.swift b/macos/Sources/Features/Terminal/BaseTerminalController.swift
+--- a/macos/Sources/Features/Terminal/BaseTerminalController.swift
++++ b/macos/Sources/Features/Terminal/BaseTerminalController.swift
+@@ -117,6 +117,9 @@
+     /// The undo manager for this controller is the undo manager of the window,
+     /// which we set via the delegate method.
+     override var undoManager: ExpiringUndoManager? {
++        #if POLAR_STATION
++        return nil // Layout history is owned by Station; text editors keep their own UndoManager.
++        #else
+         // This should be set via the delegate method windowWillReturnUndoManager
+         if let result = window?.undoManager as? ExpiringUndoManager {
+             return result
+@@ -128,6 +131,7 @@
+         }
+ 
+         return nil
++        #endif
+     }
+ 
+     struct SavedFrame {
+@@ -284,6 +288,9 @@
+         direction: SplitTree<Ghostty.SurfaceView>.NewDirection,
+         baseConfig config: Ghostty.SurfaceConfiguration? = nil
+     ) -> Ghostty.SurfaceView? {
++#if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("split", controller: self) { return nil }
++        #endif
+         // We can only create new splits for surfaces in our tree.
+         guard surfaceTree.root?.node(view: oldView) != nil else { return nil }
+ 
+@@ -352,9 +359,17 @@
+         for surfaceView in surfaceTree {
+             // Our focus state requires that this window is key and our currently
+             // focused surface is the surface in this view.
+-            let focused: Bool = (window?.isKeyWindow ?? false) &&
+-                surfaceView == focusedSurface &&
+-                surfaceView.isFirstResponder
++            #if POLAR_STATION
++            // A selected Pane is not necessarily the keyboard owner: the native
++            // composer or a search field may be the actual first responder.
++            let responderOwnsSurface = (window?.firstResponder as? NSView)?.isDescendant(of: surfaceView) == true
++            #else
++            let responderOwnsSurface = true
++            #endif
++            let focused: Bool = responderOwnsSurface && (window?.isKeyWindow ?? false) &&
++                !commandPaletteIsShowing &&
++                focusedSurface != nil &&
++                surfaceView == focusedSurface!
+             surfaceView.focusDidChange(focused)
+             if focused { newlyFocused = surfaceView }
+         }
+@@ -425,6 +440,9 @@
+ 
+     /// Prompt the user to change the tab/window title.
+     func promptTabTitle() {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("rename_tab", controller: self) { return }
++        #endif
+         guard let window else { return }
+ 
+         let alert = NSAlert()
+@@ -470,6 +488,9 @@
+         _ node: SplitTree<Ghostty.SurfaceView>.Node,
+         withConfirmation: Bool = true
+     ) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.closeNativeSurfaces(node.leaves(), controller: self) { return }
++        #endif
+         // This node must be part of our tree
+         guard surfaceTree.contains(node) else { return }
+ 
+@@ -688,6 +709,9 @@
+     }
+ 
+     @objc private func ghosttyDidEqualizeSplits(_ notification: Notification) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("equalize_splits", controller: self) { return }
++        #endif
+         guard let target = notification.object as? Ghostty.SurfaceView else { return }
+ 
+         // Check if target surface is in current controller's tree
+@@ -731,6 +755,9 @@
+     }
+ 
+     @objc private func ghosttyDidToggleSplitZoom(_ notification: Notification) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("zoom_split", controller: self) { return }
++        #endif
+         // The target must be within our tree
+         guard let target = notification.object as? Ghostty.SurfaceView else { return }
+         guard let targetNode = surfaceTree.root?.node(view: target) else { return }
+@@ -759,6 +786,9 @@
+     }
+ 
+     @objc private func ghosttyDidResizeSplit(_ notification: Notification) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("resize_split", controller: self) { return }
++        #endif
+         // The target must be within our tree
+         guard let target = notification.object as? Ghostty.SurfaceView else { return }
+         guard let targetNode = surfaceTree.root?.node(view: target) else { return }
+@@ -947,6 +977,9 @@
+     }
+ 
+     func performSplitAction(_ action: TerminalSplitOperation) {
++        #if POLAR_STATION
++        if case .drop = action, PolarStationRuntime.shared.nativeAction("split", controller: self) { return }
++        #endif
+         switch action {
+         case .resize(let resize):
+             splitDidResize(node: resize.node, to: resize.ratio)
+@@ -1282,9 +1315,22 @@
+         syncSurfaceTreeOcclusionState()
+     }
+ 
++    func synchronizeStationSurfaceVisibility() {
++        syncSurfaceTreeOcclusionState()
++    }
++
+     private func syncSurfaceTreeOcclusionState() {
+-        let visible = self.window?.occlusionState.contains(.visible) ?? false
++        #if POLAR_STATION
++        let windowVisible = window.map { window in
++            window.isVisible && !window.isMiniaturized &&
++                window.occlusionState.contains(.visible) &&
++                (window.tabGroup?.selectedWindow ?? window) === window
++        } ?? false
++        #else
++        let windowVisible = self.window?.occlusionState.contains(.visible) ?? false
++        #endif
+         for view in surfaceTree {
++            let visible = windowVisible && !view.isHiddenOrHasHiddenAncestor
+             if let surface = view.surface, view.isWindowVisible != visible {
+                 ghostty_surface_set_occlusion(surface, visible)
+                 view.isWindowVisible = visible
+@@ -1498,6 +1544,9 @@
+ 
+ extension BaseTerminalController: NSMenuItemValidation {
+     func validateMenuItem(_ item: NSMenuItem) -> Bool {
++        #if POLAR_STATION
++        if let enabled = PolarStationRuntime.shared.managedMenuValidation(item, controller: self) { return enabled }
++        #endif
+         switch item.action {
+         case #selector(findHide):
+             return focusedSurface?.searchState != nil
+diff --git a/macos/Sources/Features/Terminal/TerminalController.swift b/macos/Sources/Features/Terminal/TerminalController.swift
+--- a/macos/Sources/Features/Terminal/TerminalController.swift
++++ b/macos/Sources/Features/Terminal/TerminalController.swift
+@@ -6,6 +6,12 @@
+ 
+ /// A classic, tabbed terminal experience.
+ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Controller {
++#if POLAR_STATION
++    func windowDidFailToEnterFullScreen(_ window: NSWindow) {
++        PolarStationRuntime.shared.windowDidFailToEnterFullScreen(window)
++    }
++#endif
++
+     override var windowNibName: NSNib.Name? {
+         let defaultValue = "Terminal"
+ 
+@@ -419,7 +425,8 @@
+     static func newTab(
+         _ ghostty: Ghostty.App,
+         from parent: NSWindow? = nil,
+-        withBaseConfig baseConfig: Ghostty.SurfaceConfiguration? = nil
++        withBaseConfig baseConfig: Ghostty.SurfaceConfiguration? = nil,
++        activate: Bool = true
+     ) -> TerminalController? {
+         // Making sure that we're dealing with a TerminalController. If not,
+         // then we just create a new window.
+@@ -503,6 +510,7 @@
+         // take effect after position in `showWindow`. Our best theory is there is some
+         // next-event-loop-tick logic that Cocoa is doing that we need to be after.
+         controller.scheduleInitialPresentation {
++            guard activate else { return }
+             // Only cascade if we aren't fullscreen and are alone in the tab group.
+             if !window.styleMask.contains(.fullScreen) &&
+                 window.tabGroup?.windows.count ?? 1 == 1 {
+@@ -583,7 +591,11 @@
+     private func syncRestoration(_ config: Ghostty.Config) {
+         guard isWindowLoaded, let window else { return }
+         // Setting all three of these is required for restoration to work.
++#if POLAR_STATION
++        window.isRestorable = false
++#else
+         window.isRestorable = restorable && config.windowSaveState != "never"
++#endif
+         window.restorationClass = TerminalWindowRestoration.self
+         window.identifier = .init(String(describing: TerminalWindowRestoration.self))
+     }
+@@ -640,6 +652,9 @@
+         guard tabWindowsHash != v else { return }
+         tabWindowsHash = v
+         self.relabelTabs()
++        #if POLAR_STATION
++        _ = PolarStationRuntime.shared.nativeAction("native_tab_order_changed", controller: self)
++        #endif
+     }
+ 
+     override func syncAppearance() {
+@@ -981,6 +996,10 @@
+ 
+     /// Close all windows, asking for confirmation if necessary.
+     static func closeAllWindows() {
++        #if POLAR_STATION
++        PolarStationRuntime.shared.closeAllManagedWindows()
++        return
++        #endif
+         // The window we use for confirmations. Try to find the first window that
+         // needs quit confirmation. This lets us attach the confirmation to something
+         // that is running.
+@@ -1215,6 +1234,9 @@
+     lazy private(set) var tabGroupCloseCoordinator = TabGroupCloseCoordinator()
+ 
+     override func windowShouldClose(_ sender: NSWindow) -> Bool {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("close_tab", controller: self) { return false }
++        #endif
+         tabGroupCloseCoordinator.windowShouldClose(sender) { [weak self] scope in
+             guard let self else { return }
+             switch scope {
+@@ -1322,6 +1344,9 @@
+     }
+ 
+     @IBAction func closeTab(_ sender: Any?) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("close_tab", controller: self) { return }
++        #endif
+         guard let window = window else { return }
+         guard window.tabGroup?.windows.count ?? 0 > 1 else {
+             closeWindow(sender)
+@@ -1342,6 +1367,9 @@
+     }
+ 
+     @IBAction func closeOtherTabs(_ sender: Any?) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("close_other_tabs", controller: self) { return }
++        #endif
+         guard let window = window else { return }
+         guard let tabGroup = window.tabGroup else { return }
+ 
+@@ -1374,6 +1402,9 @@
+     }
+ 
+     @IBAction func closeTabsOnTheRight(_ sender: Any?) {
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("close_right_tabs", controller: self) { return }
++        #endif
+         guard let window = window else { return }
+         guard let tabGroup = window.tabGroup else { return }
+         guard let currentIndex = tabGroup.windows.firstIndex(of: window) else { return }
+@@ -1437,6 +1468,9 @@
+     }
+ 
+     @IBAction override func closeWindow(_ sender: Any?) {
++        #if POLAR_STATION
++        if let managedWindow = self.window, PolarStationRuntime.shared.closeManagedWindow(managedWindow) { return }
++        #endif
+         guard let window = window else { return }
+ 
+         // We need to check all the windows in our tab group for confirmation
+@@ -1747,6 +1781,9 @@
+ 
+ extension TerminalController {
+     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
++        #if POLAR_STATION
++        if let enabled = PolarStationRuntime.shared.managedMenuValidation(item, controller: self) { return enabled }
++        #endif
+         switch item.action {
+         case #selector(closeTabsOnTheRight):
+             guard let window, let tabGroup = window.tabGroup else { return false }
+diff --git a/macos/Sources/Features/Terminal/TerminalRestorable.swift b/macos/Sources/Features/Terminal/TerminalRestorable.swift
+--- a/macos/Sources/Features/Terminal/TerminalRestorable.swift
++++ b/macos/Sources/Features/Terminal/TerminalRestorable.swift
+@@ -122,6 +122,10 @@
+         state: NSCoder,
+         completionHandler: @escaping (NSWindow?, Error?) -> Void
+     ) {
++#if POLAR_STATION
++        completionHandler(nil, nil)
++        return
++#endif
+         // Verify the identifier is what we expect
+         guard identifier == .init(String(describing: Self.self)) else {
+             completionHandler(nil, TerminalRestoreError.identifierUnknown)
+diff --git a/macos/Sources/Features/Terminal/TerminalViewContainer.swift b/macos/Sources/Features/Terminal/TerminalViewContainer.swift
+--- a/macos/Sources/Features/Terminal/TerminalViewContainer.swift
++++ b/macos/Sources/Features/Terminal/TerminalViewContainer.swift
+@@ -5,6 +5,60 @@
+ /// Modifying `NSThemeFrame` can sometimes be unpredictable.
+ class TerminalViewContainer: NSView {
+     private let terminalView: NSView
++    private var terminalLeadingConstraint: NSLayoutConstraint!
++#if POLAR_STATION
++    private var polarStationPane: NSView?
++    private var stationComposer: NSView?
++    private var stationComposerConstraints: [NSLayoutConstraint] = []
++    private var stationComposerHeight: NSLayoutConstraint?
++    private var terminalBottomConstraint: NSLayoutConstraint!
++
++    func showStationComposer(_ composer: NSView, height: CGFloat) {
++        if stationComposer === composer {
++            if abs((stationComposerHeight?.constant ?? 0) - height) > 0.5 {
++                stationComposerHeight?.constant = height
++                needsLayout = true
++            }
++            return
++        }
++        hideStationComposer()
++        stationComposer = composer
++        composer.translatesAutoresizingMaskIntoConstraints = false
++        addSubview(composer)
++        terminalBottomConstraint.isActive = false
++        let size = composer.heightAnchor.constraint(equalToConstant: height)
++        stationComposerHeight = size
++        stationComposerConstraints = [
++            composer.leadingAnchor.constraint(equalTo: terminalView.leadingAnchor),
++            composer.trailingAnchor.constraint(equalTo: trailingAnchor),
++            composer.bottomAnchor.constraint(equalTo: bottomAnchor), size,
++            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -40),
++        ]
++        NSLayoutConstraint.activate(stationComposerConstraints)
++        needsLayout = true
++    }
++
++    func hideStationComposer() {
++        NSLayoutConstraint.deactivate(stationComposerConstraints)
++        stationComposerConstraints = []
++        stationComposerHeight = nil
++        stationComposer?.removeFromSuperview()
++        stationComposer = nil
++        terminalBottomConstraint?.isActive = true
++        needsLayout = true
++    }
++    private var expandedWorkspaceLayout: NSView?
++    private var expandedWorkspaceConstraints: [NSLayoutConstraint] = []
++    private weak var workspaceLayoutPriorFocus: NSResponder?
++    private var polarStationDivider: NSBox?
++    private var polarStationWidthConstraint: NSLayoutConstraint?
++    private var polarTerminalLeadingConstraint: NSLayoutConstraint?
++    private var polarStationConstraints: [NSLayoutConstraint] = []
++    private var polarStationWidth: CGFloat = 0
++    private var polarStationBaselineWidth: CGFloat = 0
++
++    var isPolarStationPaneVisible: Bool { polarStationPane != nil }
++#endif
+ 
+     /// Background color applied with glass effect
+     private(set) var glassEffectView: NSView?
+@@ -55,13 +109,132 @@
+     private func setup() {
+         addSubview(terminalView)
+         terminalView.translatesAutoresizingMaskIntoConstraints = false
++        terminalLeadingConstraint = terminalView.leadingAnchor.constraint(
++            equalTo: leadingAnchor
++        )
++        terminalBottomConstraint = terminalView.bottomAnchor.constraint(equalTo: bottomAnchor)
+         NSLayoutConstraint.activate([
+             terminalView.topAnchor.constraint(equalTo: topAnchor),
+-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
+-            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
++            terminalLeadingConstraint,
++            terminalBottomConstraint,
+             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
+         ])
+     }
++
++#if POLAR_STATION
++    func showPolarStationPane(_ pane: NSView, width: CGFloat) {
++        if polarStationPane === pane {
++            updatePolarStationPaneWidth(width)
++            return
++        }
++        hidePolarStationPane()
++        polarStationBaselineWidth = window?.frame.width ?? 0
++        let divider = NSBox()
++        divider.boxType = .separator
++        pane.translatesAutoresizingMaskIntoConstraints = false
++        divider.translatesAutoresizingMaskIntoConstraints = false
++        addSubview(pane)
++        addSubview(divider)
++        terminalLeadingConstraint.isActive = false
++        let widthConstraint = pane.widthAnchor.constraint(equalToConstant: width)
++        polarStationPane = pane
++        polarStationDivider = divider
++        polarStationWidthConstraint = widthConstraint
++        polarStationWidth = width
++        let terminalConstraint = terminalView.leadingAnchor.constraint(
++            equalTo: divider.trailingAnchor
++        )
++        polarTerminalLeadingConstraint = terminalConstraint
++        polarStationConstraints = [
++            pane.topAnchor.constraint(equalTo: topAnchor),
++            pane.leadingAnchor.constraint(equalTo: leadingAnchor),
++            pane.bottomAnchor.constraint(equalTo: bottomAnchor),
++            widthConstraint,
++            divider.topAnchor.constraint(equalTo: topAnchor),
++            divider.leadingAnchor.constraint(equalTo: pane.trailingAnchor),
++            divider.bottomAnchor.constraint(equalTo: bottomAnchor),
++            divider.widthAnchor.constraint(equalToConstant: 1),
++            terminalConstraint,
++        ]
++        NSLayoutConstraint.activate(polarStationConstraints)
++        growWindowForAccessory(by: width + 1)
++    }
++
++    func showExpandedWorkspaceLayout(_ view: NSView?) {
++        if expandedWorkspaceLayout === view { return }
++        NSLayoutConstraint.deactivate(expandedWorkspaceConstraints)
++        expandedWorkspaceConstraints.removeAll()
++        expandedWorkspaceLayout?.removeFromSuperview()
++        expandedWorkspaceLayout = view
++        guard let view else {
++            terminalView.isHidden = false
++            if let prior = workspaceLayoutPriorFocus { window?.makeFirstResponder(prior) }
++            workspaceLayoutPriorFocus = nil
++            return
++        }
++        workspaceLayoutPriorFocus = window?.firstResponder
++        window?.makeFirstResponder(nil)
++        terminalView.isHidden = true
++        view.translatesAutoresizingMaskIntoConstraints = false
++        addSubview(view)
++        expandedWorkspaceConstraints = [
++            view.leadingAnchor.constraint(equalTo: terminalView.leadingAnchor),
++            view.trailingAnchor.constraint(equalTo: terminalView.trailingAnchor),
++            view.topAnchor.constraint(equalTo: terminalView.topAnchor),
++            view.bottomAnchor.constraint(equalTo: terminalView.bottomAnchor),
++        ]
++        NSLayoutConstraint.activate(expandedWorkspaceConstraints)
++    }
++
++    func hidePolarStationPane() {
++        showExpandedWorkspaceLayout(nil)
++        let wasVisible = polarStationPane != nil
++        let removedWidth = wasVisible ? polarStationWidth + 1 : 0
++        NSLayoutConstraint.deactivate(polarStationConstraints)
++        polarStationPane?.removeFromSuperview()
++        polarStationDivider?.removeFromSuperview()
++        polarStationPane = nil
++        polarStationDivider = nil
++        polarStationWidthConstraint = nil
++        polarStationConstraints.removeAll(keepingCapacity: true)
++        polarTerminalLeadingConstraint?.isActive = false
++        polarTerminalLeadingConstraint = nil
++        polarStationWidth = 0
++        if wasVisible {
++            terminalLeadingConstraint.isActive = true
++            growWindowForAccessory(by: polarStationBaselineWidth > 0 ? polarStationBaselineWidth - (window?.frame.width ?? polarStationBaselineWidth) : -removedWidth)
++        }
++    }
++
++    func updatePolarStationPaneWidth(_ width: CGFloat) {
++        guard polarStationPane != nil else { return }
++        polarStationWidth = width
++        polarStationWidthConstraint?.constant = width
++        let missing = max(0, width + 321 - bounds.width)
++        growWindowForAccessory(by: missing)
++    }
++
++    func reconcilePolarStationTerminalGeometry() {
++        needsLayout = true
++        terminalView.needsLayout = true
++        window?.contentView?.needsLayout = true
++    }
++
++    private func growWindowForAccessory(by delta: CGFloat) {
++        if delta != 0, let window,
++           !window.styleMask.contains(.fullScreen),
++           let visible = window.screen?.visibleFrame {
++            var frame = window.frame
++            let targetWidth = min(max(frame.width + delta, 480), visible.width)
++            let actualDelta = targetWidth - frame.width
++            frame.origin.x = max(visible.minX, frame.origin.x - max(actualDelta, 0))
++            frame.size.width = targetWidth
++            if frame.maxX > visible.maxX { frame.origin.x = visible.maxX - frame.width }
++            window.setFrame(frame, display: true, animate: false)
++        }
++        reconcilePolarStationTerminalGeometry()
++    }
++#endif
+ 
+     override func viewDidMoveToWindow() {
+         super.viewDidMoveToWindow()
+diff --git a/macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift b/macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift
+--- a/macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift
++++ b/macos/Sources/Features/Terminal/Window Styles/TerminalWindow.swift
+@@ -6,6 +6,14 @@
+ /// The base class for all standalone, "normal" terminal windows. This sets the basic
+ /// style and configuration of the window based on the app configuration.
+ class TerminalWindow: NSWindow {
++    #if POLAR_STATION
++    override func moveTabToNewWindow(_ sender: Any?) {
++        if let controller = windowController as? BaseTerminalController, PolarStationRuntime.shared.nativeAction("move_tab", controller: controller) { return }
++        super.moveTabToNewWindow(sender)
++    }
++    #endif
++
++
+     /// Posted when a terminal window awakes from nib.
+     static let terminalDidAwake = Notification.Name("TerminalWindowDidAwake")
+ 
+@@ -243,6 +251,9 @@
+     }
+ 
+     override func mergeAllWindows(_ sender: Any?) {
++        #if POLAR_STATION
++        return // Managed geometry actions are disabled.
++        #endif
+         super.mergeAllWindows(sender)
+ 
+         // It takes an event loop cycle to merge all the windows so we set a
+@@ -878,6 +889,9 @@
+         for targetWindow: NSWindow
+     ) {
+         guard let targetController = targetWindow.windowController as? BaseTerminalController else { return }
++        #if POLAR_STATION
++        if PolarStationRuntime.shared.nativeAction("rename_tab", controller: targetController, title: editedTitle) { return }
++        #endif
+         targetController.titleOverride = editedTitle.isEmpty ? nil : editedTitle
+     }
+ 
+diff --git a/macos/Sources/Ghostty/Ghostty.App.swift b/macos/Sources/Ghostty/Ghostty.App.swift
+--- a/macos/Sources/Ghostty/Ghostty.App.swift
++++ b/macos/Sources/Ghostty/Ghostty.App.swift
+@@ -289,7 +289,7 @@
+         // MARK: Ghostty Callbacks (macOS)
+ 
+         static func closeSurface(_ userdata: UnsafeMutableRawPointer?, processAlive: Bool) {
+-            let surface = self.surfaceUserdata(from: userdata)
++            guard let surface = self.surfaceUserdata(from: userdata) else { return }
+             NotificationCenter.default.post(name: Notification.ghosttyCloseSurface, object: surface, userInfo: [
+                 "process_alive": processAlive,
+             ])
+@@ -303,7 +303,7 @@
+             mimesLen: Int,
+             list: Bool
+         ) -> ghostty_clipboard_read_result_e {
+-            let surfaceView = self.surfaceUserdata(from: userdata)
++            guard let surfaceView = self.surfaceUserdata(from: userdata) else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
+             guard let surface = surfaceView.surface else {
+                 return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED
+             }
+@@ -353,7 +353,7 @@
+             state: UnsafeMutableRawPointer?,
+             request: ghostty_clipboard_request_e
+         ) {
+-            let surfaceView = self.surfaceUserdata(from: userdata)
++            guard let surfaceView = self.surfaceUserdata(from: userdata) else { return }
+             guard let surface = surfaceView.surface else { return }
+             guard let confirm,
+                   let kind = Ghostty.ClipboardRequest.from(request: request) else {
+@@ -487,7 +487,7 @@
+             len: Int,
+             confirm: Bool
+         ) {
+-            let surfaceView = self.surfaceUserdata(from: userdata)
++            guard let surfaceView = self.surfaceUserdata(from: userdata) else { return }
+             guard let pasteboard = NSPasteboard.ghostty(location) else { return }
+             guard let content = content, len > 0 else { return }
+ 
+@@ -572,13 +572,13 @@
+         }
+ 
+         /// Returns the surface view from the userdata.
+-        static private func surfaceUserdata(from userdata: UnsafeMutableRawPointer?) -> SurfaceView {
+-            return Unmanaged<SurfaceView>.fromOpaque(userdata!).takeUnretainedValue()
++        static private func surfaceUserdata(from userdata: UnsafeMutableRawPointer?) -> SurfaceView? {
++            guard let userdata else { return nil }
++            return Unmanaged<Weak<SurfaceView>>.fromOpaque(userdata).takeUnretainedValue().value
+         }
+ 
+         static private func surfaceView(from surface: ghostty_surface_t) -> SurfaceView? {
+-            guard let surface_ud = ghostty_surface_userdata(surface) else { return nil }
+-            return Unmanaged<SurfaceView>.fromOpaque(surface_ud).takeUnretainedValue()
++            return surfaceUserdata(from: ghostty_surface_userdata(surface))
+         }
+ 
+         // MARK: Actions (macOS)
+@@ -744,6 +744,12 @@
+                 checkForUpdates(app)
+ 
+             case GHOSTTY_ACTION_OPEN_URL:
++                #if POLAR_STATION
++                if MainActor.assumeIsolated({
++                    guard target.tag == GHOSTTY_TARGET_SURFACE, let pointer = target.target.surface, let source = self.surfaceView(from: pointer) else { return false }
++                    return PolarStationRuntime.shared.openResourceFile(Ghostty.Action.OpenURL(c: action.action.open_url).url, surface: source)
++                }) { return true }
++                #endif
+                 return openURL(action.action.open_url)
+ 
+             case GHOSTTY_ACTION_UNDO:
+@@ -777,6 +783,13 @@
+                 return presentTerminal(app, target: target)
+ 
+             case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
++                #if POLAR_STATION
++                if target.tag == GHOSTTY_TARGET_SURFACE, let handle = target.target.surface,
++                   let view = self.surfaceView(from: handle) {
++                    NotificationCenter.default.post(name: .init("PolarStationChildExited"), object: view,
++                        userInfo: ["exit_code": action.action.child_exited.exit_code])
++                }
++                #endif
+                 return showChildExited(app, target: target, v: action.action.child_exited)
+ 
+             case GHOSTTY_ACTION_COPY_TITLE_TO_CLIPBOARD:
+@@ -1854,6 +1867,10 @@
+                 guard let window = surfaceView.window,
+                       let controller = window.windowController as? BaseTerminalController
+                 else { return false }
++                #if POLAR_STATION
++                Task { @MainActor in _ = PolarStationRuntime.shared.nativeAction("rename_tab", controller: controller, title: title) }
++                return true
++                #endif
+                 controller.titleOverride = titleOverride
+                 return true
+ 
+diff --git a/macos/Sources/Ghostty/Ghostty.Config.swift b/macos/Sources/Ghostty/Ghostty.Config.swift
+--- a/macos/Sources/Ghostty/Ghostty.Config.swift
++++ b/macos/Sources/Ghostty/Ghostty.Config.swift
+@@ -78,6 +78,11 @@
+             }
+ 
+             ghostty_config_load_recursive_files(cfg)
++            #if POLAR_STATION
++            if let themePath = getenv("POLAR_STATION_THEME_CONFIG") {
++                ghostty_config_load_file(cfg, themePath)
++            }
++            #endif
+ 
+             // TODO: we'd probably do some config loading here... for now we'd
+             // have to do this synchronously. When we support config updating we can do
+@@ -285,6 +290,9 @@
+         /// This parses the `fullscreen` enum config which supports both
+         /// native and non-native fullscreen modes.
+         var windowFullscreen: FullscreenMode? {
++#if POLAR_STATION
++            return nil
++#else
+             guard let config = self.config else { return nil }
+             var v: UnsafePointer<Int8>?
+             let key = "fullscreen"
+@@ -305,6 +313,7 @@
+             default:
+                 nil
+             }
++#endif
+         }
+ 
+         /// Returns the fullscreen mode for toggle actions (keybindings).
+diff --git a/macos/Sources/Ghostty/Ghostty.Surface.swift b/macos/Sources/Ghostty/Ghostty.Surface.swift
+--- a/macos/Sources/Ghostty/Ghostty.Surface.swift
++++ b/macos/Sources/Ghostty/Ghostty.Surface.swift
+@@ -40,7 +40,17 @@
+             // but that's okay.
+             let surface = self.surface
+             Task.detached { @MainActor in
++                #if os(macOS)
++                let callbackUserdata = ghostty_surface_userdata(surface)
++                #endif
+                 ghostty_surface_free(surface)
++                #if os(macOS)
++                // Destruction may itself deliver callbacks. Release only after
++                // C has stopped using the wrapper, on the same main actor.
++                if let callbackUserdata {
++                    Unmanaged<Weak<SurfaceView>>.fromOpaque(callbackUserdata).release()
++                }
++                #endif
+             }
+         }
+ 
+diff --git a/macos/Sources/Ghostty/Surface View/SurfaceScrollView.swift b/macos/Sources/Ghostty/Surface View/SurfaceScrollView.swift
+--- a/macos/Sources/Ghostty/Surface View/SurfaceScrollView.swift
++++ b/macos/Sources/Ghostty/Surface View/SurfaceScrollView.swift
+@@ -149,6 +149,15 @@
+                 self?.scrollView.documentCursor = newStyle.cursor
+             }
+             .store(in: &cancellables)
++#if POLAR_STATION
++        observers.append(NotificationCenter.default.addObserver(
++            forName: .polarStationSurfaceGeometryDidChange,
++            object: surfaceView,
++            queue: .main
++        ) { [weak self] _ in
++            self?.polarStationRefreshSurfaceLayouts()
++        })
++#endif
+     }
+ 
+     required init?(coder: NSCoder) {
+@@ -180,6 +189,16 @@
+         synchronizeSurfaceView()
+         synchronizeCoreSurface()
+     }
++
++#if POLAR_STATION
++    func polarStationRefreshSurfaceLayouts() {
++        needsLayout = true
++        scrollView.needsLayout = true
++        documentView.needsLayout = true
++        layoutSubtreeIfNeeded()
++        displayIfNeeded()
++    }
++#endif
+ 
+     // MARK: Scrolling
+ 
+diff --git a/macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift b/macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift
+--- a/macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift
++++ b/macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift
+@@ -203,7 +203,9 @@
+ 
+         // True when we've consumed a left mouse-down only to move focus and
+         // should suppress the matching mouse-up from being reported.
++        var stationNativeContent: NSView?
+         private var suppressNextLeftMouseUp: Bool = false
++        private var stationIsDisplayOnly = false
+ 
+         // A small delay that is introduced before a title change to avoid flickers
+         private var titleChangeTimer: Timer?
+@@ -229,7 +231,8 @@
+         // We need to support being a first responder so that we can get input events
+         override var acceptsFirstResponder: Bool { return true }
+ 
+-        init(_ app: ghostty_app_t, baseConfig: SurfaceConfiguration? = nil, uuid: UUID? = nil) {
++        init(_ app: ghostty_app_t, baseConfig: SurfaceConfiguration? = nil, uuid: UUID? = nil, stationDisplayOnly: Bool = false) {
++            self.stationIsDisplayOnly = stationDisplayOnly
+             self.markedText = NSMutableAttributedString()
+ 
+             // Our initial config always is our application wide config.
+@@ -385,10 +388,18 @@
+ 
+             // Setup our surface. This will also initialize all the terminal IO.
+             let surface_cfg = baseConfig ?? SurfaceConfiguration()
++            // C callbacks can arrive after this NSView is released, until the
++            // Surface model's deferred main-actor destruction actually runs.
++            // C owns this weak wrapper; never retain the NSView in a cycle.
++            let callbackUserdata = Unmanaged.passRetained(Weak(self)).toOpaque()
+             let surface = surface_cfg.withCValue(view: self) { surface_cfg_c in
+-                ghostty_surface_new(app, &surface_cfg_c)
++                surface_cfg_c.userdata = callbackUserdata
++                return stationDisplayOnly
++                    ? ghostty_surface_new_display(app, &surface_cfg_c)
++                    : ghostty_surface_new(app, &surface_cfg_c)
+             }
+             guard let surface = surface else {
++                Unmanaged<Weak<SurfaceView>>.fromOpaque(callbackUserdata).release()
+                 self.error = Ghostty.Error.apiFailed
+                 return
+             }
+@@ -697,6 +708,11 @@
+             // We should use window to perform hitTest here,
+             // because there could be some other overlays on top, like search bar
+             guard window.contentView?.hitTest(location) == self else { return event }
++            #if POLAR_STATION
++            NotificationCenter.default.post(
++                name: .init("PolarStationSurfacePointerDown"), object: self,
++                userInfo: ["event": event])
++            #endif
+ 
+             // We always assume that we're resetting our mouse suppression
+             // unless we see the specific scenario below to set it.
+@@ -711,7 +727,7 @@
+             // If our window/app is already focused, then this click is only
+             // being used to transfer split focus. Consume it so it does not
+             // get forwarded to the terminal as a mouse click.
+-            if NSApp.isActive && window.isKeyWindow {
++            if NSApp.isActive && window.isKeyWindow && !stationIsDisplayOnly {
+                 window.makeFirstResponder(self)
+                 suppressNextLeftMouseUp = true
+                 return nil
+@@ -727,6 +743,9 @@
+         }
+ 
+         private func localEventKeyUp(_ event: NSEvent) -> NSEvent? {
++            #if POLAR_STATION
++            guard let window, window.isKeyWindow, window.firstResponder === self else { return event }
++            #endif
+             // We only care about events with "command" because all others will
+             // trigger the normal responder chain.
+             if !event.modifierFlags.contains(.command) { return event }
+@@ -847,8 +866,20 @@
+         override func becomeFirstResponder() -> Bool {
+             let result = super.becomeFirstResponder()
+             if result { focusDidChange(true) }
++            #if POLAR_STATION
++            if result { NotificationCenter.default.post(name: .init("PolarStationTerminalFocused"), object: self) }
++            #endif
+             return result
+         }
++
++        #if POLAR_STATION
++        override func viewDidMoveToWindow() {
++            super.viewDidMoveToWindow()
++            if window != nil {
++                NotificationCenter.default.post(name: .init("PolarStationTerminalMounted"), object: self)
++            }
++        }
++        #endif
+ 
+         override func resignFirstResponder() -> Bool {
+             let result = super.resignFirstResponder()
+@@ -856,6 +887,9 @@
+             // We sometimes call this manually (see SplitView) as a way to force us to
+             // yield our focus state.
+             if result { focusDidChange(false) }
++            #if POLAR_STATION
++            if result { NotificationCenter.default.post(name: .init("PolarStationTerminalBlurred"), object: self) }
++            #endif
+ 
+             return result
+         }
+@@ -1322,6 +1356,9 @@
+ 
+         /// Special case handling for some control keys
+         override func performKeyEquivalent(with event: NSEvent) -> Bool {
++            #if POLAR_STATION
++            guard window?.firstResponder === self else { return false }
++            #endif
+             // We only care about key down events. It might not even be possible
+             // to receive any other event type here.
+             guard event.type == .keyDown else { return false }
+@@ -2354,16 +2391,21 @@
+     /// Defines the accessibility role for this view, which helps assistive technologies
+     /// understand what kind of content this view contains and how users can interact with it.
+     override func accessibilityRole() -> NSAccessibility.Role? {
++        if stationNativeContent != nil { return .group }
++
+         /// We use .textArea because the terminal surface is essentially an editable text area
+         /// where users can input commands and view output.
+         return .textArea
+     }
+ 
+     override func accessibilityHelp() -> String? {
++        if stationNativeContent != nil { return nil }
+         return "Terminal content area"
+     }
+ 
+     override func accessibilityValue() -> Any? {
++        if stationNativeContent != nil { return nil }
++
+         return cachedScreenContents.get()
+     }
+ 
+diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -453,6 +453,7 @@
+     size: apprt.SurfaceSize,
+     cursor_pos: apprt.CursorPos,
+     inspector: ?*Inspector = null,
++    station_display_only: bool = false,
+ 
+     /// The current title of the surface. The embedded apprt saves this so
+     /// that getTitle works without the implementer needing to save it.
+@@ -502,7 +503,16 @@
+     };
+ 
+     pub fn init(self: *Surface, app: *App, opts: Options) !void {
++        return self.initWithMode(app, opts, false);
++    }
++
++    pub fn stationDisplayOnly(self: *const Surface) bool {
++        return self.station_display_only;
++    }
++
++    fn initWithMode(self: *Surface, app: *App, opts: Options, display_only: bool) !void {
+         self.* = .{
++            .station_display_only = display_only,
+             .app = app,
+             .platform = try .init(opts.platform_tag, opts.platform),
+             .userdata = opts.userdata,
+@@ -1856,6 +1866,37 @@
+         return try app.newSurface(opts.*);
+     }
+ 
++    // Additive API: do not alter the layout of Surface.Options / surface_config_s.
++    export fn ghostty_surface_new_display(app: *App, opts: *const apprt.Surface.Options) ?*Surface {
++        const surface = app.core_app.alloc.create(Surface) catch return null;
++        surface.initWithMode(app, opts.*, true) catch |err| {
++            app.core_app.alloc.destroy(surface);
++            log.err("error initializing Station display err={}", .{err});
++            return null;
++        };
++        return surface;
++    }
++
++    // Thin geometry adapter: reuse the core's actual padding and content scale.
++    export fn ghostty_surface_display_geometry(surface: *Surface, x: *f64, y: *f64, cw: *f64, ch: *f64) bool {
++        if (!surface.station_display_only) return false;
++        const scale = surface.getContentScale() catch return false;
++        const size = surface.core_surface.size;
++        x.* = @as(f64, @floatFromInt(size.padding.left)) / scale.x;
++        y.* = @as(f64, @floatFromInt(size.padding.top)) / scale.y;
++        cw.* = @as(f64, @floatFromInt(size.cell.width)) / scale.x;
++        ch.* = @as(f64, @floatFromInt(size.cell.height)) / scale.y;
++        return cw.* > 0 and ch.* > 0;
++    }
++
++    export fn ghostty_surface_display_text(surface: *Surface, operation: u32, text: ?[*]const u8, len: usize) bool {
++        if (!surface.station_display_only or (text == null and len != 0)) return false;
++        // Bound length before forming a foreign-memory slice.
++        if (len > @import("../termio/StationDisplay.zig").max_text_bytes) return false;
++        surface.core_surface.io.stationDisplayWrite(operation, if (text) |p| p[0..len] else "") catch return false;
++        return true;
++    }
++
+     export fn ghostty_surface_free(ptr: *Surface) void {
+         ptr.app.closeSurface(ptr);
+     }
+@@ -2036,6 +2077,24 @@
+     /// Update the content scale of the surface.
+     export fn ghostty_surface_set_content_scale(surface: *Surface, x: f64, y: f64) void {
+         surface.updateContentScale(x, y);
++    }
++
++    /// Only managed resident SurfaceViews opt into the native control protocol.
++    export fn ghostty_surface_set_polar_native_control(surface: *Surface, enabled: bool) void {
++        const state = &surface.core_surface.renderer_state;
++        state.mutex.lockUncancelable(global.io());
++        defer state.mutex.unlock(global.io());
++        state.polar_native_focus_control = enabled;
++    }
++
++    /// Match GTK: only acknowledge the real Ghostty font and protect it
++    /// from a later application-wide theme or configuration reload.
++    export fn ghostty_surface_synchronize_polar_font_size(surface: *Surface, points: f32) bool {
++        surface.core_surface.synchronizeManagedFontSize(points) catch |err| {
++            log.warn("managed Polar Station font synchronization failed err={}", .{err});
++            return false;
++        };
++        return true;
+     }
+ 
+     /// Update the focused state of a surface.
+diff --git a/src/build/Config.zig b/src/build/Config.zig
+--- a/src/build/Config.zig
++++ b/src/build/Config.zig
+@@ -34,6 +34,7 @@
+ simd: bool = true,
+ i18n: bool = true,
+ wasm_shared: bool = true,
++polar_tmux: bool = false,
+ 
+ /// Ghostty exe properties
+ exe_entrypoint: ExeEntrypoint = .ghostty,
+@@ -213,6 +214,12 @@
+ 
+     //---------------------------------------------------------------
+     // Feature Flags
++
++    config.polar_tmux = b.option(
++        bool,
++        "polar-tmux",
++        "Compile the managed Polar Station integration.",
++    ) orelse false;
+ 
+     config.flatpak = b.option(
+         bool,
+@@ -697,6 +704,7 @@
+     step.addOption(RendererBackend, "renderer", self.renderer);
+     step.addOption(ExeEntrypoint, "exe_entrypoint", self.exe_entrypoint);
+     step.addOption(WasmTarget, "wasm_target", self.wasm_target);
++    step.addOption(bool, "polar_tmux", self.polar_tmux);
+     step.addOption(bool, "wasm_shared", self.wasm_shared);
+ 
+     // Our version. We also add the string version so we don't need
+diff --git a/src/config/Config.zig b/src/config/Config.zig
+--- a/src/config/Config.zig
++++ b/src/config/Config.zig
+@@ -7404,12 +7404,12 @@
+             try self.set.put(
+                 alloc,
+                 .{ .key = .{ .physical = .arrow_left }, .mods = .{ .alt = true } },
+-                .{ .esc = "b" },
++                .{ .csi = "1;3D" },
+             );
+             try self.set.put(
+                 alloc,
+                 .{ .key = .{ .physical = .arrow_right }, .mods = .{ .alt = true } },
+-                .{ .esc = "f" },
++                .{ .csi = "1;3C" },
+             );
+         }
+     }
+diff --git a/src/renderer/State.zig b/src/renderer/State.zig
+--- a/src/renderer/State.zig
++++ b/src/renderer/State.zig
+@@ -18,6 +18,9 @@
+ 
+ /// The terminal data.
+ terminal: *terminalpkg.Terminal,
++
++/// Managed resident Surface publishes focus through the shared Host protocol.
++polar_native_focus_control: bool = false,
+ 
+ /// The terminal inspector, if any. This will be null while the inspector
+ /// is not active and will be set when it is active.
+diff --git a/src/renderer/Thread.zig b/src/renderer/Thread.zig
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -236,8 +236,8 @@
+     // Send an initial wakeup message so that we render right away.
+     try self.wakeup.notify();
+ 
+-    // Start blinking the cursor.
+-    self.cursor_h.run(
++    // Processless displays have no terminal cursor.
++    if (self.cursorBlinkAllowed()) self.cursor_h.run(
+         &self.loop,
+         &self.cursor_c,
+         cursorBlinkInterval(),
+@@ -365,7 +365,7 @@
+                 } else {
+                     // If we're focused, we immediately show the cursor again
+                     // and then restart the timer.
+-                    if (self.cursor_c.state() != .active) {
++                    if (self.cursorBlinkAllowed() and self.cursor_c.state() != .active) {
+                         self.flags.cursor_blink_visible = true;
+                         self.cursor_h.run(
+                             &self.loop,
+@@ -568,6 +568,9 @@
+     // we'll catch up when the .visible mailbox message flips us back on.
+     // Kitty graphics animations pause with us and resume on visibility.
+     if (!t.flags.visible) return .disarm;
++    // Termio and renderer control messages still run while hidden.
++    if ((comptime @import("build_options").polar_tmux) and
++        !t.flags.visible) return .disarm;
+ 
+     // Update our frame data
+     t.renderer.updateFrame(
+@@ -730,6 +733,14 @@
+     return .disarm;
+ }
+ 
++// This capability is set before renderer-thread construction and never changes.
++fn cursorBlinkAllowed(self: *const Thread) bool {
++    if (comptime @hasDecl(apprt.Surface, "stationDisplayOnly")) {
++        return !self.surface.stationDisplayOnly();
++    }
++    return true;
++}
++
+ /// Returns the interval for the blinking cursor in milliseconds.
+ fn cursorBlinkInterval() u64 {
+     if (std.valgrind.runningOnValgrind() > 0) {
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -141,6 +141,7 @@
+ 
+         /// True if the window is visible.
+         visible: bool,
++        station_frame_fresh: bool = true,
+ 
+         /// Flag to indicate that our focus state changed for custom
+         /// shaders to update their state.
+@@ -1194,10 +1195,7 @@
+         /// Must be called on the render thread.
+         pub fn setFocus(self: *Self, focus: bool) !void {
+             assert(self.focused != focus);
+-
+             self.focused = focus;
+-
+-            // Flag that we need to update our custom shaders
+             self.custom_shader_focused_changed = true;
+ 
+             self.syncDisplayLink(null, null);
+@@ -1215,10 +1213,10 @@
+         }
+ 
+         /// Callback when the window is visible or occluded.
+-        ///
+-        /// Must be called on the render thread.
++        /// Must be called on the render thread, independently of focus.
+         pub fn setVisible(self: *Self, visible: bool) void {
+             self.visible = visible;
++            if (!visible) self.station_frame_fresh = false;
+             self.syncDisplayLink(null, null);
+ 
+             // When we're hidden, release our GPU resources.
+@@ -1384,7 +1382,9 @@
+             //
+             // Frame count is ~12 minutes at 120Hz.
+             const max_terminal_state_frame_count = 100_000;
+-            if (self.terminal_state_frame_count >= max_terminal_state_frame_count) {
++            if ((comptime @import("build_options").polar_tmux) and !self.station_frame_fresh or
++                self.terminal_state_frame_count >= max_terminal_state_frame_count)
++            {
+                 self.terminal_state.deinit(self.alloc);
+                 self.terminal_state = .empty;
+                 self.terminal_state_frame_count = 0;
+@@ -1572,8 +1572,8 @@
+                 arena_alloc,
+                 &critical.links,
+                 &self.terminal_state,
+-                state.mouse.point,
+-                state.mouse.mods,
++                critical.mouse.point,
++                critical.mouse.mods,
+             ) catch |err| {
+                 log.warn("error searching for regex links err={}", .{err});
+             };
+@@ -1741,6 +1741,9 @@
+             self: *Self,
+             sync: bool,
+         ) !bool {
++            if ((comptime @import("build_options").polar_tmux) and
++                (!self.visible or !self.station_frame_fresh)) return false;
++
+             // After the graphics API is complete (so we defer) we want to
+             // update our scrollbar state.
+             defer if (self.scrollbar_dirty) {
+@@ -2915,6 +2918,7 @@
+ 
+             // Update that our cells rebuilt
+             self.cells_rebuilt = true;
++            if (comptime @import("build_options").polar_tmux) self.station_frame_fresh = true;
+ 
+             // Log some things
+             // log.debug("rebuildCells complete cached_runs={}", .{
+@@ -3691,3 +3695,9 @@
+         }
+     };
+ }
++
++// Included in the existing generic renderer by the shared managed overlay.
++// The cache test calls the real renderer before its synchronized-output exit,
++// so no graphics context or 100000-frame stress run is needed.
++// A source locking invariant, not a claim of a ThreadSanitizer race test.
++// Existing provider tests separately verify link policies and Unicode cells.
+diff --git a/src/termio/Exec.zig b/src/termio/Exec.zig
+--- a/src/termio/Exec.zig
++++ b/src/termio/Exec.zig
+@@ -1174,28 +1174,43 @@
+         }
+     }
+ 
+-    fn killPid(pid: c.pid_t) !void {
+-        const pgid = getpgid(pid) orelse return;
+-
+-        // It is possible to send a killpg between the time that
+-        // our child process calls setsid but before or simultaneous
+-        // to calling execve. In this case, the direct child dies
+-        // but grandchildren survive. To work around this, we loop
+-        // and repeatedly kill the process group until all
+-        // descendents are well and truly dead. We will not rest
+-        // until the entire family tree is obliterated.
+-        while (true) {
+-            switch (posix.errno(c.killpg(pgid, c.SIGHUP))) {
+-                .SUCCESS => log.debug("process group killed pgid={}", .{pgid}),
+-                else => |err| killpg: {
+-                    if ((comptime builtin.target.os.tag.isDarwin()) and
+-                        err == .PERM)
+-                    {
+-                        log.debug("killpg failed with EPERM, expected on Darwin and ignoring", .{});
+-                        break :killpg;
+-                    }
+-
+-                    log.warn("error killing process group pgid={} err={}", .{ pgid, err });
++    const PANE_HOST_REAP_BUDGET_MS: usize = 1800;
++    const PANE_HOST_REAP_POLL_MS: usize = 10;
++    const PANE_HOST_HANGUP_POLLS: usize = 40;
++    const PANE_HOST_TERMINATE_POLLS: usize = 40;
++    const PANE_HOST_KILL_POLLS: usize =
++        (PANE_HOST_REAP_BUDGET_MS / PANE_HOST_REAP_POLL_MS) -
++        PANE_HOST_HANGUP_POLLS -
++        PANE_HOST_TERMINATE_POLLS;
++
++    fn killManagedPaneHostPid(pid: c.pid_t) !void {
++        if (try signalPaneHostAndWait(pid, c.SIGHUP, PANE_HOST_HANGUP_POLLS)) return;
++        if (try signalPaneHostAndWait(pid, c.SIGTERM, PANE_HOST_TERMINATE_POLLS)) return;
++        if (try signalPaneHostAndWait(pid, c.SIGKILL, PANE_HOST_KILL_POLLS)) return;
++
++        log.err("managed Pane Host did not exit within {}ms pid={}", .{
++            PANE_HOST_REAP_BUDGET_MS,
++            pid,
++        });
++        return error.KillFailed;
++    }
++
++    fn signalPaneHostAndWait(
++        pid: c.pid_t,
++        signal: c_int,
++        attempts: usize,
++    ) !bool {
++        var attempt: usize = 0;
++        while (attempt < attempts) : (attempt += 1) {
++            switch (posix.errno(c.kill(pid, signal))) {
++                .SUCCESS => {},
++                .SRCH => {},
++                else => |err| {
++                    log.warn("error signaling managed Pane Host pid={} signal={} err={}", .{
++                        pid,
++                        signal,
++                        err,
++                    });
+                     return error.KillFailed;
+                 },
+             }
+@@ -1210,9 +1225,16 @@
+                 break rc;
+             };
+             log.debug("waitpid result={}", .{res_pid});
+-            if (res_pid != 0) break;
+-            try std.Io.sleep(global.io(), .fromMilliseconds(10), .awake);
+-        }
++            if (res_pid != 0) return true;
++            if (attempt + 1 < attempts) {
++                try std.Io.sleep(global.io(), .fromMilliseconds(PANE_HOST_REAP_POLL_MS), .awake);
++            }
++        }
++        return false;
++    }
++
++    fn killPid(pid: c.pid_t) !void {
++        return killManagedPaneHostPid(pid);
+     }
+ 
+     fn getpgid(pid: c.pid_t) ?c.pid_t {
+@@ -1931,7 +1953,8 @@
+         //
+         // Awesome.
+         try args.append(alloc, "/usr/bin/login");
+-        if (hush) try args.append(alloc, "-q");
++        _ = hush;
++        try args.append(alloc, "-q");
+         try args.append(alloc, "-flp");
+         try args.append(alloc, username);
+ 
+@@ -2019,7 +2042,7 @@
+                 try args.append(alloc, "-c");
+             }
+ 
+-            try args.append(alloc, v);
++            try args.append(alloc, try alloc.dupeSentinel(u8, v, 0));
+             break :shell try args.toOwnedSlice(alloc);
+         },
+     };
+@@ -2079,15 +2102,16 @@
+         }
+     });
+ 
+-    try testing.expectEqual(8, result.len);
++    try testing.expectEqual(9, result.len);
+     try testing.expectEqualStrings(result[0], "/usr/bin/login");
+-    try testing.expectEqualStrings(result[1], "-flp");
+-    try testing.expectEqualStrings(result[2], "testuser");
+-    try testing.expectEqualStrings(result[3], "/bin/bash");
+-    try testing.expectEqualStrings(result[4], "--noprofile");
+-    try testing.expectEqualStrings(result[5], "--norc");
+-    try testing.expectEqualStrings(result[6], "-c");
+-    try testing.expectEqualStrings(result[7], "exec -l foo bar baz");
++    try testing.expectEqualStrings(result[1], "-q");
++    try testing.expectEqualStrings(result[2], "-flp");
++    try testing.expectEqualStrings(result[3], "testuser");
++    try testing.expectEqualStrings(result[4], "/bin/bash");
++    try testing.expectEqualStrings(result[5], "--noprofile");
++    try testing.expectEqualStrings(result[6], "--norc");
++    try testing.expectEqualStrings(result[7], "-c");
++    try testing.expectEqualStrings(result[8], "exec -l foo bar baz");
+ }
+ 
+ test "execCommand darwin: direct command" {
+@@ -2109,12 +2133,13 @@
+         }
+     });
+ 
+-    try testing.expectEqual(5, result.len);
++    try testing.expectEqual(6, result.len);
+     try testing.expectEqualStrings(result[0], "/usr/bin/login");
+-    try testing.expectEqualStrings(result[1], "-flp");
+-    try testing.expectEqualStrings(result[2], "testuser");
+-    try testing.expectEqualStrings(result[3], "foo");
+-    try testing.expectEqualStrings(result[4], "bar baz");
++    try testing.expectEqualStrings(result[1], "-q");
++    try testing.expectEqualStrings(result[2], "-flp");
++    try testing.expectEqualStrings(result[3], "testuser");
++    try testing.expectEqualStrings(result[4], "foo");
++    try testing.expectEqualStrings(result[5], "bar baz");
+ }
+ 
+ test "execCommand: shell command, empty passwd" {
+diff --git a/src/termio/Termio.zig b/src/termio/Termio.zig
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -48,6 +48,8 @@
+ /// A handle to wake up the renderer. This hints to the renderer that
+ /// a repaint should happen.
+ renderer_wakeup: xev.Async,
++
++station_render_wakeup: @import("StationRenderWakeup.zig") = .{},
+ 
+ /// The mailbox for notifying the renderer of things.
+ renderer_mailbox: *renderer.Thread.Mailbox,
+@@ -327,10 +329,10 @@
+         .xt_checksum_report = opts.config.xt_checksum_report,
+     };
+ 
+-    const thread_enter_state = try ThreadEnterState.create(
+-        alloc,
+-        opts.full_config,
+-    );
++    const thread_enter_state = switch (backend) {
++        .display => null, // Never load shell initial-input files for an LGP display.
++        .exec => try ThreadEnterState.create(alloc, opts.full_config),
++    };
+ 
+     self.* = .{
+         .alloc = alloc,
+@@ -352,6 +354,7 @@
+ }
+ 
+ pub fn deinit(self: *Termio) void {
++    self.station_render_wakeup.deinit(self.alloc);
+     self.backend.deinit();
+     self.terminal.deinit(self.alloc);
+     self.config.deinit();
+@@ -470,6 +473,8 @@
+     self.renderer_state.mutex.lockUncancelable(global.io());
+     defer self.renderer_state.mutex.unlock(global.io());
+ 
++    defer self.station_render_wakeup.notify();
++
+     // Deinit our old config. We do this in the lock because the
+     // stream handler may be referencing the old config (i.e. enquiry resp)
+     self.config.deinit();
+@@ -561,6 +566,7 @@
+     // Mail the renderer so that it can update the GPU and re-render
+     _ = self.renderer_mailbox.push(global.io(), .{ .resize = size }, .{ .forever = {} });
+     self.renderer_wakeup.notify() catch {};
++    self.station_render_wakeup.notify();
+ }
+ 
+ /// Make a size report.
+@@ -599,6 +605,7 @@
+     defer self.renderer_state.mutex.unlock(global.io());
+     self.terminal.modes.set(.synchronized_output, false);
+     self.renderer_wakeup.notify() catch {};
++    self.station_render_wakeup.notify();
+ }
+ 
+ /// Clear the screen.
+@@ -612,6 +619,7 @@
+         // knowledge of where the cursor is and causes rendering issues. So,
+         // for alt screen, we do nothing.
+         if (self.terminal.screens.active_key == .alternate) return;
++        defer self.station_render_wakeup.notify();
+ 
+         // Clear our selection
+         self.terminal.screens.active.clearSelection();
+@@ -665,6 +673,7 @@
+     self.renderer_state.mutex.lockUncancelable(global.io());
+     defer self.renderer_state.mutex.unlock(global.io());
+     self.terminal.scrollViewport(scroll);
++    self.station_render_wakeup.notify();
+ }
+ 
+ /// Jump the viewport to the prompt.
+@@ -673,6 +682,7 @@
+         self.renderer_state.mutex.lockUncancelable(global.io());
+         defer self.renderer_state.mutex.unlock(global.io());
+         self.terminal.screens.active.scroll(.{ .delta_prompt = delta });
++        self.station_render_wakeup.notify();
+     }
+ 
+     try self.renderer_wakeup.notify();
+@@ -682,10 +692,11 @@
+ pub fn focusGained(self: *Termio, td: *ThreadData, focused: bool) !void {
+     self.renderer_state.mutex.lockUncancelable(global.io());
+     const focus_event = self.renderer_state.terminal.modes.get(.focus_event);
++    const native_control = self.renderer_state.polar_native_focus_control;
+     self.renderer_state.mutex.unlock(global.io());
+ 
+     // If we have focus events enabled, we send the focus event.
+-    if (focus_event) {
++    if (focus_event and !native_control) {
+         var buf: [terminalpkg.focus.max_encode_size]u8 = undefined;
+         var writer: std.Io.Writer = .fixed(&buf);
+         terminalpkg.focus.encode(&writer, if (focused) .gained else .lost) catch |err| {
+@@ -702,6 +713,33 @@
+ /// Process output from the pty. This is the manual API that users can
+ /// call with pty data but it is also called by the read thread when using
+ /// an exec subprocess.
++/// Native-main-thread-only display admission. The ordinary input path is
++/// intentionally separate. Allocation/validation finish before parser mutation.
++/// Success means accepted by the terminal parser, not a GPU-present receipt.
++pub fn stationDisplayWrite(self: *Termio, operation_raw: u32, text: []const u8) !void {
++    const display = @import("StationDisplay.zig");
++    switch (self.backend) {
++        .exec => return error.NotDisplaySurface,
++        .display => |state| try state.checkOwner(),
++    }
++    const operation = std.enums.fromInt(display.Operation, operation_raw) orelse
++        return error.InvalidDisplayOperation;
++    // Snapshot actual theme colors under the same renderer mutex. Complete
++    // validation/encoding before modifying the terminal parser or its grid.
++    self.renderer_state.mutex.lockUncancelable(global.io());
++    defer self.renderer_state.mutex.unlock(global.io());
++    const fg: terminalpkg.color.RGB = self.terminal.colors.foreground.get() orelse .{ .r = 216, .g = 216, .b = 216 };
++    const bg: terminalpkg.color.RGB = self.terminal.colors.background.get() orelse .{ .r = 32, .g = 32, .b = 32 };
++    const bytes = try display.encodeThemed(self.alloc, operation, text, .{ fg.r, fg.g, fg.b }, .{ bg.r, bg.g, bg.b });
++    defer self.alloc.free(bytes);
++    const screen = self.terminal.screens.active;
++    const reading = screen.pages.viewport != .active;
++    const offset = screen.pages.scrollbar().offset;
++    if (operation == .replace_window or operation == .replace_runs) try screen.select(null);
++    self.processOutputLocked(bytes);
++    if (reading) screen.pages.scroll(.{ .row = offset });
++}
++
+ pub fn processOutput(self: *Termio, buf: []const u8) void {
+     // We are modifying terminal state from here on out and we need
+     // the lock to grab our read data.
+@@ -714,6 +752,9 @@
+ fn processOutputLocked(self: *Termio, buf: []const u8) void {
+     // Schedule a render. We can call this first because we have the lock.
+     self.terminal_stream.handler.queueRender() catch unreachable;
++
++    // Notify the other visible views after parsing the shared terminal state.
++    defer self.station_render_wakeup.notify();
+ 
+     // Whenever a character is typed, we ensure the cursor is in the
+     // non-blink state so it is rendered if visible. If we're under
+diff --git a/src/termio/backend.zig b/src/termio/backend.zig
+--- a/src/termio/backend.zig
++++ b/src/termio/backend.zig
+@@ -11,28 +11,35 @@
+ const WRITE_REQ_PREALLOC = std.math.pow(usize, 2, 5);
+ 
+ /// The kinds of backends.
+-pub const Kind = enum { exec };
++pub const Kind = enum { exec, display };
+ 
+ /// Configuration for the various backend types.
+ pub const Config = union(Kind) {
+     /// Exec uses posix exec to run a command with a pty.
+     exec: termio.Exec.Config,
++    display: void,
+ };
+ 
+ /// Backend implementations. A backend is responsible for owning the pty
+ /// behavior and providing read/write capabilities.
+ pub const Backend = union(Kind) {
+     exec: termio.Exec,
++    display: @import("StationDisplay.zig").State,
+ 
+     pub fn deinit(self: *Backend) void {
+         switch (self.*) {
+             .exec => |*exec| exec.deinit(),
++            .display => {},
+         }
+     }
+ 
+     pub fn initTerminal(self: *Backend, t: *terminal.Terminal) void {
+         switch (self.*) {
+             .exec => |*exec| exec.initTerminal(t),
++            .display => {
++                t.modes.set(.cursor_visible, false);
++                t.modes.set(.cursor_blinking, false);
++            },
+         }
+     }
+ 
+@@ -44,12 +51,14 @@
+     ) !void {
+         switch (self.*) {
+             .exec => |*exec| try exec.threadEnter(alloc, io, td),
++            .display => td.backend = .{ .display = {} },
+         }
+     }
+ 
+     pub fn threadExit(self: *Backend, td: *termio.Termio.ThreadData) void {
+         switch (self.*) {
+             .exec => |*exec| exec.threadExit(td),
++            .display => {},
+         }
+     }
+ 
+@@ -60,6 +69,7 @@
+     ) !void {
+         switch (self.*) {
+             .exec => |*exec| try exec.focusGained(td, focused),
++            .display => {},
+         }
+     }
+ 
+@@ -70,6 +80,7 @@
+     ) !void {
+         switch (self.*) {
+             .exec => |*exec| try exec.resize(grid_size, screen_size),
++            .display => {},
+         }
+     }
+ 
+@@ -82,6 +93,8 @@
+     ) !void {
+         switch (self.*) {
+             .exec => |*exec| try exec.queueWrite(alloc, td, data, linefeed),
++            // Native widgets own input; a display never echoes terminal input.
++            .display => {},
+         }
+     }
+ 
+@@ -99,6 +112,7 @@
+                 exit_code,
+                 runtime_ms,
+             ),
++            .display => {},
+         }
+     }
+ 
+@@ -108,6 +122,7 @@
+     pub fn getProcessInfo(self: *Backend, comptime info: ProcessInfo) ?ProcessInfo.Type(info) {
+         return switch (self.*) {
+             .exec => |*exec| exec.getProcessInfo(info),
++            .display => null,
+         };
+     }
+ };
+@@ -115,10 +130,12 @@
+ /// Termio thread data. See termio.ThreadData for docs.
+ pub const ThreadData = union(Kind) {
+     exec: termio.Exec.ThreadData,
++    display: void,
+ 
+     pub fn deinit(self: *ThreadData, alloc: Allocator) void {
+         switch (self.*) {
+             .exec => |*exec| exec.deinit(alloc),
++            .display => {},
+         }
+     }
+ 

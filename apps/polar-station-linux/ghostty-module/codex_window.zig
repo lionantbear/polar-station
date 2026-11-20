@@ -43,13 +43,13 @@ pub const Window = struct {
     pending: ?Pending = null,
     dirty: bool = false,
     observation_error: bool = false,
-    frames: [6]?std.json.Parsed(wire.Frame) = .{null} ** 6,
+    frames: [6]?std.json.Parsed(wire.Frame) = @splat(null),
     click_arena: std.heap.ArenaAllocator,
     confirmation: ?*adw.MessageDialog = null,
     confirmation_payload: ?[]u8 = null,
 
     pub fn init(allocator: std.mem.Allocator, app: *Application, send: Send, context: ?*anyopaque) Window {
-        return .{ .allocator = allocator, .app = app, .send = send, .context = context, .nonce = std.crypto.random.int(u64), .click_arena = std.heap.ArenaAllocator.init(allocator) };
+        return .{ .allocator = allocator, .app = app, .send = send, .context = context, .nonce = @import("station_random.zig").int(u64), .click_arena = std.heap.ArenaAllocator.init(allocator) };
     }
     pub fn deinit(self: *Window) void {
         if (self.filtered_target) |target| self.allocator.free(target);
@@ -526,7 +526,7 @@ pub const Window = struct {
         box.append(button.as(gtk.Widget));
     }
     fn z(self: *Window, value: []const u8) ?[:0]u8 {
-        return self.click_arena.allocator().dupeZ(u8, value) catch null;
+        return self.click_arena.allocator().dupeSentinel(u8, value, 0) catch null;
     }
     fn appendLabel(self: *Window, box: *gtk.Box, value: []const u8) void {
         const label = gtk.Label.new(self.z(value) orelse return);
@@ -536,7 +536,7 @@ pub const Window = struct {
         box.append(label.as(gtk.Widget));
     }
     fn setLabel(self: *Window, label: *gtk.Label, value: []const u8) void {
-        const owned = self.allocator.dupeZ(u8, value) catch return;
+        const owned = self.allocator.dupeSentinel(u8, value, 0) catch return;
         defer self.allocator.free(owned);
         label.setLabel(owned);
     }

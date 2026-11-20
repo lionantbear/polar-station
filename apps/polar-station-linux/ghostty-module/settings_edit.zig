@@ -1,8 +1,6 @@
 //! Native control observations only; Rust Settings owns edit protection and CAS.
 const std = @import("std");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 pub const Section = enum { appearance, attention, monitoring, session_summary, voice, voice_retention, imessage, tmux_status_bar };
 pub const Lease = struct {
     allocator: std.mem.Allocator,

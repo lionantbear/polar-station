@@ -609,9 +609,8 @@ impl CodexControlService {
     pub(super) async fn associate_terminal_session(
         &self, binding_id: &str, session: SessionKeyV1,
     ) -> super::codex_control::ControlResult<()> {
-        // A join publishes its snapshot after RPC/history awaits. Use its
-        // admission lane so that publication cannot erase this new association.
-        let _operation = self.operations.lock().await;
+        // Serialize binding mutations while committing the existing transaction.
+        let operation = self.operations.lock().await;
         let row = self.binding_row(binding_id)?;
         let mut affected = std::collections::BTreeSet::from([session.clone()]);
         if let Ok(Some(previous)) = serde_json::from_str::<Option<SessionKeyV1>>(&row.session_key) {
@@ -624,6 +623,7 @@ impl CodexControlService {
             return Err("binding_conflict");
         }
         self.reload_association(binding_id).await?;
+        drop(operation);
         self.synchronize_attention_for(Some(&affected)).await;
         Ok(())
     }

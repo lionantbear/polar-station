@@ -1,4 +1,6 @@
 //! Trusted GNOME Shell capture adapter. No recording or gesture policy here.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gio = @import("gio");
 const glib = @import("glib");
@@ -43,9 +45,9 @@ pub fn configure(bus: *gio.DBusConnection) bool {
     }
     selected = version(bus);
     // Installed GNOME schemas do not mean this is the active desktop.
-    const desktop = std.process.getEnvVarOwned(std.heap.c_allocator, "XDG_CURRENT_DESKTOP") catch return true;
+    const desktop = global.environ().getAlloc(std.heap.c_allocator, "XDG_CURRENT_DESKTOP") catch return true;
     defer std.heap.c_allocator.free(desktop);
-    needs_extension = std.ascii.indexOfIgnoreCase(desktop, "gnome") != null and !selected;
+    needs_extension = std.ascii.findIgnoreCase(desktop, "gnome") != null and !selected;
     return true;
 }
 fn ownerChanged(_: *gio.DBusConnection, _: ?[*:0]const u8, _: [*:0]const u8, _: [*:0]const u8, _: [*:0]const u8, _: *glib.Variant, _: ?*anyopaque) callconv(.c) void {

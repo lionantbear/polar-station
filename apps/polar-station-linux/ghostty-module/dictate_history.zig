@@ -147,10 +147,10 @@ pub const History = struct {
         if(self.insert_source!=0){_=glib.Source.remove(self.insert_source);self.insert_source=0;}
         self.input_editor=editor;
     }
-    fn label(button:*gtk.Button, text:[]const u8) void { const z=a.dupeZ(u8,text) catch return;defer a.free(z);button.setLabel(z); }
-    fn setLabel(widget:*gtk.Label,text:[]const u8) void {const z=a.dupeZ(u8,text) catch return;defer a.free(z);widget.setText(z);}
+    fn label(button:*gtk.Button, text:[]const u8) void { const z=a.dupeSentinel(u8,text, 0) catch return;defer a.free(z);button.setLabel(z); }
+    fn setLabel(widget:*gtk.Label,text:[]const u8) void {const z=a.dupeSentinel(u8,text, 0) catch return;defer a.free(z);widget.setText(z);}
     fn rowSummary(button:*gtk.Button,text:[]const u8) void {
-        const z=a.dupeZ(u8,text) catch return;defer a.free(z);
+        const z=a.dupeSentinel(u8,text, 0) catch return;defer a.free(z);
         var properties=[_]gtk.AccessibleProperty{.label};
         var values=[_]gobject.Value{std.mem.zeroes(gobject.Value)};
         gtk.AccessibleProperty.initValue(.label,&values[0]);defer values[0].unset();
@@ -215,7 +215,7 @@ pub const History = struct {
         }
         if(!same){
             const names=gtk.StringList.new(null);defer names.unref();
-            for(entries)|item|{const z=a.dupeZ(u8,string(item,"label")) catch continue;defer a.free(z);names.append(z);}
+            for(entries)|item|{const z=a.dupeSentinel(u8,string(item,"label"), 0) catch continue;defer a.free(z);names.append(z);}
             dropdown.setModel(names.as(gio.ListModel));
         }
         if(dropdown.getSelected()!=selection)dropdown.setSelected(selection);
@@ -224,7 +224,7 @@ pub const History = struct {
         const inputs=field(self.controller.view(),"inputs");
         if(boolean(inputs,"visible")){
             if(!boolean(inputs,"can_copy"))return;
-            const z=a.dupeZ(u8,string(inputs,"text")) catch return;defer a.free(z);
+            const z=a.dupeSentinel(u8,string(inputs,"text"), 0) catch return;defer a.free(z);
             if(gdk.Display.getDefault())|display|display.getClipboard().setText(z);return;
         }
         const detail=field(self.controller.view(),"history_detail");
@@ -317,7 +317,7 @@ pub const History = struct {
             const parent=if(root)|r| gobject.ext.cast(gtk.Window,r.as(gobject.Object)) else null;
             self.cleanup_confirmation.show(parent,field(cleanup,"presentation"),self,cleanupAccepted);
         }
-        const detail_label=a.dupeZ(u8,string(ui,"detail")) catch return;defer a.free(detail_label);self.content.as(gtk.Widget).setTooltipText(detail_label);
+        const detail_label=a.dupeSentinel(u8,string(ui,"detail"), 0) catch return;defer a.free(detail_label);self.content.as(gtk.Widget).setTooltipText(detail_label);
         for([_]*gtk.Button{self.original_button,self.refined_button,self.copy_button,self.insert_button,self.retry_button,self.dismiss_button,self.settings_button,self.more_button},[_][]const u8{"original","refined","copy","insert","retry","dismiss","settings","more"})|button,key|label(button,string(ui,key));
         setLabel(self.error_label,string(view,"history_error"));self.error_label.as(gtk.Widget).setVisible(@intFromBool(string(view,"history_error").len>0));
         label(self.retry_open_button,string(ui,"retry_open"));self.retry_open_button.as(gtk.Widget).setVisible(@intFromBool(boolean(view,"history_retry_open")));
@@ -353,7 +353,7 @@ pub const History = struct {
         self.recovery_notice.as(gtk.Widget).setVisible(@intFromBool(!inspecting and std.mem.trim(u8,notice,"\n").len>0));
         self.text_scroll.as(gtk.Widget).setVisible(@intFromBool(inspecting or boolean(detail,"has_transcript")));
         self.copy_button.as(gtk.Widget).setVisible(@intFromBool(inspecting or boolean(detail,"has_transcript")));
-        const secondary=a.dupeZ(u8,string(ui,"secondary")) catch return;defer a.free(secondary);self.record_actions.as(gtk.Widget).setTooltipText(secondary);
+        const secondary=a.dupeSentinel(u8,string(ui,"secondary"), 0) catch return;defer a.free(secondary);self.record_actions.as(gtk.Widget).setTooltipText(secondary);
         for(self.rows.items)|row|{if(std.mem.eql(u8,row.id,id))row.button.as(gtk.Widget).addCssClass("suggested-action") else row.button.as(gtk.Widget).removeCssClass("suggested-action");}
         self.original_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(detail,"can_original")));
         self.refined_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(detail,"can_refined")));
@@ -383,6 +383,6 @@ pub const History = struct {
         if(inspecting){self.copy_button.as(gtk.Widget).setSensitive(@intFromBool(boolean(inputs,"can_copy")));label(self.copy_button,string(inputs,"copy_label"));}
         const buffer=self.content.getBuffer();var first:gtk.TextIter=undefined;var last:gtk.TextIter=undefined;buffer.getBounds(&first,&last);
         const old=buffer.getText(&first,&last,1);defer glib.free(old);
-        if(!std.mem.eql(u8,std.mem.span(old),value)){const z=a.dupeZ(u8,value) catch return;defer a.free(z);buffer.setText(z,@intCast(value.len));}
+        if(!std.mem.eql(u8,std.mem.span(old),value)){const z=a.dupeSentinel(u8,value, 0) catch return;defer a.free(z);buffer.setText(z,@intCast(value.len));}
     }
 };

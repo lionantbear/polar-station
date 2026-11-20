@@ -494,7 +494,7 @@ pub fn appendThread(self: anytype, thread: anytype) void {
         if (std.mem.eql(u8, std.mem.span(existing.as(gtk.Widget).getName()), thread.thread_id)) return;
     }
     const row = gtk.ListBoxRow.new();
-    const id = allocator.dupeZ(u8, thread.thread_id) catch return;
+    const id = allocator.dupeSentinel(u8, thread.thread_id, 0) catch return;
     defer allocator.free(id);
     row.as(gtk.Widget).setName(id);
     const content = gtk.Box.new(.horizontal, 12);
@@ -509,7 +509,7 @@ pub fn appendThread(self: anytype, thread: anytype) void {
     content.append(selected.as(gtk.Widget));
     _ = gtk.CheckButton.signals.toggled.connect(selected, @TypeOf(self), @TypeOf(self.*).historySelectionChanged, self, .{});
     self.appendHistoryTabLocations(content, thread.thread_id);
-    const title_z = allocator.dupeZ(u8, thread.display_name) catch return;
+    const title_z = allocator.dupeSentinel(u8, thread.display_name, 0) catch return;
     defer allocator.free(title_z);
     const title = label(title_z);
     title.setEllipsize(.end);
@@ -527,7 +527,7 @@ pub fn appendThread(self: anytype, thread: anytype) void {
     content.append(date_label.as(gtk.Widget));
     const metadata_json = std.json.Stringify.valueAlloc(allocator, thread, .{}) catch return;
     defer allocator.free(metadata_json);
-    const details_z = allocator.dupeZ(u8, metadata_json) catch return;
+    const details_z = allocator.dupeSentinel(u8, metadata_json, 0) catch return;
     defer allocator.free(details_z);
     const metadata = label(details_z);
     metadata.as(gtk.Widget).setVisible(0);
@@ -574,7 +574,7 @@ pub fn detailCard(self: anytype, title: [:0]const u8, text: []const u8) void {
     heading.as(gtk.Widget).addCssClass("heading");
     margins(heading.as(gtk.Widget), 12);
     card.append(heading.as(gtk.Widget));
-    const owned = self.allocator.dupeZ(u8, text) catch return;
+    const owned = self.allocator.dupeSentinel(u8, text, 0) catch return;
     defer self.allocator.free(owned);
     const body = label(owned);
     body.setWrap(1); body.setWrapMode(.word_char); body.setSelectable(1);
@@ -599,15 +599,15 @@ pub fn showMetadata(self: anytype, json: []const u8) void {
     const parsed = std.json.parseFromSlice(Metadata, self.allocator, json, .{ .ignore_unknown_fields = true }) catch return;
     defer parsed.deinit();
     const value = parsed.value;
-    const title = self.allocator.dupeZ(u8, value.display_name) catch return;
+    const title = self.allocator.dupeSentinel(u8, value.display_name, 0) catch return;
     defer self.allocator.free(title);
     self.session_history_details.?.setLabel(title);
     self.session_history_details.?.as(gtk.Widget).setTooltipText(title);
-    const cwd = self.allocator.dupeZ(u8, value.cwd) catch return;
+    const cwd = self.allocator.dupeSentinel(u8, value.cwd, 0) catch return;
     defer self.allocator.free(cwd);
     self.editor.detail_path.?.setLabel(cwd);
     self.editor.detail_path.?.as(gtk.Widget).setTooltipText(cwd);
-    const status = self.allocator.dupeZ(u8, value.status) catch return;
+    const status = self.allocator.dupeSentinel(u8, value.status, 0) catch return;
     defer self.allocator.free(status);
     self.editor.detail_status.?.setLabel(status);
     const date = glib.DateTime.newFromUnixLocal(value.updated_at);
@@ -615,10 +615,10 @@ pub fn showMetadata(self: anytype, json: []const u8) void {
     const time = if (date) |v| v.format("Updated %Y-%m-%d %H:%M") else null;
     defer if (time) |v| glib.free(v);
     self.editor.detail_time.?.setLabel(if (time) |v| v else "Unknown update time");
-    const identity = self.allocator.dupeZ(u8, value.thread_id) catch return;
+    const identity = self.allocator.dupeSentinel(u8, value.thread_id, 0) catch return;
     defer self.allocator.free(identity);
     self.session_history_copy.?.as(gtk.Widget).setTooltipText(identity);
-    const short = self.allocator.dupeZ(u8, value.thread_id[0..@min(8, value.thread_id.len)]) catch return;
+    const short = self.allocator.dupeSentinel(u8, value.thread_id[0..@min(8, value.thread_id.len)], 0) catch return;
     defer self.allocator.free(short);
     self.editor.detail_identity.?.setLabel(short);
     self.editor.detail_identity.?.as(gtk.Widget).setTooltipText(identity);

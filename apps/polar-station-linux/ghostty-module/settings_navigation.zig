@@ -2,9 +2,7 @@
 const std = @import("std");
 const gtk = @import("gtk");
 const gobject = @import("gobject");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const auxiliary = @import("auxiliary_window.zig");
 pub const Page = struct {
     allocator: std.mem.Allocator,
@@ -212,7 +210,7 @@ pub const Page = struct {
         font.spin.as(gtk.Widget).setSensitive(ready);
         font.apply.as(gtk.Widget).setSensitive(ready);
         font.cancel.as(gtk.Widget).setSensitive(ready);
-        const z = self.allocator.dupeZ(u8, message) catch return;
+        const z = self.allocator.dupeSentinel(u8, message, 0) catch return;
         defer self.allocator.free(z);
         font.status.setLabel(z);
     }
@@ -229,7 +227,7 @@ pub const Page = struct {
         const route = value.object.get("route") orelse return;
         self.clear();
         if (value.object.get("title")) |title| if (title == .string) {
-            const label = self.allocator.dupeZ(u8, title.string) catch return;
+            const label = self.allocator.dupeSentinel(u8, title.string, 0) catch return;
             defer self.allocator.free(label);
             self.title.setLabel(label);
         };
@@ -237,7 +235,7 @@ pub const Page = struct {
         self.can_back = can_back == .bool and can_back.bool;
         self.back.as(gtk.Widget).setVisible(@intFromBool(self.can_back));
         if(value.object.get("back_label")) |caption| if(caption==.string) {
-            const z=self.allocator.dupeZ(u8,caption.string) catch return;defer self.allocator.free(z);
+            const z=self.allocator.dupeSentinel(u8,caption.string, 0) catch return;defer self.allocator.free(z);
             self.back.setLabel(z);
             @import("form_controls.zig").wrapCaption(self.back.getChild());
             self.back.as(gtk.Widget).setTooltipText(z);
@@ -255,7 +253,7 @@ pub const Page = struct {
                     const label = scope.object.get("title") orelse continue;
                     const destination = scope.object.get("route") orelse continue;
                     if (label != .string) continue;
-                    const z = self.allocator.dupeZ(u8, label.string) catch continue;
+                    const z = self.allocator.dupeSentinel(u8, label.string, 0) catch continue;
                     defer self.allocator.free(z);
                     const button = gtk.Button.newWithLabel(z);
                     const click = self.allocator.create(Click) catch continue;
@@ -283,7 +281,7 @@ pub const Page = struct {
                 const label = entry.object.get("title") orelse continue;
                 const destination = entry.object.get("route") orelse continue;
                 if (label != .string) continue;
-                const z = self.allocator.dupeZ(u8, label.string) catch continue;
+                const z = self.allocator.dupeSentinel(u8, label.string, 0) catch continue;
                 defer self.allocator.free(z);
                 const button = gtk.Button.newWithLabel(z);
                 button.as(gtk.Widget).addCssClass("flat");

@@ -1,4 +1,5 @@
 //! Native theme application. Rust resolves product palettes; Ghostty parses terminal colors.
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gdk = @import("gdk");
 const gtk = @import("gtk");
@@ -8,39 +9,44 @@ const glib = @import("glib");
 const gobject = @import("gobject");
 const settings = @import("settings.zig");
 const Application = @import("../class/application.zig").Application;
-const internal_os = @import("../../../os/main.zig");
+
+pub fn configOverridePath(allocator: std.mem.Allocator) ![]u8 {
+    return allocator.print("{s}/polar-station-theme-{d}.conf", .{
+        std.mem.span(glib.getUserRuntimeDir()), std.os.linux.getpid(),
+    });
+}
 
 pub fn themesDirectory(allocator: std.mem.Allocator) ![]u8 {
-    const exe = try std.fs.selfExePathAlloc(allocator);
+    const exe = try std.process.executablePathAlloc(global.io(), allocator);
     defer allocator.free(exe);
     // The build artifact carries upstream resources; installed Station has its own namespace.
     for ([_][]const u8{ "../share/polar-station/themes", "../share/ghostty/themes" }) |suffix| {
         const path = try std.fs.path.resolve(allocator, &.{ std.fs.path.dirname(exe).?, suffix });
-        if (std.fs.openDirAbsolute(path, .{})) |opened| {
-            var dir = opened;
-            dir.close();
+        if (std.Io.Dir.openDirAbsolute(global.io(), path, .{})) |opened| {
+            const dir = opened;
+            dir.close(global.io());
             return path;
         } else |_| allocator.free(path);
     }
     const data = try std.fs.path.join(allocator, &.{ std.mem.span(glib.getUserDataDir()), "polar-station/themes" });
     errdefer allocator.free(data);
-    var installed = try std.fs.openDirAbsolute(data, .{});
-    installed.close();
+    const installed = try std.Io.Dir.openDirAbsolute(global.io(), data, .{});
+    installed.close(global.io());
     return data;
 }
 pub fn themeNames(allocator: std.mem.Allocator) !std.ArrayListUnmanaged([:0]u8) {
     const path = try themesDirectory(allocator);
     defer allocator.free(path);
-    var dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
-    defer dir.close();
+    const dir = try std.Io.Dir.openDirAbsolute(global.io(), path, .{ .iterate = true });
+    defer dir.close(global.io());
     var result: std.ArrayListUnmanaged([:0]u8) = .empty;
     errdefer {
         for (result.items) |name| allocator.free(name);
         result.deinit(allocator);
     }
     var iter = dir.iterate();
-    while (try iter.next()) |entry| if (entry.kind == .file and !std.mem.startsWith(u8, entry.name, ".")) {
-        try result.append(allocator, try allocator.dupeZ(u8, entry.name));
+    while (try iter.next(global.io())) |entry| if (entry.kind == .file and !std.mem.startsWith(u8, entry.name, ".")) {
+        try result.append(allocator, try allocator.dupeSentinel(u8, entry.name, 0));
     };
     std.mem.sort([:0]u8, result.items, {}, struct {
         fn less(_: void, a: [:0]u8, b: [:0]u8) bool {
@@ -70,7 +76,7 @@ pub const Controller = struct {
         }
         if (self.terminal_key) |key| self.allocator.free(key);
         if (self.config_path) |path| {
-            std.fs.deleteFileAbsolute(path) catch {};
+            std.Io.Dir.deleteFileAbsolute(global.io(), path) catch {};
             self.allocator.free(path);
         }
     }
@@ -105,19 +111,14 @@ pub const Controller = struct {
             defer self.allocator.free(root);
             const path = try std.fs.path.join(self.allocator, &.{ root, name });
             defer self.allocator.free(path);
-            const file = try std.fs.openFileAbsolute(path, .{});
-            defer file.close();
-            const data = try file.readToEndAlloc(self.allocator, 128 * 1024);
+            const data = try std.Io.Dir.cwd().readFileAlloc(global.io(), path, self.allocator, .limited(128 * 1024));
             defer self.allocator.free(data);
-            if (self.config_path == null) self.config_path = try std.fmt.allocPrint(self.allocator, "{s}/polar-station-theme-{d}.conf", .{ std.mem.span(glib.getUserRuntimeDir()), std.os.linux.getpid() });
+            if (self.config_path == null) self.config_path = try configOverridePath(self.allocator);
             const config = try std.fmt.allocPrint(self.allocator, "theme =\n{s}\nminimum-contrast = 4.5\nwindow-theme = {s}\n", .{ data, if (system) "system" else if (selected.dark) "dark" else "light" });
             defer self.allocator.free(config);
-            const out = try std.fs.createFileAbsolute(self.config_path.?, .{ .mode = 0o600 });
-            defer out.close();
-            try out.writeAll(config);
-            const path_z = try self.allocator.dupeZ(u8, self.config_path.?);
-            defer self.allocator.free(path_z);
-            _ = internal_os.setenv("POLAR_STATION_THEME_CONFIG", path_z);
+            const out = try std.Io.Dir.createFileAbsolute(global.io(), self.config_path.?, .{ .permissions = .fromMode(0o600) });
+            defer out.close(global.io());
+            try out.writeStreamingAll(global.io(), config);
             if (self.terminal_key) |old| self.allocator.free(old);
             self.terminal_key = try self.allocator.dupe(u8, key);
             self.app.as(gio.ActionGroup).activateAction("reload-config", null);

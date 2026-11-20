@@ -54,11 +54,11 @@ pub const Controls = struct {
 
     pub fn render(self: *Controls, view: std.json.ObjectMap) !void {
         const allocator = self.lifecycle.allocator;
-        const message = try allocator.dupeZ(u8, (view.get("message") orelse return error.InvalidRecovery).string);
+        const message = try allocator.dupeSentinel(u8, (view.get("message") orelse return error.InvalidRecovery).string, 0);
         defer allocator.free(message);
         self.message.setText(message);
         inline for (.{ .{ "retry_label", self.retry }, .{ "details_label", self.details } }) |field| {
-            const label = try allocator.dupeZ(u8, (view.get(field[0]) orelse return error.InvalidRecovery).string);
+            const label = try allocator.dupeSentinel(u8, (view.get(field[0]) orelse return error.InvalidRecovery).string, 0);
             defer allocator.free(label);
             field[1].setLabel(label);
         }
@@ -67,7 +67,7 @@ pub const Controls = struct {
         const stamp = view.get("last_probe_unix_ms");
         const detail = if (stamp != null and stamp.? == .integer)
             try std.fmt.allocPrintSentinel(allocator, "{s}\n{s}: {d:0>2}:{d:0>2}:{d:0>2}", .{ reason, time_label, @mod(@divTrunc(stamp.?.integer, 3600000), 24), @mod(@divTrunc(stamp.?.integer, 60000), 60), @mod(@divTrunc(stamp.?.integer, 1000), 60) }, 0)
-        else try allocator.dupeZ(u8, reason);
+        else try allocator.dupeSentinel(u8, reason, 0);
         defer allocator.free(detail);
         self.detail.setText(detail);
         self.retry_enabled = (view.get("retry_enabled") orelse return error.InvalidRecovery).bool;

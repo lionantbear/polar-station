@@ -3,6 +3,8 @@
 //! The native adapter owns Workspace behavior and Ghostty GTK reconciliation;
 //! Rust owns Session runtime, terminal bytes, transport recovery, and relays.
 
+const global = @import("../../../global.zig");
+
 const std = @import("std");
 const adw = @import("adw");
 const gio = @import("gio");
@@ -39,7 +41,7 @@ const shortcuts = @import("shortcuts.zig");
 const workspace_relay = @import("workspace_relay.zig");
 const diagnostics_page = @import("diagnostics_page.zig");
 const native_hooks = @import("native_content_hooks.zig");
-const desktop_ffi = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const desktop_ffi = @import("polar_station_c");
 
 const DiagnosticsEntry = struct {
     owner: *State,
@@ -379,7 +381,7 @@ pub fn init(app: *Application) !void {
     const frontend_instance_id = try std.fmt.allocPrint(
         allocator,
         "linux-ghostty-{d}-{d}",
-        .{ std.os.linux.getpid(), std.time.nanoTimestamp() },
+        .{ std.os.linux.getpid(), @as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toNanoseconds())) },
     );
     errdefer allocator.free(frontend_instance_id);
     const frontend_generation: u64 = 1;
@@ -1542,7 +1544,7 @@ fn presentNativeTabDestination(executor: *presentation_executor.Executor, tab_id
     for (catalog.workspaces) |workspace| {
         if (catalog.isArchived(workspace.workspace_id) or std.mem.eql(u8, workspace.workspace_id, snapshot.workspace_id)) continue;
         ids[count] = allocator.dupe(u8, workspace.workspace_id) catch return;
-        names.append(allocator.dupeZ(u8, workspace.workspace_name) catch return);
+        names.append(allocator.dupeSentinel(u8, workspace.workspace_name, 0) catch return);
         count += 1;
     }
     data.ids = ids[0..count];
@@ -1940,9 +1942,9 @@ pub fn shortcutHintContext(window:*Window) shortcuts.HintContext {
 pub fn shortcutMenuLabel(action: u32, buffer: []u8) [:0]const u8 {
     for (0..shortcuts.catalogCount()) |index| {
         const entry = shortcuts.catalogEntry(index);
-        if (entry.action == action) return std.fmt.bufPrintZ(buffer, "{s}…  Ctrl+Shift+{s}", .{
+        if (entry.action == action) return std.mem.printSentinel(buffer, "{s}…  Ctrl+Shift+{s}", .{
             std.mem.span(entry.label), std.mem.span(entry.key),
-        }) catch "Station action";
+        }, 0) catch "Station action";
     }
     return "Station action";
 }
@@ -2085,11 +2087,10 @@ fn syncFocusCycleActions(current: *State) void {
     }
     for (1..9) |slot| {
         var name_buffer: [32]u8 = undefined;
-        const name = std.fmt.bufPrintZ(
+        const name = std.mem.printSentinel(
             &name_buffer,
             "polar-focus-slot-{d}",
-            .{slot},
-        ) catch continue;
+            .{slot}, 0) catch continue;
         const available = current.activeExecutor().nativeNumberedPaneTarget(@intCast(slot));
         setShortcutActionEnabled(action_map, name, available != null);
     }
@@ -2421,7 +2422,7 @@ fn beginSessionShow(current:*State,generation:u64,payload:[]const u8) void {
     if(!std.mem.eql(u8,frame.action.type,"show_session")) {sessionShowError(current,frame.dispatch_id,"Unsupported client action");return;}
     const session=frame.action.session orelse {sessionShowError(current,frame.dispatch_id,"Missing Session");return;};
     if(current.pending_session_show) |pending| {
-        if(pending.deadline>std.time.milliTimestamp()) {sessionShowError(current,frame.dispatch_id,"Another Session view is opening");return;}
+        if(pending.deadline>@as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toMilliseconds()))) {sessionShowError(current,frame.dispatch_id,"Another Session view is opening");return;}
         pending.deinit(current.allocator);current.pending_session_show=null;
     }
     const active = current.activeExecutor();
@@ -2435,12 +2436,12 @@ fn beginSessionShow(current:*State,generation:u64,payload:[]const u8) void {
         owned.append(a,copy) catch {a.free(copy);for(owned.items)|item|a.free(item);return;};
     }
     const window=std.fmt.allocPrint(a,"gtk-{d}",.{executor.managed_window.?.as(gtk.ApplicationWindow).getId()}) catch {for(owned.items)|item|a.free(item);return;};
-    current.pending_session_show=.{.dispatch=owned.items[0],.workspace=owned.items[1],.tab=owned.items[2],.pane=owned.items[3],.execution=owned.items[4],.session=owned.items[5],.window=window,.generation=generation,.deadline=std.time.milliTimestamp()+7000,.reused=view.reused};
+    current.pending_session_show=.{.dispatch=owned.items[0],.workspace=owned.items[1],.tab=owned.items[2],.pane=owned.items[3],.execution=owned.items[4],.session=owned.items[5],.window=window,.generation=generation,.deadline=@as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toMilliseconds()))+7000,.reused=view.reused};
     current.native_dirty=true;current.app.wakeup();completeSessionShow(current);
 }
 fn completeSessionShow(current:*State) void {
     const pending=current.pending_session_show orelse return;
-    if(pending.generation!=current.client.currentGeneration() or pending.deadline<std.time.milliTimestamp()) {
+    if(pending.generation!=current.client.currentGeneration() or pending.deadline<@as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toMilliseconds()))) {
         pending.deinit(current.allocator);current.pending_session_show=null;return;
     }
     const executor=current.executorForWorkspace(pending.workspace) orelse {sessionShowError(current,pending.dispatch,"Window closed");pending.deinit(current.allocator);current.pending_session_show=null;return;};
@@ -2488,7 +2489,7 @@ fn notifyInboxAttention(current: *State) void {
         const icon = gio.ThemedIcon.new("com.polarealm.PolarStation");
         defer icon.unref();
         notification.setIcon(icon.as(gio.Icon));
-        const workspace = current.allocator.dupeZ(u8, notice.workspace_id) catch continue;
+        const workspace = current.allocator.dupeSentinel(u8, notice.workspace_id, 0) catch continue;
         defer current.allocator.free(workspace);
         notification.setDefaultActionAndTargetValue("app.polar-station-inbox", glib.Variant.newString(workspace));
         const id = std.fmt.allocPrintSentinel(current.allocator, "polar-station-attention-{s}", .{notice.workspace_id}, 0) catch continue;
@@ -3087,7 +3088,7 @@ fn sendControllerRequest(
         .inbox_approve => |value| {
             const request_id = nextRequestId(current) orelse return;
             defer current.allocator.free(request_id);
-            const nonce = std.fmt.allocPrint(current.allocator, "linux-approval-{d}-{d}", .{ std.os.linux.getpid(), std.time.nanoTimestamp() }) catch return;
+            const nonce = std.fmt.allocPrint(current.allocator, "linux-approval-{d}-{d}", .{ std.os.linux.getpid(), @as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toNanoseconds())) }) catch return;
             defer current.allocator.free(nonce);
             const mode = if (current.settings_model.projection()) |projection|
                 projection.appearance.terminal_delivery_mode
@@ -3345,7 +3346,7 @@ fn reportQuickCreateError(current: *State, message: []const u8) void {
 }
 
 fn showNativeError(current: *State, window: *Window, title: [:0]const u8, message: []const u8) void {
-    const text = current.allocator.dupeZ(u8, message) catch return;
+    const text = current.allocator.dupeSentinel(u8, message, 0) catch return;
     defer current.allocator.free(text);
     const dialog = adw.MessageDialog.new(window.as(gtk.Window), title, text);
     dialog.addResponse("close", "Close");
@@ -3497,7 +3498,7 @@ fn completeQuickCreate(current: *State, effect: PendingControlEffect, outcome: p
 
 fn newNativeWorkspaceId(allocator: std.mem.Allocator) ![]u8 {
     var bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&bytes);
+    global.io().random(&bytes);
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     return std.fmt.allocPrint(
@@ -3635,7 +3636,7 @@ fn openSelectedFileInWindow(window:*Window) void {
 pub fn openResourceFile(value:[]const u8,source:?*@import("../class/surface.zig").Surface) bool {
     resourceFileTrace("native-reference");
     const current=if(state) |*v| v else return false;
-    const c=@cImport({@cInclude("polar_station_desktop_client.h");});
+    const c=@import("polar_station_c");
     if(!c.polar_station_file_input_valid(value.ptr,value.len))return false;
     native_file_launcher.cancel(.terminal);
     resourceFileTrace("reference-parsed");
@@ -3655,7 +3656,7 @@ pub fn openResourceFile(value:[]const u8,source:?*@import("../class/surface.zig"
     requestResourcesProjection(current);return true;
 }
 fn resourceFileTrace(stage: []const u8) void {
-    if (std.posix.getenv("POLAR_STATION_TRACE_DIR") != null)
+    if (global.environ().getPosix("POLAR_STATION_TRACE_DIR") != null)
         std.log.info("Polar Station file open: {s}", .{stage});
 }
 fn requestResourceFile(current:*State) void {

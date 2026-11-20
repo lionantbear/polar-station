@@ -46,7 +46,7 @@ pub const Panel = struct {
     sequence: u64 = 0,
     nonce: u64,
     pub fn init(a: std.mem.Allocator, app: *Application, send: Send, context: ?*anyopaque) Panel {
-        return .{ .allocator = a, .app = app, .send = send, .context = context, .strings = std.heap.ArenaAllocator.init(a), .nonce = std.crypto.random.int(u64) };
+        return .{ .allocator = a, .app = app, .send = send, .context = context, .strings = std.heap.ArenaAllocator.init(a), .nonce = @import("station_random.zig").int(u64) };
     }
     pub fn deinit(self: *Panel) void {
         self.clearPending();
@@ -82,7 +82,7 @@ pub const Panel = struct {
         return auxiliary.ContentLease.borrow(self.content.?.as(gtk.Widget));
     }
     fn z(self: *Panel, s: []const u8) [:0]const u8 {
-        return self.strings.allocator().dupeZ(u8, s) catch "";
+        return self.strings.allocator().dupeSentinel(u8, s, 0) catch "";
     }
     fn message(self: *Panel, s: []const u8) void {
         if (self.status) |l| l.setLabel(self.z(s));

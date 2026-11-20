@@ -2,11 +2,11 @@
   "schema_version": 1,
   "upstream": {
     "repository": "https://github.com/ghostty-org/ghostty.git",
-    "tag": "v1.3.1",
-    "annotated_tag_object": "22efb0be2bbea73e5339f5426fa3b20edabcaa11",
-    "commit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
-    "git_archive_sha256": "401fde83af12b915d7ec86df59d8240a39a35f64bbb85b235315812275a8698f",
-    "minimum_zig_version": "0.15.2"
+    "tag": "v1.4.0",
+    "annotated_tag_object": "ce787fc18a7782e81585beb63f0d905ccaf69284",
+    "commit": "83fb95624b0439ee660c2679b43b38c8b63769cd",
+    "git_archive_sha256": "47b9c738ca05c46508a2755fe9e8e7023751e47b36e9e6a4f42acc9e1ff26e32",
+    "minimum_zig_version": "0.17.0"
   },
   "build": {
     "feature": "polar-tmux",
@@ -19,19 +19,37 @@
   "overlay": {
     "module_destination": "src/apprt/gtk/polar_tmux",
     "allowed_upstream_files": [
-      "src/build_config.zig",
-      "src/config/Config.zig",
+      "build.zig",
+      "src/Surface.zig",
+      "src/apprt/gtk/App.zig",
+      "src/apprt/gtk/Surface.zig",
+      "src/apprt/gtk/class/Overrides.zig",
+      "src/apprt/gtk/class/application.zig",
+      "src/apprt/gtk/class/global_shortcuts.zig",
+      "src/apprt/gtk/class/split_tree.zig",
+      "src/apprt/gtk/class/surface.zig",
+      "src/apprt/gtk/class/tab.zig",
+      "src/apprt/gtk/class/title_dialog.zig",
+      "src/apprt/gtk/class/window.zig",
+      "src/apprt/gtk/ui/1.4/window.blp",
       "src/build/Config.zig",
       "src/build/GhosttyExe.zig",
       "src/build/GhosttyResources.zig",
-      "src/renderer/link.zig",
+      "src/build_config.zig",
+      "src/config/Config.zig",
+      "src/main_ghostty.zig",
+      "src/polar_station_trace.zig",
+      "src/renderer/State.zig",
+      "src/renderer/Thread.zig",
       "src/renderer/generic.zig",
-      "src/apprt/gtk/App.zig",
-      "src/apprt/gtk/class/application.zig",
-      "src/apprt/gtk/class/surface.zig",
-      "src/apprt/gtk/class/window.zig",
-      "src/apprt/gtk/ui/1.5/window.blp",
-      "src/apprt/gtk/class/split_tree.zig"
+      "src/renderer/link.zig",
+      "src/terminal/Screen.zig",
+      "src/terminal/Terminal.zig",
+      "src/terminal/render.zig",
+      "src/termio/Exec.zig",
+      "src/termio/Termio.zig",
+      "src/termio/Thread.zig",
+      "src/termio/backend.zig"
     ]
   }
 }

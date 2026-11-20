@@ -1,12 +1,12 @@
 //! Native file chooser and presentation adapter for local Workspace interchange.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const adw = @import("adw");
 const glib = @import("glib");
 const gobject = @import("gobject");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const Value = std.json.Value;
 const Dispatch = *const fn (?*anyopaque, []const u8, []const u8, []const u8) void;
 pub fn field(v: Value, key: []const u8) Value {
@@ -58,7 +58,7 @@ pub const Transfer = struct {
         if (self.pending_id) |v| self.allocator.free(v);
     }
     pub fn problem(self: *Transfer, message: []const u8) void {
-        const z = self.allocator.dupeZ(u8, message) catch return;
+        const z = self.allocator.dupeSentinel(u8, message, 0) catch return;
         defer self.allocator.free(z);
         if (self.status) |status| status.setText(z);
     }
@@ -115,7 +115,7 @@ pub const Transfer = struct {
     }
     fn request(self: *Transfer, value: anytype) void {
         if (self.pending_id != null) return;
-        const id = std.fmt.allocPrint(self.allocator, "workspace-transfer-{x}", .{std.crypto.random.int(u64)}) catch return;
+        const id = std.fmt.allocPrint(self.allocator, "workspace-transfer-{x}", .{@import("station_random.zig").int(u64)}) catch return;
         self.pending_id = id;
         self.problem("Reading Workspace references…");
         const bytes = std.json.Stringify.valueAlloc(self.allocator, .{ .type = "application_request", .request = .{ .protocol_version = @as(u32, 1), .api = "control_center_v1", .request_id = id, .frontend_session_id = "workspace-transfer", .expected_control_revision = @as(?u64, null), .command = .{ .type = "host_transfer", .request = value } } }, .{}) catch {
@@ -159,7 +159,7 @@ pub const Transfer = struct {
         if (std.mem.eql(u8, string(response, "type"), "content_exported")) {
             const native = self.native orelse return true;
             // A view has its own source identity; imported unresolved views retain it.
-            const package = self.checked(local(self.allocator, .{ .action = "export", .native = native.value, .bundle = field(response, "bundle"), .sources = field(response, "sources"), .source_workspace = string(native.value, "id"), .idea_sources = if (self.idea_sources) |v| v.value else Value{ .object = std.json.ObjectMap.init(self.allocator) } }) catch return true) orelse return true;
+            const package = self.checked(local(self.allocator, .{ .action = "export", .native = native.value, .bundle = field(response, "bundle"), .sources = field(response, "sources"), .source_workspace = string(native.value, "id"), .idea_sources = if (self.idea_sources) |v| v.value else Value{ .object = std.json.ObjectMap{} } }) catch return true) orelse return true;
             defer package.deinit();
             if (self.export_bytes) |v| self.allocator.free(v);
             self.export_bytes = std.json.Stringify.valueAlloc(self.allocator, package.value, .{ .whitespace = .indent_2 }) catch return true;
@@ -191,11 +191,11 @@ pub const Transfer = struct {
         const prepared = self.prepared orelse return;
         const box = self.review_box orelse return;
         self.clearReview();
-        const text = self.allocator.dupeZ(u8, string(field(prepared.value, "preview"), "summary")) catch return;
+        const text = self.allocator.dupeSentinel(u8, string(field(prepared.value, "preview"), "summary"), 0) catch return;
         defer self.allocator.free(text);
         reviewLabel(box, text);
         const entry = gtk.Entry.new();
-        const entry_name = self.allocator.dupeZ(u8, string(field(prepared.value, "native"), "name")) catch return;
+        const entry_name = self.allocator.dupeSentinel(u8, string(field(prepared.value, "native"), "name"), 0) catch return;
         defer self.allocator.free(entry_name);
         entry.as(gtk.Editable).setText(entry_name);
         self.name = entry;
@@ -220,7 +220,7 @@ pub const Transfer = struct {
             return;
         }
         var native = field(prepared.value, "native");
-        native.object.put("name", .{ .string = name }) catch return;
+        native.object.put(self.allocator, "name", .{ .string = name }) catch return;
         const bytes = std.json.Stringify.valueAlloc(self.allocator, native, .{}) catch return;
         defer self.allocator.free(bytes);
         self.dispatch(self.context, "import_commit", string(native, "id"), bytes);
@@ -299,22 +299,24 @@ pub const Transfer = struct {
                 self.allocator.free(bytes);
                 self.export_bytes = null;
             }
-            var buffer: [4096]u8 = undefined;
-            var out = std.fs.cwd().atomicFile(std.mem.span(path), .{ .mode = 0o600, .write_buffer = &buffer }) catch {
+            var out = std.Io.Dir.cwd().createFileAtomic(global.io(), std.mem.span(path), .{
+                .permissions = .fromMode(0o600),
+                .replace = true,
+            }) catch {
                 self.problem("Cannot open export file.");
                 return;
             };
-            defer out.deinit();
-            out.file_writer.interface.writeAll(bytes) catch {
+            defer out.deinit(global.io());
+            out.file.writeStreamingAll(global.io(), bytes) catch {
                 self.problem("Cannot write export file.");
                 return;
             };
-            out.finish() catch {
+            out.replace(global.io()) catch {
                 self.problem("Cannot finish export.");
                 return;
             };
         } else {
-            const bytes = std.fs.cwd().readFileAlloc(self.allocator, std.mem.span(path), 8 * 1024 * 1024) catch {
+            const bytes = std.Io.Dir.cwd().readFileAlloc(global.io(), std.mem.span(path), self.allocator, .limited(8 * 1024 * 1024)) catch {
                 self.problem("Cannot read Workspace file (maximum 8 MiB).");
                 return;
             };

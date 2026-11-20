@@ -1,6 +1,6 @@
 //! JSON/FFI transport only; Resource Rust owns pending requests and decisions.
 const std = @import("std");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 pub const Adapter = struct {
     handle: ?*c.ResourceFileOpenHandle = null,
     pub fn deinit(self: *Adapter) void {

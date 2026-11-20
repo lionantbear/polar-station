@@ -1,7 +1,7 @@
 //! Native form for the Host-owned target registry. Never reads or writes configuration files.
 const std = @import("std");
 const gtk = @import("gtk");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 const adw = @import("adw");
 const auxiliary = @import("auxiliary_window.zig");
 const Application = @import("../class/application.zig").Application;
@@ -264,7 +264,7 @@ pub const Panel = struct {
         self.codex_token=token;
         const owner=self.codex_owner orelse {self.codexDisconnected();return;};
         const send=self.codex_send orelse {self.codexDisconnected();return;};
-        const id=std.fmt.allocPrint(self.allocator,"connections-{x}",.{std.crypto.random.int(u64)}) catch return;
+        const id=std.fmt.allocPrint(self.allocator,"connections-{x}",.{@import("station_random.zig").int(u64)}) catch return;
         self.codex_request=id;
         if(self.codex_view)|page|{page.root.as(gtk.Widget).setSensitive(0);page.footer.as(gtk.Widget).setSensitive(0);}
         const payload=codex_wire.encode(self.allocator,id,owner,command) catch {self.codexDisconnected();return;};defer self.allocator.free(payload);
@@ -359,7 +359,7 @@ pub const Panel = struct {
         const value = (self.latest orelse return).value;
         for (value.machines, 0..) |m, i| {
             const query = get(self.search.?);
-            if (query.len == 0 or std.ascii.indexOfIgnoreCase(m.display_name, query) != null or std.ascii.indexOfIgnoreCase(m.destination, query) != null) self.appendRow(m.display_name, false, i);
+            if (query.len == 0 or std.ascii.findIgnoreCase(m.display_name, query) != null or std.ascii.findIgnoreCase(m.destination, query) != null) self.appendRow(m.display_name, false, i);
         }
         const machine_id = if (self.selected_machine) |i| value.machines[i].id else "local";
         for (value.polar_instances, 0..) |p, i| {
@@ -371,7 +371,7 @@ pub const Panel = struct {
         const row = self.allocator.create(Row) catch return;
         row.* = .{ .owner = self, .polar = polar, .index = index };
         self.rows.append(self.allocator, row) catch { self.allocator.destroy(row); return; };
-        const z = self.allocator.dupeZ(u8, name) catch return; defer self.allocator.free(z);
+        const z = self.allocator.dupeSentinel(u8, name, 0) catch return; defer self.allocator.free(z);
         const button = gtk.Button.newWithLabel(z);
         if (!polar) {
             const value = (self.latest orelse return).value;
@@ -386,13 +386,13 @@ pub const Panel = struct {
                 const icon = gtk.Image.newFromIconName(if (online) "emblem-ok-symbolic" else "network-offline-symbolic");
                 icon.as(gtk.Widget).addCssClass(if (online) "success" else if (std.mem.eql(u8, state.status, "offline")) "error" else "warning");
                 line.append(icon.as(gtk.Widget));
-                const caption = if (state.route) |route| std.fmt.allocPrintSentinel(self.allocator, "{s} · {s}", .{state.label, route}, 0) catch return else self.allocator.dupeZ(u8, state.label) catch return;
+                const caption = if (state.route) |route| std.fmt.allocPrintSentinel(self.allocator, "{s} · {s}", .{state.label, route}, 0) catch return else self.allocator.dupeSentinel(u8, state.label, 0) catch return;
                 defer self.allocator.free(caption);
                 const label = gtk.Label.new(caption); label.setXalign(0);
                 label.as(gtk.Widget).addCssClass("caption");
                 line.append(label.as(gtk.Widget)); box.append(line.as(gtk.Widget));
                 button.setChild(box.as(gtk.Widget));
-                const hint = self.allocator.dupeZ(u8, state.accessibility_label) catch return;
+                const hint = self.allocator.dupeSentinel(u8, state.accessibility_label, 0) catch return;
                 defer self.allocator.free(hint);
                 button.as(gtk.Widget).setTooltipText(hint);
                 break;
@@ -414,7 +414,7 @@ pub const Panel = struct {
         self.id.?.as(gtk.Editable).setEditable(@intFromBool(index == null));
         const choices = gtk.StringList.new(null); defer choices.unref();
         choices.append("Local · This computer");
-        for (value.machines) |m| { const z = self.allocator.dupeZ(u8, m.display_name) catch continue; defer self.allocator.free(z); choices.append(z); }
+        for (value.machines) |m| { const z = self.allocator.dupeSentinel(u8, m.display_name, 0) catch continue; defer self.allocator.free(z); choices.append(z); }
         self.machine.?.setModel(choices.as(@import("gio").ListModel)); self.machine.?.setSelected(if (self.selected_machine) |i| @intCast(i + 1) else 0);
         self.entry(self.id.?, ""); self.entry(self.name.?, ""); self.entry(self.destination.?, ""); self.entry(self.socket.?, ""); self.entry(self.node.?, "");
         self.route_enabled.?.setActive(0); self.route_expander.?.setExpanded(0);
@@ -619,10 +619,10 @@ pub const Panel = struct {
         if(self.codex_page)self.renderMode();
         if (view.message) |message| { if (self.status) |status| self.text(status, message); }
         if (view.confirm_discard and self.leave_dialog == null and self.content != null) {
-            const title = self.allocator.dupeZ(u8, view.confirmation) catch return; defer self.allocator.free(title);
+            const title = self.allocator.dupeSentinel(u8, view.confirmation, 0) catch return; defer self.allocator.free(title);
             const dialog = adw.MessageDialog.new(auxiliary.contentParent(self.app,self.content.?.as(gtk.Widget)), title, null);
             inline for (.{"save", "discard", "keep_editing"}, .{view.save_label, view.discard_label, view.keep_label}) |id, label| {
-                const z = self.allocator.dupeZ(u8, label) catch return; defer self.allocator.free(z); dialog.addResponse(id, z);
+                const z = self.allocator.dupeSentinel(u8, label, 0) catch return; defer self.allocator.free(z); dialog.addResponse(id, z);
             }
             dialog.setResponseAppearance("discard", .destructive);
             dialog.setDefaultResponse("keep_editing"); dialog.setCloseResponse("keep_editing");
@@ -670,6 +670,6 @@ pub const Panel = struct {
         return e;
     }
     fn get(e: *gtk.Entry) []const u8 { return std.mem.span(e.as(gtk.Editable).getText()); }
-    fn entry(self: *Panel, e: *gtk.Entry, value: []const u8) void { const z = self.allocator.dupeZ(u8, value) catch return; defer self.allocator.free(z); e.as(gtk.Editable).setText(z); }
-    fn text(self: *Panel, l: *gtk.Label, value: []const u8) void { const z = self.allocator.dupeZ(u8, value) catch return; defer self.allocator.free(z); l.setText(z); }
+    fn entry(self: *Panel, e: *gtk.Entry, value: []const u8) void { const z = self.allocator.dupeSentinel(u8, value, 0) catch return; defer self.allocator.free(z); e.as(gtk.Editable).setText(z); }
+    fn text(self: *Panel, l: *gtk.Label, value: []const u8) void { const z = self.allocator.dupeSentinel(u8, value, 0) catch return; defer self.allocator.free(z); l.setText(z); }
 };

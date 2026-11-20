@@ -43,6 +43,7 @@ pub struct CodexControlService {
     pub(super) observations: std::sync::Mutex<BTreeMap<String, Observation>>,
     pub(super) endpoints: Mutex<BTreeMap<String, EndpointConnection>>,
     pub(super) inventories: Mutex<BTreeMap<String, u64>>,
+    pub(super) pending_history: std::sync::Mutex<BTreeMap<String, Arc<CodexEndpoint>>>,
     pub(super) next_generation: AtomicU64,
     pub(super) connection_attempts: super::codex_connections::ConnectionAttempts,
     pub(super) events: mpsc::Sender<EndpointEvent>,
@@ -91,6 +92,7 @@ impl CodexControlService {
             observations: std::sync::Mutex::new(BTreeMap::new()),
             endpoints: Mutex::new(BTreeMap::new()),
             inventories: Mutex::new(BTreeMap::new()),
+            pending_history: Default::default(),
             next_generation: AtomicU64::new(1),
             connection_attempts: Default::default(),
             events,
@@ -113,12 +115,18 @@ impl CodexControlService {
                 tokio::select! {
                     event = receiver.recv() => {
                         let (Some(service), Some(event)) = (weak.upgrade(), event) else { break };
-                        if service.observe(event).await { retry_needed = service.needs_recovery().await; }
+                        if service.observe(event).await {
+                            service.recover_pending_history().await;
+                            retry_needed = service.needs_recovery().await;
+                        }
                     }
                     change = wait_observer_change(&mut changes) => {
                         let Some(service) = weak.upgrade() else { break };
                         match change {
-                            Ok(HostChange::Recovery) => { retry_needed = service.needs_recovery().await; }
+                            Ok(HostChange::Recovery) => {
+                                service.recover_pending_history().await;
+                                retry_needed = service.needs_recovery().await;
+                            }
                             Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                                 service.reconnect().await;
                                 retry_needed = service.needs_recovery().await;
@@ -473,14 +481,18 @@ impl CodexControlService {
                 if let Some(state) = self.states.write().await.get_mut(&id) {
                     state.metadata.observed_permission = effective_status_permission(&value).map(str::to_owned);
                 }
-                self.persist_binding(&id)?;
+                let binding = self.persist_binding(&id)?;
                 // Naming persists the original empty Thread through app-server's
                 // own store, so its terminal can resume without a synthetic turn.
                 // Keep the binding before preparation so failures remain discoverable.
                 client.request("thread/name/set", json!({
                     "threadId":thread,"name":name.as_deref().unwrap_or("Codex Session")
                 })).await.map_err(RpcFailure::code)?;
-                self.join(&id,false).await?;
+                self.anchor_empty_history(&binding)?;
+                self.apply_join_metadata(&id, &value).await?;
+                if let Some(state) = self.states.write().await.get_mut(&id) {
+                    state.thread_name = Some(name.unwrap_or_else(|| "Codex Session".into()));
+                }
                 self.publisher.publish(ApplicationStateApiV1::CodexV1);
                 Ok(CodexResultV1::Binding { binding:self.states.read().await.get(&id).cloned() })
             }
@@ -795,7 +807,7 @@ impl CodexControlService {
         self.join_loaded(id, &client).await
     }
 
-    pub(super) async fn join_loaded(&self, id: &str, client: &CodexEndpoint) -> ControlResult<()> {
+    pub(super) async fn join_loaded(&self, id: &str, client: &Arc<CodexEndpoint>) -> ControlResult<()> {
         let binding = self.binding_row(id)?;
         let value = Self::resume_original_thread(client, &binding.thread_id).await?;
         self.finish_join(id, client, value).await
@@ -807,29 +819,31 @@ impl CodexControlService {
         Ok(value)
     }
 
-    async fn finish_join(&self, id: &str, client: &CodexEndpoint, value: Value) -> ControlResult<()> {
-        let mut state = self
-            .states
-            .read()
-            .await
-            .get(id)
-            .cloned()
-            .ok_or("binding_not_found")?;
+    async fn finish_join(&self, id: &str, client: &Arc<CodexEndpoint>, value: Value) -> ControlResult<()> {
+        let started = self.observations.lock().unwrap().get(id).is_some_and(|o| o.started);
+        let binding = self.persist_binding(id)?;
+        if started { self.anchor_empty_history(&binding)?; }
+        self.apply_join_metadata(id, &value).await?;
+        self.pending_history.lock().unwrap().insert(id.into(), client.clone());
+        Ok(())
+    }
+
+    async fn apply_join_metadata(&self, id: &str, value: &Value) -> ControlResult<()> {
+        let mut states = self.states.write().await;
+        let state = states.get_mut(id).ok_or("binding_not_found")?;
         if value.pointer("/thread/id").and_then(Value::as_str) != Some(state.binding.thread_id.as_str()) {
             return Err("thread_mismatch");
         }
-        super::codex_discovery::apply_thread_metadata(&mut state, &value["thread"]);
-        if let Some(permission) = effective_status_permission(&value) {
+        super::codex_discovery::apply_thread_metadata(state, &value["thread"]);
+        if let Some(permission) = effective_status_permission(value) {
             state.metadata.observed_permission = Some(permission.to_owned());
         }
         state.thread_name = super::codex_discovery::thread_name(&value["thread"]["name"]);
         state.connection = CodexConnectionStateV1::Connected;
         state.error_code = None;
-        self.reconcile_history(&mut state, client).await?;
-        // Approval flags are more precise than the turn's inProgress status.
-        apply_status(&mut state, &value["thread"]["status"]);
-        permissions(&mut state);
-        self.states.write().await.insert(id.into(), state);
+        apply_status(state, &value["thread"]["status"]);
+        permissions(state);
+        drop(states);
         // Previously received input may have been waiting for this original
         // thread to become usable. Wake its durable workers, not UI observers.
         self.publisher.work(super::application_state::DeliveryChannel::Telegram);
@@ -845,6 +859,7 @@ impl CodexControlService {
         let disabled = self.topology.read().await.disabled_monitors.clone();
         let endpoints = self.endpoints.lock().await.iter().map(|(id,c)| (id.clone(),(c.client.connected(), c.generation))).collect::<BTreeMap<_,_>>();
         let inventories = self.inventories.lock().await.clone();
+        !self.pending_history.lock().unwrap().is_empty() ||
         config.endpoints.iter().filter(|e| e.owner_host_id == self.owner && e.control_mode != CodexControlModeV1::RemoteHost && !disabled.contains(&e.id) && !e.id.starts_with("auto-codex-"))
             .any(|e| endpoints.get(&e.id).is_none_or(|c| !c.0 || inventories.get(&e.id) != Some(&c.1)))
             || self.states.read().await.values().any(|s| s.connection == CodexConnectionStateV1::Disconnected && !disabled.contains(&s.binding.endpoint_id))
@@ -912,6 +927,8 @@ impl CodexControlService {
             self.synchronize_session_attention().await;
             self.publisher.publish(ApplicationStateApiV1::CodexV1);
         }
+        drop(_operation);
+        self.recover_pending_history().await;
     }
 
     async fn observe(&self, event: EndpointEvent) -> bool {

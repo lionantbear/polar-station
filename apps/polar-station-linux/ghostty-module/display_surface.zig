@@ -5,7 +5,7 @@ const std = @import("std");
 const gtk = @import("gtk");
 const gobject = @import("gobject");
 const Surface = @import("../class/surface.zig").Surface;
-const c = @cImport({ @cInclude("station_display.h"); });
+const c = @import("polar_station_display_c");
 
 pub const DisplaySurface = struct {
     allocator: std.mem.Allocator,

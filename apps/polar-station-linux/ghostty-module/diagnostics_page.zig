@@ -93,7 +93,7 @@ pub const Page = struct {
         defer parsed.deinit();
         const view = parsed.value;
         try setLabel(self.allocator, self.title, if (self.kind == .local) view.local_title else view.remote_title);
-        const refresh_text = try self.allocator.dupeZ(u8, view.refresh_label);
+        const refresh_text = try self.allocator.dupeSentinel(u8, view.refresh_label, 0);
         defer self.allocator.free(refresh_text);
         self.refresh.setLabel(refresh_text);
         self.refresh.as(gtk.Widget).setSensitive(@intFromBool(!busy));
@@ -333,7 +333,7 @@ const Row = struct {
         errdefer if (action) |bytes| page.allocator.free(bytes);
         try setLabel(page.allocator, self.title, view.title);
         try setLabel(page.allocator, self.detail, view.detail);
-        const button_text = try page.allocator.dupeZ(u8, view.action_label orelse "");
+        const button_text = try page.allocator.dupeSentinel(u8, view.action_label orelse "", 0);
         defer page.allocator.free(button_text);
         self.button.setLabel(button_text);
         self.icon.setFromIconName(stateIcon(view.state));
@@ -377,7 +377,7 @@ fn label(css: [*:0]const u8) *gtk.Label {
     return result;
 }
 fn setLabel(allocator: std.mem.Allocator, target: *gtk.Label, value: []const u8) !void {
-    const text = try allocator.dupeZ(u8, value);
+    const text = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(text);
     target.setLabel(text);
 }

@@ -1,5 +1,7 @@
 //! One process-wide native GTK Resources editor.
 
+const global = @import("../../../global.zig");
+
 const auxiliary = @import("auxiliary_window.zig");
 const std = @import("std");
 const adw = @import("adw");
@@ -214,11 +216,11 @@ pub const Panel = struct {
             if (view.selected) |id| self.selectDetail(id);
         }
         if (view.confirmation != null and self.leave_dialog == null) {
-            const title = self.allocator.dupeZ(u8, view.confirmation_title) catch return;
+            const title = self.allocator.dupeSentinel(u8, view.confirmation_title, 0) catch return;
             defer self.allocator.free(title);
             const dialog = adw.MessageDialog.new(auxiliary.contentParent(self.app,self.editor_root.?), title, null);
             inline for (.{ "discard", "keep_editing" }, .{ view.discard_label, view.keep_label }) |id, label_text| {
-                const value = self.allocator.dupeZ(u8, label_text) catch return;
+                const value = self.allocator.dupeSentinel(u8, label_text, 0) catch return;
                 defer self.allocator.free(value);
                 dialog.addResponse(id, value);
             }
@@ -284,7 +286,7 @@ pub const Panel = struct {
                 .{ event.level, event.message },
             ) catch continue;
             defer self.allocator.free(line);
-            const owned = self.allocator.dupeZ(u8, line) catch continue;
+            const owned = self.allocator.dupeSentinel(u8, line, 0) catch continue;
             defer self.allocator.free(owned);
             self.log_body.?.append(label(owned, "monospace").as(gtk.Widget));
         }
@@ -1053,7 +1055,7 @@ fn configurePortSpinButton(spin: *gtk.SpinButton) *gtk.SpinButton {
 
 fn entry(allocator: std.mem.Allocator, value: []const u8) !*gtk.Entry {
     const result = gtk.Entry.new();
-    const owned = try allocator.dupeZ(u8, value);
+    const owned = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(owned);
     result.as(gtk.Editable).setText(owned);
     return result;
@@ -1076,7 +1078,7 @@ fn setLabel(
     target: *gtk.Label,
     value: []const u8,
 ) !void {
-    const owned = try allocator.dupeZ(u8, value);
+    const owned = try allocator.dupeSentinel(u8, value, 0);
     defer allocator.free(owned);
     target.setLabel(owned);
 }
@@ -1103,11 +1105,11 @@ fn connect(
 
 fn expandHome(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     if (std.mem.eql(u8, path, "~")) {
-        const home = std.posix.getenv("HOME") orelse return error.HomeUnavailable;
+        const home = global.environ().getPosix("HOME") orelse return error.HomeUnavailable;
         return allocator.dupe(u8, home);
     }
     if (std.mem.startsWith(u8, path, "~/")) {
-        const home = std.posix.getenv("HOME") orelse return error.HomeUnavailable;
+        const home = global.environ().getPosix("HOME") orelse return error.HomeUnavailable;
         return std.fs.path.join(allocator, &.{ home, path[2..] });
     }
     return allocator.dupe(u8, path);

@@ -4,9 +4,7 @@ const gtk = @import("gtk");
 const glib = @import("glib");
 const gobject = @import("gobject");
 const Surface = @import("../class/surface.zig").Surface;
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 pub const Launch = struct { id: []const u8, execution_target_id: []const u8, title: []const u8, command: []const u8 };
 pub const Source = struct { controller_id: u64, token: u64, kind: enum { editor, diagnostics } };
 pub const Material = struct { setup: Launch, source: Source };
@@ -44,9 +42,9 @@ pub const SetupSurface = struct {
     pub fn create(allocator: std.mem.Allocator, material: Material) !*SetupSurface {
         const self = try allocator.create(SetupSurface);
         errdefer allocator.destroy(self);
-        const command = try allocator.dupeZ(u8, material.setup.command);
+        const command = try allocator.dupeSentinel(u8, material.setup.command, 0);
         defer allocator.free(command);
-        const title = try allocator.dupeZ(u8, material.setup.title);
+        const title = try allocator.dupeSentinel(u8, material.setup.title, 0);
         defer allocator.free(title);
         const surface = Surface.new(.{ .command = .{ .shell = command }, .title = title, .station_wait_after_command = true });
         _ = surface.as(gobject.Object).refSink();
@@ -109,22 +107,22 @@ pub fn confirmClose(parent: ?*gtk.Window, context: ?*anyopaque, callback: *const
     };
     defer copy.deinit();
     const allocator = std.heap.c_allocator;
-    const title = allocator.dupeZ(u8, copy.value.close_title) catch {
+    const title = allocator.dupeSentinel(u8, copy.value.close_title, 0) catch {
         callback(context, false);
         return;
     };
     defer allocator.free(title);
-    const detail = allocator.dupeZ(u8, copy.value.close_detail) catch {
+    const detail = allocator.dupeSentinel(u8, copy.value.close_detail, 0) catch {
         callback(context, false);
         return;
     };
     defer allocator.free(detail);
-    const keep = allocator.dupeZ(u8, copy.value.keep) catch {
+    const keep = allocator.dupeSentinel(u8, copy.value.keep, 0) catch {
         callback(context, false);
         return;
     };
     defer allocator.free(keep);
-    const stop = allocator.dupeZ(u8, copy.value.stop) catch {
+    const stop = allocator.dupeSentinel(u8, copy.value.stop, 0) catch {
         callback(context, false);
         return;
     };

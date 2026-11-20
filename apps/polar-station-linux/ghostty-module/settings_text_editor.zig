@@ -4,9 +4,7 @@ const gtk = @import("gtk");
 const adw = @import("adw");
 const glib = @import("glib");
 const gobject = @import("gobject");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const Value = std.json.Value;
 const Field = struct { field: []const u8, title: []const u8 };
 const Actions = struct { loading: []const u8, save: []const u8, restore: []const u8, expand: []const u8, collapse: []const u8, focus: []const u8, cancel: []const u8, discard: []const u8, keep: []const u8, unsaved: []const u8, refresh: []const u8, rebase: []const u8 };
@@ -198,7 +196,7 @@ pub const Panel = struct {
             self.field_clicks[index].field = self.allocator.dupe(u8, view.fields[index].field) catch null;
         }
         self.labelText(self.title, view.title);
-        const editor_label = self.allocator.dupeZ(u8, view.title) catch return;
+        const editor_label = self.allocator.dupeSentinel(u8, view.title, 0) catch return;
         defer self.allocator.free(editor_label);
         var properties = [_]gtk.AccessibleProperty{.label};
         var values = [_]gobject.Value{std.mem.zeroes(gobject.Value)};
@@ -242,13 +240,13 @@ pub const Panel = struct {
             self.transfer_selection = null;
             buffer.beginIrreversibleAction();
             defer buffer.endIrreversibleAction();
-            const text = self.allocator.dupeZ(u8, view.text) catch return;
+            const text = self.allocator.dupeSentinel(u8, view.text, 0) catch return;
             defer self.allocator.free(text);
             buffer.setText(text, @intCast(view.text.len));
             if (self.field) |field| self.allocator.free(field);
             self.field = if (view.field) |field| self.allocator.dupe(u8, field) catch null else null;
         } else if (!std.mem.eql(u8, std.mem.span(old), view.text)) {
-            const text = self.allocator.dupeZ(u8, view.text) catch return;
+            const text = self.allocator.dupeSentinel(u8, view.text, 0) catch return;
             defer self.allocator.free(text);
             buffer.beginUserAction();
             defer buffer.endUserAction();
@@ -256,11 +254,11 @@ pub const Panel = struct {
             buffer.insertAtCursor(text, @intCast(view.text.len));
         }
         if (view.confirm_close and !view.pending and self.dialog == null) if (self.parentWindow()) |parent| {
-            const title = self.allocator.dupeZ(u8, view.confirmation) catch return;
+            const title = self.allocator.dupeSentinel(u8, view.confirmation, 0) catch return;
             defer self.allocator.free(title);
             const dialog = adw.MessageDialog.new(parent, title, null);
             inline for (.{ "save", "discard", "keep_editing" }, .{ view.actions.save, view.actions.discard, view.actions.keep }) |id, text| {
-                const z = self.allocator.dupeZ(u8, text) catch return;
+                const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
                 defer self.allocator.free(z);
                 dialog.addResponse(id, z);
             }
@@ -323,12 +321,12 @@ pub const Panel = struct {
         return result;
     }
     fn labelText(self: *Panel, value: *gtk.Label, text: []const u8) void {
-        const z = self.allocator.dupeZ(u8, text) catch return;
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
         defer self.allocator.free(z);
         value.setText(z);
     }
     fn buttonText(self: *Panel, value: *gtk.Button, text: []const u8) void {
-        const z = self.allocator.dupeZ(u8, text) catch return;
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
         defer self.allocator.free(z);
         value.setLabel(z);
         if (value.getChild()) |child| if (gobject.ext.cast(gtk.Label, child.as(gobject.Object))) |caption| caption.setWrap(1);

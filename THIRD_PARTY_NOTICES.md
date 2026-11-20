@@ -3,14 +3,14 @@
 ## Ghostty
 
 - Repository: https://github.com/ghostty-org/ghostty.git
-- Tag: v1.3.1
-- Revision: 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28
+- Tag: v1.4.0
+- Revision: 83fb95624b0439ee660c2679b43b38c8b63769cd
 - Ghostty is MIT-licensed; its official full LICENSE must accompany
   the fetched upstream source and redistributed binaries.
 
 ## Other reviewed source-level license claims
 
-- **ghostty-macos-and-linux**: `MIT`; pinned/input version: `v1.3.1 / 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`.
+- **ghostty-macos-and-linux**: `MIT`; pinned/input version: `v1.4.0 / 83fb95624b0439ee660c2679b43b38c8b63769cd`.
   Official evidence: https://github.com/ghostty-org/ghostty/blob/main/LICENSE
   License text in this source tree: licenses/pinned/ghostty/LICENSE.
   Additional conditions: Exact pinned LICENSE fetched and hashed; recursively linked dependencies and binary notices remain to verify.

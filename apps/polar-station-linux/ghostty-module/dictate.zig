@@ -1,5 +1,7 @@
 //! GTK mechanics for the shared Rust Dictate policy. GLib owns FIFO worker
 //! scheduling and main-loop delivery; no timer polls state or audio.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const gdk = @import("gdk");
@@ -7,9 +9,7 @@ const gio = @import("gio");
 const external = @import("dictate_external.zig");
 const glib = @import("glib");
 const gobject = @import("gobject");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const a = std.heap.c_allocator;
 const Value = std.json.Value;
 pub fn field(value: Value, key: []const u8) Value {
@@ -89,7 +89,7 @@ pub const Controller = struct {
     submitted_id: ?[]u8 = null,
     gesture: ?*c.StationShortcutGesture = null,
     held_id: ?[]u8 = null,
-    capture_clock: ?std.time.Timer = null,
+    capture_clock: ?std.Io.Clock.Timestamp = null,
     editor: ?*gtk.TextView = null,
     original: ?[]u8 = null,
     target_id: ?[]u8 = null,
@@ -116,8 +116,8 @@ pub const Controller = struct {
             self.speech_incoming.unref();
             self.outgoing.unref();
         }
-        const base = std.process.getEnvVarOwned(a, "XDG_STATE_HOME") catch blk: {
-            const home = std.process.getEnvVarOwned(a, "HOME") catch break :blk a.dupe(u8, "") catch unreachable;
+        const base = global.environ().getAlloc(a, "XDG_STATE_HOME") catch blk: {
+            const home = global.environ().getAlloc(a, "HOME") catch break :blk a.dupe(u8, "") catch unreachable;
             defer a.free(home);
             break :blk std.fs.path.join(a, &.{ home, ".local", "state" }) catch unreachable;
         };
@@ -380,7 +380,7 @@ pub const Controller = struct {
                     self.input(.{.type="refresh_settings"});
                     const mic = string(field(parsed.value, "payload"), "microphone");
                     if (self.microphone) |old| a.free(old);
-                    self.microphone = a.dupeZ(u8, mic) catch null;
+                    self.microphone = a.dupeSentinel(u8, mic, 0) catch null;
                 }
                 continue;
             }
@@ -480,7 +480,7 @@ pub const Controller = struct {
             target.release(target.context);
             return;
         }
-        const id = std.fmt.allocPrint(a, "{x}", .{std.crypto.random.int(u128)}) catch {
+        const id = std.fmt.allocPrint(a, "{x}", .{@import("station_random.zig").int(u128)}) catch {
             target.release(target.context);
             return;
         };
@@ -528,7 +528,7 @@ pub const Controller = struct {
         const prefix=buffer.getText(&first,&left,1);defer glib.free(prefix);
         const suffix=buffer.getText(&right,&last,1);defer glib.free(suffix);
         const expected=std.fmt.allocPrint(a,"{s}{s}{s}",.{std.mem.span(prefix),text,std.mem.span(suffix)}) catch return .unchanged;defer a.free(expected);
-        const z=a.dupeZ(u8,text) catch return .unchanged;defer a.free(z);
+        const z=a.dupeSentinel(u8,text, 0) catch return .unchanged;defer a.free(z);
         buffer.beginUserAction();buffer.delete(&left,&right);buffer.insertAtCursor(z,@intCast(text.len));buffer.endUserAction();
         const actual=bufferText(buffer);defer glib.free(actual);
         return if(same(std.mem.span(actual),expected)) .applied else .unknown;
@@ -561,7 +561,7 @@ pub const Controller = struct {
         // the desktop supplies the corresponding explicit pointer gesture.
         if (!watcher.userActivated()) return;
         const snapshot = watcher.capture() orelse return;
-        const id = std.fmt.allocPrint(a, "{x}", .{std.crypto.random.int(u128)}) catch {
+        const id = std.fmt.allocPrint(a, "{x}", .{@import("station_random.zig").int(u128)}) catch {
             snapshot.destroy();
             return;
         };
@@ -579,7 +579,7 @@ pub const Controller = struct {
         if (!self.enabled() or !same(string(self.presentation(), "action"), "start") or editor.getEditable() == 0) return;
         const content = bufferText(editor.getBuffer()); defer glib.free(content);
         if (std.mem.trim(u8,std.mem.span(content)," \t\r\n").len == 0) return;
-        const id = std.fmt.allocPrint(a,"{x}",.{std.crypto.random.int(u128)}) catch return;
+        const id = std.fmt.allocPrint(a,"{x}",.{@import("station_random.zig").int(u128)}) catch return;
         defer a.free(id);
         var start: gtk.TextIter = undefined; var end: gtk.TextIter = undefined;
         editor.getBuffer().getBounds(&start,&end);
@@ -612,7 +612,7 @@ pub const Controller = struct {
             return;
         }
         if (!self.enabled()) return;
-        const id = std.fmt.allocPrint(a, "{x}", .{std.crypto.random.int(u128)}) catch return;
+        const id = std.fmt.allocPrint(a, "{x}", .{@import("station_random.zig").int(u128)}) catch return;
         defer a.free(id);
         self.cancelled = false;
         if (editor) |view_| {
@@ -651,7 +651,7 @@ pub const Controller = struct {
         self.held_id = null;
         defer a.free(id);
         if (!same(id, self.submitted_id orelse "")) return;
-        const duration: u64 = if (self.capture_clock) |*timer| @min(600000, timer.read() / std.time.ns_per_ms) else 0;
+        const duration: u64 = if (self.capture_clock) |*timer| @min(600000, @as(u64, @intCast(timer.untilNow(global.io()).raw.toMilliseconds()))) else 0;
         if (self.capture_clock == null) {
             self.cancelled = true;
             self.stopAudio();
@@ -667,7 +667,7 @@ pub const Controller = struct {
     pub fn focus(self: *Controller, editor: *gtk.TextView) void {
         if(editor.as(gobject.Object).getData("station-dictate-panel")!=null)return;
         if (!self.opened or self.submitted_id != null or !same(string(self.presentation(), "action"), "start") or editor.getEditable() == 0) return;
-        const id = std.fmt.allocPrint(a, "{x}", .{std.crypto.random.int(u128)}) catch return;
+        const id = std.fmt.allocPrint(a, "{x}", .{@import("station_random.zig").int(u128)}) catch return;
         defer a.free(id);
         self.captureTarget(editor, id) catch return;
         self.cancelled = false;
@@ -692,7 +692,7 @@ pub const Controller = struct {
     }
     fn finish(self: *Controller) void {
         const id = self.capture_id orelse return;
-        const duration: u64 = if (self.capture_clock) |*timer| @min(600000, timer.read() / std.time.ns_per_ms) else 0;
+        const duration: u64 = if (self.capture_clock) |*timer| @min(600000, @as(u64, @intCast(timer.untilNow(global.io()).raw.toMilliseconds()))) else 0;
         self.input(.{ .type = "stop", .operation_id = id, .duration_ms = duration });
     }
     fn audioChunk(data: ?*anyopaque, pcm: [*c]const u8, length: usize) callconv(.c) bool {
@@ -724,7 +724,7 @@ pub const Controller = struct {
             return 0;
         }
         if (events & 1 != 0) {
-            self.capture_clock = std.time.Timer.start() catch null;
+            self.capture_clock = std.Io.Clock.Timestamp.now(global.io(), .awake);
             self.input(.{ .type = "capture_ready", .operation_id = id });
         }
         if (events & 2 != 0) self.finish();
@@ -775,7 +775,7 @@ pub const Controller = struct {
             }
             if(!boolean(effect,"preserve_processing")) c.polar_station_dictate_speech_cancel(self.speech,id.ptr,id.len);
             const receipt:[]const u8=if(boolean(effect,"preserve_processing")) "preview_clipboard" else "clipboard";
-            const text=a.dupeZ(u8,string(effect,"text")) catch {
+            const text=a.dupeSentinel(u8,string(effect,"text"), 0) catch {
                 self.input(.{.type=receipt,.operation_id=id,.copied=false});return;
             };
             defer a.free(text);
@@ -860,7 +860,7 @@ pub const Controller = struct {
                 defer glib.free(current);
                 if (editor.as(gtk.Widget).getRoot() != null and editor.getEditable() != 0 and editor.as(gobject.Object).getData("station-dictate-scope") == self.editor_scope and same(std.mem.span(current), self.original orelse "") and std.meta.eql(selection(buffer), self.range)) {
                     const text = string(effect, "text");
-                    const z = a.dupeZ(u8, text) catch return;
+                    const z = a.dupeSentinel(u8, text, 0) catch return;
                     defer a.free(z);
                     var begin: gtk.TextIter = undefined;
                     var end: gtk.TextIter = undefined;

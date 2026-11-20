@@ -1,4 +1,6 @@
 //! Native Voice controls over the shared local Host contract. No provider here.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const glib = @import("glib");
@@ -6,9 +8,7 @@ const gio = @import("gio");
 const gdk = @import("gdk");
 const gobject = @import("gobject");
 const domain = @import("dictate.zig");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const a = std.heap.c_allocator;
 const Value = std.json.Value;
 const field = domain.field;
@@ -28,7 +28,7 @@ fn label(text: [:0]const u8) *gtk.Label {
     return v;
 }
 fn setText(v: *gtk.Label, text: []const u8) void {
-    const z = a.dupeZ(u8, text) catch return;
+    const z = a.dupeSentinel(u8, text, 0) catch return;
     defer a.free(z);
     v.setText(z);
 }
@@ -36,7 +36,7 @@ fn setText(v: *gtk.Label, text: []const u8) void {
 const wrapCaption=@import("form_controls.zig").wrapCaption;
 
 fn setEditorText(editor: *gtk.TextView, text: []const u8) void {
-    const value = a.dupeZ(u8, text) catch return;
+    const value = a.dupeSentinel(u8, text, 0) catch return;
     defer a.free(value);
     editor.getBuffer().setText(value, @intCast(text.len));
 }
@@ -166,7 +166,7 @@ pub const Panel = struct {
         root.append(label("GNOME: this button opens Settings → Apps → Polar Station. Select Global Shortcuts, then Hold to Dictate. For reliable activation on GNOME use an ordinary combination such as Alt+Z. Polar Station installs its GNOME capture extension automatically. After first installation, sign out and back in once to activate it. Recording then uses complete physical key events. Other desktops use their system shortcut editor.").as(gtk.Widget));
         root.append(label("External inputs must support accessibility editing. On desktops without accessibility click events, unbound drafts stay saved: use Copy in Dictate drafts. Recording into the already focused external input uses the global shortcut.").as(gtk.Widget));
         setup.append(label("Microphone access is managed by your desktop audio service. Choose System default or a fixed input and run the local test. A missing fixed input stops capture.").as(gtk.Widget));
-        try self.device_ids.append(a, try a.dupeZ(u8, ""));
+        try self.device_ids.append(a, try a.dupeSentinel(u8, "", 0));
         self.devices.setModel(self.device_names.as(gio.ListModel));
         setup.append(self.devices.as(gtk.Widget));
         button(setup, "Save microphone selection", save, self);
@@ -306,7 +306,7 @@ pub const Panel = struct {
         self.incoming.push(job);
     }
     fn updateEditControls(self:*Panel) void {
-        const title=a.dupeZ(u8,self.edit_lease.rebaseLabel()) catch return;defer a.free(title);
+        const title=a.dupeSentinel(u8,self.edit_lease.rebaseLabel(), 0) catch return;defer a.free(title);
         inline for(.{self.rebase,self.terminology_rebase}) |control| if(control) |button_| {
             button_.setLabel(title);wrapCaption(button_.getChild());
             button_.as(gtk.Widget).setVisible(@intFromBool(self.edit_lease.canRebase()));
@@ -320,13 +320,13 @@ pub const Panel = struct {
     fn retentionChanged(_: *gtk.Editable,self:*Panel) callconv(.c) void {if(!self.rendering_settings) self.edit_lease.edit(.voice_retention);}
     fn sendEdited(self:*Panel,section:@import("settings_edit.zig").Section,value:anytype) void {
         var arena=std.heap.ArenaAllocator.init(a);defer arena.deinit();
-        const id=std.fmt.allocPrint(arena.allocator(),"voice-edit-{x}",.{std.crypto.random.int(u128)}) catch return;
+        const id=std.fmt.allocPrint(arena.allocator(),"voice-edit-{x}",.{@import("station_random.zig").int(u128)}) catch return;
         const revision=self.edit_lease.begin(section,id) orelse return;
         var queued=false;defer if(!queued) self.edit_lease.failed(id);
         const bytes=std.json.Stringify.valueAlloc(arena.allocator(),value,.{}) catch return;
         var parsed=std.json.parseFromSlice(Value,arena.allocator(),bytes,.{.allocate=.alloc_always}) catch return;
         const settings_value=parsed.value.object.getPtr("settings") orelse return;
-        settings_value.object.put("revision",.{.integer=std.math.cast(i64,revision) orelse return}) catch return;
+        settings_value.object.put(arena.allocator(), "revision",.{.integer=std.math.cast(i64,revision) orelse return}) catch return;
         const request=std.json.Stringify.valueAlloc(a,parsed.value,.{}) catch return;
         const owned_id=a.dupe(u8,id) catch {a.free(request);return;};
         const job=a.create(Job) catch {a.free(request);a.free(owned_id);return;};
@@ -470,7 +470,7 @@ pub const Panel = struct {
             defer request.deinit();
             const op = string(request.value, "op");
             if (eq(op, "voice_login")) {
-                const url = a.dupeZ(u8, string(payload, "authorization_url")) catch continue;
+                const url = a.dupeSentinel(u8, string(payload, "authorization_url"), 0) catch continue;
                 defer a.free(url);
                 _ = gio.AppInfo.launchDefaultForUri(url, null, null);
                 self.setStatus("Complete browser sign-in, then Recheck.");
@@ -483,7 +483,7 @@ pub const Panel = struct {
                 const choices = field(payload, "choices");
                 if (choices == .array and choices.array.items.len > 0) {
                     const choice=choices.array.items[0];
-                    const title=a.dupeZ(u8,string(choice,"context_label")) catch continue;defer a.free(title);
+                    const title=a.dupeSentinel(u8,string(choice,"context_label"), 0) catch continue;defer a.free(title);
                     self.context.setLabel(title);@import("form_controls.zig").wrapCheck(self.context);
                     setText(self.reference_hint,string(choice,"reference_hint"));
                 }
@@ -491,7 +491,7 @@ pub const Panel = struct {
                     const names = gtk.StringList.new(null);
                     defer names.unref();
                     for (choices.array.items) |choice| {
-                        const text = a.dupeZ(u8, string(choice, "label")) catch continue;
+                        const text = a.dupeSentinel(u8, string(choice, "label"), 0) catch continue;
                         defer a.free(text);
                         names.append(text);
                     }
@@ -502,13 +502,13 @@ pub const Panel = struct {
                 while(self.import_issues.as(gtk.Widget).getFirstChild())|child|self.import_issues.remove(child);
                 const items=field(payload,"items");if(items==.array and items.array.items.len>0){
                     self.import_issues.append(label("Previous drafts needing review · originals preserved").as(gtk.Widget));
-                    for(items.array.items)|item|{const text=a.dupeZ(u8,string(item,"text")) catch continue;defer a.free(text);const view=label(text);view.setSelectable(1);self.import_issues.append(view.as(gtk.Widget));}
+                    for(items.array.items)|item|{const text=a.dupeSentinel(u8,string(item,"text"), 0) catch continue;defer a.free(text);const view=label(text);view.setSelectable(1);self.import_issues.append(view.as(gtk.Widget));}
                 }
             } else if(eq(op,"voice_output_modes")) {
                 if(self.output_choices)|*old|old.deinit();self.output_choices=std.json.parseFromSlice(Value,a,std.mem.span(job.result),.{.allocate=.alloc_always}) catch null;
                 const choices=field(payload,"choices");if(choices==.array){
                     const names=gtk.StringList.new(null);defer names.unref();
-                    for(choices.array.items)|choice|{const z=a.dupeZ(u8,string(choice,"label")) catch continue;defer a.free(z);names.append(z);}
+                    for(choices.array.items)|choice|{const z=a.dupeSentinel(u8,string(choice,"label"), 0) catch continue;defer a.free(z);names.append(z);}
                     self.updating_output=true;self.output_mode.setModel(names.as(gio.ListModel));self.updating_output=false;
                     if(self.config)|config|self.showOutput(field(config.value,"payload"));
                 }
@@ -615,7 +615,7 @@ pub const Panel = struct {
         };
     }
     fn openPath(self: *Panel, path: []const u8) void {
-        const p = a.dupeZ(u8, path) catch return;
+        const p = a.dupeSentinel(u8, path, 0) catch return;
         defer a.free(p);
         self.stopPlayer();
         const player = gtk.MediaFile.newForFilename(p);
@@ -669,7 +669,7 @@ pub const Panel = struct {
             row.append(actions.as(gtk.Widget));
             self.rowButton(actions, "Retry", id, "retry", false, 0);
             if (string(item, "retry_segmented_label").len > 0) {
-                const retry_label = a.dupeZ(u8, string(item, "retry_segmented_label")) catch continue;
+                const retry_label = a.dupeSentinel(u8, string(item, "retry_segmented_label"), 0) catch continue;
                 defer a.free(retry_label);
                 self.rowButton(actions, retry_label, id, "retry_segmented", false, 0);
             }
@@ -748,7 +748,7 @@ pub const Panel = struct {
             const dialog = gtk.MessageDialog.new(self.parentWindow(), .{ .modal = true, .destroy_with_parent = true }, .warning, .none, "Delete this saved recording?");
             _ = dialog.as(gtk.Dialog).addButton("Cancel", @intFromEnum(gtk.ResponseType.cancel));
             _ = dialog.as(gtk.Dialog).addButton("Delete audio and text", @intFromEnum(gtk.ResponseType.accept));
-            const id = a.dupeZ(u8, action.id) catch return;
+            const id = a.dupeSentinel(u8, action.id, 0) catch return;
             dialog.as(gobject.Object).setDataFull("voice-recording-id", id.ptr, freeString);
             _ = gtk.Dialog.signals.response.connect(dialog.as(gtk.Dialog), *Panel, deleteResponse, self, .{});
             self.delete_dialog = dialog.as(gtk.Dialog);
@@ -757,7 +757,7 @@ pub const Panel = struct {
             self.closeDialogs();
             const chooser = gtk.FileChooserNative.new("Export Dictate WAV", self.parentWindow(), .save, "Export", "Cancel");
             _ = chooser.as(gtk.FileChooser).setCurrentName("Dictate.wav");
-            const id = a.dupeZ(u8, action.id) catch return;
+            const id = a.dupeSentinel(u8, action.id, 0) catch return;
             chooser.as(gobject.Object).setDataFull("voice-recording-id", id.ptr, freeString);
             _ = gtk.NativeDialog.signals.response.connect(chooser.as(gtk.NativeDialog), *Panel, exportResponse, self, .{});
             self.export_dialog = chooser.as(gtk.NativeDialog);
@@ -772,7 +772,7 @@ pub const Panel = struct {
                     break;
                 }
             };
-        } else if (eq(action.op, "play")) self.send(.{ .op = "export_audio", .id = action.id, .start_sample = action.start }) else if (eq(action.op, "pin")) self.send(.{ .op = "pin", .id = action.id, .pinned = action.pinned }) else if (eq(action.op, "accept")) self.send(.{ .op = "accept", .id = action.id, .now_ms = std.time.milliTimestamp() }) else self.send(.{ .op = action.op, .id = action.id });
+        } else if (eq(action.op, "play")) self.send(.{ .op = "export_audio", .id = action.id, .start_sample = action.start }) else if (eq(action.op, "pin")) self.send(.{ .op = "pin", .id = action.id, .pinned = action.pinned }) else if (eq(action.op, "accept")) self.send(.{ .op = "accept", .id = action.id, .now_ms = @as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toMilliseconds())) }) else self.send(.{ .op = action.op, .id = action.id });
     }
     fn parentWindow(self: *Panel) ?*gtk.Window {
         return gobject.ext.cast(gtk.Window, self.setup.as(gtk.Widget).getRoot() orelse self.root.as(gtk.Widget).getRoot() orelse return null);
@@ -830,7 +830,7 @@ pub const Panel = struct {
         if (id.len > 0) {
             self.input_available = false;
             if (self.observations_changed) |changed| changed(self.callback_context);
-            const saved = a.dupeZ(u8, id) catch return;
+            const saved = a.dupeSentinel(u8, id, 0) catch return;
             self.device_ids.append(a, saved) catch {
                 a.free(saved);
                 return;
@@ -860,7 +860,7 @@ pub const Panel = struct {
             return;
         }
         if (id == null) return;
-        self.device_ids.append(a, a.dupeZ(u8, std.mem.span(id)) catch return) catch return;
+        self.device_ids.append(a, a.dupeSentinel(u8, std.mem.span(id), 0) catch return) catch return;
         self.device_names.append(if (name == null) id else name);
     }
     fn refresh(_: *gtk.Button, self: *Panel) callconv(.c) void {
@@ -918,7 +918,7 @@ pub const Panel = struct {
         var parsed=std.json.parseFromSlice(Value,arena.allocator(),raw,.{.allocate=.alloc_always}) catch return;
         const rule=std.json.Stringify.valueAlloc(arena.allocator(),.{.enabled=self.retention_enabled.getActive()!=0,.days=@as(u32,@intFromFloat(self.retention_days.getValue()))},.{}) catch return;
         const retention=std.json.parseFromSlice(Value,arena.allocator(),rule,.{}) catch return;
-        parsed.value.object.put("retention",retention.value) catch return;
+        parsed.value.object.put(parsed.arena.allocator(), "retention",retention.value) catch return;
         self.sendEdited(.voice_retention,.{.op="voice_settings_update",.settings=parsed.value});
     }
     fn previewCleanup(_: *gtk.Button,self:*Panel) callconv(.c) void {self.cleanup_requested=true;self.send(.{.op="cleanup_preview"});}
@@ -944,7 +944,7 @@ pub const Panel = struct {
         }, .{}) catch return;
         const edited = std.json.parseFromSlice(Value, arena.allocator(), edits, .{}) catch return;
         var fields = edited.value.object.iterator();
-        while (fields.next()) |entry| parsed.value.object.put(entry.key_ptr.*, entry.value_ptr.*) catch return;
+        while (fields.next()) |entry| parsed.value.object.put(parsed.arena.allocator(), entry.key_ptr.*, entry.value_ptr.*) catch return;
         self.sendEdited(.voice, .{ .op = "voice_settings_update", .settings = parsed.value });
     }
     fn localTest(_: *gtk.Button, self: *Panel) callconv(.c) void {
@@ -955,7 +955,7 @@ pub const Panel = struct {
     }
     fn copyText(text: []const u8) void {
         const display = gdk.Display.getDefault() orelse return;
-        const value = a.dupeZ(u8, text) catch return;
+        const value = a.dupeSentinel(u8, text, 0) catch return;
         defer a.free(value);
         display.getClipboard().setText(value);
     }
@@ -973,7 +973,7 @@ pub const Panel = struct {
             self.setStatus("Stop the current test first");
             return;
         }
-        const id = std.fmt.allocPrint(a, "voice-test-{x}", .{std.crypto.random.int(u128)}) catch return;
+        const id = std.fmt.allocPrint(a, "voice-test-{x}", .{@import("station_random.zig").int(u128)}) catch return;
         self.test_id = id;
         self.test_upload = upload;
         if (self.local_pcm.items.len > 0) @memset(self.local_pcm.items, 0);

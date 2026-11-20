@@ -2,7 +2,7 @@
 const std = @import("std");
 const inbox = @import("inbox.zig");
 const session = @import("session_runtime.zig");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 pub const Observation = struct { origin: inbox.Origin, state: session.AttentionState, freshness: session.SummaryFreshness, attention_since_ms: ?u64 };
 pub const Notice = struct { workspace_id: []const u8, message_id: []const u8, count: usize };
 pub const Output = struct { observe: []const inbox.Origin, notify: []const Notice };

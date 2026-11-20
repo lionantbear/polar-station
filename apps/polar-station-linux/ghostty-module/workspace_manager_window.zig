@@ -4,9 +4,7 @@ const gtk = @import("gtk");
 const adw = @import("adw");
 const glib = @import("glib");
 const gobject = @import("gobject");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const store = @import("native_workspace_store.zig");
 const model = @import("control_center/model.zig");
 const layout_view = @import("layout_map_view.zig");
@@ -267,12 +265,12 @@ pub const Manager = struct {
     }
 
     pub fn problem(self: *Manager, text: []const u8) void {
-        const z = self.allocator.dupeZ(u8, text) catch return;
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return;
         defer self.allocator.free(z);
         if (self.status) |s| s.setText(z);
     }
     fn label(self: *Manager, box: *gtk.Box, text: []const u8) *gtk.Label {
-        const z = self.allocator.dupeZ(u8, text) catch return gtk.Label.new("");
+        const z = self.allocator.dupeSentinel(u8, text, 0) catch return gtk.Label.new("");
         defer self.allocator.free(z);
         const l = gtk.Label.new(z);
         l.setXalign(0);
@@ -337,7 +335,7 @@ pub const Manager = struct {
                     try self.appendArchivedHeading(string(v, "archived_label"));
                 }
                 const r = gtk.ListBoxRow.new();
-                r.as(gtk.Widget).setName(try a.dupeZ(u8, string(row, "id")));
+                r.as(gtk.Widget).setName(try a.dupeSentinel(u8, string(row, "id"), 0));
                 const box = gtk.Box.new(.vertical, 4);
                 box.as(gtk.Widget).setMarginTop(8);
                 box.as(gtk.Widget).setMarginBottom(8);
@@ -361,7 +359,7 @@ pub const Manager = struct {
         while (preview_cards.as(gtk.Widget).getFirstChild()) |child| preview_cards.remove(child);
         for (catalog.workspaces) |w| {
             if (!eq(w.workspace_id, id)) continue;
-            self.picker.?.setLabel(try a.dupeZ(u8, w.workspace_name));
+            self.picker.?.setLabel(try a.dupeSentinel(u8, w.workspace_name, 0));
             if (!preview) break;
             _ = self.label(self.details.?, "Workspace preview");
             const facts = if (self.get_projection) |get| get(self.context) else null;
@@ -385,7 +383,7 @@ pub const Manager = struct {
         const heading = gtk.ListBoxRow.new();
         heading.setSelectable(0);
         heading.setActivatable(0);
-        const z = try self.allocator.dupeZ(u8, title);
+        const z = try self.allocator.dupeSentinel(u8, title, 0);
         defer self.allocator.free(z);
         const button = gtk.Button.newWithLabel(z);
         self.archived_button = button;
@@ -409,14 +407,14 @@ pub const Manager = struct {
                 }
                 continue;
             }
-            const title = try self.allocator.dupeZ(u8, string(action, "label"));
+            const title = try self.allocator.dupeSentinel(u8, string(action, "label"), 0);
             defer self.allocator.free(title);
-            const id = try self.allocator.dupeZ(u8, string(action, "id"));
+            const id = try self.allocator.dupeSentinel(u8, string(action, "id"), 0);
             defer self.allocator.free(id);
             const b = gtk.Button.newWithLabel(title);
             b.as(gtk.Widget).setName(id);
             b.as(gtk.Widget).setSensitive(@intFromBool(yes(action, "enabled")));
-            const reason = try self.allocator.dupeZ(u8, string(action, "disabled_reason"));
+            const reason = try self.allocator.dupeSentinel(u8, string(action, "disabled_reason"), 0);
             defer self.allocator.free(reason);
             if (reason.len > 0) b.as(gtk.Widget).setTooltipText(reason);
             box.append(b.as(gtk.Widget));
@@ -481,12 +479,12 @@ pub const Manager = struct {
                 break;
             };
         };
-        const tz = self.allocator.dupeZ(u8, title) catch {
+        const tz = self.allocator.dupeSentinel(u8, title, 0) catch {
             self.clearDialog();
             return;
         };
         defer self.allocator.free(tz);
-        const bz = self.allocator.dupeZ(u8, body) catch {
+        const bz = self.allocator.dupeSentinel(u8, body, 0) catch {
             self.clearDialog();
             return;
         };
@@ -500,7 +498,7 @@ pub const Manager = struct {
             self.name_entry = entry;
             for (self.catalog.?.value.workspaces) |workspace| {
                 if (!eq(workspace.workspace_id, self.selected orelse "")) continue;
-                const name = self.allocator.dupeZ(u8, workspace.workspace_name) catch break;
+                const name = self.allocator.dupeSentinel(u8, workspace.workspace_name, 0) catch break;
                 defer self.allocator.free(name);
                 entry.as(gtk.Editable).setText(name);
                 break;

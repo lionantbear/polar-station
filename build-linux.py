@@ -22,12 +22,12 @@ def run(*command, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--ghostty', type=Path, required=True, help='Ghostty v1.3.1 checkout (read only)')
+    parser.add_argument('--ghostty', type=Path, required=True, help='Ghostty v1.4.0 checkout (read only)')
     parser.add_argument('--godot', type=Path, required=True, help='pinned Godot checkout (read only)')
     parser.add_argument('--editor', type=Path, required=True, help='Godot 4.7.2 editor executable')
     parser.add_argument('--graphviz', type=Path, required=True, help='Graphviz sysroot with usr/bin and usr/lib')
     parser.add_argument('--sysroot', type=Path, required=True, help='GTK development sysroot')
-    parser.add_argument('--zig', default='zig', help='Zig 0.15.2 executable')
+    parser.add_argument('--zig', default='zig', help='Zig 0.17.0 executable')
     parser.add_argument('--jobs', type=int, default=3)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
@@ -38,8 +38,8 @@ def main():
             parser.error(f'missing {tool}; see BUILD_LINUX.md')
     if args.jobs < 1 or not args.sysroot.is_dir():
         parser.error('a positive --jobs value and an existing --sysroot are required')
-    if subprocess.check_output([args.zig, 'version'], text=True).strip() != '0.15.2':
-        parser.error('Zig 0.15.2 is required')
+    if subprocess.check_output([args.zig, 'version'], text=True).strip() != '0.17.0':
+        parser.error('Zig 0.17.0 is required')
     if 'v4.11.1' not in subprocess.check_output(['scons', '--version'], text=True):
         parser.error('SCons 4.11.1 is required')
     if not subprocess.check_output([str(args.editor.resolve()), '--version'], text=True).startswith('4.7.2.stable'):
@@ -69,7 +69,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='source-', dir=work) as temporary:
             prepared = Path(temporary)
             for name, source, pin in (
-                ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
+                ('ghostty', args.ghostty, '83fb95624b0439ee660c2679b43b38c8b63769cd'),
                 ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
             ):
                 destination = target / 'deps/godot' if name == 'godot' else prepared / name
@@ -79,8 +79,6 @@ def main():
                 elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
                     raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
             ghostty, godot = prepared / 'ghostty', target / 'deps/godot'
-            run('git', '-C', ghostty, 'apply',
-                root / 'apps/polar-station-linux/ghostty-overlay/ghostty-v1.3.1.patch')
             apply_display(ghostty, 'linux')
             module = ghostty / 'src/apprt/gtk/polar_tmux'
             shutil.copytree(root / 'apps/polar-station-linux/ghostty-module', module)
@@ -113,9 +111,10 @@ def main():
             for path in (sysroot / 'usr/include').iterdir():
                 if path.name not in ('freetype', 'ft2build.h'):
                     (prefix / 'include' / path.name).symlink_to(path, target_is_directory=path.is_dir())
-        run(args.zig, 'build', '--search-prefix', prefix, '-Dpolar-tmux=true',
+        run(args.zig, 'build', '-Dversion-string=1.4.0', '--search-prefix', prefix, '-Dpolar-tmux=true',
             '-Dpolar-station-client-lib-dir=' + str(rust_target / profile), '-Demit-exe=true',
             '-Dapp-runtime=gtk', '-fsys=fontconfig', '-fsys=harfbuzz',
+            '-fsys=freetype', '-fsys=gtk4-layer-shell',
             '-Dgtk-wayland=true', '-Dgtk-x11=false',
             '-Doptimize=' + ('Debug' if args.debug else 'ReleaseFast'), '--summary', 'all', cwd=ghostty, env=env)
         graphics = work / 'graphics'

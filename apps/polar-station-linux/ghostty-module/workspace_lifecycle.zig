@@ -1,6 +1,6 @@
 //! Local-only shared Rust policy. No catalog or window state is stored here.
 const std = @import("std");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 pub const Decision = struct {
     effect: []const u8 = "none",
     selected: []const u8 = "",

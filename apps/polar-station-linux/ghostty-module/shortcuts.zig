@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const gdk = @import("gdk");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 const input = @import("../../../input.zig");
 
 pub const Action = union(enum) {

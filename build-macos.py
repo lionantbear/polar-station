@@ -67,13 +67,13 @@ def validate_godot_prebuilt(directory, inputs):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--ghostty', type=Path, required=True, help='Ghostty v1.3.1 checkout (read only)')
+    parser.add_argument('--ghostty', type=Path, required=True, help='Ghostty v1.4.0 checkout (read only)')
     parser.add_argument('--godot-prebuilt', type=Path, help='Verified prebuilt Godot directory')
     parser.add_argument('--godot', type=Path, required=True, help='pinned Godot checkout (read only)')
     parser.add_argument('--editor', type=Path, required=True, help='Godot 4.7.2 editor executable')
     parser.add_argument('--graphviz', type=Path, required=True, help='Graphviz installation prefix')
     parser.add_argument('--sdk', type=Path, required=True, help='Zig-compatible macOS 15 SDK')
-    parser.add_argument('--zig', default='zig', help='Zig 0.15.2 executable')
+    parser.add_argument('--zig', default='zig', help='Zig 0.17.0 executable')
     parser.add_argument('--jobs', type=int, default=3)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
@@ -84,8 +84,8 @@ def main():
             parser.error(f'missing {tool}; see BUILD_MACOS.md')
     if args.jobs < 1 or not args.sdk.is_dir():
         parser.error('a positive --jobs value and an existing --sdk are required')
-    if subprocess.check_output([args.zig, 'version'], text=True).strip() != '0.15.2':
-        parser.error('Zig 0.15.2 is required')
+    if subprocess.check_output([args.zig, 'version'], text=True).strip() != '0.17.0':
+        parser.error('Zig 0.17.0 is required')
     if 'v4.9.1' not in subprocess.check_output(['scons', '--version'], text=True):
         parser.error('SCons 4.9.1 is required')
     root = Path(__file__).resolve().parent
@@ -109,7 +109,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='source-', dir=work) as temporary:
             prepared = Path(temporary)
             for name, source, pin in (
-                ('ghostty', args.ghostty, '332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28'),
+                ('ghostty', args.ghostty, '83fb95624b0439ee660c2679b43b38c8b63769cd'),
                 ('godot', args.godot, 'ed1daf0bf001b61586d9930840f2f1394092c079'),
             ):
                 destination = target / 'deps/godot' if name == 'godot' else prepared / name
@@ -119,8 +119,7 @@ def main():
                 elif subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip() != pin:
                     raise ValueError('cached Godot revision differs; choose a fresh target/deps directory')
             ghostty, godot = prepared / 'ghostty', target / 'deps/godot'
-            overlay = root / 'apps/polar-station-macos/ghostty-overlay/ghostty-v1.3.1.patch'
-            run('git', '-C', ghostty, 'apply', overlay)
+            apply_display(ghostty, 'macos')
             project = ghostty / 'macos/Ghostty.xcodeproj/project.pbxproj'
             text = project.read_text()
             marker = 'relativePath = ../../../polarinfrav1/apps/polar-station-macos;'
@@ -129,9 +128,6 @@ def main():
             import json
             relative = os.path.relpath(root / 'apps/polar-station-macos', work / 'ghostty/macos')
             project.write_text(text.replace(marker, 'relativePath = ' + json.dumps(relative) + ';'))
-            apply_display(ghostty, 'macos')
-            run('git', '-C', ghostty, 'apply',
-                root / 'apps/polar-station-macos/ghostty-overlay/surface-callback-lifetime.patch')
             module = ghostty / 'macos/Sources/PolarStation'
             module.mkdir(parents=True, exist_ok=True)
             for path in (root / 'apps/polar-station-macos/ghostty-module').iterdir():
@@ -175,7 +171,7 @@ def main():
                                      '  printf "%s\\n" "$SDKROOT"\nelse\n  exec /usr/bin/xcrun "$@"\nfi\n')
         (wrapper / 'xcrun').chmod(0o755)
         env['PATH'] = str(wrapper) + os.pathsep + env['PATH']
-        run(args.zig, 'build', '-Dpolar-tmux=true', '-Demit-macos-app=false',
+        run(args.zig, 'build', '-Dversion-string=1.4.0', '-Dpolar-tmux=true', '-Demit-macos-app=false',
             '-Dxcframework-target=native', '-Doptimize=' + optimize, '--summary', 'all', cwd=ghostty, env=env)
         xcode_env = {key: os.environ[key] for key in ('HOME', 'DEVELOPER_DIR') if key in os.environ}
         xcode_env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin'

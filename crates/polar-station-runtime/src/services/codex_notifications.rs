@@ -1,28 +1,46 @@
 //! Completion facts and immutable channel destinations; no provider I/O in the event reader.
-use super::codex_control::{apply_turn, CodexControlService, ControlResult};
+use super::codex_control::{apply_turn, permissions, CodexControlService, ControlResult};
 use super::codex_endpoint::{CodexEndpoint, RpcFailure};
 use super::imessage_sender::now_ms;
 use polar_station_inbox::{CodexCompletionOrigin, CodexCompletionStatus, InboxMessageId};
-use polar_station_store_sqlite::{CodexCheckpointRow, CodexNotificationRow};
+use polar_station_store_sqlite::{CodexBindingRow, CodexCheckpointRow, CodexNotificationRow};
 use polar_station_protocol::*;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 impl CodexControlService {
-    pub(super) async fn reconcile_history(
-        &self,
-        state: &mut CodexStateV1,
-        client: &CodexEndpoint,
-    ) -> ControlResult<()> {
-        let started = self.observations.lock().unwrap().get(&state.binding.binding_id).is_some_and(|o| o.started);
-        let binding = self.persist_binding(&state.binding.binding_id)?;
-        if started && self.ledger.checkpoint(&binding.id).map_err(|_| "ledger_unavailable")?.is_none() {
+    pub(super) fn anchor_empty_history(&self, binding: &CodexBindingRow) -> ControlResult<()> {
+        if self.ledger.checkpoint(&binding.id).map_err(|_| "ledger_unavailable")?.is_none() {
             self.ledger.record_completion(CodexCheckpointRow {
                 binding_id: binding.id.clone(), binding_revision: binding.revision,
                 last_reconciled_turn: None, bound_at_ms: binding.bound_at_ms,
                 reconcile_status: "current".into(),
             }, vec![]).map_err(|_| "ledger_unavailable")?;
         }
+        Ok(())
+    }
+
+    pub(super) async fn recover_pending_history(&self) {
+        let pending = std::mem::take(&mut *self.pending_history.lock().unwrap());
+        for (id, client) in pending {
+            if let Err(code) = self.reconcile_history(&id, &client).await {
+                if matches!(code, "binding_not_found" | "monitor_disabled" | "history_obsolete") {
+                    continue;
+                }
+                tracing::debug!(code, "Codex Monitor history refresh failed");
+                if client.connected() {
+                    self.pending_history.lock().unwrap().entry(id).or_insert(client);
+                }
+            }
+        }
+    }
+
+    async fn reconcile_history(&self, id: &str, client: &Arc<CodexEndpoint>) -> ControlResult<()> {
+        let binding = self.binding_row(id)?;
+        let observed_turn = self.states.read().await.get(id)
+            .map(|state| (state.turn_id.clone(), state.activity))
+            .ok_or("binding_not_found")?;
         let checkpoint = self
             .ledger
             .checkpoint(&binding.id)
@@ -36,6 +54,7 @@ impl CodexControlService {
         let mut cursor: Option<String> = None;
         let mut scanned = 0;
         let mut completed = Vec::new();
+        let mut latest = None;
         let mut found_boundary = initial;
         let mut more;
         loop {
@@ -54,9 +73,7 @@ impl CodexControlService {
                 return Err("invalid_codex_response");
             }
             if scanned == 0 {
-                if let Some(turn) = turns.first() {
-                    apply_turn(state, turn);
-                }
+                latest = turns.first().cloned();
             }
             for turn in turns {
                 scanned += 1;
@@ -91,6 +108,23 @@ impl CodexControlService {
             }
             cursor = next;
         }
+        // The network reads above run without holding the mutation lock. Commit
+        // against the current binding and checkpoint, never the old state.
+        let operation = self.operations.lock().await;
+        if !self.endpoints.lock().await.get(&binding.endpoint_id)
+            .is_some_and(|endpoint| Arc::ptr_eq(&endpoint.client, client) && client.connected()) {
+            return Err("history_obsolete");
+        }
+        if self.settings.load_message_connectors().map_err(|_| "settings_unavailable")?
+            .disabled_monitors.contains(&binding.endpoint_id) {
+            return Err("monitor_disabled");
+        }
+        let current = self.binding_row(id)?;
+        if current.bound_at_ms != binding.bound_at_ms || current.revision != binding.revision
+            || self.ledger.checkpoint(id).map_err(|_| "ledger_unavailable")? != checkpoint {
+            return Err("binding_conflict");
+        }
+        let mut history_error = None;
         if initial {
             // Establish a baseline; binding is never a request to send old results.
             self.ledger
@@ -108,30 +142,43 @@ impl CodexControlService {
                     vec![],
                 )
                 .map_err(|_| "ledger_unavailable")?;
-            return Ok(());
-        }
-        if !found_boundary && (more || watermark.is_some()) {
+        } else if !found_boundary && (more || watermark.is_some()) {
             let code = if more {
                 "history_backlog"
             } else {
                 "history_gap"
             };
-            state.error_code = Some(code.into());
+            history_error = Some(code);
             let mut checkpoint = checkpoint.ok_or("ledger_unavailable")?;
             checkpoint.reconcile_status = code.into();
             self.ledger
                 .record_completion(checkpoint, vec![])
                 .map_err(|_| "ledger_unavailable")?;
-            return Ok(());
+        } else if !completed.is_empty() {
+            let mut recovered = self.states.read().await.get(id).cloned().ok_or("binding_not_found")?;
+            // Oldest first: a crash can resume from the last fully committed turn.
+            for turn in completed.iter().rev() {
+                recovered.turn_id = None;
+                recovered.final_answer = None;
+                apply_turn(&mut recovered, turn);
+                self.record_turn_completion(&recovered, true).await?;
+            }
         }
-        // Oldest first: a crash can resume from the last fully committed turn.
-        for turn in completed.iter().rev() {
-            let mut recovered = state.clone();
-            recovered.turn_id = None;
-            recovered.final_answer = None;
-            apply_turn(&mut recovered, turn);
-            self.record_turn_completion(&recovered, true).await?;
+        let mut affected = None;
+        if let Some(state) = self.states.write().await.get_mut(id) {
+            if state.turn_id == observed_turn.0 && state.activity == observed_turn.1
+                && !matches!(state.activity, CodexActivityV1::Active | CodexActivityV1::WaitingApproval | CodexActivityV1::WaitingInput) {
+                if let Some(turn) = latest.as_ref() { apply_turn(state, turn); }
+            }
+            if let Some(code) = history_error {
+                state.error_code = Some(code.into());
+            }
+            permissions(state);
+            affected = state.binding.session.clone();
         }
+        drop(operation);
+        if let Some(key) = affected { self.synchronize_attention_for(Some(&[key].into_iter().collect())).await; }
+        self.publisher.publish(ApplicationStateApiV1::CodexV1);
         Ok(())
     }
 
@@ -321,7 +368,8 @@ impl CodexControlService {
                 .map_err(|_| "ledger_unavailable")?
             {
                 if previous.bound_at_ms == checkpoint.bound_at_ms
-                    && previous.reconcile_status != "current"
+                    && (previous.reconcile_status != "current"
+                        || self.pending_history.lock().unwrap().contains_key(&checkpoint.binding_id))
                 {
                     // A new live result can be delivered, but cannot certify an
                     // unobserved interval or move its recovery watermark.

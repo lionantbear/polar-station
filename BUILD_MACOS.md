@@ -1,7 +1,7 @@
 # Build on macOS
 
 Apple Silicon and macOS 15 or later are required. Install Xcode, Rust (the
-repository's `rust-toolchain.toml` selects the version), Zig 0.15.2, Python 3.11+,
+repository's `rust-toolchain.toml` selects the version), Zig 0.17.0, Python 3.11+,
 rsync and Graphviz/gettext. The Zig build needs a compatible macOS 15 SDK; select the
 SDK explicitly below. Xcode builds use your selected Xcode installation.
 
@@ -19,7 +19,7 @@ it does not alter either supplied checkout.
 
 ```sh
 git clone https://github.com/ghostty-org/ghostty.git ../ghostty
-git -C ../ghostty checkout 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28
+git -C ../ghostty checkout 83fb95624b0439ee660c2679b43b38c8b63769cd
 git clone https://github.com/godotengine/godot.git ../godot
 git -C ../godot checkout ed1daf0bf001b61586d9930840f2f1394092c079
 ```

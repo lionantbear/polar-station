@@ -2,7 +2,7 @@
 const std = @import("std");
 const intent = @import("control_center/intent.zig");
 const control = @import("control_center/model.zig");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 pub const Draft = struct {
     bind_only: bool = false,
     target: []const u8,

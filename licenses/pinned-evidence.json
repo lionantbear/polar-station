@@ -348,9 +348,9 @@
     {
       "name": "ghostty",
       "repository": "https://github.com/ghostty-org/ghostty",
-      "commit": "332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28",
+      "commit": "83fb95624b0439ee660c2679b43b38c8b63769cd",
       "upstream_path": "LICENSE",
-      "url": "https://raw.githubusercontent.com/ghostty-org/ghostty/332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28/LICENSE",
+      "url": "https://raw.githubusercontent.com/ghostty-org/ghostty/83fb95624b0439ee660c2679b43b38c8b63769cd/LICENSE",
       "status": "fetched",
       "path": "licenses/pinned/ghostty/LICENSE",
       "sha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1",

@@ -1,7 +1,7 @@
 # Build on Linux
 
 The current frontend targets Linux x86_64 with Wayland. Install Rust (version in
-`rust-toolchain.toml`), Zig 0.15.2, Python 3.11+, Git, a C/C++ compiler, binutils,
+`rust-toolchain.toml`), Zig 0.17.0, Python 3.11+, Git, a C/C++ compiler, binutils,
 pkg-config, rsync, CMake 3.18+ and SCons 4.11.1. Godot needs its normal Linux/Vulkan development
 headers, including native GTK4 and libepoxy development packages for the graphics
 bridge. These use the host development SDK; the explicit sysroot below is for
@@ -19,7 +19,7 @@ Prepare Ghostty and Godot checkouts at the same revisions listed in
 The build keeps managed copies and leaves those supplied checkouts intact.
 
 Supply a GTK development sysroot containing GTK4, libadwaita, gettext,
-Blueprint, Wayland, fontconfig, HarfBuzz and epoxy, under `usr/bin`, `usr/include`
+Blueprint 0.20 or later, Wayland, fontconfig, HarfBuzz, FreeType, EGL, gtk4-layer-shell and epoxy, under `usr/bin`, `usr/include`
 and `usr/lib/x86_64-linux-gnu`. Supply a Graphviz sysroot containing `dot`, its
 libraries/plugins and notices under `usr/`. These are explicit development
 inputs; no private checkout or infrastructure account is needed. This entry

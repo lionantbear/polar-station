@@ -2,6 +2,8 @@
 //! rules and ownership live in native_workspace_state; read-only joins live in
 //! native_workspace_view. This file owns native object identity and minimal diffs.
 
+const global = @import("../../../global.zig");
+
 const std = @import("std");
 const adw = @import("adw");
 const gio = @import("gio");
@@ -98,7 +100,7 @@ pub const Executor = struct {
     persistence_revision: u64 = 0,
     catalog_owner: ?*Executor = null,
     pending_lifecycle: ?PendingLifecycle = null,
-    reservations: [9]?PaneReservation = .{null} ** 9,
+    reservations: [9]?PaneReservation = @splat(null),
 
     pub fn reserveSessionPanes(self: *Executor, id: []const u8, tab_id: []const u8, count: usize) !void {
         const snapshot = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
@@ -933,7 +935,7 @@ pub const Executor = struct {
                     break :blk created;
                 };
                 var text_buffer: [3]u8 = undefined;
-                const text_value = std.fmt.bufPrintZ(&text_buffer, "{d}", .{value}) catch continue;
+                const text_value = std.mem.printSentinel(&text_buffer, "{d}", .{value}, 0) catch continue;
                 label.setText(text_value);
                 resizePaneNumber(overlay, label);
                 label.as(gtk.Widget).setVisible(1);
@@ -1572,8 +1574,8 @@ pub const Executor = struct {
         for (current.panes.items) |pane| {
             if (!pane.active or pane.surface != surface or !pane.isTerminal() or !std.mem.eql(u8,pane.pane_id,pane_id)) continue;
             const core = pane.surface.core() orelse return null;
-            core.renderer_state.mutex.lock();
-            defer core.renderer_state.mutex.unlock();
+            core.renderer_state.mutex.lockUncancelable(global.io());
+            defer core.renderer_state.mutex.unlock(global.io());
             const selection = core.io.terminal.screens.active.selection orelse return null;
             var selected = core.dumpTextLocked(allocator,selection) catch return null;
             defer selected.deinit(allocator);
@@ -2303,7 +2305,7 @@ const AppliedRenderState = struct {
         else
             null;
         if (content_launch) |launch| @import("ipc_client.zig").trace(17, launch.channel_id, launch.channel_generation);
-        const title = try self.arena.allocator().dupeZ(u8, desired.title);
+        const title = try self.arena.allocator().dupeSentinel(u8, desired.title, 0);
         self.window.newTabForWindow(null, .{
             .station_surface = if(setup) |value| value.surface else if (display) |value| value.surface else null,
             .command = if (content_launch) |*launch|
@@ -2383,7 +2385,7 @@ const AppliedRenderState = struct {
         errdefer if (!references_transferred) tab.as(gobject.Object).unref();
         _ = placeholder.ref();
         errdefer if (!references_transferred) placeholder.unref();
-        const title = try self.arena.allocator().dupeZ(u8, desired.title);
+        const title = try self.arena.allocator().dupeSentinel(u8, desired.title, 0);
         tab.setTitleOverride(title);
         try self.tabs.append(self.arena.allocator(), .{
             .tab_id = try self.arena.allocator().dupe(u8, desired.id),
@@ -2683,30 +2685,30 @@ const AppliedRenderState = struct {
     ) !ContentHostLaunch {
         if (desired.content != null) return error.NotTerminalPane;
         const allocator = self.arena.allocator();
-        const runtime_dir = try std.process.getEnvVarOwned(
+        const runtime_dir = try global.environ().getAlloc(
             allocator,
             "XDG_RUNTIME_DIR",
         );
         const channel = try lifecycle.allocateChannel(allocator, runtime_dir);
-        const host_socket = if(self.hooks.host_socket)|get|try allocator.dupe(u8,get(self.hooks.context)) else if (std.process.getEnvVarOwned(
+        const host_socket = if(self.hooks.host_socket)|get|try allocator.dupe(u8,get(self.hooks.context)) else if (global.environ().getAlloc(
             allocator,
             "POLAR_TMUX_IPC_SOCKET",
         )) |path|
             path
         else |error_value| switch (error_value) {
-            error.EnvironmentVariableNotFound => try std.fs.path.join(
+            error.EnvironmentVariableMissing => try std.fs.path.join(
                 allocator,
                 &.{ runtime_dir, "polar-tmux", "host.sock" },
             ),
             else => return error_value,
         };
-        const executable = if (std.process.getEnvVarOwned(
+        const executable = if (global.environ().getAlloc(
             allocator,
             "POLAR_TMUX_EXECUTABLE",
         )) |path|
             path
         else |error_value| switch (error_value) {
-            error.EnvironmentVariableNotFound => "polar-tmux",
+            error.EnvironmentVariableMissing => "polar-tmux",
             else => return error_value,
         };
         const source_json = if (desired.source) |source| try std.json.Stringify.valueAlloc(allocator, source, .{}) else null;
@@ -2917,7 +2919,7 @@ const AppliedRenderState = struct {
 
     fn renameTab(self: *AppliedRenderState, tab_id: []const u8, title: []const u8) !void {
         const tab = self.findTab(tab_id) orelse return error.UnknownTab;
-        const title_z = try self.arena.allocator().dupeZ(u8, title);
+        const title_z = try self.arena.allocator().dupeSentinel(u8, title, 0);
         tab.tab.setTitleOverride(title_z);
         tab.title = title_z;
     }
@@ -3401,8 +3403,8 @@ const DirectCommand = struct {
         args: []const []const u8,
     ) !DirectCommand {
         const argv = try allocator.alloc([:0]const u8, args.len + 1);
-        argv[0] = try allocator.dupeZ(u8, program);
-        for (args, 0..) |arg, index| argv[index + 1] = try allocator.dupeZ(u8, arg);
+        argv[0] = try allocator.dupeSentinel(u8, program, 0);
+        for (args, 0..) |arg, index| argv[index + 1] = try allocator.dupeSentinel(u8, arg, 0);
         return .{ .argv = argv };
     }
 

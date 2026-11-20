@@ -34,7 +34,7 @@ pub const Frame = struct {
     }
 
     pub fn show(self: Frame, allocator: std.mem.Allocator, message: []const u8) void {
-        const z = allocator.dupeZ(u8, message) catch return;
+        const z = allocator.dupeSentinel(u8, message, 0) catch return;
         defer allocator.free(z);
         self.status.setText(z);
     }

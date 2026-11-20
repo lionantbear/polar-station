@@ -1,0 +1,725 @@
+diff --git a/src/Surface.zig b/src/Surface.zig
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -44,6 +44,27 @@
+ // The renderer implementation to use.
+ const Renderer = rendererpkg.Renderer;
+ 
++const TerminalIO = struct {
++    io: termio.Termio,
++    thread: termio.Thread,
++    runner: std.Thread = undefined,
++
++    fn start(self: *TerminalIO) !void {
++        self.runner = try std.Thread.spawn(
++            .{},
++            termio.Thread.threadMain,
++            .{ &self.thread, &self.io },
++        );
++        self.runner.setName(global.io(), "io") catch {};
++    }
++
++    fn stop(self: *TerminalIO) void {
++        self.thread.stop.notify() catch |err|
++            log.err("error notifying IO thread to stop, may stall err={}", .{err});
++        self.runner.join();
++    }
++};
++
+ /// Minimum window size in cells. This is used to prevent the window from
+ /// being resized to a size that is too small to be useful. These defaults
+ /// are chosen to match the default size of Mac's Terminal.app, but is
+@@ -130,10 +151,9 @@
+ /// for handled bindings.
+ last_binding_trigger: u64 = 0,
+ 
+-/// The terminal IO handler.
+-io: termio.Termio,
+-io_thread: termio.Thread,
+-io_thr: std.Thread,
++/// The terminal IO handler, addressed independently of the view.
++io: *termio.Termio,
++terminal_io: *TerminalIO,
+ 
+ /// Terminal inspector
+ inspector: ?*inspectorpkg.Inspector = null,
+@@ -239,6 +259,7 @@
+ 
+     /// Gesture state for text selection.
+     selection_gesture: terminal.SelectionGesture = .init,
++    station_link_press: bool = false,
+ 
+     /// The last x/y sent for mouse reports.
+     event_point: ?terminal.point.Coordinate = null,
+@@ -587,7 +608,8 @@
+             .thread = &self.renderer_thread,
+         });
+     };
+-    errdefer renderer_impl.deinit();
++    var view_initialized = false;
++    errdefer if (view_initialized) self.renderer.deinit() else renderer_impl.deinit();
+ 
+     // The mutex used to protect our renderer state.
+     const mutex = try alloc.create(std.Io.Mutex);
+@@ -602,11 +624,12 @@
+         &self.renderer,
+         &self.renderer_state,
+     );
+-    errdefer render_thread.deinit();
+-
+-    // Create the IO thread
+-    var io_thread = try termio.Thread.init(alloc);
+-    errdefer io_thread.deinit();
++    errdefer if (view_initialized) self.renderer_thread.deinit() else render_thread.deinit();
++
++    const terminal_io = try alloc.create(TerminalIO);
++    errdefer alloc.destroy(terminal_io);
++    terminal_io.* = .{ .io = undefined, .thread = try termio.Thread.init(alloc) };
++    errdefer terminal_io.thread.deinit();
+ 
+     self.* = .{
+         .id = id: {
+@@ -632,14 +655,13 @@
+         .renderer_thread = render_thread,
+         .renderer_state = .{
+             .mutex = mutex,
+-            .terminal = &self.io.terminal,
++            .terminal = &terminal_io.io.terminal,
+         },
+         .renderer_thr = undefined,
+         .mouse = .{},
+         .keyboard = .{},
+-        .io = undefined,
+-        .io_thread = io_thread,
+-        .io_thr = undefined,
++        .io = &terminal_io.io,
++        .terminal_io = terminal_io,
+         .size = size,
+         .config = derived_config,
+ 
+@@ -647,6 +669,13 @@
+         // lets us get the most likely correct color theme and so on.
+         .config_conditional_state = app.config_conditional_state,
+     };
++    view_initialized = true;
++
++    // A display is an explicit native construction choice, never a command.
++    const station_display = if (comptime @hasDecl(apprt.runtime.Surface, "stationDisplayOnly"))
++        rt_surface.stationDisplayOnly()
++    else
++        false;
+ 
+     // The command we're going to execute
+     const command: ?configpkg.Command = command: {
+@@ -662,43 +691,47 @@
+     // This separate block ({}) is important because our errdefers must
+     // be scoped here to be valid.
+     {
+-        // Exec.init takes ownership of the env even if it fails, so the
+-        // errdefer for it must not reach past the call.
+-        const env = termio_env: {
+-            var env = rt_surface.defaultTermioEnv() catch |err| env: {
+-                // If an error occurs, we don't want to block surface startup.
+-                log.warn("error getting env map for surface err={}", .{err});
+-                break :env global.environMap() catch std.process.Environ.Map.init(alloc);
++        var io_backend: termio.Backend = if (station_display)
++            .{ .display = .init() }
++        else backend: {
++            // Exec.init takes ownership of the env even if it fails, so the
++            // errdefer for it must not reach past the call.
++            const env = termio_env: {
++                var env = rt_surface.defaultTermioEnv() catch |err| env: {
++                    // If an error occurs, we don't want to block surface startup.
++                    log.warn("error getting env map for surface err={}", .{err});
++                    break :env global.environMap() catch std.process.Environ.Map.init(alloc);
++                };
++                errdefer env.deinit();
++
++                // don't leak GHOSTTY_LOG to any subprocesses
++                _ = env.orderedRemove("GHOSTTY_LOG");
++
++                var buf: [18]u8 = undefined;
++                try env.put(
++                    "GHOSTTY_SURFACE_ID",
++                    std.mem.print(&buf, "0x{x:0>16}", .{self.id}) catch unreachable,
++                );
++
++                break :termio_env env;
+             };
+-            errdefer env.deinit();
+-
+-            // don't leak GHOSTTY_LOG to any subprocesses
+-            _ = env.orderedRemove("GHOSTTY_LOG");
+-
+-            var buf: [18]u8 = undefined;
+-            try env.put(
+-                "GHOSTTY_SURFACE_ID",
+-                std.mem.print(&buf, "0x{x:0>16}", .{self.id}) catch unreachable,
+-            );
+-
+-            break :termio_env env;
++
++            // Initialize our IO backend
++            break :backend .{ .exec = try termio.Exec.init(alloc, .{
++                .command = command,
++                .env = env,
++                .env_override = config.env,
++                .shell_integration = config.@"shell-integration",
++                .shell_integration_features = config.@"shell-integration-features",
++                .cursor_blink = config.@"cursor-style-blink",
++                .working_directory = if (config.@"working-directory") |wd| wd.value() else null,
++                .resources_dir = global.resourcesDir().host(),
++                .term = config.term,
++                .rt_pre_exec_info = .init(config),
++                .rt_post_fork_info = .init(config),
++            }) };
+         };
+-
+-        // Initialize our IO backend
+-        var io_exec = try termio.Exec.init(alloc, .{
+-            .command = command,
+-            .env = env,
+-            .env_override = config.env,
+-            .shell_integration = config.@"shell-integration",
+-            .shell_integration_features = config.@"shell-integration-features",
+-            .cursor_blink = config.@"cursor-style-blink",
+-            .working_directory = if (config.@"working-directory") |wd| wd.value() else null,
+-            .resources_dir = global.resourcesDir().host(),
+-            .term = config.term,
+-            .rt_pre_exec_info = .init(config),
+-            .rt_post_fork_info = .init(config),
+-        });
+-        errdefer io_exec.deinit();
++        errdefer io_backend.deinit();
+ 
+         // Initialize our IO mailbox
+         var io_mailbox = try termio.Mailbox.initSPSC(alloc);
+@@ -708,11 +741,11 @@
+         var io_config = try termio.Termio.DerivedConfig.init(alloc, config);
+         errdefer io_config.deinit();
+ 
+-        try termio.Termio.init(&self.io, alloc, .{
++        try termio.Termio.init(self.io, alloc, .{
+             .size = size,
+             .full_config = config,
+             .config = io_config,
+-            .backend = .{ .exec = io_exec },
++            .backend = io_backend,
+             .mailbox = io_mailbox,
+             .renderer_state = &self.renderer_state,
+             .renderer_wakeup = render_thread.wakeup,
+@@ -758,13 +791,9 @@
+     );
+     self.renderer_thr.setName(global.io(), "renderer") catch {};
+ 
+-    // Start our IO thread
+-    self.io_thr = try std.Thread.spawn(
+-        .{},
+-        termio.Thread.threadMain,
+-        .{ &self.io_thread, &self.io },
+-    );
+-    self.io_thr.setName(global.io(), "io") catch {};
++    errdefer self.stopRenderer();
++    try terminal_io.start();
++    errdefer terminal_io.stop();
+ 
+     // Determine our initial window size if configured. We need to do this
+     // quite late in the process because our height/width are in grid dimensions,
+@@ -826,36 +855,26 @@
+     app.first = false;
+ }
+ 
++fn stopRenderer(self: *Surface) void {
++    self.renderer_thread.stop.notify() catch |err|
++        log.err("error notifying renderer thread to stop, may stall err={}", .{err});
++    self.renderer_thr.join();
++    self.renderer.threadEnter(self.rt_surface) catch unreachable;
++}
++
+ pub fn deinit(self: *Surface) void {
+-    // Stop search thread
+     if (self.search) |*s| s.deinit();
+ 
+-    // Stop rendering thread
+-    {
+-        self.renderer_thread.stop.notify() catch |err|
+-            log.err("error notifying renderer thread to stop, may stall err={}", .{err});
+-        self.renderer_thr.join();
+-    }
+-
+-    // Stop our IO thread
+-    {
+-        self.io_thread.stop.notify() catch |err|
+-            log.err("error notifying io thread to stop, may stall err={}", .{err});
+-        self.io_thr.join();
+-    }
+-
+-    // We need to deinit AFTER everything is stopped, since there are
+-    // shared values between the two threads.
+-    //
+-    // The renderer must be deinitialized before the renderer thread:
+-    // on macOS the renderer's display link callback points at the
+-    // thread's `draw_now` handle, and the renderer's deinit is what
+-    // stops the display link for good.
++    // Termio can still post to the renderer's mailbox while shutting down.
++    self.terminal_io.stop();
++    self.stopRenderer();
++
+     self.renderer.deinit();
+     self.renderer_thread.deinit();
+-    self.io_thread.deinit();
++    self.terminal_io.thread.deinit();
+     self.mouse.selection_gesture.deinit(&self.io.terminal);
+     self.io.deinit();
++    self.alloc.destroy(self.terminal_io);
+ 
+     if (self.inspector) |v| {
+         v.deinit(self.alloc);
+@@ -993,6 +1012,11 @@
+ /// True if the surface requires confirmation to quit. This should be called
+ /// by apprt to determine if the surface should confirm before quitting.
+ pub fn needsConfirmQuit(self: *Surface) bool {
++    // Draft/unsent-message confirmation belongs to Station, not shell exit.
++    switch (self.io.backend) {
++        .display => return false,
++        .exec => {},
++    }
+     // If the surface is in read-only mode, always require confirmation
+     if (self.readonly) return true;
+ 
+@@ -1386,6 +1410,7 @@
+     // Build up our command for the error message
+     const command = try std.mem.join(alloc, " ", switch (self.io.backend) {
+         .exec => |*exec| exec.subprocess.args,
++        .display => &.{},
+     });
+     const runtime_str = try alloc.print("{d} ms", .{info.runtime_ms});
+ 
+@@ -2533,6 +2558,12 @@
+ /// Change the font size.
+ ///
+ /// This can only be called from the main thread.
++pub fn synchronizeManagedFontSize(self: *Surface, points: f32) !void {
++    if (!(points >= 1 and points <= 255)) return error.InvalidFontSize;
++    if (self.font_size.points == points and self.font_size_adjusted) return;
++    _ = try self.performBindingAction(.{ .set_font_size = points });
++}
++
+ pub fn setFontSize(self: *Surface, size: font.face.DesiredSize) !void {
+     log.debug("set font size size={}", .{size.points});
+ 
+@@ -3472,7 +3503,11 @@
+     // the first surface created.
+     if (focused) self.app.focusSurface(self);
+ 
+-    // If our focus state is unchanged we do nothing else.
++    if (comptime @import("build_options").polar_tmux) {
++        if (!focused) self.mouse.station_link_press = false;
++    }
++
++    // If our focus state is the same we do nothing.
+     if (self.focused == focused) return;
+     self.focused = focused;
+ 
+@@ -3800,6 +3835,9 @@
+ /// Returns true if mouse reporting is enabled both in the config and
+ /// the terminal state.
+ fn isMouseReporting(self: *const Surface) bool {
++    if (comptime @import("build_options").polar_tmux) {
++        if (self.mouse.station_link_press) return false;
++    }
+     return self.config.mouse_reporting and
+         self.io.terminal.flags.mouse_event != .none;
+ }
+@@ -3940,6 +3978,24 @@
+ 
+     // Update our modifiers if they changed
+     self.modsChanged(mods);
++
++    if (comptime @import("build_options").polar_tmux) {
++        if (button == .left and action == .press) {
++            self.mouse.station_link_press = false;
++            if (mods.binding().equal(input.ctrlOrSuper(.{}))) {
++                const pos = try self.rt_surface.getCursorPos();
++                self.renderer_state.mutex.lockUncancelable(global.io());
++                defer self.renderer_state.mutex.unlock(global.io());
++                self.mouse.station_link_press = (try self.linkAtPos(pos)) != null;
++                if (self.mouse.station_link_press) self.mouse.over_link = true;
++            }
++        }
++    }
++    defer {
++        if (comptime @import("build_options").polar_tmux) {
++            if (button == .left and action == .release) self.mouse.station_link_press = false;
++        }
++    }
+ 
+     // This is set to true if the terminal is allowed to capture the shift
+     // modifier. Note we can do this more efficiently probably with less
+@@ -4436,6 +4492,7 @@
+ }
+ 
+ const Link = struct {
++    station_file_reference: bool = false,
+     action: input.Link.Action,
+     selection: terminal.Selection,
+ };
+@@ -4443,6 +4500,54 @@
+ /// Returns the link at the given cursor position, if any.
+ ///
+ /// Requires the renderer mutex is held.
++const StationFileRange = struct { start: usize, end: usize };
++const StationFileRow = struct { end: usize, soft_wrap: bool };
++const StationFileText = struct { capture: [:0]const u8, selection: terminal.Selection };
++fn stationFileText(self: *Surface, pin: terminal.Pin, _: ?terminal.Selection) !?StationFileText {
++    const screen = self.renderer_state.terminal.screens.active;
++    var captured = (try terminal.Screen.StationFileCapture.init(screen, self.alloc, pin)) orelse return null;
++    defer captured.deinit(self.alloc);
++    const text = captured.text;
++    const pins = &captured.map.map;
++    var rows: std.ArrayListUnmanaged(StationFileRow) = .empty;
++    defer rows.deinit(self.alloc);
++    var previous_row = (pins.get(0) orelse return null).rowAndCell().row;
++    for (1..text.len) |index| {
++        const row = (pins.get(index) orelse return null).rowAndCell().row;
++        if (row != previous_row) {
++            try rows.append(self.alloc, .{ .end = index, .soft_wrap = previous_row.wrap });
++            previous_row = row;
++        }
++    }
++    try rows.append(self.alloc, .{ .end = text.len, .soft_wrap = previous_row.wrap });
++    const domain = struct {
++        extern fn polar_station_file_capture([*]const u8, usize) ?[*:0]u8;
++        extern fn polar_station_desktop_string_free(?[*:0]u8) void;
++    };
++    const encoded = try std.json.Stringify.valueAlloc(self.alloc, .{ .kind = "terminal_hit", .text = @as([]const u8, text), .hit = captured.hit, .rows = rows.items }, .{});
++    defer self.alloc.free(encoded);
++    const response = domain.polar_station_file_capture(encoded.ptr, encoded.len) orelse return null;
++    defer domain.polar_station_desktop_string_free(response);
++    const capture = std.mem.span(response);
++    const Projection = struct { recognized: struct { ranges: []const StationFileRange } };
++    const parsed = std.json.parseFromSlice(Projection, self.alloc, capture, .{ .ignore_unknown_fields = true }) catch return null;
++    defer parsed.deinit();
++    const ranges = parsed.value.recognized.ranges;
++    if (ranges.len == 0) return null;
++    const start = ranges[0].start;
++    const end = ranges[ranges.len - 1].end;
++    if (!captured.acceptsRange(start, end)) return null;
++    const first = pins.get(start) orelse return null;
++    const last = pins.get(end - 1) orelse return null;
++    return .{ .capture = try self.alloc.dupeSentinel(u8, capture, 0), .selection = terminal.Selection.init(first, last, false) };
++}
++fn stationFileClick(self: *Surface, pos: apprt.CursorPos, selection: terminal.Selection) !?[:0]const u8 {
++    const point = self.posToViewport(pos.x, pos.y);
++    const pin = self.renderer_state.terminal.screens.active.pages.pin(.{ .viewport = point }) orelse return null;
++    const context = (try self.stationFileText(pin, selection)) orelse return null;
++    defer self.alloc.free(context.capture);
++    return try std.fmt.allocPrintSentinel(self.alloc, "polar-station-file-context:{s}", .{context.capture}, 0);
++}
+ fn linkAtPos(
+     self: *Surface,
+     pos: apprt.CursorPos,
+@@ -4487,7 +4592,7 @@
+     mouse_pin: terminal.Pin,
+     mouse_mods: ?input.Mods,
+ ) !?Link {
+-    if (self.config.links.len == 0) return null;
++    if (!@import("build_options").polar_tmux and self.config.links.len == 0) return null;
+ 
+     const screen: *terminal.Screen = self.renderer_state.terminal.screens.active;
+     const line = screen.selectLine(.{
+@@ -4504,6 +4609,14 @@
+     });
+     defer strmap.deinit(self.alloc);
+ 
++    if (comptime @import("build_options").polar_tmux) {
++        if (mouse_mods) |mods| if (mods.equal(input.ctrlOrSuper(.{}))) {
++            if (try self.stationFileText(mouse_pin, null)) |context| {
++                defer self.alloc.free(context.capture);
++                return .{ .action = .open, .selection = context.selection, .station_file_reference = true };
++            }
++        };
++    }
+     for (self.config.links) |link| {
+         // Skip highlight/mods check when mouse_mods is null (double-click mode)
+         if (mouse_mods) |mods| switch (link.highlight) {
+@@ -4517,6 +4630,16 @@
+             defer match.deinit();
+             const sel = match.selection();
+             if (!sel.contains(screen, mouse_pin)) continue;
++            if (comptime @import("build_options").polar_tmux) {
++                if (mouse_mods) |mods| if (mods.equal(input.ctrlOrSuper(.{}))) {
++                    const begin: usize = match.offset + @as(usize, @intCast(match.region.starts()[0]));
++                    const end: usize = match.offset + @as(usize, @intCast(match.region.ends()[0]));
++                    const raw = strmap.string[begin..end];
++                    const domain = struct { extern fn polar_station_external_link([*]const u8, usize) bool; };
++                    if (!domain.polar_station_external_link(raw.ptr, raw.len)) continue;
++                };
++            }
++
+             return .{
+                 .action = link.action,
+                 .selection = sel,
+@@ -4554,13 +4677,13 @@
+     const link = try self.linkAtPos(pos) orelse return false;
+     switch (link.action) {
+         .open => {
+-            const str = try self.io.terminal.screens.active.selectionString(self.alloc, .{
++            const str = if (link.station_file_reference) ((try self.stationFileClick(pos, link.selection)) orelse return false) else try self.io.terminal.screens.active.selectionString(self.alloc, .{
+                 .sel = link.selection,
+                 .trim = false,
+             });
+             defer self.alloc.free(str);
+ 
+-            const resolved_path = try self.resolvePathForOpening(str);
++            const resolved_path = if (link.station_file_reference) null else try self.resolvePathForOpening(str);
+             defer if (resolved_path) |p| self.alloc.free(p);
+ 
+             const url_to_open = resolved_path orelse str;
+@@ -4768,6 +4891,7 @@
+         self.mouse.link_point == null or
+         (self.mouse.link_point != null and !self.mouse.link_point.?.eql(pos_vp))) and
+         (self.io.terminal.flags.mouse_event == .none or
++            (@import("build_options").polar_tmux and self.mouseModsWithCapture(self.mouse.mods).equal(input.ctrlOrSuper(.{}))) or
+             (self.mouse.mods.shift and !self.mouseShiftCapture(false))))
+     {
+         // If we were previously over a link, we always update. We do this so that if the text
+diff --git a/src/renderer/link.zig b/src/renderer/link.zig
+--- a/src/renderer/link.zig
++++ b/src/renderer/link.zig
+@@ -93,16 +93,22 @@
+         defer builder.deinit();
+         var map: terminal.RenderState.StringMap = .empty;
+         defer map.deinit(alloc);
+-        try render_state.string(&builder.writer, .{
+-            .alloc = alloc,
+-            .map = &map,
+-        });
+-
+-        const str = builder.writer.buffered();
++        var prepared = false;
+ 
+         // Go through each link and see if we have any matches.
+         for (self.links) |*link| {
+             if (!link.active(mouse_viewport, mouse_mods)) continue;
++
++            // Preserve the existing policy checks above. Most frames have
++            // no eligible hover rule; only materialize text for a real match.
++            if (!prepared) {
++                try render_state.string(&builder.writer, .{
++                    .alloc = alloc,
++                    .map = &map,
++                });
++                prepared = true;
++            }
++            const str = builder.writer.buffered();
+ 
+             var offset: usize = 0;
+             while (offset < str.len) {
+@@ -144,6 +150,7 @@
+     }
+ };
+ 
++// Appended to the pinned renderer/link.zig by the paired managed overlay.
+ test "renderCellMap" {
+     const testing = std.testing;
+     const alloc = testing.allocator;
+diff --git a/src/terminal/Screen.zig b/src/terminal/Screen.zig
+--- a/src/terminal/Screen.zig
++++ b/src/terminal/Screen.zig
+@@ -3106,6 +3106,110 @@
+     self.selection = null;
+ }
+ 
++pub const StationFileCapture = struct {
++    const side_bytes = 2048;
++
++    text: [:0]const u8,
++    map: StringMap,
++    hit: usize,
++    cut_before: bool,
++    cut_after: bool,
++
++    const Extent = struct { pin: Pin, cut: bool };
++
++    fn cellBytes(pin: Pin) usize {
++        const cell = pin.rowAndCell().cell;
++        switch (cell.wide) {
++            .spacer_head, .spacer_tail => return 0,
++            .narrow, .wide => {},
++        }
++        if (!cell.hasText()) return 1;
++        var len: usize = std.unicode.utf8CodepointSequenceLength(cell.codepoint()) catch 4;
++        if (pin.grapheme(cell)) |extra| {
++            for (extra) |cp| {
++                len += std.unicode.utf8CodepointSequenceLength(cp) catch 4;
++                if (len > side_bytes) break;
++            }
++        }
++        return len;
++    }
++
++    fn blankHardRow(pin: Pin) bool {
++        const row = pin.rowAndCell().row;
++        if (row.wrap or row.wrap_continuation) return false;
++        for (pin.cells(.all)) |*cell| {
++            switch (cell.codepoint()) {
++                0, ' ', '\t' => if (cell.content_tag == .codepoint_grapheme) return false,
++                else => return false,
++            }
++        }
++        return true;
++    }
++
++    fn extent(hit: Pin, edge: Pin, comptime forward: bool, available: usize) Extent {
++        var remaining = available;
++        var current = hit;
++        var included = hit;
++        const semantic = hit.rowAndCell().cell.semantic_content;
++        while (!current.eql(edge)) {
++            const next = (if (forward) current.rightWrap(1) else current.leftWrap(1)) orelse break;
++            const next_semantic = next.rowAndCell().cell.semantic_content;
++            // OSC 133 separates the actual shell prompt from input and output.
++            if (semantic != next_semantic and (semantic == .prompt or next_semantic == .prompt))
++                return .{ .pin = included, .cut = false };
++            const new_row = next.node != current.node or next.y != current.y;
++            if (new_row and blankHardRow(next)) return .{ .pin = included, .cut = false };
++            const bytes = cellBytes(next);
++            // Reserve a byte for the formatter's newline at a row transition.
++            // A soft wrap often needs zero bytes, even across Ghostty pages.
++            const newline: usize = @intFromBool(new_row);
++            if (bytes + newline > remaining) return .{ .pin = included, .cut = true };
++            remaining -= bytes + newline;
++            current = next;
++            // Starting a formatter selection on a wide tail would pull in its
++            // unbudgeted lead. Keep only endpoints of whole cells.
++            if (bytes != 0) included = next;
++        }
++        const row = current.rowAndCell().row;
++        return .{ .pin = included, .cut = if (forward) row.wrap else row.wrap_continuation };
++    }
++
++    pub fn init(screen: *Screen, alloc: Allocator, click: Pin) Allocator.Error!?StationFileCapture {
++        if (screen.pages.pointFromPin(.viewport, click) == null) return null;
++        var hit_pin = click;
++        if (click.rowAndCell().cell.wide == .spacer_tail) hit_pin.x -|= 1;
++        const hit_bytes = cellBytes(hit_pin);
++        if (hit_bytes == 0 or hit_bytes > side_bytes) return null;
++        const top = screen.pages.getTopLeft(.viewport);
++        const bottom = screen.pages.getBottomRight(.viewport) orelse return null;
++        const left = extent(hit_pin, top, false, side_bytes);
++        const right = extent(hit_pin, bottom, true, side_bytes - hit_bytes);
++        var map = try screen.selectionStringMap(alloc, .{
++            .sel = Selection.init(left.pin, right.pin, false),
++            .trim = false,
++        });
++        const text = map.string;
++        const offset = for (0..map.map.count()) |index| {
++            const mapped = map.map.get(index) orelse continue;
++            if (mapped.eql(hit_pin)) break index;
++        } else text.len;
++        if (text.len != map.map.count() or offset >= text.len or offset > side_bytes or text.len - offset > side_bytes) {
++            map.deinit(alloc);
++            return null;
++        }
++        return .{ .text = text, .map = map, .hit = offset, .cut_before = left.cut, .cut_after = right.cut };
++    }
++
++    pub fn deinit(self: *StationFileCapture, alloc: Allocator) void {
++        self.map.deinit(alloc);
++    }
++
++    pub fn acceptsRange(self: StationFileCapture, start: usize, end: usize) bool {
++        return start < end and end <= self.text.len and end <= self.map.map.count() and
++            !(self.cut_before and start == 0) and !(self.cut_after and end == self.text.len);
++    }
++};
++
+ pub const SelectionString = struct {
+     /// The selection to convert to a string.
+     sel: Selection,
+diff --git a/src/terminal/Terminal.zig b/src/terminal/Terminal.zig
+--- a/src/terminal/Terminal.zig
++++ b/src/terminal/Terminal.zig
+@@ -47,6 +47,10 @@
+ 
+ /// The set of screens behind this terminal (e.g. primary vs alternate).
+ screens: ScreenSet,
++
++/// Published under the renderer's existing terminal lock before dirty flags
++/// are consumed. Each render cache remembers the version it actually copied.
++station_render_revision: u64 = 0,
+ 
+ /// Whether we're currently writing to the status line (DECSASD and DECSSDT).
+ /// We don't support a status line currently so we just black hole this
+diff --git a/src/terminal/render.zig b/src/terminal/render.zig
+--- a/src/terminal/render.zig
++++ b/src/terminal/render.zig
+@@ -372,6 +372,7 @@
+     /// Internal state for Kitty graphics placeholders. Read the results
+     /// with `imagePlacementIterator` instead.
+     kitty: Kitty.Data = .{},
++    station_render_revision: ?u64 = null,
+ 
+     /// Initial state.
+     pub const empty: RenderState = .{
+@@ -976,27 +977,22 @@
+ 
+         // The index of top.pin in row_data.
+         const first: usize = above_req - top.above;
++        const revision_before = t.station_render_revision;
++        const TerminalDirty = @typeInfo(Terminal.Dirty).@"struct".backing_integer.?;
++        const ScreenDirty = @typeInfo(Screen.Dirty).@"struct".backing_integer.?;
++        const full_change = @as(TerminalDirty, @bitCast(t.flags.dirty)) != 0 or
++            @as(ScreenDirty, @bitCast(s.dirty)) != 0;
++        var published = full_change;
++        if (published) t.station_render_revision +%= 1;
++        errdefer self.station_render_revision = null;
+ 
+         const redraw = redraw: {
++            if (self.station_render_revision != revision_before) break :redraw true;
+             // If our screen key changed, we need to do a full rebuild
+             // because our render state is viewport-specific.
+             if (t.screens.active_key != self.screen) break :redraw true;
+ 
+-            // If our terminal is dirty at all, we do a full rebuild. These
+-            // dirty values are full-terminal dirty values.
+-            {
+-                const Int = @typeInfo(Terminal.Dirty).@"struct".backing_integer.?;
+-                const v: Int = @bitCast(t.flags.dirty);
+-                if (v > 0) break :redraw true;
+-            }
+-
+-            // If our screen is dirty at all, we do a full rebuild. This is
+-            // a full screen dirty tracker.
+-            {
+-                const Int = @typeInfo(Screen.Dirty).@"struct".backing_integer.?;
+-                const v: Int = @bitCast(t.screens.active.dirty);
+-                if (v > 0) break :redraw true;
+-            }
++            if (full_change) break :redraw true;
+ 
+             // If our dimensions changed, we do a full rebuild.
+             if (self.rows != s.pages.rows or
+@@ -1235,6 +1231,13 @@
+                 }
+             }
+ 
++            if (!published and (page_dirty or for (page_rows) |row| {
++                if (row.dirty) break true;
++            } else false)) {
++                t.station_render_revision +%= 1;
++                published = true;
++            }
++
+             if (!redraw and !page_dirty) {
+                 // Only dirty rows (usually none) need a rebuild. Scan the
+                 // dirty flags a group at a time; the dirty bit is directly
+@@ -1402,6 +1405,7 @@
+         // Clear our dirty flags
+         t.flags.dirty = .{};
+         s.dirty = .{};
++        self.station_render_revision = t.station_render_revision;
+     }
+ 
+     /// Complete a prior `beginUpdate` call by performing any deferred

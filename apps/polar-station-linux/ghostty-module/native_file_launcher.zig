@@ -1,7 +1,7 @@
 //! GTK system file opening. The shared Resource flow owns request semantics.
 const std = @import("std");
 const gtk = @import("gtk");
-const c = @cImport({ @cInclude("gtk/gtk.h"); });
+const c = @import("gtk_c");
 
 pub const Slot = enum { terminal, resources };
 pub const Callback = *const fn (?*anyopaque, []const u8, ?[]const u8, bool) void;
@@ -30,7 +30,7 @@ pub fn start(slot: Slot, parent: *gtk.Window, path: []const u8, reveal: bool, id
     errdefer allocator.destroy(op);
     const copy = try allocator.dupe(u8, id);
     errdefer allocator.free(copy);
-    const path_z = try allocator.dupeZ(u8, path);
+    const path_z = try allocator.dupeSentinel(u8, path, 0);
     defer allocator.free(path_z);
     const file = c.g_file_new_for_path(path_z.ptr) orelse return error.FileCreationFailed;
     defer c.g_object_unref(file);

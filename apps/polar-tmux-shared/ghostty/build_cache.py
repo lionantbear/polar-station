@@ -35,7 +35,7 @@ def sync_tree(source, destination):
     destination.mkdir(parents=True, exist_ok=True)
     # Deliberately omit -t: a fresh overlay's timestamps must not dirty identical
     # destination files. Removed source files disappear; compiler outputs survive.
-    subprocess.run(['rsync', '-rclp', '--delete', '--exclude=/.zig-cache/',
+    subprocess.run(['rsync', '-rclp', '--delete', '--exclude=/.zig-cache/', '--exclude=/zig-pkg/',
                     '--exclude=/zig-out/', '--exclude=/macos/build/',
                     '--exclude=/macos/GhosttyKit.xcframework/',
                     str(source) + '/', str(destination) + '/'], check=True)
@@ -47,29 +47,27 @@ def cache_framework(source):
     source = Path(source)
     path = source / 'src/build/XCFrameworkStep.zig'
     text = path.read_text()
-    start = text.index('    // We have to delete the old xcframework')
-    end = text.index('    // Then we run xcodebuild', start)
-    text = text[:start] + '    var framework_output: LazyPath = undefined;\n\n' + text[end:]
-    text = text.replace('        run.has_side_effects = true;\n', '', 1)
-    headers = ''.join('            run.addFileInput(lib.headers.path(b, ' + json.dumps(
-        p.relative_to(source / 'include').as_posix()) + '));\n'
-        for p in sorted((source / 'include').rglob('*')) if p.is_file())
+    start = text.index('    // xcodebuild refuses to overwrite an existing xcframework')
+    end = text.index('    const run = RunStep.create', start)
+    text = text[:start] + text[end:]
     replacements = {
-        '            run.addFileArg(lib.headers);': '            run.addDirectoryArg(lib.headers);\n' + headers.rstrip(),
-        '        run.addArg(opts.out_path);': '        framework_output = run.addOutputDirectoryArg(b.fmt("{s}.xcframework", .{opts.name}));',
-        '    run_create.step.dependOn(&run_delete.step);': '''    const run_sync = RunStep.create(b, b.fmt("xcframework install {s}", .{opts.name}));
+        '    run.has_side_effects = true;\n': '',
+        '    addOutPathArg(b, run, opts.out_path);': '    const framework_output = run.addOutputDirectoryArg(b.fmt("{s}.xcframework", .{opts.name}));',
+        '    run.step.dependOn(&delete.step);': '''    const run_sync = RunStep.create(b, b.fmt("xcframework install {s}", .{opts.name}));
     run_sync.has_side_effects = true;
     run_sync.addArgs(&.{ "rsync", "-rclp", "--delete" });
     run_sync.addDirectoryArg(framework_output);
-    run_sync.addArg(b.pathFromRoot(std.fs.path.dirname(opts.out_path).?));
-    _ = run_create;''',
-        '.step = &run_create.step,': '.step = &run_sync.step,',
+    switch (opts.out_path) {
+        .install_prefix => |v| run_sync.addDirectoryArg(b.graph.path(.install_prefix, std.fs.path.dirname(v) orelse ".")),
+        .source_tree => |v| run_sync.addArg(std.fs.path.dirname(v) orelse "."),
+    }''',
+        '.step = &run.step,': '.step = &run_sync.step,',
     }
     for old, new in replacements.items():
         if text.count(old) != 1:
             raise ValueError('pinned XCFramework build step changed: ' + old)
         text = text.replace(old, new, 1)
-    path.write_text(text)
+    path.write_text(text[:text.index('/// Adds the output path as an argument.')].rstrip() + '\n')
 
 
 def copy_changed(source, destination):

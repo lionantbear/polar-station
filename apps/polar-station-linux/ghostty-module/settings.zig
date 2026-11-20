@@ -1,6 +1,6 @@
 //! Settings v1 codec for the thin GTK adapter. Rust owns validation and persistence.
 const std = @import("std");
-const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+const c = @import("polar_station_c");
 
 pub const TmuxStatusView = struct {
     fields: []const struct { id: []const u8, label: []const u8, selected: bool },

@@ -1,4 +1,6 @@
 //! Focus belongs to the resident Pane binding, independent of recovery UI.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const gobject = @import("gobject");
@@ -80,8 +82,8 @@ pub const Focus = struct {
 
     fn setNativeControl(self: *Focus, enabled: bool) void {
         const core = self.surface.core() orelse return;
-        core.renderer_state.mutex.lock();
-        defer core.renderer_state.mutex.unlock();
+        core.renderer_state.mutex.lockUncancelable(global.io());
+        defer core.renderer_state.mutex.unlock(global.io());
         core.renderer_state.polar_native_focus_control = enabled;
     }
 

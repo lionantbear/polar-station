@@ -309,8 +309,8 @@ final class PolarStationDictate {
         }
         if let event=CGEvent(keyboardEventSource:nil,virtualKey:binding.0,keyDown:true) {
             event.flags=CGEventFlags(rawValue:UInt64(binding.1.rawValue))
-            if let native=NSEvent(cgEvent:event),let delegate=NSApp.delegate as? AppDelegate,let app=delegate.ghostty.app,
-               ghostty_app_key_is_binding(app,native.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)) {reply(["error":"This shortcut is already used by a terminal binding. The previous shortcut remains active."]);return}
+            if let native=NSEvent(cgEvent:event),let delegate=NSApp.delegate as? AppDelegate,let config=delegate.ghostty.config.config,
+               ghostty_config_key_is_binding(config,native.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)) {reply(["error":"This shortcut is already used by a terminal binding. The previous shortcut remains active."]);return}
         }
         Task {let client=VoiceClient();let data=await client.request(Data(#"{"op":"voice_settings"}"#.utf8))
             guard let response=try? JSONSerialization.jsonObject(with:data) as? [String:Any],var settings=response["payload"] as? [String:Any]else{reply(["error":"Voice settings could not be loaded; shortcut unchanged."]);return}

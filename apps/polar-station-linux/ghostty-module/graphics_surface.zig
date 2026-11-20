@@ -1,4 +1,6 @@
 //! Native GPU host loader. One library/engine lives for the frontend process.
+
+const global = @import("../../../global.zig");
 const std = @import("std");
 const gtk = @import("gtk");
 const glib = @import("glib");
@@ -7,11 +9,12 @@ const Create = *const fn ([*:0]const u8, [*:0]const u8, [*:0]const u8, *?*glib.E
 var create_fn: ?Create = null;
 
 pub fn create(allocator: std.mem.Allocator, view_id: []const u8) !*gtk.Widget {
-    const root = std.process.getEnvVarOwned(allocator, "POLAR_STATION_GRAPHICS_RUNTIME") catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => blk: {
-            const exe = try std.fs.selfExeDirPathAlloc(allocator);
+    const root = global.environ().getAlloc(allocator, "POLAR_STATION_GRAPHICS_RUNTIME") catch |err| switch (err) {
+        error.EnvironmentVariableMissing => blk: {
+            const exe = try std.process.executablePathAlloc(global.io(), allocator);
             defer allocator.free(exe);
-            break :blk try std.fs.path.join(allocator, &.{ exe, "graphics" });
+            const dir = std.fs.path.dirname(exe) orelse return error.InvalidExecutablePath;
+            break :blk try std.fs.path.join(allocator, &.{ dir, "graphics" });
         },
         else => return err,
     };
@@ -27,7 +30,7 @@ pub fn create(allocator: std.mem.Allocator, view_id: []const u8) !*gtk.Widget {
     const project = try std.fs.path.joinZ(allocator, &.{ root, "project" });
     defer allocator.free(project);
     var failure: ?*glib.Error = null;
-    const identity = try allocator.dupeZ(u8, view_id);
+    const identity = try allocator.dupeSentinel(u8, view_id, 0);
     defer allocator.free(identity);
     const widget = create_fn.?(project, "res://itree_workspace.tscn", identity, &failure);
     if (failure) |value| {

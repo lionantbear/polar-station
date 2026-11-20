@@ -132,7 +132,7 @@ pub const Pane = struct {
         errdefer next_preview.deinit();
         var draft = try Draft.read(self.allocator, next_preview.allocator(), document);
         errdefer draft.workspace.deinit();
-        const name = try self.allocator.dupeZ(u8, draft.layout.name);
+        const name = try self.allocator.dupeSentinel(u8, draft.layout.name, 0);
         defer self.allocator.free(name);
 
         self.clearPage();
@@ -294,7 +294,7 @@ pub const Pane = struct {
         title.setPlaceholderText("Tab title");
         title.as(gtk.Widget).setHexpand(1);
         title.as(gtk.Editable).setWidthChars(1);
-        const z = try a.dupeZ(u8, tab.title);
+        const z = try a.dupeSentinel(u8, tab.title, 0);
         title.as(gtk.Editable).setText(z);
         const rename = gtk.Box.new(.horizontal, 4);
         rename.append(title.as(gtk.Widget));
@@ -358,7 +358,7 @@ pub const Pane = struct {
             inline .rename_tab, .reorder_tab, .reorder_pane, .move_pane => |payload, kind| blk: {
                 const bytes = try std.json.Stringify.valueAlloc(a, payload, .{});
                 var data = try std.json.parseFromSliceLeaky(std.json.Value, a, bytes, .{});
-                try data.object.put("intent", .{ .string = @tagName(kind) });
+                try data.object.put(a, "intent", .{ .string = @tagName(kind) });
                 break :blk data;
             },
             else => return error.UnsupportedWorkspaceEdit,
@@ -424,7 +424,7 @@ pub const Pane = struct {
     fn dragPrepare(source: *gtk.DragSource, _: f64, _: f64, binding: *DragBinding) callconv(.c) ?*gdk.ContentProvider {
         const self = binding.owner;
         if (self.pending or self.drag != null or self.drop_action != null) return null;
-        const nonce = std.crypto.random.int(u64);
+        const nonce = @import("station_random.zig").int(u64);
         const payload = std.fmt.allocPrintSentinel(self.allocator, "station-workspace-settings:{x}", .{nonce}, 0) catch return null;
         defer self.allocator.free(payload);
         var value = gobject.ext.Value.newFrom(payload);

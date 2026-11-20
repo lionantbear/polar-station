@@ -1,4 +1,6 @@
 //! Native rendering of the shared Dictate panel. No recording or routing policy.
+
+const global = @import("../../../global.zig");
 const std=@import("std");
 const gtk=@import("gtk");
 const gio=@import("gio");
@@ -7,7 +9,7 @@ const gobject=@import("gobject");
 const dictate=@import("dictate.zig");
 const a=std.heap.c_allocator;
 // Use the Cairo context type already imported by the GTK bindings.
-const CairoContext = @typeInfo(@typeInfo(gtk.DrawingAreaDrawFunc).pointer.child).@"fn".params[1].type.?;
+const CairoContext = @typeInfo(@typeInfo(gtk.DrawingAreaDrawFunc).pointer.child).@"fn".param_types[1].?;
 const Item=struct{kind:[:0]const u8,key:[:0]const u8,label:[:0]const u8};
 const items=[_]Item{
     .{.kind="copy",.key="can_copy",.label="copy_label"},
@@ -216,7 +218,7 @@ pub const Panel=struct{
         const panel=self.owner.panelValue();
         const id=dictate.string(panel,"operation_id");
         if(!std.mem.eql(u8,id,self.current_id)){const next=a.dupe(u8,id) catch return;a.free(self.current_id);self.current_id=next;self.waveform_levels=@splat(0);self.waveform.as(gtk.Widget).queueDraw();self.following=true;self.editing=false;self.editor.setEditable(0);self.reported_interaction=false;self.reportInteraction();}
-        const quote=a.dupeZ(u8,dictate.string(panel,"reference")) catch return;defer a.free(quote);
+        const quote=a.dupeSentinel(u8,dictate.string(panel,"reference"), 0) catch return;defer a.free(quote);
         self.reference.setText(quote);self.reference.as(gtk.Widget).setTooltipText(quote);self.reference.as(gtk.Widget).setVisible(@intFromBool(quote.len>0));
         var visible=panel!=.null;
         if(self.anchor) |anchor| {
@@ -236,15 +238,15 @@ pub const Panel=struct{
             if(self.window) |window| window.as(gtk.Widget).setVisible(0);
             return;
         }
-        const detail=a.dupeZ(u8,dictate.string(panel,"status")) catch return;defer a.free(detail);self.status.as(gtk.Widget).setTooltipText(detail);
-        const status=a.dupeZ(u8,dictate.string(panel,"heading")) catch return;defer a.free(status);self.status.setText(status);
+        const detail=a.dupeSentinel(u8,dictate.string(panel,"status"), 0) catch return;defer a.free(detail);self.status.as(gtk.Widget).setTooltipText(detail);
+        const status=a.dupeSentinel(u8,dictate.string(panel,"heading"), 0) catch return;defer a.free(status);self.status.setText(status);
         const notice = dictate.string(panel, "failure_notice");
-        const notice_z = a.dupeZ(u8, notice) catch return;
+        const notice_z = a.dupeSentinel(u8, notice, 0) catch return;
         defer a.free(notice_z);
         self.failure_notice.setText(notice_z);
         self.failure_notice.as(gtk.Widget).setVisible(@intFromBool(notice.len > 0));
         const body=dictate.string(panel,"text");
-        const text=a.dupeZ(u8,if(body.len==0 and notice.len==0 and std.mem.eql(u8,phase,"failed"))dictate.string(panel,"status") else body) catch return;defer a.free(text);
+        const text=a.dupeSentinel(u8,if(body.len==0 and notice.len==0 and std.mem.eql(u8,phase,"failed"))dictate.string(panel,"status") else body, 0) catch return;defer a.free(text);
         const buffer=self.editor.getBuffer();var first:gtk.TextIter=undefined;var last:gtk.TextIter=undefined;buffer.getBounds(&first,&last);
         const existing=buffer.getText(&first,&last,1);defer glib.free(existing);
         if(!std.mem.eql(u8,std.mem.span(existing),text)){
@@ -275,17 +277,17 @@ pub const Panel=struct{
         self.scroll.as(gtk.Widget).setVisible(@intFromBool(text.len>0 or self.editing));
         for(items,0..) |item,i| {
             if(direct(item.kind)) {
-                const projected=dictate.field(panel,"actions");if(std.posix.getenv("POLAR_STATION_DEBUG_PREVIEW")!=null)std.log.info("preview action metadata kind={s} array={} count={d}",.{item.kind,projected==.array,if(projected==.array)projected.array.items.len else @as(usize,0)});if(projected!=.array)continue;
+                const projected=dictate.field(panel,"actions");if(global.environ().getPosix("POLAR_STATION_DEBUG_PREVIEW")!=null)std.log.info("preview action metadata kind={s} array={} count={d}",.{item.kind,projected==.array,if(projected==.array)projected.array.items.len else @as(usize,0)});if(projected!=.array)continue;
                 for(projected.array.items) |action| if(std.mem.eql(u8,dictate.string(action,"id"),item.kind)) {
-                    const label=a.dupeZ(u8,dictate.string(action,"label")) catch continue;defer a.free(label);
+                    const label=a.dupeSentinel(u8,dictate.string(action,"label"), 0) catch continue;defer a.free(label);
                     var props=[_]gtk.AccessibleProperty{.label};var values=[_]gobject.Value{std.mem.zeroes(gobject.Value)};
                     gtk.AccessibleProperty.initValue(.label,&values[0]);defer values[0].unset();values[0].setString(label);
                     self.buttons[i].as(gtk.Accessible).updatePropertyValue(1,&props,&values);
-                    const tooltip=if(dictate.boolean(action,"enabled")) a.dupeZ(u8,label) catch continue else std.fmt.allocPrintSentinel(a,"{s}: {s}",.{label,dictate.string(action,"disabled_reason")},0) catch continue;defer a.free(tooltip);
+                    const tooltip=if(dictate.boolean(action,"enabled")) a.dupeSentinel(u8,label, 0) catch continue else std.fmt.allocPrintSentinel(a,"{s}: {s}",.{label,dictate.string(action,"disabled_reason")},0) catch continue;defer a.free(tooltip);
                     self.buttons[i].as(gtk.Widget).setTooltipText(tooltip);self.buttons[i].as(gtk.Widget).setSensitive(@intFromBool(dictate.boolean(action,"enabled")));self.buttons[i].as(gtk.Widget).setVisible(1);
                 };
             } else {
-                const label=a.dupeZ(u8,dictate.string(panel,item.label)) catch continue;defer a.free(label);
+                const label=a.dupeSentinel(u8,dictate.string(panel,item.label), 0) catch continue;defer a.free(label);
                 if(std.mem.eql(u8,item.kind,"hide_panel")) {
                     self.buttons[i].as(gtk.Widget).setTooltipText(label);
                     var props=[_]gtk.AccessibleProperty{.label};var values=[_]gobject.Value{std.mem.zeroes(gobject.Value)};

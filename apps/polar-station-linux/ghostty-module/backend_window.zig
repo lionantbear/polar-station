@@ -3,9 +3,7 @@
 const std = @import("std");
 const gtk = @import("gtk");
 const adw = @import("adw");
-const c = @cImport({
-    @cInclude("polar_station_desktop_client.h");
-});
+const c = @import("polar_station_c");
 const transfer = @import("workspace_transfer_window.zig");
 const Value = std.json.Value;
 const field = transfer.field;
@@ -47,7 +45,7 @@ pub const Page = struct {
         self.allocator.destroy(self);
     }
     fn text(self: *Page, box: *gtk.Box, value: []const u8) void {
-        const z = self.allocator.dupeZ(u8, value) catch return;
+        const z = self.allocator.dupeSentinel(u8, value, 0) catch return;
         defer self.allocator.free(z);
         const l = gtk.Label.new(z);
         l.setXalign(0);
@@ -102,7 +100,7 @@ pub const Page = struct {
             self.window = w;
         }
         if (self.target == null) {
-            const z = self.allocator.dupeZ(u8, path) catch return;
+            const z = self.allocator.dupeSentinel(u8, path, 0) catch return;
             defer self.allocator.free(z);
             self.entry.?.as(gtk.Editable).setText(z);
         }
@@ -121,7 +119,7 @@ pub const Page = struct {
             self.problem("No previous backend in this application session.");
             return;
         };
-        const z = self.allocator.dupeZ(u8, path) catch return;
+        const z = self.allocator.dupeSentinel(u8, path, 0) catch return;
         defer self.allocator.free(z);
         self.entry.?.as(gtk.Editable).setText(z);
         inspectClicked(undefined, self);
@@ -178,7 +176,7 @@ pub const Page = struct {
     }
     fn host(self: *Page, request: anytype) void {
         if (self.pending_host != null) return;
-        const id = std.fmt.allocPrint(self.allocator, "backend-host-{x}", .{std.crypto.random.int(u64)}) catch return;
+        const id = std.fmt.allocPrint(self.allocator, "backend-host-{x}", .{@import("station_random.zig").int(u64)}) catch return;
         self.pending_host = id;
         const bytes = std.json.Stringify.valueAlloc(self.allocator, .{ .type = "application_request", .request = .{ .protocol_version = @as(u32, 1), .api = "control_center_v1", .request_id = id, .frontend_session_id = "backend-selection", .expected_control_revision = @as(?u64, null), .command = .{ .type = "host_transfer", .request = request } } }, .{}) catch return;
         defer self.allocator.free(bytes);
@@ -193,13 +191,13 @@ pub const Page = struct {
     }
     fn sendBackend(self: *Page, command: anytype) void {
         if (self.pending_backend != null) return;
-        const id = std.fmt.allocPrint(self.allocator, "backend-{x}", .{std.crypto.random.int(u64)}) catch return;
+        const id = std.fmt.allocPrint(self.allocator, "backend-{x}", .{@import("station_random.zig").int(u64)}) catch return;
         self.pending_backend = id;
         const raw = std.json.Stringify.valueAlloc(self.allocator, command, .{}) catch return;
         defer self.allocator.free(raw);
         var parsed = std.json.parseFromSlice(Value, self.allocator, raw, .{}) catch return;
         defer parsed.deinit();
-        parsed.value.object.put("request_id", .{ .string = id }) catch return;
+        parsed.value.object.put(parsed.arena.allocator(), "request_id", .{ .string = id }) catch return;
         const bytes = std.json.Stringify.valueAlloc(self.allocator, parsed.value, .{}) catch return;
         defer self.allocator.free(bytes);
         self.dispatch(self.context, "backend", bytes);
@@ -330,9 +328,9 @@ pub const Page = struct {
         var input = std.json.parseFromSlice(Value, self.allocator, bytes, .{}) catch return;
         defer input.deinit();
         inline for (.{ "workspace_count", "pane_count" }) |key| if (field(input.value, key) == .null) {
-            input.value.object.put(key, .{ .integer = 0 }) catch return;
+            input.value.object.put(input.arena.allocator(), key, .{ .integer = 0 }) catch return;
         };
-        if (field(input.value, "references") == .null) input.value.object.put("references", .{ .array = std.array_list.Managed(Value).init(self.allocator) }) catch return;
+        if (field(input.value, "references") == .null) input.value.object.put(input.arena.allocator(), "references", .{ .array = std.array_list.Managed(Value).init(self.allocator) }) catch return;
         const request = std.json.Stringify.valueAlloc(self.allocator, input.value, .{}) catch return;
         defer self.allocator.free(request);
         const raw = c.polar_station_backend_view(request.ptr, request.len) orelse return;
@@ -355,7 +353,7 @@ pub const Page = struct {
                 body.append(line.as(gtk.Widget));
             };
         }
-        const message = self.allocator.dupeZ(u8, string(view.value, "message")) catch return;
+        const message = self.allocator.dupeSentinel(u8, string(view.value, "message"), 0) catch return;
         defer self.allocator.free(message);
         self.status.?.setText(message);
         const enabled = field(view.value, "can_switch");

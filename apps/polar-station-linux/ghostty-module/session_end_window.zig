@@ -91,7 +91,7 @@ pub const Window = struct {
         const owned = try std.json.parseFromSlice(Request, self.allocator, encoded, .{ .allocate = .alloc_always });
         if (self.request) |old| old.deinit();
         self.request = owned;
-        const text = try self.allocator.dupeZ(u8, message);
+        const text = try self.allocator.dupeSentinel(u8, message, 0);
         defer self.allocator.free(text);
         self.message.setLabel(text);
         self.status.setLabel("");
@@ -107,13 +107,13 @@ pub const Window = struct {
         self.label(self.title, if (view.end_preview) |p| p.confirmation.title else "End Session?");
         self.label(self.message, if (view.end_preview) |p| p.confirmation.message else "");
         self.label(self.status, view.message orelse "");
-        const submit = self.allocator.dupeZ(u8, view.submit_label) catch return;
+        const submit = self.allocator.dupeSentinel(u8, view.submit_label, 0) catch return;
         defer self.allocator.free(submit);
         self.submit.setLabel(submit);
         if (view.end_completed) self.native.as(gtk.Window).close();
     }
     fn label(self: *Window, widget: *gtk.Label, text: []const u8) void {
-        const value = self.allocator.dupeZ(u8, text) catch return;
+        const value = self.allocator.dupeSentinel(u8, text, 0) catch return;
         defer self.allocator.free(value);
         widget.setLabel(value);
     }
