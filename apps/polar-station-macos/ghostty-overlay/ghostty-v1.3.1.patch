@@ -46,7 +46,7 @@ index 3758c325d..53c4b564c 100644
  		A53D0C8E2B53B0EA00305CE6 /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A5D495A1299BEC7E00DD1313 /* GhosttyKit.xcframework */; };
  		A53D0C952B53B4D800305CE6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5B30538299BEAAB0047F10C /* Assets.xcassets */; };
  		A546F1142D7B68D7003B11A0 /* locale in Resources */ = {isa = PBXBuildFile; fileRef = A546F1132D7B68D7003B11A0 /* locale */; };
-@@ -115,6 +117,21 @@
+@@ -115,6 +117,22 @@
  		81F82CB02E8281F5001EDFA7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
  			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
  			membershipExceptions = (
@@ -61,6 +61,7 @@ index 3758c325d..53c4b564c 100644
 +				PolarStation/PolarStationNativeTabGroupCoordinator.swift,
 +				PolarStation/PolarStationPaneSurfaceCoordinator.swift,
 +				PolarStation/PolarStationRuntime.swift,
++				PolarStation/PolarStationSettings.swift,
 +				PolarStation/PolarStationShortcuts.swift,
 +				PolarStation/StationDictateKeyCapture.swift,
 +				PolarStation/PolarStationStatusTemplate.png,
@@ -362,13 +363,16 @@ diff --git a/macos/Sources/Features/Terminal/TerminalViewContainer.swift b/macos
 index dd0190c4c..64bc12787 100644
 --- a/macos/Sources/Features/Terminal/TerminalViewContainer.swift
 +++ b/macos/Sources/Features/Terminal/TerminalViewContainer.swift
-@@ -5,6 +5,18 @@ import SwiftUI
+@@ -5,6 +5,21 @@ import SwiftUI
  /// Modifying `NSThemeFrame` can sometimes be unpredictable.
  class TerminalViewContainer: NSView {
      private let terminalView: NSView
 +    private var terminalLeadingConstraint: NSLayoutConstraint!
 +#if POLAR_STATION
 +    private var polarStationPane: NSView?
++    private var expandedWorkspaceLayout: NSView?
++    private var expandedWorkspaceConstraints: [NSLayoutConstraint] = []
++    private weak var workspaceLayoutPriorFocus: NSResponder?
 +    private var polarStationDivider: NSBox?
 +    private var polarStationWidthConstraint: NSLayoutConstraint?
 +    private var polarTerminalLeadingConstraint: NSLayoutConstraint?
@@ -381,7 +385,7 @@ index dd0190c4c..64bc12787 100644
  
      /// Combined glass effect and inactive tint overlay view
      private(set) var glassEffectView: NSView?
-@@ -55,14 +67,105 @@ class TerminalViewContainer: NSView {
+@@ -55,14 +67,132 @@ class TerminalViewContainer: NSView {
      private func setup() {
          addSubview(terminalView)
          terminalView.translatesAutoresizingMaskIntoConstraints = false
@@ -436,7 +440,34 @@ index dd0190c4c..64bc12787 100644
 +        growWindowForAccessory(by: width + 1)
 +    }
 +
++    func showExpandedWorkspaceLayout(_ view: NSView?) {
++        if expandedWorkspaceLayout === view { return }
++        NSLayoutConstraint.deactivate(expandedWorkspaceConstraints)
++        expandedWorkspaceConstraints.removeAll()
++        expandedWorkspaceLayout?.removeFromSuperview()
++        expandedWorkspaceLayout = view
++        guard let view else {
++            terminalView.isHidden = false
++            if let prior = workspaceLayoutPriorFocus { window?.makeFirstResponder(prior) }
++            workspaceLayoutPriorFocus = nil
++            return
++        }
++        workspaceLayoutPriorFocus = window?.firstResponder
++        window?.makeFirstResponder(nil)
++        terminalView.isHidden = true
++        view.translatesAutoresizingMaskIntoConstraints = false
++        addSubview(view)
++        expandedWorkspaceConstraints = [
++            view.leadingAnchor.constraint(equalTo: terminalView.leadingAnchor),
++            view.trailingAnchor.constraint(equalTo: terminalView.trailingAnchor),
++            view.topAnchor.constraint(equalTo: terminalView.topAnchor),
++            view.bottomAnchor.constraint(equalTo: terminalView.bottomAnchor),
++        ]
++        NSLayoutConstraint.activate(expandedWorkspaceConstraints)
++    }
++
 +    func hidePolarStationPane() {
++        showExpandedWorkspaceLayout(nil)
 +        let wasVisible = polarStationPane != nil
 +        let removedWidth = wasVisible ? polarStationWidth + 1 : 0
 +        NSLayoutConstraint.deactivate(polarStationConstraints)
@@ -780,18 +811,19 @@ diff --git a/src/termio/Termio.zig b/src/termio/Termio.zig
 diff --git a/include/ghostty.h b/include/ghostty.h
 --- a/include/ghostty.h
 +++ b/include/ghostty.h
-@@ -1084,6 +1084,7 @@
+@@ -1084,6 +1084,8 @@
  void ghostty_surface_draw(ghostty_surface_t);
  void ghostty_surface_set_content_scale(ghostty_surface_t, double, double);
  void ghostty_surface_set_focus(ghostty_surface_t, bool);
 +void ghostty_surface_set_polar_native_control(ghostty_surface_t, bool);
++bool ghostty_surface_synchronize_polar_font_size(ghostty_surface_t, float);
  void ghostty_surface_set_occlusion(ghostty_surface_t, bool);
  void ghostty_surface_set_size(ghostty_surface_t, uint32_t, uint32_t);
  ghostty_surface_size_s ghostty_surface_size(ghostty_surface_t);
 diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
 --- a/src/apprt/embedded.zig
 +++ b/src/apprt/embedded.zig
-@@ -1725,6 +1725,14 @@
+@@ -1725,6 +1725,24 @@
      /// Update the content scale of the surface.
      export fn ghostty_surface_set_content_scale(surface: *Surface, x: f64, y: f64) void {
          surface.updateContentScale(x, y);
@@ -803,6 +835,16 @@ diff --git a/src/apprt/embedded.zig b/src/apprt/embedded.zig
 +        state.mutex.lock();
 +        defer state.mutex.unlock();
 +        state.polar_native_focus_control = enabled;
++    }
++
++    /// Match GTK: only acknowledge the real Ghostty font and protect it
++    /// from a later application-wide theme or configuration reload.
++    export fn ghostty_surface_synchronize_polar_font_size(surface: *Surface, points: f32) bool {
++        surface.core_surface.synchronizeManagedFontSize(points) catch |err| {
++            log.warn("managed Polar Station font synchronization failed err={}", .{err});
++            return false;
++        };
++        return true;
      }
 
      /// Update the focused state of a surface.

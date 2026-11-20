@@ -42,6 +42,7 @@ pub const Review = struct {
     on_review_closed: ?*const fn (?*anyopaque) void = null,
     review_context: ?*anyopaque = null,
     window: ?*gtk.Window = null,
+    inline_parent: ?*gtk.Box = null,
     content: ?*gtk.Box = null,
     status: ?*gtk.Label = null,
     dialog: ?*gtk.NativeDialog = null,
@@ -96,6 +97,7 @@ pub const Review = struct {
         const z = self.allocator.dupeZ(u8, message) catch return;
         defer self.allocator.free(z);
         if (self.status) |status| status.setText(z);
+        if (self.inline_parent != null) return;
         const dialog = adw.MessageDialog.new(self.parent, "Host transfer", z);
         dialog.addResponse("close", "Close");
         dialog.setDefaultResponse("close");
@@ -183,10 +185,17 @@ pub const Review = struct {
             self.render();
         } else if (!self.exporting) {
             if (self.window) |w| w.as(gtk.Widget).setVisible(0);
-            if (had_plan) if (self.on_review_closed) |callback| {
-                self.on_review_closed = null;
-                callback(self.review_context);
-            };
+            if (had_plan) {
+                if (self.inline_parent != null) {
+                    self.clear();
+                    self.inline_parent = null;
+                    self.content = if (self.window) |window| @import("gobject").ext.cast(gtk.Box, window.getChild() orelse return) else null;
+                }
+                if (self.on_review_closed) |callback| {
+                    self.on_review_closed = null;
+                    callback(self.review_context);
+                }
+            }
         }
     }
     fn ensureWindow(self: *Review) void {
@@ -256,8 +265,12 @@ pub const Review = struct {
         return if (candidates.len > 0) candidates[0] else .null;
     }
     fn render(self: *Review) void {
-        self.ensureWindow();
-        self.window.?.setTitle("Import Hosts");
+        if (self.inline_parent) |inline_parent| {
+            self.content = inline_parent;
+        } else {
+            self.ensureWindow();
+            self.window.?.setTitle("Import Hosts");
+        }
         self.clear();
         const root = self.content.?;
         const view = self.view.?.value;
@@ -349,7 +362,9 @@ pub const Review = struct {
         const apply_button = self.button(footer, "Apply import", apply);
         apply_button.as(gtk.Widget).setSensitive(@intFromBool(yes(view, "host_import_can_apply")));
         root.as(gtk.Widget).setSensitive(@intFromBool(!yes(view, "pending")));
-        if (self.window.?.as(gtk.Widget).getVisible() == 0) self.window.?.present();
+        if (self.inline_parent == null) if (self.window) |window| {
+            if (window.as(gtk.Widget).getVisible() == 0) window.present();
+        };
     }
     fn cell(self: *Review, grid: *gtk.Grid, col: c_int, row: c_int, text: []const u8) void {
         const z = self.allocator.dupeZ(u8, text) catch return;
@@ -413,7 +428,9 @@ pub const Review = struct {
         self.input(.{ .type = "apply_host_import" });
     }
     fn cancel(_: *gtk.Button, self: *Review) callconv(.c) void {
-        _ = closeRequested(self.window.?, self);
+        if (self.inline_parent != null) {
+            if (self.pending_id == null) self.input(.{ .type = "cancel_host_import" });
+        } else if (self.window) |window| _ = closeRequested(window, self);
     }
     pub fn openImport(self: *Review) void {
         self.openFile(false);

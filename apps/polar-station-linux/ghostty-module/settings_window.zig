@@ -13,6 +13,8 @@ pub const Action = union(enum) {
     reload,
     appearance: settings.Appearance,
     attention: settings.Attention,
+    tmux_status_bar: []const []const u8,
+    preview_tmux_status_bar,
     monitoring: settings.Monitoring,
     session_summary: settings.SessionSummary,
     test_summary: settings.SessionSummary,
@@ -38,8 +40,19 @@ pub const Panel = struct {
     voice: ?*voice_settings.Panel = null,
     prompt_editor: ?*@import("settings_text_editor.zig").Panel = null,
     pages: ?*gtk.Stack = null,
-    workspace_font_box:?*gtk.Box=null,
     theme_projection: ?settings.ThemeProjection = null,
+    tmux_fields: ?std.json.Parsed(settings.TmuxStatusView) = null,
+    tmux_toggles: std.ArrayListUnmanaged(*gtk.ToggleButton) = .empty,
+    tmux_preview: ?*gtk.Label = null,
+    tmux_purpose: ?*gtk.Entry = null,
+    tmux_purpose_dirty: bool = false,
+    tmux_save: ?*gtk.Button = null,
+    tmux_warning: ?*gtk.Label = null,
+    tmux_supported: bool = false,
+    tmux_preview_binding: ?[]u8 = null,
+    tmux_preview_revision: u64 = 0,
+    tmux_preview_request: ?[]u8 = null,
+    tmux_preview_reply: ?std.json.Parsed(settings.TmuxPreviewReply) = null,
     appearance_value: settings.Appearance = .{},
     rendering: bool = false,
     theme_follow: ?*gtk.CheckButton = null,
@@ -71,7 +84,6 @@ pub const Panel = struct {
     monitoring_quiet_period: ?*gtk.SpinButton = null,
     save_monitoring: ?*gtk.Button = null,
     summary_enabled: ?*gtk.ToggleButton = null,
-    summary_command: ?*gtk.Entry = null,
     summary_model: ?*gtk.Entry = null,
     summary_timeout: ?*gtk.SpinButton = null,
     summary_quiet_period: ?*gtk.SpinButton = null,
@@ -105,6 +117,9 @@ pub const Panel = struct {
     }
     pub fn deinit(self: *Panel) void {
         self.edit_lease.deinit();
+        self.releaseTmuxPreview();
+        if (self.tmux_fields) |fields| fields.deinit();
+        self.tmux_toggles.deinit(self.allocator);
         const voice=self.voice;self.voice=null;
         if(voice) |panel| panel.destroy();
         if (self.content) |content| content.as(gobject.Object).unref();
@@ -131,15 +146,10 @@ pub const Panel = struct {
         self.pages.?.setVisibleChildName(page);
         return auxiliary.ContentLease.borrow(self.content.?.as(gtk.Widget));
     }
-    pub fn setWorkspaceFontContent(self:*Panel,widget:*gtk.Widget) void {
-        const box=self.workspace_font_box orelse return;
-        if(widget.getParent()==box.as(gtk.Widget)) return;
-        while(box.as(gtk.Widget).getFirstChild()) |child| box.remove(child);
-        box.append(widget);
-    }
     pub fn setBackendAvailable(self: *Panel, available: bool) void {
         self.backend_available = available;
         if(!available) self.edit_lease.disconnected();
+        if (!available) self.clearTmuxPreview();
         if (self.content != null) self.applyBackendAvailability();
     }
     pub fn render(self: *Panel, projection: *const settings.Projection) void {
@@ -193,12 +203,25 @@ pub const Panel = struct {
         }
         if(self.edit_lease.replaces(.session_summary)) {
         self.summary_enabled.?.setActive(@intFromBool(projection.session_summary.enabled));
-        setEntry(self.allocator, self.summary_command.?, projection.session_summary.command) catch {};
         setEntry(self.allocator, self.summary_model.?, projection.session_summary.model orelse "") catch {};
         self.summary_timeout.?.setValue(@floatFromInt(projection.session_summary.timeout_ms / 1000));
         self.summary_quiet_period.?.setValue(@floatFromInt(projection.session_summary.quiet_period_ms / 1000));
         }
         if(self.edit_lease.replaces(.attention)) self.notifications_enabled.?.setActive(@intFromBool(projection.attention.system_notifications_enabled));
+        self.tmux_supported = if (self.tmux_fields) |fields|
+            projection.tmux_status_bar != null and fields.value.fields.len == self.tmux_toggles.items.len
+        else false;
+        if (self.edit_lease.replaces(.tmux_status_bar)) {
+            if (self.tmux_fields) |fields| for (fields.value.fields[0..self.tmux_toggles.items.len], self.tmux_toggles.items) |field, button| {
+                const saved = projection.tmux_status_bar orelse &.{};
+                const enabled = for (saved) |id| {
+                    if (std.mem.eql(u8, id, field.id)) break true;
+                } else false;
+                button.setActive(@intFromBool(enabled));
+            };
+        }
+        self.refreshTmuxPreview();
+        if (projection.tmux_status_warning) |warning| self.showTmuxWarning(warning);
         self.applyBackendAvailability();
         setLabel(self.allocator, self.theme_error.?, "") catch {};
         self.state.?.as(gtk.Widget).setVisible(0);
@@ -222,6 +245,163 @@ pub const Panel = struct {
         };
         setLabel(self.allocator, self.codex_notify_status.?, status_text) catch {};
         self.configure_codex_notify.?.as(gtk.Widget).setSensitive(@intFromBool(self.backend_available and status == .missing));
+    }
+
+    fn selectedTmuxFields(self: *Panel, out: *std.ArrayListUnmanaged([]const u8)) !void {
+        const fields = self.tmux_fields orelse return;
+        for (fields.value.fields[0..self.tmux_toggles.items.len], self.tmux_toggles.items) |field, button| {
+            if (button.getActive() != 0) try out.append(self.allocator, field.id);
+        }
+    }
+
+    fn refreshTmuxPreview(self: *Panel) void {
+        const preview = self.tmux_preview orelse return;
+        const facts = self.tmuxFacts();
+        if (self.tmux_purpose) |entry| {
+            entry.as(gtk.Widget).setSensitive(@intFromBool(self.tmux_supported and self.backend_available and facts != null));
+        }
+        if (!self.tmux_supported) {
+            preview.setText("tmux Status Bar settings are unavailable.");
+            return;
+        }
+        if (self.tmux_preview_binding == null) {
+            preview.setText("Select a tmux pane to preview.");
+            return;
+        }
+        if (self.tmux_preview_request != null) {
+            preview.setText("Loading preview…");
+            return;
+        }
+        if (facts == null) {
+            preview.setText("Preview unavailable for this pane.");
+            return;
+        }
+        var fields: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer fields.deinit(self.allocator);
+        self.selectedTmuxFields(&fields) catch return;
+        const view = settings.tmuxStatusView(self.allocator, fields.items, facts, self.tmuxPurposeDraft()) catch return;
+        defer view.deinit();
+        const line = if (fields.items.len == 0) "Status bar hidden"
+            else if (view.value.preview.len == 0) "No selected fields available."
+            else view.value.preview;
+        setLabel(self.allocator, preview, line) catch {};
+    }
+
+    pub fn tmuxPreviewRoot(self: *const Panel) ?*gtk.Root {
+        const preview = (self.tmux_preview orelse return null).as(gtk.Widget);
+        return if (preview.getMapped() != 0) preview.getRoot() else null;
+    }
+
+    fn releaseTmuxPreview(self: *Panel) void {
+        if (self.tmux_preview_binding) |binding| self.allocator.free(binding);
+        if (self.tmux_preview_request) |request| self.allocator.free(request);
+        if (self.tmux_preview_reply) |reply| reply.deinit();
+        self.tmux_preview_binding = null;
+        self.tmux_preview_request = null;
+        self.tmux_preview_reply = null;
+    }
+
+    pub fn clearTmuxPreview(self: *Panel) void {
+        if (self.tmux_preview_binding == null) return;
+        self.releaseTmuxPreview();
+        self.resetTmuxPurpose("");
+        self.refreshTmuxPreview();
+    }
+
+    pub fn beginTmuxPreview(self: *Panel, binding: []const u8, request: []const u8, revision: u64) !void {
+        const owned_binding = try self.allocator.dupe(u8, binding);
+        errdefer self.allocator.free(owned_binding);
+        const owned_request = try self.allocator.dupe(u8, request);
+        if (self.tmux_preview_binding == null or !std.mem.eql(u8, self.tmux_preview_binding.?, binding)) {
+            self.resetTmuxPurpose("");
+        }
+        self.releaseTmuxPreview();
+        self.tmux_preview_binding = owned_binding;
+        self.tmux_preview_revision = revision;
+        self.tmux_preview_request = owned_request;
+        self.refreshTmuxPreview();
+    }
+
+    pub fn finishTmuxPreview(self: *Panel, request: []const u8, reply: ?std.json.Parsed(settings.TmuxPreviewReply)) void {
+        if (self.tmux_preview_request) |active| {
+            if (std.mem.eql(u8, active, request)) {
+                self.allocator.free(active);
+                self.tmux_preview_request = null;
+                self.tmux_preview_reply = reply;
+                if (self.tmuxFacts() != null) {
+                    const saved = self.savedTmuxPurpose();
+                    const draft = self.tmuxPurposeDraft();
+                    if (draft == null or std.mem.eql(u8, std.mem.trim(u8, draft.?, " "), saved)) {
+                        self.resetTmuxPurpose(saved);
+                    }
+                }
+                self.refreshTmuxPreview();
+                return;
+            }
+        }
+        if (reply) |stale| stale.deinit();
+    }
+
+    fn tmuxFacts(self: *const Panel) ?std.json.Value {
+        return if (self.tmux_preview_reply) |reply| reply.value.response.result.tmux_status_facts else null;
+    }
+
+    fn savedTmuxPurpose(self: *const Panel) []const u8 {
+        const facts = self.tmuxFacts() orelse return "";
+        if (facts != .object) return "";
+        const value = facts.object.get("purpose") orelse return "";
+        return if (value == .string) value.string else "";
+    }
+
+    pub fn tmuxPurposeDraft(self: *const Panel) ?[]const u8 {
+        if (!self.tmux_purpose_dirty) return null;
+        const widget = self.tmux_purpose orelse return null;
+        return text(widget);
+    }
+
+    fn resetTmuxPurpose(self: *Panel, value: []const u8) void {
+        const widget = self.tmux_purpose orelse return;
+        const was_rendering = self.rendering;
+        self.rendering = true;
+        defer self.rendering = was_rendering;
+        setEntry(self.allocator, widget, value) catch return;
+        self.tmux_purpose_dirty = false;
+    }
+
+    fn tmuxPurposeChanged(_: *gtk.Editable, self: *Panel) callconv(.c) void {
+        if (self.rendering) return;
+        self.tmux_purpose_dirty = !std.mem.eql(u8, text(self.tmux_purpose.?), self.savedTmuxPurpose());
+        self.edit_lease.edit(.tmux_status_bar);
+        self.refreshTmuxPreview();
+    }
+
+    fn tmuxPreviewShown(_: *gtk.Widget, self: *Panel) callconv(.c) void {
+        self.action_fn(self.action_context, .preview_tmux_status_bar);
+    }
+
+    fn tmuxPreviewHidden(_: *gtk.Widget, self: *Panel) callconv(.c) void {
+        self.clearTmuxPreview();
+    }
+
+    fn tmuxChanged(_: *gtk.ToggleButton, self: *Panel) callconv(.c) void {
+        if (self.rendering) return;
+        self.edit_lease.edit(.tmux_status_bar);
+        self.refreshTmuxPreview();
+    }
+
+    fn saveTmuxClicked(_: *gtk.Button, self: *Panel) callconv(.c) void {
+        if (!self.tmux_supported) return;
+        var fields: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer fields.deinit(self.allocator);
+        self.selectedTmuxFields(&fields) catch return;
+        self.showTmuxWarning("");
+        self.action_fn(self.action_context, .{ .tmux_status_bar = fields.items });
+    }
+
+    fn showTmuxWarning(self: *Panel, message: []const u8) void {
+        const warning = self.tmux_warning orelse return;
+        setLabel(self.allocator, warning, message) catch return;
+        warning.as(gtk.Widget).setVisible(@intFromBool(message.len != 0));
     }
 
     fn ensureContent(self: *Panel) void {
@@ -319,8 +499,6 @@ pub const Panel = struct {
         intelligence.append(monitoring_codex_titles.as(gtk.Widget));
         appendRow(intelligence, label("Analyze after quiet (seconds)", "caption").as(gtk.Widget), monitoring_quiet_period.as(gtk.Widget), save_monitoring.as(gtk.Widget));
         const summary_enabled = toggle("Use Codex app-server summaries", false);
-        const command = gtk.Entry.new();
-        command.setPlaceholderText("Codex executable");
         const model = gtk.Entry.new();
         model.setPlaceholderText("Model (empty means Auto)");
         const timeout = gtk.SpinButton.newWithRange(1, 60, 1);
@@ -328,7 +506,6 @@ pub const Panel = struct {
         const save_summary = gtk.Button.newWithLabel("Save");
         const test_summary = gtk.Button.newWithLabel("Test Provider");
         intelligence.append(summary_enabled.as(gtk.Widget));
-        intelligence.append(command.as(gtk.Widget));
         intelligence.append(model.as(gtk.Widget));
         appendRow(intelligence, label("Timeout (seconds)", "caption").as(gtk.Widget), timeout.as(gtk.Widget), save_summary.as(gtk.Widget));
         intelligence.append(test_summary.as(gtk.Widget));
@@ -351,11 +528,40 @@ pub const Panel = struct {
         notifications.append(connectors.as(gtk.Widget));
         _ = body.addTitled(notifications.as(gtk.Widget), "notifications", "Notifications");
 
-        const workspace = section("Workspace");
-        const workspace_font=gtk.Box.new(.vertical,8);
-        self.workspace_font_box=workspace_font;
-        workspace.append(workspace_font.as(gtk.Widget));
-        _ = body.addTitled(workspace.as(gtk.Widget), "workspace", "Workspace");
+        const tmux = section("tmux Status Bar");
+        self.tmux_preview = label("Loading Settings…", "monospace");
+        _ = gtk.Widget.signals.map.connect(self.tmux_preview.?.as(gtk.Widget), *Panel, tmuxPreviewShown, self, .{});
+        _ = gtk.Widget.signals.unmap.connect(self.tmux_preview.?.as(gtk.Widget), *Panel, tmuxPreviewHidden, self, .{});
+        tmux.append(self.tmux_preview.?.as(gtk.Widget));
+        tmux.append(label("Save updates open panes in this workspace and sets the default for new sessions.", "caption").as(gtk.Widget));
+        const purpose = gtk.Entry.new();
+        purpose.setPlaceholderText("Task or purpose for this pane");
+        purpose.setMaxLength(128);
+        purpose.as(gtk.Widget).setSensitive(0);
+        self.tmux_purpose = purpose;
+        _ = gtk.Editable.signals.changed.connect(purpose.as(gtk.Editable), *Panel, tmuxPurposeChanged, self, .{});
+        tmux.append(purpose.as(gtk.Widget));
+        self.tmux_save = gtk.Button.newWithLabel("Save");
+        connect(self.tmux_save.?, Panel, saveTmuxClicked, self);
+        tmux.append(self.tmux_save.?.as(gtk.Widget));
+        self.tmux_warning = label("", "caption");
+        self.tmux_warning.?.setWrap(1);
+        self.tmux_warning.?.as(gtk.Widget).setVisible(0);
+        tmux.append(self.tmux_warning.?.as(gtk.Widget));
+        self.tmux_fields = settings.tmuxStatusView(self.allocator, &.{}, null, null) catch null;
+        if (self.tmux_fields) |fields| for (fields.value.fields) |field| {
+            const title = self.allocator.dupeZ(u8, field.label) catch break;
+            defer self.allocator.free(title);
+            self.tmux_toggles.ensureUnusedCapacity(self.allocator, 1) catch break;
+            const button = gtk.ToggleButton.new();
+            button.as(gtk.Button).setLabel(title);
+            @import("form_controls.zig").wrapCaption(button.as(gtk.Button).getChild());
+            self.tmux_toggles.appendAssumeCapacity(button);
+            _ = gtk.ToggleButton.signals.toggled.connect(button, *Panel, tmuxChanged, self, .{});
+            tmux.append(button.as(gtk.Widget));
+        };
+        _ = body.addTitled(tmux.as(gtk.Widget), "tmux_status_bar", "tmux Status Bar");
+
         const connections = section("Connections");
         const open_connections = gtk.Button.newWithLabel("Open Connections…");
         connections.append(open_connections.as(gtk.Widget));
@@ -404,7 +610,6 @@ pub const Panel = struct {
         self.monitoring_quiet_period = monitoring_quiet_period;
         self.save_monitoring = save_monitoring;
         self.summary_enabled = summary_enabled;
-        self.summary_command = command;
         self.summary_model = model;
         self.summary_timeout = timeout;
         self.summary_quiet_period = quiet_period;
@@ -420,7 +625,7 @@ pub const Panel = struct {
         for ([_]*gtk.ToggleButton{monitoring_enabled,monitoring_codex_titles}) |field| trackEdit(self,.monitoring,field,gtk.ToggleButton.signals.toggled);
         trackEdit(self,.monitoring,monitoring_quiet_period.as(gtk.Editable),gtk.Editable.signals.changed);
         trackEdit(self,.session_summary,summary_enabled,gtk.ToggleButton.signals.toggled);
-        for ([_]*gtk.Entry{command,model}) |field| trackEdit(self,.session_summary,field.as(gtk.Editable),gtk.Editable.signals.changed);
+        trackEdit(self,.session_summary,model.as(gtk.Editable),gtk.Editable.signals.changed);
         for ([_]*gtk.SpinButton{timeout,quiet_period}) |field| trackEdit(self,.session_summary,field.as(gtk.Editable),gtk.Editable.signals.changed);
         trackEdit(self,.attention,notifications_enabled,gtk.ToggleButton.signals.toggled);
     }
@@ -435,6 +640,9 @@ pub const Panel = struct {
         for (self.theme_buttons) |candidate| if (candidate) |button| button.as(gtk.Widget).setSensitive(@intFromBool(self.backend_available and self.theme_projection != null));
         if (self.theme_follow) |follow| follow.as(gtk.Widget).setSensitive(@intFromBool(self.backend_available and self.theme_projection != null));
         if (self.theme_dropdown) |dropdown| dropdown.as(gtk.Widget).setSensitive(@intFromBool(self.backend_available and self.theme_projection != null));
+        const tmux_enabled = @intFromBool(self.backend_available and self.tmux_supported);
+        if (self.tmux_save) |button| button.as(gtk.Widget).setSensitive(tmux_enabled);
+        for (self.tmux_toggles.items) |button| button.as(gtk.Widget).setSensitive(tmux_enabled);
         const enabled = @intFromBool(self.backend_available);
         inline for (.{ self.save_width, self.save_monitoring, self.save_summary, self.test_summary, self.inspect_codex_notify, self.configure_codex_notify, self.save_notifications }) |candidate| {
             if (candidate) |button| button.as(gtk.Widget).setSensitive(enabled);
@@ -446,7 +654,6 @@ pub const Panel = struct {
         const model_text = text(self.summary_model.?);
         return .{
             .enabled = self.summary_enabled.?.getActive() != 0,
-            .command = text(self.summary_command.?),
             .model = if (model_text.len == 0) null else model_text,
             .timeout_ms = @as(u64, @intCast(self.summary_timeout.?.getValueAsInt())) * 1000,
             .quiet_period_ms = @as(u64, @intCast(self.summary_quiet_period.?.getValueAsInt())) * 1000,

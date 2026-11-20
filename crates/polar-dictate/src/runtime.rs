@@ -792,7 +792,9 @@ impl DictateRuntime {
     }
     /// Event-driven worker, mounted exactly once by the authenticated Host.
     /// Restart recovery disables pending work until the user explicitly retries.
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(self: &Arc<Self>) -> Result<()> {
+        let mut jobs = tokio::task::JoinSet::new();
+        let mut running = HashMap::new();
         let mut deadline = None;
         self.wake.notify_one();
         loop {
@@ -802,7 +804,14 @@ impl DictateRuntime {
                     None => std::future::pending::<()>().await,
                 }
             };
-            tokio::select! { _ = self.wake.notified() => {}, _ = expiry => {} }
+            tokio::select! {
+                _ = self.wake.notified() => {},
+                _ = expiry => {},
+                Some(result) = jobs.join_next(), if !jobs.is_empty() => {
+                    let id: String = result?;
+                    running.remove(&id);
+                }
+            }
             let realtime = self
                 .settings
                 .as_ref()
@@ -810,8 +819,8 @@ impl DictateRuntime {
                 .is_some_and(|settings| {
                     settings.transcription_mode == crate::TranscriptionMode::Realtime
                 });
-            // Optional warmup must yield to new capture/stop/settings work.
-            // Cancelling preparation is safe: providers own their partial resources.
+            // Only the request to schedule preparation yields to new capture
+            // work. The provider owns the dials it has already started.
             if self.store.pending().await?.is_empty() {
               tokio::select! {
                 biased;
@@ -854,17 +863,28 @@ impl DictateRuntime {
                 }
             }
             let pending = self.store.pending().await?;
-            if pending.len() >= 200 {
-                self.wake.notify_one();
-            }
             for record in pending {
-                if let Err(error) = self.process(&record.id).await {
-                    if self.store.get(&record.id).await.is_ok_and(|r| r.processing_enabled) {
-                        let _ = self.change(&record.id, Change::ProcessingFailed {
-                            error: format!("Dictate processing failed: {error}; saved audio retained"),
-                        }).await;
-                    }
+                if jobs.len() == 3 {
+                    break;
                 }
+                if running.contains_key(&record.id)
+                    || (record.transcription_mode == crate::TranscriptionMode::Segmented
+                        && running.values().any(|mode| *mode == crate::TranscriptionMode::Segmented))
+                {
+                    continue;
+                }
+                running.insert(record.id.clone(), record.transcription_mode);
+                let runtime = self.clone();
+                jobs.spawn(async move {
+                    if let Err(error) = runtime.process(&record.id).await {
+                        if runtime.store.get(&record.id).await.is_ok_and(|r| r.processing_enabled) {
+                            let _ = runtime.change(&record.id, Change::ProcessingFailed {
+                                error: format!("Dictate processing failed: {error}; saved audio retained"),
+                            }).await;
+                        }
+                    }
+                    record.id
+                });
             }
         }
     }

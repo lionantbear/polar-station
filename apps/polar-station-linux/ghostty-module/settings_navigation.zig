@@ -18,6 +18,8 @@ pub const Page = struct {
     on_open: ?*const fn (?*anyopaque, *Page, std.json.Value) void = null,
     lease: ?auxiliary.ContentLease = null,
     can_back: bool = false,
+    font: ?WorkspaceFontEditor = null,
+    font_visible: bool = false,
     workspace_directory_visible: bool = false,
     workspace_archive: ?*gtk.Expander = null,
     workspace_archive_expanded: bool = false,
@@ -59,11 +61,16 @@ pub const Page = struct {
     }
     pub fn deinit(self: *Page) void {
         self.clear();
+        if (self.font) |*font| {
+            if (font.workspace_id) |id| self.allocator.free(id);
+            font.root.as(gobject.Object).unref();
+        }
         if (self.workspace_selected_id) |id| self.allocator.free(id);
         c.polar_station_settings_navigation_free(self.handle);
         self.allocator.destroy(self);
     }
     fn clear(self: *Page) void {
+        self.font_visible = false;
         if (self.workspace_archive) |expander| self.workspace_archive_expanded = expander.getExpanded() != 0;
         self.workspace_archive = null;
 
@@ -105,6 +112,111 @@ pub const Page = struct {
         self.lease = lease;
         self.body.append(lease.widget);
     }
+    pub const FontPreference = struct {
+        workspace_id: []const u8,
+        points: u8,
+        min: u8,
+        max: u8,
+    };
+    const SaveFont = *const fn (?*anyopaque, []const u8, i64) anyerror!bool;
+    const WorkspaceFontEditor = struct {
+        root: *gtk.Box,
+        spin: *gtk.SpinButton,
+        apply: *gtk.Button,
+        cancel: *gtk.Button,
+        status: *gtk.Label,
+        workspace_id: ?[]u8 = null,
+        saved: u8 = 0,
+        pending: bool = false,
+        save: SaveFont,
+        context: ?*anyopaque,
+    };
+
+    pub fn mountWorkspaceFont(self: *Page, context: ?*anyopaque, save: SaveFont) void {
+        if (self.font == null) {
+            const root = gtk.Box.new(.vertical, 8);
+            _ = root.as(gobject.Object).refSink();
+            root.append(gtk.Label.new("Current Workspace Font").as(gtk.Widget));
+            const spin = gtk.SpinButton.newWithRange(0, 1, 1);
+            root.append(spin.as(gtk.Widget));
+            const buttons = gtk.Box.new(.horizontal, 8);
+            const apply = gtk.Button.newWithLabel("Apply");
+            const cancel = gtk.Button.newWithLabel("Cancel");
+            buttons.append(cancel.as(gtk.Widget));
+            buttons.append(apply.as(gtk.Widget));
+            root.append(buttons.as(gtk.Widget));
+            const status = gtk.Label.new("");
+            status.setWrap(1);
+            root.append(status.as(gtk.Widget));
+            self.font = .{ .root = root, .spin = spin, .apply = apply, .cancel = cancel,
+                .status = status, .save = save, .context = context };
+            _ = gtk.Button.signals.clicked.connect(apply, *Page, submitFont, self, .{});
+            _ = gtk.Button.signals.clicked.connect(cancel, *Page, cancelFont, self, .{});
+        }
+        self.font_visible = true;
+        self.mount(self.font.?.root.as(gtk.Widget));
+    }
+
+    pub fn refreshFont(self: *Page, preference: ?FontPreference) void {
+        const font = if (self.font) |*editor| editor else return;
+        if (preference) |value| {
+            const same = if (font.workspace_id) |id| std.mem.eql(u8, id, value.workspace_id) else false;
+            const replace = !same or font.spin.getValueAsInt() == font.saved;
+            if (!same) {
+                const id = self.allocator.dupe(u8, value.workspace_id) catch return;
+                if (font.workspace_id) |old| self.allocator.free(old);
+                font.workspace_id = id;
+                font.status.setLabel("");
+            }
+            font.saved = value.points;
+            font.spin.setRange(@floatFromInt(value.min), @floatFromInt(value.max));
+            if (replace) font.spin.setValue(@floatFromInt(value.points));
+        } else {
+            if (font.workspace_id) |id| self.allocator.free(id);
+            font.workspace_id = null;
+            font.status.setLabel("Open a Workspace to edit its terminal font.");
+        }
+        const ready = preference != null and !font.pending;
+        font.spin.as(gtk.Widget).setVisible(@intFromBool(preference != null));
+        font.spin.as(gtk.Widget).setSensitive(@intFromBool(ready));
+        font.apply.as(gtk.Widget).setSensitive(@intFromBool(ready));
+        font.cancel.as(gtk.Widget).setSensitive(@intFromBool(ready));
+    }
+
+    fn submitFont(_: *gtk.Button, self: *Page) callconv(.c) void {
+        const font = if (self.font) |*editor| editor else return;
+        const id = font.workspace_id orelse return;
+        if (font.pending) return;
+        font.pending = font.save(font.context, id, font.spin.getValueAsInt()) catch |err| {
+            self.finishFont(@errorName(err));
+            return;
+        };
+        if (font.pending) {
+            font.status.setLabel("Saving…");
+            font.spin.as(gtk.Widget).setSensitive(0);
+            font.apply.as(gtk.Widget).setSensitive(0);
+            font.cancel.as(gtk.Widget).setSensitive(0);
+        } else self.finishFont("Workspace font saved");
+    }
+
+    fn cancelFont(_: *gtk.Button, self: *Page) callconv(.c) void {
+        const font = if (self.font) |*editor| editor else return;
+        font.spin.setValue(@floatFromInt(font.saved));
+        font.status.setLabel("");
+    }
+
+    pub fn finishFont(self: *Page, message: []const u8) void {
+        const font = if (self.font) |*editor| editor else return;
+        font.pending = false;
+        const ready = @intFromBool(font.workspace_id != null);
+        font.spin.as(gtk.Widget).setSensitive(ready);
+        font.apply.as(gtk.Widget).setSensitive(ready);
+        font.cancel.as(gtk.Widget).setSensitive(ready);
+        const z = self.allocator.dupeZ(u8, message) catch return;
+        defer self.allocator.free(z);
+        font.status.setLabel(z);
+    }
+
     pub fn send(self: *Page, input: anytype) void {
         const bytes = std.json.Stringify.valueAlloc(self.allocator, input, .{}) catch return;
         defer self.allocator.free(bytes);
@@ -220,3 +332,34 @@ pub const Page = struct {
         self.send(.{ .type = input_type, .route = parsed.value });
     }
 };
+
+
+/// Mount destinations using the existing forms supplied by the application.
+pub fn mountDestination(page: *Page, route: std.json.Value, current: anytype, controller: anytype, ports: anytype) void {
+    const field = @import("dictate.zig").string;
+    const kind = field(route, "page");
+    if (std.mem.eql(u8, kind, "workspace")) {
+        page.mountWorkspaceFont(controller, ports.saveFont);
+        ports.refreshFont(controller);
+    } else if (std.mem.eql(u8, kind, "station_backend")) {
+        ports.backend(current, controller, page);
+    } else if (std.mem.eql(u8, kind, "workspace_layout")) {
+        page.mount(gtk.Label.new("Open Layout from the Control Center toolbar.").as(gtk.Widget));
+    } else if (std.mem.eql(u8, kind, "setup")) {
+        ports.diagnostics(current, controller, page, route);
+    } else if (std.mem.eql(u8, kind, "resources")) {
+        ports.requestResources(current);
+        if (current.resources_panel.embed(current.resources_model.projection(), field(route, "resource"))) |lease| page.attach(lease);
+    } else if (std.mem.eql(u8, kind, "connectors")) {
+        page.attach(current.connector_window.embed());
+    } else if (std.mem.eql(u8, kind, "connections")) {
+        if (controller.embedConnections(field(route, "target"), field(route, "section"), field(route, "object"))) |lease| page.attach(lease);
+    } else {
+        for ([_][:0]const u8{ "voice", "notifications", "intelligence", "appearance", "tmux_status_bar" }) |name| {
+            if (!std.mem.eql(u8, kind, name)) continue;
+            if (current.settings_panel.embed(current.settings_model.projection(), name)) |lease| page.attach(lease);
+            return;
+        }
+        page.mount(gtk.Label.new("Setting unavailable").as(gtk.Widget));
+    }
+}

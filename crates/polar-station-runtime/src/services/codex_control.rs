@@ -3,7 +3,7 @@ use super::application_state::{ApplicationStatePublisher, HostChange, wait_obser
 use super::codex_endpoint::{CodexEndpoint, EndpointEvent, RpcFailure};
 use super::imessage_sender::now_ms;
 use super::session_registry::SessionRegistry;
-use codex_app_server_client::AppServerEvent;
+use polar_inhouse_backend_codex::client::AppServerEvent;
 use polar_station_settings::{CodexControlModeV1, CodexControlSettingsV1, SettingsRepository};
 use polar_station_store_sqlite::{CodexBindingRow, SqliteCodexStore};
 use polar_station_protocol::*;
@@ -463,6 +463,9 @@ impl CodexControlService {
                 let value=client.request("thread/start",params).await.map_err(RpcFailure::code)?;
                 let thread=value.pointer("/thread/id").and_then(Value::as_str).ok_or("invalid_thread_response")?;
                 let id=self.observe_loaded_thread(&endpoint_id,thread,None).await?;
+                if let Some(state) = self.states.write().await.get_mut(&id) {
+                    state.metadata.observed_permission = effective_status_permission(&value).map(str::to_owned);
+                }
                 self.persist_binding(&id)?;
                 // Naming persists the original empty Thread through app-server's
                 // own store, so its terminal can resume without a synthetic turn.
@@ -815,6 +818,9 @@ impl CodexControlService {
             return Err("thread_mismatch");
         }
         super::codex_discovery::apply_thread_metadata(&mut state, &value["thread"]);
+        if let Some(permission) = effective_status_permission(&value) {
+            state.metadata.observed_permission = Some(permission.to_owned());
+        }
         state.thread_name = super::codex_discovery::thread_name(&value["thread"]["name"]);
         state.connection = CodexConnectionStateV1::Connected;
         state.error_code = None;
@@ -955,6 +961,8 @@ impl CodexControlService {
         let value = match event.event {
             AppServerEvent::ServerNotification(n) => serde_json::to_value(n).ok(),
             AppServerEvent::ServerRequest(r) => serde_json::to_value(r).ok(),
+            AppServerEvent::ThreadStreamDisconnected(_)
+            | AppServerEvent::ThreadStreamReconnected(_) => return false,
             AppServerEvent::Disconnected { .. } | AppServerEvent::Lagged { .. } => {
                 self.endpoints.lock().await.remove(&event.endpoint_id);
                 for state in self
@@ -1214,6 +1222,20 @@ fn mark_disconnected(state: &mut CodexStateV1, code: &str) {
     state.connection = CodexConnectionStateV1::Disconnected;
     state.error_code = Some(code.into());
     permissions(state);
+}
+
+pub(super) fn effective_status_permission(reply: &Value) -> Option<&'static str> {
+    use codex_app_server_protocol::{AskForApproval, SandboxPolicy};
+
+    let sandbox: SandboxPolicy = serde_json::from_value(reply.get("sandbox")?.clone()).ok()?;
+    let approval: AskForApproval = serde_json::from_value(reply.get("approvalPolicy")?.clone()).ok()?;
+    Some(match sandbox {
+        SandboxPolicy::DangerFullAccess if approval == AskForApproval::Never => "YOLO",
+        SandboxPolicy::DangerFullAccess => "Full access",
+        SandboxPolicy::ReadOnly { .. } => "Read only",
+        SandboxPolicy::ExternalSandbox { .. } => "External sandbox",
+        SandboxPolicy::WorkspaceWrite { .. } => "Workspace write",
+    })
 }
 
 pub(super) fn permissions(state: &mut CodexStateV1) {

@@ -4,21 +4,26 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {ChordCapture} from './capture.js';
+import {ChordCapture, eventTime} from './capture.js';
 
 const PATH = '/com/polarealm/PolarStation/Shortcuts';
 const IFACE = 'com.polarealm.PolarStation.Shortcuts1';
 const XML = `<node><interface name="${IFACE}">
 <property name="Version" type="u" access="read"/>
 <signal name="Edge"><arg type="u" name="event"/></signal>
+<signal name="EdgeAt"><arg type="u" name="event"/><arg type="t" name="milliseconds"/></signal>
 </interface></node>`;
 
 export default class StationShortcuts extends Extension {
-    get Version() { return this._ready ? 1 : 0; }
+    get Version() { return this._ready ? 2 : 0; }
     enable() {
         this._object = Gio.DBusExportedObject.wrapJSObject(XML, this);
         this._object.export(Gio.DBus.session, PATH);
-        this._capture = new ChordCapture(edge => this._object.emit_signal('Edge', new GLib.Variant('(u)', [edge])));
+        this._capture = new ChordCapture((edge, time) => {
+            const capturedAt = time ?? Math.floor(GLib.get_monotonic_time() / 1000);
+            this._object.emit_signal('EdgeAt', new GLib.Variant('(ut)', [edge, capturedAt]));
+            this._object.emit_signal('Edge', new GLib.Variant('(u)', [edge]));
+        });
         this._settings = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.global-shortcuts.application',
             path: '/org/gnome/settings-daemon/global-shortcuts/com.polarealm.PolarStation/'});
         this._reload();
@@ -33,7 +38,8 @@ export default class StationShortcuts extends Extension {
             const name = Meta.accelerator_name(mods, event.get_key_symbol());
             if (!this._bindings.includes(name.toLowerCase())) return;
             this._capture.press(event.get_key_code(), mods,
-                !!(event.get_flags() & Clutter.EventFlags.FLAG_REPEATED));
+                !!(event.get_flags() & Clutter.EventFlags.FLAG_REPEATED),
+                eventTime(event.get_time(), Math.floor(GLib.get_monotonic_time() / 1000)));
         });
         this._deactivated = global.display.connect('accelerator-deactivated', () => {
             const event = Clutter.get_current_event();
@@ -45,10 +51,10 @@ export default class StationShortcuts extends Extension {
         this._modifierChanged = this._keymap.connect('state-changed', () => {
             const held = this._capture.held;
             if (held && (global.get_pointer()[2] & held.modifiers) !== held.modifiers)
-                this._capture.release(held.keycode, 0);
+                this._capture.release(held.keycode, 0, Math.floor(GLib.get_monotonic_time() / 1000));
         });
         this._ready = true;
-        this._object.emit_property_changed('Version', new GLib.Variant('u', 1));
+        this._object.emit_property_changed('Version', new GLib.Variant('u', 2));
         this._session = Main.sessionMode.connect('updated', () => {
             if (Main.sessionMode.isLocked) this._capture.cancel(true);
         });
@@ -70,7 +76,8 @@ export default class StationShortcuts extends Extension {
         if ([Clutter.KEY_Control_L, Clutter.KEY_Control_R].includes(symbol)) modifier = Clutter.ModifierType.CONTROL_MASK;
         if ([Clutter.KEY_Shift_L, Clutter.KEY_Shift_R].includes(symbol)) modifier = Clutter.ModifierType.SHIFT_MASK;
         if ([Clutter.KEY_Super_L, Clutter.KEY_Super_R].includes(symbol)) modifier = Clutter.ModifierType.SUPER_MASK;
-        this._capture.release(event.get_key_code(), modifier);
+        this._capture.release(event.get_key_code(), modifier,
+            eventTime(event.get_time(), Math.floor(GLib.get_monotonic_time() / 1000)));
     }
     disable() {
         this._ready = false;

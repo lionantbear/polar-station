@@ -34,6 +34,7 @@ impl ResourceService {
             origin: source.origin.clone(),
             paths: vec![],
             local_path: None,
+            checked_path: None,
         };
         let result = async {
             self.check_file_source(&source)?;
@@ -43,6 +44,7 @@ impl ResourceService {
             for reference in &references {
                 if !context.paths.contains(&reference.path) { context.paths.push(reference.path.clone()); }
             }
+            context.checked_path = references.first().map(|reference| reference.path.clone());
             let files = self.existing_candidate_files(&source.origin.execution_target_id, &references)
                 .await.map_err(|e| FileOpenFailure::new(FileOpenStage::Verify, "source_file_check_failed", e))?;
             let reference = files.into_iter().next().ok_or_else(|| FileOpenFailure::new(
@@ -73,6 +75,12 @@ impl ResourceService {
                     "The source machine is unavailable.",
                 ));
             }
+            let context = FileOpenContext {
+                origin: file.source.origin.clone(),
+                paths: vec![file.reference.path.clone()],
+                local_path: None,
+                checked_path: Some(file.reference.path.clone()),
+            };
             let files = self
                 .existing_candidate_files(
                     &file.source.origin.execution_target_id,
@@ -81,15 +89,16 @@ impl ResourceService {
                 .await
                 .map_err(|e| {
                     FileOpenFailure::new(FileOpenStage::Verify, "source_file_check_failed", e)
+                        .with_context(context.clone())
                 })?;
             if files.is_empty() {
                 return Err(FileOpenFailure::new(
                     FileOpenStage::Verify,
                     "file_not_found",
                     "The source file is no longer available.",
-                ));
+                ).with_context(context));
             }
-            self.access_resolution(file).await
+            self.access_resolution(file).await.map_err(|failure| failure.with_context(context))
         }
         .await
         .unwrap_or_else(|failure| FileOpenResolution::Failure { failure });
@@ -126,6 +135,7 @@ impl ResourceService {
                 origin: file.source.origin.clone(),
                 paths: vec![file.reference.path.clone()],
                 local_path,
+                checked_path: Some(file.reference.path.clone()),
             })
         })?;
         self.check_resolved_file(&file)?;

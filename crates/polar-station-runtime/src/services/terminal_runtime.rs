@@ -2,7 +2,7 @@ mod pty;
 mod lifetime;
 pub use lifetime::TerminalLifetimes;
 mod control;
-mod portable;
+use super::terminal_source as portable;
 pub use control::TerminalControl;
 mod registry;
 

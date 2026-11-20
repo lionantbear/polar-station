@@ -25,6 +25,7 @@ impl crate::runtime::DictateRuntime {
             // stop/error path; capture cannot silently keep a dead stream alive.
             let reason = match result.as_ref().err().and_then(|error| error.downcast_ref::<polar_voice::VoiceError>()) {
                 Some(error @ (polar_voice::VoiceError::AudioConnectionTimeout
+                    | polar_voice::VoiceError::AudioConnectionLost
                     | polar_voice::VoiceError::FinalTranscriptTimeout
                     | polar_voice::VoiceError::Timeout)) => error.code(),
                 _ => "Realtime transcription interrupted",

@@ -69,3 +69,5 @@ pub mod storage;
 pub mod terminal_runtime;
 
 pub mod terminal_text;
+#[path = "terminal_runtime/portable.rs"]
+mod terminal_source;

@@ -35,12 +35,25 @@ def renderer_edits() -> dict[str, list[tuple[str, str]]]:
     def add(path: str, before: str, after: str) -> None:
         out.setdefault(path, []).append((before, after))
 
+    font = "pub fn setFontSize(self: *Surface, size: font.face.DesiredSize) !void {"
+    add("src/Surface.zig", font, """pub fn synchronizeManagedFontSize(self: *Surface, points: f32) !void {
+    if (!(points >= 1 and points <= 255)) return error.InvalidFontSize;
+    if (self.font_size.points == points and self.font_size_adjusted) return;
+    _ = try self.performBindingAction(.{ .set_font_size = points });
+}
+
+""" + font)
+
     generic = "src/renderer/generic.zig"
     before = "                self.terminal_state = .empty;\n            }\n            self.terminal_state_frame_count += 1;"
     add(generic, before, "                self.terminal_state = .empty;\n                self.terminal_state_frame_count = 0;\n            }\n            self.terminal_state_frame_count += 1;")
     before = "                state.mouse.point,\n                state.mouse.mods,"
     add(generic, before, "                critical.mouse.point,\n                critical.mouse.mods,")
-    add(generic, "        focused: bool,", "        focused: bool,\n\n        /// Latest native visibility, combined with focus on the render thread.\n        visible: bool = true,")
+    add(generic, "        focused: bool,", """        focused: bool,
+
+        /// Written on the render thread, read at draw admission under draw_mutex.
+        visible: bool = true,
+        station_frame_fresh: bool = true,""")
     before = '''            try display_link.setOutputCallback(
                 xev.Async,
                 &displayLinkCallback,
@@ -95,7 +108,12 @@ def renderer_edits() -> dict[str, list[tuple[str, str]]]:
         /// Callback when the window is visible or occluded.
         /// Must be called on the render thread, independently of focus.
         pub fn setVisible(self: *Self, visible: bool) void {
-            self.visible = visible;
+            {
+                self.draw_mutex.lock();
+                defer self.draw_mutex.unlock();
+                self.visible = visible;
+                if (!visible) self.station_frame_fresh = false;
+            }
             self.syncDisplayLink();
         }
 
@@ -131,10 +149,42 @@ def renderer_edits() -> dict[str, list[tuple[str, str]]]:
 
 ''' + before)
 
+    before = "            if (self.terminal_state_frame_count >= max_terminal_state_frame_count) {"
+    add(generic, before, """            if ((comptime @import("build_options").polar_tmux) and !self.station_frame_fresh or
+                self.terminal_state_frame_count >= max_terminal_state_frame_count)
+            {""")
+    before = "            self.cells_rebuilt = true;"
+    add(generic, before, before + '\n            if (comptime @import("build_options").polar_tmux) self.station_frame_fresh = true;')
+    before = """            // We hold a the draw mutex to prevent changes to any
+            // data we access while we're in the middle of drawing.
+            self.draw_mutex.lock();
+            defer self.draw_mutex.unlock();"""
+    add(generic, before, before + '''
+
+            if ((comptime @import("build_options").polar_tmux) and
+                (!self.visible or !self.station_frame_fresh)) return;
+'''.rstrip())
+
     # Cursor modes hide the display cursor but do not stop Ghostty's timer.
     # Reuse the immutable construction capability at both timer start sites;
     # native focus and all other renderer wakeups keep their upstream meaning.
     renderer = "src/renderer/Thread.zig"
+    before = """                // If we became visible then we immediately trigger a draw.
+                // We don't need to update frame data because that should
+                // still be happening.
+                if (v) self.drawFrame(false);"""
+    add(renderer, before, """                // Station skipped preparation while hidden. wakeupCallback
+                // prepares the latest complete frame after draining this message.
+                if (comptime !@import("build_options").polar_tmux) {
+                    if (v) self.drawFrame(false);
+                }""")
+    before = """    // Update our frame data
+    t.renderer.updateFrame("""
+    add(renderer, before, """    // Termio and renderer control messages still run while hidden.
+    if ((comptime @import("build_options").polar_tmux) and
+        !t.flags.visible) return .disarm;
+
+""" + before)
     add(renderer, "    // Start blinking the cursor.\n    self.cursor_h.run(",
         "    // Processless displays have no terminal cursor.\n    if (self.cursorBlinkAllowed()) self.cursor_h.run(")
     add(renderer, "                    if (self.cursor_c.state() != .active) {",
@@ -153,10 +203,56 @@ fn cursorBlinkAllowed(self: *const Thread) bool {
     return out
 
 
-def edits() -> dict[str, list[tuple[str, str]]]:
+def edits(platform: str = "macos") -> dict[str, list[tuple[str, str]]]:
     out = renderer_edits()
+    if platform == "linux":
+        gtk_surface = "src/apprt/gtk/class/surface.zig"
+        out.setdefault(gtk_surface, []).extend([
+            ("        font_size_request: ?*font.face.DesiredSize = null,",
+             "        font_size_request: ?*font.face.DesiredSize = null,\n        managed_font_request: ?f32 = null,"),
+            ('        if (priv.font_size_request) |size| config.@"font-size" = size.points;',
+             '        if (priv.font_size_request) |size| config.@"font-size" = size.points;\n'
+             '        if (priv.managed_font_request) |points| config.@"font-size" = points;'),
+            ('        priv.core_surface = surface;\n',
+             '        priv.core_surface = surface;\n\n'
+             '        if (priv.managed_font_request) |points| {\n'
+             '            if (surface.synchronizeManagedFontSize(points)) |_| {\n'
+             '                priv.managed_font_request = null;\n'
+             '            } else |err| {\n'
+             '                log.warn("could not apply saved Workspace font err={}", .{err});\n'
+             '            }\n'
+             '        }\n'),
+        ])
+
     def add(path: str, before: str, after: str) -> None:
         out.setdefault(path, []).append((before, after))
+
+    if platform == "macos":
+        controller = "macos/Sources/Features/Terminal/BaseTerminalController.swift"
+        before = """    func windowDidChangeOcclusionState(_ notification: Notification) {
+        let visible = self.window?.occlusionState.contains(.visible) ?? false
+        for view in surfaceTree {
+            if let surface = view.surface {
+                ghostty_surface_set_occlusion(surface, visible)
+            }
+        }
+    }"""
+        add(controller, before, """    func windowDidChangeOcclusionState(_ notification: Notification) {
+        synchronizeStationSurfaceVisibility()
+    }
+
+    func synchronizeStationSurfaceVisibility() {
+        let visible = window.map { window in
+            window.isVisible && !window.isMiniaturized &&
+                window.occlusionState.contains(.visible) &&
+                (window.tabGroup?.selectedWindow ?? window) === window
+        } ?? false
+        for view in surfaceTree {
+            if let surface = view.surface {
+                ghostty_surface_set_occlusion(surface, visible && !view.isHiddenOrHasHiddenAncestor)
+            }
+        }
+    }""")
 
     backend = "src/termio/backend.zig"
     add(backend, "pub const Kind = enum { exec };", "pub const Kind = enum { exec, display };")
@@ -738,7 +834,7 @@ pub fn stationDisplayOnly(self: *const Self) bool {
 
 def plan(source: Path, platform: str) -> dict[Path, bytes]:
     source = source.resolve(strict=True)
-    rules = edits()
+    rules = edits(platform)
     if platform == 'linux':
         before = "    try result.loadRecursiveFiles(alloc_gpa);\n    try result.finalize();"
         after = """    try result.loadRecursiveFiles(alloc_gpa);

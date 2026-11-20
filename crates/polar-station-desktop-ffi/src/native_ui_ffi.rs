@@ -127,6 +127,23 @@ fn static_c_string(value:&str)->*const c_char {
 pub extern "C" fn polar_station_shortcut_count() -> usize {
     STATION_SHORTCUTS.len()
 }
+/// Render the shared editor projection from selected fields and optional Session facts.
+/// # Safety
+/// The input points to `len` readable bytes. Free the result with desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_tmux_status_bar_view(bytes: *const u8, len: usize) -> *mut c_char {
+    if bytes.is_null() || len == 0 || len > 32 * 1024 {
+        return std::ptr::null_mut();
+    }
+    let input = unsafe { std::slice::from_raw_parts(bytes, len) };
+    serde_json::from_slice::<polar_station_workspace::TmuxStatusBarPreview>(input)
+        .or_else(|_| serde_json::from_slice(input).map(|fields| polar_station_workspace::TmuxStatusBarPreview { fields, facts: None, purpose: None }))
+        .ok()
+        .and_then(|value| serde_json::to_vec(&value.view()).ok())
+        .and_then(|value| CString::new(value).ok())
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
 /// Returns 1-based catalog index, or zero for a key not owned by Station.
 #[unsafe(no_mangle)]
 pub extern "C" fn polar_station_shortcut_lookup(platform: u32, key: u32) -> u32 {

@@ -33,7 +33,9 @@ impl Engine {
             && !self
                 .entries
                 .iter()
-                .any(|e| e.operation_id != entry.operation_id && e.phase.active())
+                .any(|e| e.operation_id != entry.operation_id
+                    && e.phase.active()
+                    && (!super::realtime_recording(e) || e.phase.capturing()))
     }
     pub(super) fn select_completion(
         &mut self,
@@ -157,12 +159,17 @@ impl Engine {
         effects
     }
     pub fn observe_recording(&mut self, record: &polar_dictate::Recording) -> Vec<Effect> {
+        let effects = self.observe_recording_inner(record);
+        self.order_insertions(effects)
+    }
+
+    fn observe_recording_inner(&mut self, record: &polar_dictate::Recording) -> Vec<Effect> {
         let mut effects = Vec::new();
         if !self.host_events {
             return effects;
         }
-        let timeout = if record.capture != polar_dictate::CaptureState::Recording {
-            record.failure().filter(|code| super::preview::timeout_copy(code).is_some())
+        let failure = if record.capture != polar_dictate::CaptureState::Recording {
+            record.failure().filter(|code| super::preview::failure_copy(code).is_some())
         } else {
             None
         };
@@ -170,7 +177,7 @@ impl Engine {
             e.operation_id == record.id
                 && e.host_recording
                 && (matches!(e.phase, Phase::Transcribing | Phase::Rewriting)
-                    || (timeout.is_some() && matches!(e.phase, Phase::Starting | Phase::Recording | Phase::Failed)))
+                    || (failure.is_some() && matches!(e.phase, Phase::Starting | Phase::Recording | Phase::Failed)))
         }) else {
             return effects;
         };
@@ -189,7 +196,7 @@ impl Engine {
             return effects;
         }
         let Some(original) = record.original() else {
-            if let Some(code) = timeout {
+            if let Some(code) = failure {
                 if matches!(entry.phase, Phase::Starting | Phase::Recording) {
                     effects.push(Effect::FinishCapture { operation_id: record.id.clone() });
                 }

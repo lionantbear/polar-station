@@ -29,6 +29,16 @@ public enum SessionAssignmentPresentation: Equatable, Sendable {
             )
         }
 
+        if let owner = nativeView.tabs.first(where: { tab in
+            tab.panes.contains { $0.executionTargetID == executionTargetID && $0.tmuxSessionID == tmuxSessionID }
+        }) {
+            return .assignedElsewhere(tabID: owner.tabID)
+        }
+        let identity = SessionRowProjectionV1.Identity(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)
+        if let tabID = nativeView.otherOpenSessionTabs[identity] {
+            return .assignedElsewhere(tabID: tabID)
+        }
+
         if selectedTab.panes.count >= 9 {
             return .tabFull(tabID: selectedTab.tabID)
         }
@@ -49,7 +59,7 @@ public enum SessionAssignmentPresentation: Equatable, Sendable {
         case .available:
             return policy.add
         case .assignedHere:
-            return policy.assignedElsewhere
+            return policy.remove
         case .assignedElsewhere:
             return policy.assignedElsewhere
         case .tabFull:

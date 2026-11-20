@@ -47,138 +47,8 @@
         let completion: (@MainActor (String?) -> Void)?
     }
 
-    private struct WorkspaceDirectoryRow: Decodable, Equatable, Identifiable {
-        let id: String
-        let name: String
-        let archived: Bool
-    }
-
-    private struct WorkspaceSettingsLayout: Codable, Equatable {
-        struct Tab: Codable, Equatable, Identifiable {
-            let id: String
-            var title: String
-            var pane_ids: [String]
-        }
-        var name: String
-        var tabs: [Tab]
-    }
-
-    private struct WorkspaceSettingsDetail: Decodable {
-        struct Workspace: Decodable {
-            struct Tab: Decodable {
-                struct Pane: Decodable {
-                    let id: String
-                    let execution_target_id: String?
-                    let tmux_session_id: String?
-                    let content: StationPaneContentV1?
-                    let source: TerminalSourceV1?
-                }
-                let panes: [Pane]
-                let mode: String
-                let main_pane_id: String?
-                let split_ratios: [Double]?
-                let id: String
-            }
-            let tabs: [Tab]
-            let revision: UInt64
-        }
-        let revision: UInt64
-        let workspace: Workspace
-        let layout: WorkspaceSettingsLayout
-    }
-
-    private struct WorkspaceSettingsContent: View {
-        @ObservedObject var context: PolarStationWindowContext
-        let paneID: String
-        let load: (String) throws -> WorkspaceSettingsDetail
-        let save: (String, UInt64, WorkspaceSettingsLayout) async throws -> WorkspaceSettingsDetail
-        @State private var detail: WorkspaceSettingsDetail?
-        @State private var draft: WorkspaceSettingsLayout?
-        @State private var message: String?
-        @State private var saving = false
-
-        private var id: String? { context.settingsWorkspaceByPane[paneID] }
-        var body: some View {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(id == nil ? "Settings" : "Workspace").font(.title2)
-                    if let layout = draft, let detail {
-                        TextField("Workspace name", text: Binding(get: { draft?.name ?? "" }, set: { draft?.name = $0 }))
-                        Text("Tabs & Panes").font(.headline)
-                        ForEach(Array(layout.tabs.enumerated()), id: \.element.id) { index, tab in
-                            GroupBox(detail.workspace.tabs.first { candidate in
-                                candidate.id == tab.id
-                            }?.mode.capitalized ?? "Tab") {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    TextField("Tab title", text: Binding(get: { draft?.tabs[index].title ?? "" }, set: { draft?.tabs[index].title = $0 }))
-                                    VStack(alignment: .leading) {
-                                        Button("Move Tab up") { draft?.tabs.swapAt(index, index - 1) }.disabled(index == 0)
-                                        Button("Move Tab down") { draft?.tabs.swapAt(index, index + 1) }.disabled(index + 1 == layout.tabs.count)
-                                    }
-                                    ForEach(Array(tab.pane_ids.enumerated()), id: \.element) { position, pane in
-                                        let binding = detail.workspace.tabs.flatMap(\.panes).first { $0.id == pane }
-                                        let saved = detail.workspace.tabs.first { $0.id == tab.id }
-                                        Text([saved?.main_pane_id == pane ? "MAIN" : nil,
-                                              binding?.source?.host.target_id ?? binding?.execution_target_id,
-                                              binding?.tmux_session_id, binding?.content?.kind.rawValue, pane]
-                                            .compactMap { $0 }.joined(separator: " · ")).textSelection(.enabled)
-                                        VStack(alignment: .leading) {
-                                            Button("Move Pane up") { draft?.tabs[index].pane_ids.swapAt(position, position - 1) }.disabled(position == 0)
-                                            Button("Move Pane down") { draft?.tabs[index].pane_ids.swapAt(position, position + 1) }.disabled(position + 1 == tab.pane_ids.count)
-                                            Menu("Move to Tab") {
-                                                ForEach(layout.tabs.indices.filter { $0 != index && layout.tabs[$0].pane_ids.count < 9 }, id: \.self) { target in
-                                                    Button(layout.tabs[target].title) {
-                                                        draft?.tabs[index].pane_ids.remove(at: position)
-                                                        draft?.tabs[target].pane_ids.append(pane)
-                                                    }
-                                                }
-                                            }.disabled(layout.tabs.count < 2)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Button("Save") { commit() }.disabled(saving || detail.layout == layout)
-                    }
-                    if id != nil { Button("Reload", action: reload).disabled(saving) }
-                    if let message { Text(message).foregroundStyle(.secondary) }
-                    if id == nil { Text("Choose a Workspace in Control Center Settings.") }
-                }.disabled(saving).padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            }.task(id: id) { reload() }
-        }
-
-        private func reload() {
-            message = nil
-            detail = nil
-            draft = nil
-            guard let id else { return }
-            do {
-                let loaded = try load(id)
-                detail = loaded
-                draft = loaded.layout
-            } catch { message = error.localizedDescription }
-        }
-
-        private func commit() {
-            guard let id, let detail, let draft else { return }
-            saving = true
-            Task {
-                defer { saving = false }
-                do {
-                    let saved = try await save(id, detail.revision, draft)
-                    guard self.id == id else { return }
-                    self.detail = saved
-                    self.draft = saved.layout
-                    message = "Workspace saved"
-                } catch {
-                    if self.id == id { message = error.localizedDescription }
-                }
-            }
-        }
-    }
-
     @MainActor
-    private final class PolarStationWindowContext: ObservableObject {
+    final class PolarStationWindowContext: ObservableObject {
         let executor: PolarStationNativeExecutor
         let settingsNavigation = SettingsNavigation()
         let settingsEdits=SettingsEditInteraction()
@@ -197,12 +67,11 @@
         }
         let presentation = ControlCenterPresentationState()
         let applicationShortcuts = ApplicationShortcutCommandState()
-        @Published var settingsWorkspaceByPane: [String: String] = [:]
-        @Published var workspaceDirectory: [WorkspaceDirectoryRow] = []
-        @Published var selectedWorkspaceSettingsID: String?
+        let workspaceManager = WorkspaceManagerWindow()
+        var expandedLayoutHost: NSHostingView<AnyView>?
         @Published var layout: NativeWorkspaceLayoutView?
-        var paneHost: NSHostingView<PolarStationPaneRoot>?
-        var shortcutEditorHost: NSHostingView<PolarStationSessionShortcutRoot>?
+        fileprivate var paneHost: NSHostingView<PolarStationPaneRoot>?
+        fileprivate var shortcutEditorHost: NSHostingView<PolarStationSessionShortcutRoot>?
         weak var activeContainer: TerminalViewContainer?
         var widthPreferenceLoaded = false
         init(executor: PolarStationNativeExecutor) {
@@ -211,9 +80,20 @@
         }
     }
 
+    private struct ExpandedWorkspaceLayout: View {
+        @ObservedObject var context: PolarStationWindowContext
+        @ObservedObject var model: ControlCenterStore
+        let emit: @MainActor (ControlCenterIntentV1) -> Void
+
+        var body: some View {
+            WorkspaceLayoutDetail(manager: context.workspaceManager, model: model, liveLayout: context.layout, emit: emit)
+        }
+    }
+
     private struct PolarStationPaneRoot: View {
         @ObservedObject var windowContext: PolarStationWindowContext
         @ObservedObject var model: ControlCenterStore
+        @ObservedObject var workspaceManager: WorkspaceManagerWindow
         @ObservedObject var applicationShortcuts: ApplicationShortcutCommandState
         @ObservedObject var presentation: ControlCenterPresentationState
         let handlePresentationAction:
@@ -226,6 +106,8 @@
             VStack(spacing: 0) {
                     if let projection = model.projection {
                         ControlCenterView(
+                            previewWorkspace: { PolarStationRuntime.shared.previewWorkspace($0, in: windowContext) },
+                            workspacePreviewOnly: workspaceManager.isPreview,
                             projection: projection,
                             nativeLayoutView: windowContext.layout,
                             presentation: presentation.body,
@@ -249,7 +131,7 @@
                             prepareSessionEditor: model.prepareSessionEditor,
                             sessionCreationRecovery: model.sessionCreationRecovery,
                             settingsNavigation:windowContext.settingsNavigation,
-                            settingsContent:{ route in AnyView(settingsPage(route)) }
+                            settingsContent: { route in AnyView(PolarStationSettings(route: route, windowContext: windowContext, model: model)) }
                         )
                     } else {
                         Color.clear
@@ -265,94 +147,6 @@
             .accessibilityIdentifier("polar-station-control-center")
         }
 
-        private func workspaceSettingsRow(_ row: WorkspaceDirectoryRow) -> some View {
-            Button {
-                PolarStationRuntime.shared.selectWorkspaceSettings(row.id, in: windowContext)
-            } label: {
-                HStack {
-                    Text(row.name)
-                    if row.id == windowContext.selectedWorkspaceSettingsID {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        }
-
-        @ViewBuilder private func settingsPage(_ route:SettingsNavigation.Route) -> some View {
-            switch route.page {
-            case "station_backend":
-                Color.clear.onAppear {
-                    PolarStationRuntime.shared.openBackendSettings()
-                    windowContext.settingsNavigation.completeBack()
-                }
-            case "workspaces":
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(windowContext.workspaceDirectory.filter { !$0.archived }) { row in
-                            workspaceSettingsRow(row)
-                        }
-                        if windowContext.workspaceDirectory.contains(where: { $0.archived }) {
-                            DisclosureGroup("Archived") {
-                                ForEach(windowContext.workspaceDirectory.filter { $0.archived }) { row in
-                                    workspaceSettingsRow(row)
-                                }
-                            }
-                        }
-                        if windowContext.workspaceDirectory.isEmpty { Text("No saved Workspaces") }
-                        Button("Import, export and archive…") {
-                            PolarStationRuntime.shared.openWorkspaceManager(in: windowContext)
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                }.onAppear { PolarStationRuntime.shared.refreshWorkspaceSettingsDirectory() }
-            case "setup": PolarStationDiagnosticsRoot(model:model,remote:route.remote ?? false,context:windowContext)
-            case "connections":
-                if let projection = model.projection {
-                    ConnectionsView(interaction:windowContext.settingsConnections,formBuffer:windowContext.connectionsFormBuffer,projection:projection.connections,controlRevision:projection.controlRevision,
-                        close:windowContext.settingsNavigation.completeBack, requestCodex:model.requestCodex, requestHostTransfer:model.requestHostTransfer,
-                        initialMachine:route.target ?? "local", initialPage:route.section == "codex" ? "Codex" : route.section == "polar" ? "Polar" : "Connection",
-                        initialPolar:route.section == "polar" ? route.object : nil,initialEndpoint:route.section == "codex" ? route.object : nil,embedded:true,
-                        submit:model.submitSSHTarget)
-                        .onAppear {
-                            windowContext.settingsNavigation.requestEditorClose = { [weak interaction=windowContext.settingsConnections] in interaction?.requestClose?() }
-                        }
-                        .onDisappear { windowContext.settingsNavigation.requestEditorClose=nil }
-                }
-            case "connectors":
-                ConnectorSettingsView(request:model.requestConnector,requestCodex:model.requestCodex,revision:model.codexStateRevision,
-                    embedded:true,formBuffer:windowContext.connectorFormBuffer,dismiss:windowContext.settingsNavigation.back)
-            case "resources":
-                VStack(spacing:0) {
-                    BackendStatusBanner(availability:model.backendAvailability,retry:model.retryBackend)
-                    ResourcesControlView(resourceEditor:model.resourceEditor,initialResourceID:route.resource,embedded:true,projection:model.resourcesProjection,
-                        logTail:model.resourceLogTail,isLoading:model.isResourcesLoading,errorMessage:model.resourcesError,
-                        backendActionsEnabled:model.backendAvailability.hostActionsEnabled,load:model.loadResources,
-                        apply:model.applyResources,restart:model.restartResource,openMirror:model.openAndroidMirror,
-                        loadLog:model.loadResourceLog,dismiss:windowContext.settingsNavigation.back)
-                }
-            default:
-                RetainedSettingsForm(context:windowContext,page:route.page,root:PolarStationSettingsRoot(initialVoicePage:route.page == "voice",embedded:true,
-                    initialPage:route.page == "notifications" ? "Notifications" : route.page == "workspace" ? "Workspace" : route.page == "intelligence" ? "Intelligence" : route.page == "voice" ? "Voice" : "Appearance",
-                    promptEditor:AnyView(SettingsPromptControls(interaction:PolarStationRuntime.shared.settingsText,buffer:PolarStationRuntime.shared.settingsTextBuffer)),
-                    voiceTools:PolarStationRuntime.shared.settingsVoiceTools,model:model,editLease:windowContext.settingsEdits,formBuffer:windowContext.settingsFormBuffer,voiceFormBuffer:windowContext.voiceFormBuffer,
-                    updateWorkspaceFont:{ performLocalWorkspaceOperation(.setManagedTerminalFontSize(points:Int($0))) },
-                    openResources:{ windowContext.settingsNavigation.open(.init(page:"resources")) },
-                    openConnectors:{ windowContext.settingsNavigation.open(.init(page:"connectors")) },
-                    dismiss:windowContext.settingsNavigation.back)).id(route.page)
-            }
-        }
-
-    }
-
-    /// Retain the original form tree and native fields across directory navigation.
-    private struct RetainedSettingsForm:NSViewRepresentable {
-        let context:PolarStationWindowContext
-        let page:String
-        let root:PolarStationSettingsRoot
-        func makeNSView(context:Context)->NSHostingView<PolarStationSettingsRoot> {
-            if let host=self.context.settingsFormHosts[page] {host.rootView=root;return host}
-            let host=NSHostingView(rootView:root);self.context.settingsFormHosts[page]=host;return host
-        }
-        func updateNSView(_ view:NSHostingView<PolarStationSettingsRoot>,context:Context) {view.rootView=root}
     }
 
     private struct PolarStationSessionShortcutRoot: View {
@@ -366,155 +160,6 @@
                     prepare: model.prepareSessionEditor, submit: model.submitSSHTarget,
                     recovery: model.sessionCreationRecovery)
                     .environment(\.stationToolSetupPorts,context.toolSetup)
-            }
-        }
-    }
-
-    private struct PolarStationDiagnosticsRoot: View {
-        @ObservedObject var model: ControlCenterStore
-        let remote: Bool
-        let context:PolarStationWindowContext
-        @ObservedObject private var interaction:DiagnosticsInteraction
-        init(model:ControlCenterStore,remote:Bool,context:PolarStationWindowContext) {
-            self.model=model;self.remote=remote;self.context=context;self.interaction=context.diagnostics;self.connectionsInteraction=context.settingsConnections
-        }
-        @ObservedObject private var connectionsInteraction:ConnectionsInteraction
-        @State private var editor: DiagnosticsInteraction.Action?
-        @State private var editorRow: String?
-        @State private var editorGroup: String?
-        @State private var voiceFacts: [String: Any] = [:]
-        @State private var voice = VoiceClient()
-        private var voiceTools:PolarStationVoiceTools { PolarStationRuntime.shared.settingsVoiceTools }
-        @State private var retainedRow: DiagnosticsInteraction.Row?
-        @State private var retainedHost: DiagnosticsInteraction.Host?
-
-        private func object<T: Encodable>(_ value: T) -> Any {
-            (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? NSNull()
-        }
-        @MainActor private func updateFacts() {
-            interaction.toolSetup=context.toolSetup
-            interaction.read = model.readSessionEditor
-            interaction.present = { action in
-                switch action.type {
-                case "reconnect_host": model.retryBackend()
-                case "request_microphone_access":
-                    AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in await sampleVoice() } }
-                case "open_microphone_settings": MicrophonePermissionPresentation.openSettings()
-                case "request_external_input_access", "open_external_input_settings":
-                    if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") { NSWorkspace.shared.open(url) }
-                default: editor = action
-                }
-            }
-            let generation: UInt64
-            if case .ready(let value) = model.backendAvailability { generation = value } else { generation = 0 }
-            interaction.facts(generation:generation, value:[
-                "host":model.backendAvailability.hostActionsEnabled ? "connected" : "offline",
-                "connections":model.projection.map { object($0.connections) } ?? NSNull(),
-                "resources":model.resourcesProjection.map(object) ?? NSNull(),
-                "inspection_supported":model.projection.map { $0.targetToolsInspection as Any } ?? NSNull(),
-                "voice":voiceFacts])
-        }
-        @MainActor private func sampleVoice() async {
-            let permissions: [AVAuthorizationStatus: String] = [.notDetermined:"not_requested", .authorized:"granted", .denied:"denied", .restricted:"restricted"]
-            voiceFacts["microphone"] = permissions[AVCaptureDevice.authorizationStatus(for:.audio)] ?? "unknown"
-            voiceFacts["external_input_requested"] = true
-            voiceFacts["external_input_permission"] = AXIsProcessTrusted() ? "granted" : "denied"
-            let data = await voice.request(Data(#"{"op":"voice_status"}"#.utf8))
-            if let result = try? JSONSerialization.jsonObject(with:data) as? [String:Any], result["ok"] as? Bool == true,
-               let status = result["payload"] as? [String:Any] {
-                voiceFacts["account_signed_in"] = status["signed_in"]
-                voiceFacts["service_available"] = true
-            } else {
-                voiceFacts.removeValue(forKey:"account_signed_in")
-                voiceFacts["service_available"] = false
-            }
-            updateFacts()
-        }
-        var body: some View {
-            ScrollView {
-                VStack(alignment:.leading, spacing:16) {
-                    if let projection = interaction.projection {
-                        HStack {
-                            Text(remote ? projection.remote_title : projection.local_title).font(.title2.weight(.semibold))
-                            Spacer()
-                            Button(projection.refresh_label) { interaction.refresh(); Task { await sampleVoice() } }.disabled(interaction.busy)
-                        }
-                        if remote {
-                            ForEach(projection.remote_setup) { row in render(row, group:"remote_setup") }
-                            if projection.remote.isEmpty { Text(projection.empty_remote_label) }
-                            ForEach(visibleHosts(projection.remote)) { host in
-                                Text(host.name).font(.headline)
-                                ForEach(visibleRows(host.rows, group:host.id)) { row in render(row, group:host.id) }
-                            }
-                        } else { ForEach(visibleRows(projection.local, group:"local")) { row in render(row, group:"local") } }
-                    }
-                    if let message = interaction.message { Text(message).foregroundStyle(.secondary).textSelection(.enabled) }
-                    if interaction.busy { ProgressView() }
-                }.padding(24).frame(maxWidth:.infinity, alignment:.leading)
-            }
-            .stationTheme()
-            .polarStationInterfaceTextScale(percent:model.settingsProjection?.appearance.interfaceTextScalePercent ?? 100)
-            .task { updateFacts(); model.loadResources(); await sampleVoice() }
-            .onDisappear {interaction.present=nil}
-            .onChange(of:model.backendAvailability) { _ in updateFacts() }
-            .onChange(of:model.projection?.controlRevision) { _ in updateFacts() }
-            .onChange(of:model.resourcesProjection?.revision) { _ in updateFacts() }
-            .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in
-                interaction.returned(); Task { await sampleVoice() }
-            }
-        }
-        private func visibleHosts(_ hosts: [DiagnosticsInteraction.Host]) -> [DiagnosticsInteraction.Host] {
-            guard editor != nil, let retainedHost, !hosts.contains(where: { $0.id == retainedHost.id }) else { return hosts }
-            return hosts + [retainedHost]
-        }
-        private func visibleRows(_ rows: [DiagnosticsInteraction.Row], group: String) -> [DiagnosticsInteraction.Row] {
-            guard editor != nil, editorGroup == group, let retainedRow, !rows.contains(where: { $0.id == retainedRow.id }) else { return rows }
-            return rows + [retainedRow]
-        }
-        @ViewBuilder private func render(_ row: DiagnosticsInteraction.Row, group: String) -> some View {
-            VStack(alignment:.leading, spacing:10) {
-                HStack(alignment:.top, spacing:12) {
-                    Image(systemName: row.state == "ready" ? "checkmark.circle.fill" : "info.circle")
-                        .foregroundStyle(row.state == "ready" ? Color.green : Color.secondary)
-                    VStack(alignment:.leading, spacing:4) { Text(row.title).font(.headline); Text(row.detail).foregroundStyle(.secondary) }
-                    Spacer(minLength:8)
-                    if let action = row.action, let label = row.action_label {
-                        Button(label) {
-                            retainedRow = row; retainedHost = interaction.projection?.remote.first(where: { $0.id == group })
-                            editorRow = row.id; editorGroup = group; interaction.perform(action)
-                        }.disabled(interaction.busy || editor != nil)
-                    }
-                }
-                if editorRow == row.id, editorGroup == group, let action = editor {
-                    setupEditor(action)
-                    Button("Close details") {
-                        if ["edit_connection", "edit_polar_connection", "edit_codex_endpoint", "add_machine_connection"].contains(action.type) {
-                            connectionsInteraction.requestClose?()
-                        } else { editor = nil }
-                    }
-                }
-            }.frame(maxWidth:.infinity, alignment:.leading)
-        }
-        @ViewBuilder private func setupEditor(_ action: DiagnosticsInteraction.Action) -> some View {
-            switch action.type {
-            case "edit_voice_setup":
-                VoiceSettingsView(platform:voiceTools.request, setupSection:action.section,formBuffer:context.voiceFormBuffer)
-            case "edit_connection", "edit_polar_connection", "edit_codex_endpoint", "add_machine_connection":
-                if let projection = model.projection {
-                    ConnectionsView(interaction:connectionsInteraction, formBuffer:context.connectionsFormBuffer, projection:projection.connections, controlRevision:projection.controlRevision,
-                        close:{editor=nil}, requestCodex:model.requestCodex, requestHostTransfer:model.requestHostTransfer, initialMachine:action.target_id ?? "local",
-                        initialPage:action.type == "edit_codex_endpoint" ? "Codex" : action.type == "edit_polar_connection" ? "Polar" : "Connection",
-                        initialPolar:action.connection_id, initialEndpoint:action.endpoint_id,
-                        embedded:true, newMachine:action.type == "add_machine_connection",
-                        submit:model.submitSSHTarget).frame(minHeight:380)
-                }
-            case "edit_resource":
-                ResourcesControlView(resourceEditor:model.resourceEditor,initialResourceID:action.resource_id, embedded:true, projection:model.resourcesProjection,
-                    logTail:model.resourceLogTail, isLoading:model.isResourcesLoading, errorMessage:model.resourcesError,
-                    backendActionsEnabled:model.backendAvailability.hostActionsEnabled, load:model.loadResources,
-                    apply:model.applyResources, restart:model.restartResource, openMirror:model.openAndroidMirror,
-                    loadLog:model.loadResourceLog, dismiss:{editor=nil}).frame(minHeight:380)
-            default: EmptyView()
             }
         }
     }
@@ -545,62 +190,6 @@
         }
     }
 
-    private struct PolarStationSettingsRoot: View {
-        var initialVoicePage = false
-        var embedded = false
-        var initialPage: String? = nil
-        var promptEditor:AnyView?=nil
-        let voiceTools: PolarStationVoiceTools
-        @ObservedObject var model: ControlCenterStore
-        var editLease:SettingsEditInteraction?=nil
-        let formBuffer:SettingsFormBuffer
-        let voiceFormBuffer:VoiceFormBuffer
-        let updateWorkspaceFont: @MainActor (UInt8) -> Void
-        let openResources: @MainActor () -> Void
-        let openConnectors:@MainActor () -> Void
-        let dismiss: @MainActor () -> Void
-
-        var body: some View {
-            PolarStationSettingsView(
-                projection: model.settingsProjection,
-                isLoading: model.isSettingsLoading,
-                errorMessage: model.settingsError,
-                providerTestResult: model.settingsProviderTestResult,
-                codexNotifyStatus: model.codexNotifyStatus,
-                currentWorkspaceFontSize: model.nativeLayoutView.map { UInt8($0.managedTerminalFontSizePoints) },
-                reload: model.loadSettings,
-                updateAppearance: {model.updateAppearanceSettings($0,editLease:editLease)},
-                updateAttention: {model.updateAttentionSettings($0,editLease:editLease)},
-                updateMonitoring: {model.updateMonitoringSettings($0,editLease:editLease)},
-                updateSessionSummary: {model.updateSessionSummarySettings($0,editLease:editLease)},
-                testSessionSummary: model.testSessionSummaryProvider,
-                inspectCodexNotify: model.inspectCodexNotify,
-                configureCodexNotify: model.configureCodexNotify,
-                updateWorkspaceFont: updateWorkspaceFont,
-                openConnections: { PolarStationRuntime.shared.openSettingsRoute(.init(page:"connections")) },
-                openResources: openResources,
-                openConnectors:openConnectors,
-                dismiss: dismiss,
-                messagesSettings: model.messagesSettings,
-                messagesStatus: model.messagesStatus,
-                requestConnector: model.requestConnector,
-                requestCodex: model.requestCodex,
-                messagesError: model.messagesError,
-                isMessagesLoading: model.isMessagesLoading,
-                reloadMessages: model.loadMessagesSender,
-                authorizeMessages: model.authorizeMessagesSender,
-                saveMessages: { model.saveMessagesSender($0,recipient:$1,editLease:formBuffer.messagesEdits) { clean in if clean {formBuffer.messagesRecipient=""} } },
-                voicePlatform: voiceTools.request, initialVoicePage: initialVoicePage,
-                openSetup: { dismiss(); PolarStationRuntime.shared.openDiagnostics(.localDiagnostics) },
-                embedded:embedded, initialPage:initialPage,promptEditor:promptEditor,editLease:editLease,formBuffer:formBuffer,voiceFormBuffer:voiceFormBuffer
-            )
-            .polarStationInterfaceTextScale(
-                percent: model.settingsProjection?.appearance.interfaceTextScalePercent ?? 100
-            )
-        }
-    }
-
-    @MainActor
     private final class PolarStationAuxiliaryWindowCoordinator:
         NSObject,
         NSWindowDelegate
@@ -720,7 +309,6 @@
             ControlCenterWidthPolicy.maximumMapWidth
 
         private let model: ControlCenterStore
-        private let workspaceManager = WorkspaceManagerWindow()
         private let backendWindow = StationBackendWindow()
         private var backendSwitchInProgress = false
         private let primaryWindow = PolarStationWindowContext(executor: PolarStationNativeExecutor())
@@ -740,7 +328,7 @@
         private func context(workspaceID: String) -> PolarStationWindowContext? {
             allWindows.first { $0.executor.initialControllerIsAttached && $0.executor.workspaceID == workspaceID }
         }
-        fileprivate func openBackendSettings() {
+        func openBackendSettings() {
             backendWindow.capture = { [weak self] in
                 guard let catalog = self?.primaryWindow.executor.managementCatalog else { throw PolarStationNativeExecutorError.workspaceUnavailable }
                 return try JSONEncoder().encode(catalog)
@@ -779,84 +367,71 @@
             backendWindow.present(current:model.selectedBackendSocket?.path ?? PolarTmuxSocketPath.resolve().path)
         }
 
-        private func workspaceSettings(_ request: [String: Any]) throws -> [String: Any] {
-            guard let catalog = primaryWindow.executor.managementCatalog,
-                  let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(catalog)) as? [String: Any]
-            else { throw PolarStationNativeExecutorError.workspaceUnavailable }
-            var input = request
-            input["catalog"] = object
-            return try WorkspaceManagerWindow.transfer(input)
+        func previewWorkspace(_ id: String?, in context: PolarStationWindowContext) {
+            if context.activeContainer == nil, context === activeWindow { toggleControlCenter(nil) }
+            if !context.presentation.body.sessionsVisible { handlePresentationAction(.expandLayout, in: context) }
+            if let id { context.workspaceManager.selected = id }
         }
 
-        fileprivate func refreshWorkspaceSettingsDirectory() {
-            guard let result = try? workspaceSettings(["action": "workspace_directory"]),
-                  let rows = result["rows"],
-                  let data = try? JSONSerialization.data(withJSONObject: rows),
-                  let directory = try? JSONDecoder().decode([WorkspaceDirectoryRow].self, from: data)
-            else { return }
-            for context in allWindows where context.workspaceDirectory != directory {
-                context.workspaceDirectory = directory
+        private func reconcileExpandedLayout(in context: PolarStationWindowContext) {
+            guard let container = context.activeContainer else { return }
+            guard context.presentation.body.sessionsVisible, let window = container.window else {
+                container.showExpandedWorkspaceLayout(nil)
+                return
             }
-        }
-
-        fileprivate func selectWorkspaceSettings(_ id: String, in context: PolarStationWindowContext) {
-            context.executor.enqueueMutation?({ [weak context] in
-                guard let context else { return }
-                let tab = context.executor.layoutView()?.selectedTabID
-                try await context.executor.openConversation(.settingsPane)
-                guard let pane = context.executor.layoutView()?.tabs.first(where: { $0.tabID == tab })?
-                    .panes.first(where: { $0.content?.kind == .settingsPane })
-                else { throw PolarStationNativeExecutorError.workspaceUnavailable }
-                context.settingsWorkspaceByPane[pane.paneID] = id
-                context.selectedWorkspaceSettingsID = id
-            }, true, { [weak self] error in if let error { self?.model.presentLocalError(error) } })
-        }
-
-        private func workspaceSettingsDetail(_ id: String) throws -> WorkspaceSettingsDetail {
-            let value = try workspaceSettings(["action": "workspace_details", "workspace_id": id])
-            return try JSONDecoder().decode(WorkspaceSettingsDetail.self, from: JSONSerialization.data(withJSONObject: value))
-        }
-
-        private func saveWorkspaceSettings(_ id: String, revision: UInt64, layout: WorkspaceSettingsLayout) async throws -> WorkspaceSettingsDetail {
-            let executor = context(workspaceID: id)?.executor ?? primaryWindow.executor
-            try await executor.saveWorkspaceSettings(id) { [self] in
-                let input = try JSONSerialization.jsonObject(with: JSONEncoder().encode(layout))
-                let candidate = try workspaceSettings(["action":"update_workspace", "workspace_id":id, "revision":revision, "layout":input])
-                let proposed = (candidate["workspaces"] as? [[String: Any]])?.first { ($0["id"] as? String) == id }
-                let current = try workspaceSettingsDetail(id)
-                guard let proposed,
-                      (proposed["revision"] as? UInt64) != current.workspace.revision else { return nil }
-                return try JSONSerialization.data(withJSONObject: candidate)
-            }
-            return try workspaceSettingsDetail(id)
-        }
-
-        fileprivate func openWorkspaceManager(in origin: PolarStationWindowContext) {
-            workspaceManager.ideaSources={ [weak self] in self?.lgpWorkspace.portableIdeaSources ?? [:] }
-            workspaceManager.connections=model.projection?.connections
-            workspaceManager.requestHostTransfer={ [weak self] request in
-                guard let self else {throw PolarStationNativeExecutorError.workspaceUnavailable}
-                return try await self.model.requestHostTransfer(request)
-            }
-            workspaceManager.dispatch = { [weak self, weak origin] action,id,name in
-                guard let self, let origin, !self.quitRequested else { throw PolarStationNativeExecutorError.workspaceUnavailable }
-                if action == "open" || action == "new" {
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                        self.performLocalWorkspaceOperation(action == "open" ? .selectWorkspace(workspaceID:id) : .createWorkspace(name:name),in:origin) { message in
-                            if let message { continuation.resume(throwing:NSError(domain:"Workspace",code:1,userInfo:[NSLocalizedDescriptionKey:message])) }
-                            else { continuation.resume() }
-                        }
-                    }
-                    if let native = TerminalController.all.first(where: { origin.executor.owns($0) })?.window {
-                        self.presentExplicitly(native)
-                    }
-                } else {
-                    let owner = self.context(workspaceID:id)?.executor ?? self.primaryWindow.executor
-                    try await owner.manageWorkspace(action,id:id,name:name)
+            let manager = context.workspaceManager
+            if context.expandedLayoutHost == nil {
+                manager.ideaSources = { [weak self] in self?.lgpWorkspace.portableIdeaSources ?? [:] }
+                manager.requestHostTransfer = { [weak self] request in
+                    guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                    return try await model.requestHostTransfer(request)
                 }
-                self.workspaceManager.refresh(self.primaryWindow.executor.managementCatalog,machines:self.model.projection?.connections.machines,sessions:self.model.projection?.sessions.rows ?? [])
+                manager.dispatch = { [weak self, weak context] action, id, name in
+                    guard let self, let context, context.activeContainer != nil, !quitRequested
+                    else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                    try await performWorkspaceDetailAction(action, id: id, name: name, in: context)
+                }
+                context.expandedLayoutHost = NSHostingView(rootView: AnyView(
+                    ExpandedWorkspaceLayout(context: context, model: model) { [weak self, weak context] intent in
+                        guard let context, !context.workspaceManager.isPreview else { return }
+                        self?.dispatchControlCenterIntent(intent, in: context)
+                    }.stationTheme()
+                ))
             }
-            workspaceManager.present(catalog:primaryWindow.executor.managementCatalog,current:origin.executor.workspaceID,machines:model.projection?.connections.machines,sessions:model.projection?.sessions.rows ?? [])
+            if context.expandedLayoutHost?.superview !== container {
+                manager.connections = model.projection?.connections
+                manager.attach(to: window, current: context.executor.workspaceID, selected: manager.selected,
+                    catalog: primaryWindow.executor.managementCatalog,
+                    machines: model.projection?.connections.machines, sessions: model.projection?.sessions.rows ?? [])
+                container.showExpandedWorkspaceLayout(context.expandedLayoutHost)
+            }
+        }
+
+        private func performWorkspaceDetailAction(_ action: String, id: String, name: String, in context: PolarStationWindowContext) async throws {
+            if action == "open_new", self.context(workspaceID: id) == nil {
+                guard let ghostty = startupGhostty else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                try context.executor.authorizeLifecycle("open_new", target: id)
+                pendingUnboundWindows += 1
+                let controller = TerminalController.newWindow(ghostty)
+                guard let destination = ensureContext(for: controller) else { throw PolarStationNativeExecutorError.workspaceUnavailable }
+                _ = destination.executor.attach(controller)
+                try await openWorkspaceDetail(id, in: destination)
+            } else if action == "open" || action == "open_new" {
+                try await openWorkspaceDetail(id, in: context)
+            } else {
+                let owner = self.context(workspaceID: id)?.executor ?? primaryWindow.executor
+                try await owner.manageWorkspace(action, id: id, name: name)
+            }
+            refreshWindowLayouts()
+        }
+
+        private func openWorkspaceDetail(_ id: String, in context: PolarStationWindowContext) async throws {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                performLocalWorkspaceOperation(.selectWorkspace(workspaceID: id), in: context) { message in
+                    if let message { continuation.resume(throwing: NSError(domain: "Workspace", code: 1, userInfo: [NSLocalizedDescriptionKey: message])) }
+                    else { continuation.resume() }
+                }
+            }
         }
 
         private var pendingUnboundWindows = 0
@@ -908,7 +483,10 @@
             }
             model.setNativeLayoutView(activeWindow.layout)
             if rememberWindows { rememberOpenWorkspaceWindows() }
-            workspaceManager.refresh(primaryWindow.executor.managementCatalog,machines:model.projection?.connections.machines,sessions:model.projection?.sessions.rows ?? [])
+            for context in allWindows {
+                context.workspaceManager.refresh(primaryWindow.executor.managementCatalog, current: context.executor.workspaceID,
+                    machines: model.projection?.connections.machines, sessions: model.projection?.sessions.rows ?? [])
+            }
         }
         private let lgpWorkspace = PolarStationLgpWorkspace()
         private let widthPreferences = ControlCenterWidthPreferences()
@@ -917,14 +495,14 @@
         private var quickCreateTabs: Set<String> = []
         private lazy var auxiliaryWindows =
             PolarStationAuxiliaryWindowCoordinator(model: model)
-        fileprivate lazy var settingsVoiceTools: PolarStationVoiceTools = {
+        lazy var settingsVoiceTools: PolarStationVoiceTools = {
             let tools=PolarStationVoiceTools()
             tools.setShortcut={value,reply in PolarStationRuntime.shared.configureDictateShortcut(value,reply:reply)}
             tools.recoverRecording={id in PolarStationRuntime.shared.recoverDictateRecording(id)}
             return tools
         }()
-        fileprivate let settingsText=SettingsTextInteraction()
-        fileprivate lazy var settingsTextBuffer=SettingsTextBuffer(interaction:settingsText)
+        let settingsText=SettingsTextInteraction()
+        lazy var settingsTextBuffer=SettingsTextBuffer(interaction:settingsText)
         private var settingsTextPaneID:String?
         private lazy var settingsTextConfirmation=SettingsTextConfirmationPresenter(interaction:settingsText) { [weak self] in
             guard let self else {return nil}
@@ -1164,6 +742,10 @@
             }
 
             if activeContainer === container, container.isPolarStationPaneVisible {
+                if presentation.body.sessionsVisible {
+                    _ = presentation.send(.pressLayout)
+                    activeWindow.workspaceManager.selected = activeWindow.executor.workspaceID
+                }
                 container.hidePolarStationPane()
                 activeContainer = nil
                 if let focused = controller.focusedSurface,
@@ -1213,7 +795,7 @@
 
         private func presentInbox(messageID: String) {
             model.focusInboxMessage(messageID)
-            presentation.send(.selectTab(.inbox))
+            handlePresentationAction(.selectTab(.inbox), in: activeWindow)
             guard activeContainer?.isPolarStationPaneVisible != true else {
                 activeContainer?.updatePolarStationPaneWidth(
                     presentation.body.preferredWidth
@@ -1273,7 +855,7 @@
         fileprivate func openDiagnostics(_ content: StationPaneContentV1) {
             openSettingsRoute(.init(page:"setup",remote:content.kind == .remoteHosts))
         }
-        fileprivate func openSettingsRoute(_ route:SettingsNavigation.Route,in windowContext:PolarStationWindowContext? = nil) {
+        func openSettingsRoute(_ route:SettingsNavigation.Route,in windowContext:PolarStationWindowContext? = nil) {
             let context=windowContext ?? activeWindow
             let selectedTab=context.executor.layoutView()?.selectedTabID
             guard let controller=TerminalController.all.first(where:{context.executor.owns($0) && context.executor.nativeTabID($0)==selectedTab}) ?? TerminalController.all.first(where:{context.executor.owns($0)}),
@@ -1290,6 +872,7 @@
             } else {
                 container.updatePolarStationPaneWidth(context.presentation.body.preferredWidth)
             }
+            reconcileExpandedLayout(in: context)
         }
 
         private func promptPane()->(context:PolarStationWindowContext,tab:String,pane:String)? {
@@ -1557,6 +1140,7 @@
                     let hasOtherTabs = window.tabbedWindows?.contains(where: { $0 !== window }) ?? false
                     if !hasOtherTabs && !context.executor.isMutatingNativeTabs {
                         context.paneHost = nil
+                        context.expandedLayoutHost = nil
                         context.settingsFormHosts.removeAll()
                         context.executor.reset(restoreSelection: false)
                         additionalWindows.removeAll { $0 === context }
@@ -1740,6 +1324,7 @@
                 width: context.presentation.body.preferredWidth
             )
             context.activeContainer = destination
+            reconcileExpandedLayout(in: context)
             return isInitialController
         }
 
@@ -1780,17 +1365,10 @@
                     return
                 }
                 if let self, let context, content.kind == .settingsPane {
-                    display.mountNativeContent(NSHostingView(rootView: WorkspaceSettingsContent(
-                        context: context, paneID: id,
-                        load: { [weak self] id in
-                            guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
-                            return try self.workspaceSettingsDetail(id)
-                        },
-                        save: { [weak self] id, revision, layout in
-                            guard let self else { throw PolarStationNativeExecutorError.workspaceUnavailable }
-                            return try await self.saveWorkspaceSettings(id, revision: revision, layout: layout)
-                        }
-                    ).stationTheme()))
+                    let openLayout = Button("Open Layout") { [weak self, weak context] in
+                        if let context { self?.previewWorkspace(context.executor.workspaceID, in: context) }
+                    }
+                    display.mountNativeContent(NSHostingView(rootView: openLayout.stationTheme()))
                     context.executor.reconcileInputSelection()
                     return
                 }
@@ -1842,7 +1420,6 @@
                 guard let self, let context else { return }
                 restoreWorkspaceWindowsIfReady()
                 refreshWindowLayouts()
-                refreshWorkspaceSettingsDirectory()
                 context.executor.refreshNumberBadges()
                 for window in allWindows { window.executor.showWorkspaceChooser() }
             }
@@ -1935,7 +1512,7 @@
             }
             model.setProjectionSink { [weak self] projection in
                 guard let self else { return }
-                workspaceManager.connections = projection.connections
+                for context in allWindows { context.workspaceManager.connections = projection.connections }
                 if backendSwitchInProgress {
                     backendWindow.connected(socket:model.selectedBackendSocket?.path ?? "",connections:projection.connections)
                     return
@@ -2219,6 +1796,12 @@
             _ intent: ControlCenterIntentV1,
             in context: PolarStationWindowContext? = nil
         ) {
+            if let context, context.presentation.body.sessionsVisible, context.workspaceManager.isPreview {
+                switch intent.operation {
+                case .invokeProjectedAction(actionID: "sessions.refresh"), .checkConnection: break
+                default: return
+                }
+            }
             switch intent.operation {
             case .invokeProjectedAction(actionID: "workspace.window.new"):
                 do { try (context ?? activeWindow).executor.authorizeLifecycle("new_window") }
@@ -2303,7 +1886,16 @@
                     else if let created = pending.creation {
                         try await executor.appendCreatedSessions(workspaceID: created.workspaceID, tabID: created.tabID, sessions: created.sessions, reservationID: created.paneID)
                     } else if let operation = pending.operation {
-                        try await executor.performImmediate(operation)
+                        if case let .toggleSessionAssignment(identity, _, _) = operation,
+                           !executor.hasSessionView(execution: identity.executionTargetID, session: identity.tmuxSessionID),
+                           let owner = allWindows.first(where: {
+                               $0.executor.hasSessionView(execution: identity.executionTargetID, session: identity.tmuxSessionID)
+                           }),
+                           let paneID = owner.executor.sessionPaneID(execution: identity.executionTargetID, session: identity.tmuxSessionID) {
+                            try await owner.executor.activateSessionPane(paneID, present: presentExplicitly)
+                        } else {
+                            try await executor.performImmediate(operation)
+                        }
                     }
                     }
                     pending.workCompletion?(nil)
@@ -2363,7 +1955,7 @@
             if let paneHost = context.paneHost { return paneHost }
             let view = NSHostingView(
                 rootView: PolarStationPaneRoot(
-                    windowContext: context, model: model,
+                    windowContext: context, model: model, workspaceManager: context.workspaceManager,
                     applicationShortcuts: context.applicationShortcuts,
                     presentation: context.presentation,
                     handlePresentationAction: { [weak self] action in
@@ -2413,7 +2005,8 @@
                 shouldPersist = false
             case let .resize(_, commit):
                 shouldPersist = commit
-            case .toggleSessions:
+            case .toggleSessions, .pressLayout, .expandLayout:
+                context.settingsNavigation.showLayout()
                 shouldPersist = false
             }
             if shouldPersist {
@@ -2432,6 +2025,8 @@
             context.activeContainer?.updatePolarStationPaneWidth(
                 presentation.body.preferredWidth
             )
+            if !presentation.body.sessionsVisible { context.workspaceManager.selected = context.executor.workspaceID }
+            reconcileExpandedLayout(in: context)
         }
 
         private func loadMapWidth(for window: NSWindow) {

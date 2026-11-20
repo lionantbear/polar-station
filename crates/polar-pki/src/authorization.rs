@@ -50,6 +50,7 @@ impl AuthorizationOid {
 #[derive(Debug, Clone)]
 pub struct AuthorizedCa {
     der: Vec<u8>,
+    oid: AuthorizationOid,
     owner: NodeId,
     epoch: u64,
     spki_sha256: [u8; 32],
@@ -58,6 +59,9 @@ pub struct AuthorizedCa {
 impl AuthorizedCa {
     pub fn der(&self) -> &[u8] {
         &self.der
+    }
+    pub fn authorization_oid(&self) -> &AuthorizationOid {
+        &self.oid
     }
     pub fn owner(&self) -> NodeId {
         self.owner
@@ -413,6 +417,24 @@ pub fn verify_authorized_ca_now(
     )
 }
 
+/// Return the verified epoch of an already pinned CA, including an expired CA.
+/// A legacy CA without the configured extension carries no epoch.
+pub fn pinned_ca_epoch(cert_pem: &str, oid: &AuthorizationOid, owner: NodeId) -> Result<Option<u64>> {
+    ensure!(cert_pem.len() <= 2 * MAX_CA_CERTIFICATE_BYTES, "CA certificate exceeds bound");
+    let pem = pem::parse(cert_pem)?;
+    ensure!(pem.tag() == "CERTIFICATE", "expected CA certificate PEM");
+    let der = pem.contents();
+    ensure!(der.len() <= MAX_CA_CERTIFICATE_BYTES, "CA certificate exceeds bound");
+    let cert = Certificate::from_der(der)?;
+    let tbs = &cert.tbs_certificate;
+    if !tbs.extensions.iter().flatten().any(|extension| extension.extn_id == oid.0) {
+        return Ok(None);
+    }
+    let begin = i64::try_from(tbs.validity.not_before.to_unix_duration().as_secs())?;
+    let at_validity_start = OffsetDateTime::from_unix_timestamp(begin)?;
+    Ok(Some(verify_authorized_ca(der, oid, owner, 0, at_validity_start)?.epoch()))
+}
+
 pub fn verify_authorized_ca(
     der: &[u8],
     oid: &AuthorizationOid,
@@ -458,6 +480,7 @@ pub fn verify_authorized_ca(
         .verify_signature(None)
         .context("invalid CA self-signature")?;
     Ok(AuthorizedCa {
+        oid: oid.clone(),
         der: der.to_vec(),
         owner,
         epoch,

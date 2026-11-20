@@ -50,35 +50,52 @@ import PolarTmuxMacUI
         }
     }
     private var transferPackage: [String:Any]?
-    private var hostReviewWindow: NSWindow?
     private let hostInteraction=ConnectionsInteraction()
     private var current: String?
     private var machines: [MachineConnectionV1]?
     private(set) var sessions: [SessionRowProjectionV1] = []
     private var pending = false
     private var applying = false
-    private var window: NSWindow?
-    var dispatch: (@MainActor (String, String, String) async throws -> Void)?
+    private weak var window: NSWindow?
+    @Published var review: Review?
+    @Published var reviewName = ""
+    struct Review {
+        let title: String
+        let text: String
+        let confirm: String
+        let apply: () -> Void
+        var alternate: String? = nil
+        var applyAlternate: (() -> Void)? = nil
+    }
 
-    func present(catalog: PolarStationNativeWorkspaceCatalog?, current: String?, machines: [MachineConnectionV1]?, sessions: [SessionRowProjectionV1]) {
-        self.machines = machines
-        self.sessions = sessions
+    func attach(to window: NSWindow, current: String?, selected: String?, catalog: PolarStationNativeWorkspaceCatalog?, machines: [MachineConnectionV1]?, sessions: [SessionRowProjectionV1]) {
+        self.window = window
         self.current = current
         self.catalog = catalog
-        if window == nil {
-            let native = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 640), styleMask: [.titled,.closable,.miniaturizable,.resizable], backing: .buffered, defer: false)
-            native.title = "Workspaces"
-            native.minSize = NSSize(width: 760, height: 460)
-            native.isReleasedWhenClosed = false
-            native.contentView = NSHostingView(rootView: WorkspaceManagerView(manager: self).stationTheme())
-            native.center()
-            window = native
-        }
+        self.machines = machines
+        self.sessions = sessions
+        self.selected = selected ?? current
         project()
-        window?.makeKeyAndOrderFront(nil)
     }
-    func refresh(_ catalog: PolarStationNativeWorkspaceCatalog?, machines: [MachineConnectionV1]?, sessions: [SessionRowProjectionV1]) {
-        guard window?.isVisible == true, self.catalog != catalog || self.machines != machines || self.sessions != sessions else { return }
+
+    var isPreview: Bool { selected != nil && selected != current }
+    var reviewHostsInteraction: ConnectionsInteraction { hostInteraction }
+    @Published var reviewingHosts = false
+
+    func applyHostReview(_ effects: [ConnectionsInteraction.Effect]) { consumeHosts(effects) }
+
+    func invokeWindowAction(_ kind: String) {
+        if let selected { openWorkspace(selected, as: kind) }
+    }
+
+    var dispatch: (@MainActor (String, String, String) async throws -> Void)?
+
+    func refresh(_ catalog: PolarStationNativeWorkspaceCatalog?, current: String?, machines: [MachineConnectionV1]?, sessions: [SessionRowProjectionV1]) {
+        if self.current != current {
+            self.current = current
+            selected = current
+        }
+        guard window != nil, self.catalog != catalog || self.machines != machines || self.sessions != sessions else { return }
         self.catalog = catalog
         self.machines = machines
         self.sessions = sessions
@@ -117,38 +134,25 @@ import PolarTmuxMacUI
         } catch { message = error.localizedDescription }
     }
     func invoke(_ action: ActionProjectionV1) {
-        guard action.enabled, !pending, let window else { return }
+        guard action.enabled, !pending, window != nil else { return }
         let kind = String(action.id.dropFirst("workspace.manage.".count))
         let id = selected ?? ""
-        var name = ""
+        let name = ""
         if kind == "open" { openWorkspace(id); return }
         if kind == "export" { exportWorkspace(); return }
         if kind == "import" { importWorkspace(); return }
         if let confirmation = action.confirmation {
-            let alert = NSAlert()
-            alert.messageText = confirmation.title
-            alert.informativeText = confirmation.message
-            alert.addButton(withTitle: confirmation.confirmLabel)
-            alert.addButton(withTitle: "Cancel")
-            alert.beginSheetModal(for: window) { [weak self] result in
-                guard result == .alertFirstButtonReturn else { return }
-                self?.expanded = true
-                self?.run(kind,id:id,name:"")
-            }
+            review = Review(title: confirmation.title, text: confirmation.message, confirm: confirmation.confirmLabel, apply: { [weak self] in
+                self?.run(kind, id: id, name: "")
+            })
             return
         }
         if kind == "rename" || kind == "new" {
-            name = kind == "new" ? "Workspace" : catalog?.workspaces.first(where: { $0.id == id })?.name ?? ""
-            let alert = NSAlert()
-            alert.messageText = kind == "new" ? "New Workspace" : "Rename Workspace"
-            let input = NSTextField(string: name)
-            input.frame = NSRect(x:0,y:0,width:320,height:24)
-            alert.accessoryView = input
-            alert.addButton(withTitle: kind == "new" ? "Create" : "Save")
-            alert.addButton(withTitle:"Cancel")
-            alert.beginSheetModal(for:window) { [weak self] result in
-                if result == .alertFirstButtonReturn { self?.run(kind,id:id,name:input.stringValue) }
-            }
+            reviewName = kind == "new" ? "Workspace" : catalog?.workspaces.first(where: { $0.id == id })?.name ?? ""
+            review = Review(title: kind == "new" ? "New Workspace" : "Rename Workspace", text: "", confirm: "Save", apply: { [weak self] in
+                guard let self else { return }
+                run(kind, id: id, name: reviewName)
+            })
             return
         }
         run(kind,id:id,name:name)
@@ -156,156 +160,103 @@ import PolarTmuxMacUI
     private func run(_ action:String,id:String,name:String) {
         guard let dispatch, !pending else { return }
         pending = true
-        if action == "import_commit" { selected = id }
         project()
         Task { @MainActor in
             var failure: String?
             do { try await dispatch(action,id,name) }
             catch { failure = error.localizedDescription }
-            pending = false; project()
+            pending = false
+            if failure == nil && action == "import_commit" { selected = id }
+            project()
             if let failure { message = failure }
+            else if action == "import_commit" { message = "Workspace imported" }
         }
     }
 }
 
-private struct WorkspaceManagerView: View {
+struct WorkspaceLayoutDetail: View {
     @ObservedObject var manager: WorkspaceManagerWindow
+    @ObservedObject var model: ControlCenterStore
+    let liveLayout: NativeWorkspaceLayoutView?
+    let emit: @MainActor (ControlCenterIntentV1) -> Void
+
     var body: some View {
-        VStack(alignment:.leading,spacing:12) {
-            if let view = manager.projection {
-                HStack {
-                    Text(view.title).font(.title2)
-                    Spacer()
-                    actions(view.page_actions)
-                }
-                Text(view.subtitle).foregroundStyle(.secondary)
-                HSplitView {
-                    VStack(alignment:.leading,spacing:8) {
-                        List(selection:$manager.selected) {
-                            ForEach(view.rows.filter { !$0.archived }) { row in item(row) }
-                            DisclosureGroup(isExpanded:$manager.expanded) {
-                                ForEach(view.rows.filter(\.archived)) { row in item(row) }
-                            } label: { Text(view.archived_label) }
-                        }
-                    }.frame(minWidth:220,idealWidth:280,maxWidth:340)
-                    VStack(alignment:.leading,spacing:12) {
-                        actions(view.actions)
-                        ScrollView {
-                            if let w = manager.catalog?.workspaces.first(where: { $0.id == manager.selected }) {
-                                VStack(alignment:.leading,spacing:12) {
-                                    Text(w.name).font(.title2)
-                                    HStack {
-                                        Text(view.details_title).font(.headline)
-                                        Spacer()
-                                        Text(view.preview_caption).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    LazyVGrid(columns:[GridItem(.adaptive(minimum:260),spacing:12,alignment:.top)],alignment:.leading,spacing:12) {
-                                    ForEach(w.tabs,id:\.id) { tab in
-                                        VStack(alignment:.leading,spacing:8) {
-                                            HStack {
-                                                Text(tab.title).font(.headline)
-                                                Spacer()
-                                                Text("\(tab.mode.rawValue) · \(tab.panes.count) panes").foregroundStyle(.secondary)
-                                            }
-                                            WorkspaceLayoutPreview(tab:tab)
-                                            ForEach(tab.panes,id:\.id) { pane in
-                                                HStack {
-                                                    Image(systemName:pane.content == nil ? "terminal" : "doc")
-                                                    Text(sessionName(pane)).lineLimit(2)
-                                                    Spacer()
-                                                    Text(view.hosts.first { $0.id == pane.executionTargetID }?.name ?? pane.executionTargetID ?? "").foregroundStyle(.secondary)
-                                                }
-                                            }
-                                            if tab.panes.isEmpty { Text("Empty Tab").foregroundStyle(.secondary) }
-                                        }.padding(12).background(.quaternary,in:RoundedRectangle(cornerRadius:8))
-                                    }
-                                    }
-                                    if !view.hosts.isEmpty { Text(view.hosts_title).font(.headline) }
-                                    ForEach(view.hosts) { host in
-                                        VStack(alignment:.leading,spacing:4) {
-                                            Text("\(host.name)   \(host.access)")
-                                            Text(host.status).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }.frame(maxWidth:.infinity,alignment:.leading)
-                            }
-                        }
-                    }.padding(.leading,12).frame(minWidth:440)
-                }
-            }
-            Text(manager.message).foregroundStyle(.secondary).textSelection(.enabled)
-        }.padding(16).frame(minWidth:760,minHeight:460)
-    }
-    private func sessionName(_ pane: PolarStationNativePane) -> String {
-        manager.sessions.first { $0.identity.executionTargetID == pane.executionTargetID && $0.identity.tmuxSessionID == pane.tmuxSessionID }?.displayName
-            ?? pane.tmuxSessionID ?? pane.content?.kind.rawValue ?? pane.id
-    }
-    private func item(_ row: WorkspaceManagerWindow.Row) -> some View {
-        VStack(alignment:.leading,spacing:4) {
-            Text(row.name)
-            Text("\(row.summary) · \(row.status)").font(.caption).foregroundStyle(.secondary)
-        }.padding(.vertical,4).tag(row.id)
-    }
-    private func actions(_ values:[ActionProjectionV1]) -> some View {
-        HStack(spacing:6) {
-            ForEach(values) { action in
-                Button(action.label) { manager.invoke(action) }
-                    .disabled(!action.enabled).help(action.disabledReason ?? action.label)
-            }
-        }
-    }
-}
-/// Draw only the existing native topology; ratios use the same preorder as persistence.
-private struct WorkspaceLayoutPreview: View {
-    let tab: PolarStationNativeTab
-    private struct Cell: Identifiable { let id: String; let number: Int; let rect: CGRect }
-    private func cells() -> [Cell] {
-        let ids = tab.visualPaneIDs.isEmpty ? tab.panes.map(\.id) : tab.visualPaneIDs
-        guard let layout = try? PolarStationNativeLayoutFamily.layout(orderedPaneIDs:ids,mode:tab.mode,mainPaneID:tab.mainPaneID) else { return [] }
-        func leaves(_ tree:PolarStationNativeLayoutTree) -> [String] {
-            switch tree { case .surface(let id): return [id]
-            case .split(_,let left,let right): return leaves(left) + leaves(right) }
-        }
-        func weight(_ tree:PolarStationNativeLayoutTree,axis:PolarStationNativeLayoutTree.Axis) -> Double {
-            let ids = Set(leaves(tree))
-            if axis == .vertical { return Double(ids.count) }
-            let columns = Set(layout.slots.filter { ids.contains($0.surfaceID) }.map(\.column))
-            return layout.columns.filter { columns.contains($0.index) }.reduce(0) { $0 + Double($1.width.numerator)/Double($1.width.denominator) }
-        }
-        var index = 0
-        var result: [Cell] = []
-        func visit(_ tree:PolarStationNativeLayoutTree,_ rect:CGRect) {
-            switch tree {
-            case .surface(let id): result.append(Cell(id:id,number:(tab.panes.firstIndex { $0.id == id } ?? 0)+1,rect:rect))
-            case .split(let axis,let left,let right):
-                let saved = tab.splitRatios ?? []
-                let ratio = saved.indices.contains(index) ? saved[index] : weight(left,axis:axis)/weight(tree,axis:axis)
-                index += 1
-                let horizontal = axis == .horizontal
-                let extent = horizontal ? rect.width : rect.height
-                let first = extent * ratio
-                visit(left,CGRect(x:rect.minX,y:rect.minY,width:horizontal ? first : rect.width,height:horizontal ? rect.height : first))
-                visit(right,CGRect(x:horizontal ? rect.minX+first : rect.minX,y:horizontal ? rect.minY : rect.minY+first,width:horizontal ? extent-first : rect.width,height:horizontal ? rect.height : extent-first))
-            }
-        }
-        visit(layout.tree,CGRect(x:0,y:0,width:1,height:1))
-        return result
-    }
-    var body: some View {
-        if !tab.panes.isEmpty {
-            GeometryReader { geometry in
-                ZStack(alignment:.topLeading) {
-                    ForEach(cells()) { cell in
-                        Text(String(cell.number)).font(.caption).frame(width:max(0,geometry.size.width*cell.rect.width-2),height:max(0,geometry.size.height*cell.rect.height-2))
-                            .background(.quaternary,in:RoundedRectangle(cornerRadius:4)).clipped()
-                            .offset(x:geometry.size.width*cell.rect.minX,y:geometry.size.height*cell.rect.minY)
+        let selected = manager.catalog?.workspaces.first(where: { $0.id == manager.selected })
+        let archived = manager.catalog?.archivedWorkspaceIDs?.contains(selected?.id ?? "") == true
+        let opened = manager.catalog?.openWorkspaceIDs?.contains(selected?.id ?? "") == true
+        let layout = manager.isPreview ? selected.flatMap { PolarStationNativeExecutor.layoutView(for: $0) } : liveLayout
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                WorkspaceLayoutPicker(title: selected?.name ?? "Workspace", choices: choices) { manager.selected = $0 }
+                Spacer()
+                if let projection = manager.projection {
+                    ForEach(projection.page_actions.filter { $0.id.hasSuffix(".import") }, id: \.id) { action in
+                        Button(action.label) { manager.invoke(action) }.disabled(!action.enabled)
+                    }
+                    ForEach(projection.actions.filter {
+                        !$0.id.hasSuffix(".open") && (!manager.isPreview || !$0.id.hasSuffix(".rename"))
+                    }, id: \.id) { action in
+                        Button(action.label) { manager.invoke(action) }.disabled(!action.enabled)
                     }
                 }
-            }.frame(height:120).accessibilityLabel("Saved layout for \(tab.title)")
+            }
+            if manager.isPreview {
+                HStack {
+                    Text(archived ? "Archived · Preview" : "Workspace preview").foregroundStyle(.secondary)
+                    if !archived {
+                        if opened {
+                            Button("Go to Existing Window") { manager.invokeWindowAction("open") }
+                        } else {
+                            Button("Switch Here") { manager.invokeWindowAction("open") }
+                            Button("Open in New Window") { manager.invokeWindowAction("open_new") }
+                        }
+                    }
+                }
+            }
+            if manager.reviewingHosts {
+                HostImportReviewView(interaction: manager.reviewHostsInteraction, consume: manager.applyHostReview)
+            } else if let review = manager.review {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(review.title).font(.headline)
+                        Text(review.text).textSelection(.enabled)
+                        if review.confirm == "Import Workspace" || review.confirm == "Save" {
+                            TextField("Workspace name", text: $manager.reviewName)
+                        }
+                        HStack {
+                            Button(review.confirm) { manager.review = nil; review.apply() }
+                            if let alternate = review.alternate {
+                                Button(alternate) { manager.review = nil; review.applyAlternate?() }
+                            }
+                            Button("Cancel") { manager.review = nil }
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                WorkspaceMapView(
+                    controlRevision: model.projection?.controlRevision ?? 0,
+                    nativeView: layout,
+                    sessions: model.projection?.sessions.rows ?? [],
+                    liveSessions: Array(model.sessionRuntime.values),
+                    expanded: true, readOnly: manager.isPreview
+                ) { if !manager.isPreview { emit($0) } }
+                .id(manager.selected)
+            }
+            if !manager.message.isEmpty { Text(manager.message).foregroundStyle(.secondary) }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(StationTheme.shared.surface)
+    }
+
+    private var choices: [NativeWorkspaceChoiceView] {
+        let archived = Set(manager.catalog?.archivedWorkspaceIDs ?? [])
+        return (manager.catalog?.workspaces ?? []).map {
+            NativeWorkspaceChoiceView(workspaceID: $0.id, name: $0.name,
+                                      selected: $0.id == manager.selected, archived: archived.contains($0.id))
         }
     }
 }
-
 
 extension WorkspaceManagerWindow {
     static func transfer(_ object:[String:Any]) throws -> [String:Any] {
@@ -323,7 +274,7 @@ extension WorkspaceManagerWindow {
         guard let requestHostTransfer else {throw PolarStationNativeExecutorError.workspaceUnavailable}
         return try await requestHostTransfer(JSONDecoder().decode(HostTransferRequestV1.self,from:JSONSerialization.data(withJSONObject:object)))
     }
-    private func openWorkspace(_ id:String) {
+    private func openWorkspace(_ id:String, as action: String = "open") {
         guard !pending,let w=catalog?.workspaces.first(where:{$0.id==id}),let dispatch else {return}
         pending=true;project()
         Task { @MainActor in
@@ -340,7 +291,7 @@ extension WorkspaceManagerWindow {
                         try await dispatch("resolve_commit",id,String(decoding:bytes,as:UTF8.self))
                     }
                 }
-                try await dispatch("open",id,"")
+                try await dispatch(action,id,"")
             } catch {failure=error.localizedDescription}
             pending=false;project();if let failure {message=failure}
         }
@@ -381,20 +332,20 @@ extension WorkspaceManagerWindow {
         }
     }
     private func reviewHosts() {
-        guard let window,let package=transferPackage else {return}
-        let alert=NSAlert();alert.messageText="Workspace Hosts"
-        alert.informativeText="Review and import the included Hosts first. Host changes are saved separately. Continue to review the whole Workspace; missing Hosts will be listed before import."
-        alert.addButton(withTitle:"Review Hosts…");alert.addButton(withTitle:"Continue…");alert.addButton(withTitle:"Cancel")
-        alert.beginSheetModal(for:window) { [weak self] result in
-            guard let self else {return}
-            if result == .alertFirstButtonReturn {
-                do {
-                    let bundle=try JSONDecoder().decode(HostExportBundleV1.self,from:JSONSerialization.data(withJSONObject:package["hosts"] ?? [:]))
-                    if let connections {hostInteraction.snapshot(connections)}
-                    consumeHosts(hostInteraction.importHosts(bundle))
-                } catch {message=error.localizedDescription}
-            } else if result == .alertSecondButtonReturn {resolveImport()}
-        }
+        guard let package = transferPackage else { return }
+        reviewingHosts = false
+        review = Review(title: "Workspace Hosts",
+                        text: "Review included Hosts or continue to see which references are recognized.",
+                        confirm: "Continue", apply: { [weak self] in self?.resolveImport() },
+                        alternate: "Review Hosts…", applyAlternate: { [weak self] in
+            guard let self else { return }
+            do {
+                let bundle = try JSONDecoder().decode(HostExportBundleV1.self,
+                    from: JSONSerialization.data(withJSONObject: package["hosts"] ?? [:]))
+                if let connections { hostInteraction.snapshot(connections) }
+                consumeHosts(hostInteraction.importHosts(bundle))
+            } catch { message = error.localizedDescription }
+        })
     }
     private func consumeHosts(_ effects:[ConnectionsInteraction.Effect]) {
         for effect in effects {
@@ -404,18 +355,13 @@ extension WorkspaceManagerWindow {
                 do {next=hostInteraction.transferComplete(token,result:try await requestHostTransfer(request),error:nil)}
                 catch {next=hostInteraction.transferComplete(token,result:nil,error:error.localizedDescription)}
                 if !next.isEmpty { consumeHosts(next); return }
-                if hostInteraction.state?.host_import_plan != nil {
-                    if hostReviewWindow==nil {
-                        let review=NSWindow(contentRect:NSRect(x:0,y:0,width:980,height:620),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false)
-                        review.title="Import Hosts";review.isReleasedWhenClosed=false
-                        review.contentView=NSHostingView(rootView:HostImportReviewView(interaction:hostInteraction,consume:{[weak self] in self?.consumeHosts($0)}).stationTheme());review.center();hostReviewWindow=review
-                    }
-                    hostReviewWindow?.makeKeyAndOrderFront(nil)
-                } else {hostReviewWindow?.orderOut(nil);reviewHosts()}
+                if hostInteraction.state?.host_import_plan != nil { reviewingHosts = true }
+                else { reviewHosts() }
             }
         }
-        if effects.isEmpty,hostInteraction.state?.host_import_plan==nil {hostReviewWindow?.orderOut(nil);reviewHosts()}
+        if effects.isEmpty, hostInteraction.state?.host_import_plan == nil { reviewHosts() }
     }
+
     private func resolveImport() {
         guard let package=transferPackage,!pending else {return}
         pending=true;project()
@@ -432,21 +378,22 @@ extension WorkspaceManagerWindow {
             pending=false;project();if let failure {message=failure}
         }
     }
-    private func confirmImport(_ result:[String:Any]) {
-        guard let window,var native=result["native"] as? [String:Any] else {return}
-        let alert=NSAlert();alert.messageText="Import Workspace"
-        alert.informativeText=(result["preview"] as? [String:Any])?["summary"] as? String ?? ""
-        let name=NSTextField(string:native["name"] as? String ?? "Workspace copy");name.frame=NSRect(x:0,y:0,width:340,height:24);alert.accessoryView=name
-        alert.addButton(withTitle:"Import Workspace");alert.addButton(withTitle:"Cancel")
-        alert.beginSheetModal(for:window) { [weak self] response in
-            guard let self,response == .alertFirstButtonReturn else {return}
-            native["name"]=name.stringValue
+    private func confirmImport(_ result: [String: Any]) {
+        guard let workspace = result["native"] as? [String: Any] else { return }
+        reviewName = workspace["name"] as? String ?? "Workspace copy"
+        review = Review(title: "Import Workspace",
+                        text: (result["preview"] as? [String: Any])?["summary"] as? String ?? "",
+                        confirm: "Import Workspace", apply: { [weak self] in
+            guard let self else { return }
+            var native = workspace
+            native["name"] = reviewName
             do {
-                let bytes=try JSONSerialization.data(withJSONObject:native)
-                run("import_commit",id:native["id"] as? String ?? "",name:String(decoding:bytes,as:UTF8.self))
-            } catch {message=error.localizedDescription}
-        }
+                let bytes = try JSONSerialization.data(withJSONObject: native)
+                run("import_commit", id: native["id"] as? String ?? "", name: String(decoding: bytes, as: UTF8.self))
+            } catch { message = error.localizedDescription }
+        })
     }
+
 }
 
 /// Native file/physical-window adapter; shared Rust owns inspection and switching.

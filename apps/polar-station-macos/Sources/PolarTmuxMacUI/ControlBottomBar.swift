@@ -19,6 +19,7 @@ public struct ControlBottomBar: View {
     public let auxiliarySurfaces: AuxiliarySurfacesProjectionV1
     public let controlRevision: UInt64
     public let openSettings: (@MainActor () -> Void)?
+    public let openWorkspacePreferences: (@MainActor () -> Void)?
     public let showLayout: (@MainActor () -> Void)?
     public let settingsVisible: Bool
     public let layoutVisible: Bool
@@ -35,8 +36,6 @@ public struct ControlBottomBar: View {
     @State private var creatingWorkspace = false
     @State private var workspaceNameDraft = ""
     @State private var pendingConfirmation: ActionProjectionV1?
-    @State private var editingFontSize = false
-    @State private var fontSizeDraft = 14
 
     public init(
         projection: ControlBottomBarProjectionV1,
@@ -53,10 +52,12 @@ public struct ControlBottomBar: View {
         @escaping @MainActor (ControlCenterIntentOperationV1) -> Void,
         emitIntent: @escaping @MainActor (ControlCenterIntentV1) -> Void,
         openSettings: (@MainActor () -> Void)? = nil,
+        openWorkspacePreferences: (@MainActor () -> Void)? = nil,
         showLayout: (@MainActor () -> Void)? = nil,
         settingsVisible: Bool = false
     ) {
         self.openSettings = openSettings; self.showLayout = showLayout; self.settingsVisible = settingsVisible
+        self.openWorkspacePreferences = openWorkspacePreferences
         self.projection = projection
         self.nativeLayoutView = nativeLayoutView
         self.auxiliarySurfaces = auxiliarySurfaces
@@ -135,9 +136,6 @@ public struct ControlBottomBar: View {
                 Text(message)
             }
         }
-        .sheet(isPresented: $editingFontSize) {
-            managedTerminalFontSizeSheet
-        }
     }
 
     @ViewBuilder
@@ -153,7 +151,7 @@ public struct ControlBottomBar: View {
                 enabledOverride: true
             ) {
                 showLayout?()
-                emitPresentationAction(.selectTab(.layout))
+                emitPresentationAction(.pressLayout)
             }
         case "presentation.inbox.toggle":
             ZStack(alignment: .topTrailing) {
@@ -238,18 +236,11 @@ public struct ControlBottomBar: View {
     ) -> some View {
         Menu {
             Button {
-                fontSizeDraft =
-                    nativeLayoutView?.managedTerminalFontSizePoints
-                        ?? 14
-                editingFontSize = true
+                openWorkspacePreferences?()
             } label: {
-                Label(
-                    fontSizeAction?.label
-                        ?? "Ghostty Font Size…",
-                    systemImage: "textformat.size"
-                )
+                Label("Ghostty Font Size…", systemImage: "textformat.size")
             }
-            .disabled(fontSizeAction?.enabled == false)
+            .disabled(openWorkspacePreferences == nil || nativeLayoutView?.workspaceID.isEmpty != false)
 
             Divider()
 
@@ -289,50 +280,10 @@ public struct ControlBottomBar: View {
         .help(action.disabledReason ?? action.accessibilityLabel)
     }
 
-    private var fontSizeAction: ActionProjectionV1? {
-        projection.moreActions?.first {
-            $0.id == "managed.terminal.font.size"
-        }
-    }
-
     private var newWorkspaceAction: ActionProjectionV1? {
         projection.moreActions?.first {
             $0.id == "workspace.create"
         }
-    }
-
-    private var managedTerminalFontSizeSheet: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Ghostty Font Size")
-                .font(.headline)
-
-            Stepper(
-                value: $fontSizeDraft,
-                in: 10...32,
-                step: 1
-            ) {
-                Text("\(fontSizeDraft) pt")
-                    .monospacedDigit()
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    editingFontSize = false
-                }
-                Button("Apply") {
-                    emit(
-                        .setManagedTerminalFontSize(
-                            points: fontSizeDraft
-                        )
-                    )
-                    editingFontSize = false
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(22)
-        .frame(width: 300)
     }
 
     private var orderedActions: [ActionProjectionV1] {

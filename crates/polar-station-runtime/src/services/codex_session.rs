@@ -53,6 +53,43 @@ impl CodexControlService {
         }).collect()
     }
 
+    /// Reuse observed app-server facts without issuing another thread request.
+    pub(super) async fn status_terminal_metadata(
+        &self, target: &str, reference: &str, terminal_name: &str, launch: Option<&SessionLaunchSpec>,
+    ) -> Option<(Option<String>, Option<String>)> {
+        let exact = launch.and_then(|launch| match &launch.process {
+            ProcessRestoreSpec::CodexAppServer { owner_host_id, endpoint_id, thread_id, .. }
+            | ProcessRestoreSpec::CodexForwardedCli { owner_host_id, endpoint_id, thread_id, .. } =>
+                Some((owner_host_id, endpoint_id, thread_id)),
+            _ => None,
+        });
+        let thread_id = match exact {
+            Some((_, _, thread_id)) => thread_id.as_str(),
+            None => match polar_station_workspace::SessionKind::from_terminal_name(terminal_name) {
+                Some((polar_station_workspace::SessionKind::CodexPlane, id)) => id,
+                _ => return None,
+            },
+        };
+        let endpoints = self.catalog_endpoints().await;
+        let states = self.states.read().await;
+        let candidates = states.values().filter(|state| {
+            let binding = &state.binding;
+            if binding.thread_id != thread_id { return false; }
+            if let Some((owner, endpoint, _)) = exact {
+                return binding.owner_host_id == *owner && binding.endpoint_id == *endpoint;
+            }
+            binding.session.as_ref().is_some_and(|session|
+                session.execution_target.as_str() == target && session.tmux_session_id == reference)
+                || endpoints.iter().any(|endpoint| endpoint.execution_target_id == target
+                    && endpoint.owner_host_id == binding.owner_host_id && endpoint.id == binding.endpoint_id)
+        }).collect::<Vec<_>>();
+        let title = agreed_status_value(candidates.iter().filter_map(|state|
+            state.thread_name.as_deref().and_then(meaningful_thread_name)));
+        let permission = agreed_status_value(candidates.iter().filter_map(|state|
+            state.metadata.observed_permission.as_deref()));
+        (!candidates.is_empty()).then_some((title, permission))
+    }
+
     pub async fn session_catalog(&self, terminals: &mut [SessionRowProjectionV1]) -> Vec<AgentSessionCatalogRowV1> {
         let mut result = CodexResultV1::Bindings { bindings: self.states.read().await.values().cloned().collect() };
         self.project_terminal_associations(&mut result).await;
@@ -221,7 +258,9 @@ impl CodexControlService {
             thread_id: binding.thread_id.clone(), socket_path: socket_path.clone(),
         };
         let command = codex_cli_command(&socket_path, &binding.thread_id, Some(&thread.cwd));
-        let record = lifecycle.create_with_public_name(&terminal, local.clone(), launch, Some(command), true).await
+        let title = super::codex_discovery::thread_name(&read["thread"]["name"]);
+        let record = lifecycle.create_with_public_name(&terminal, local.clone(), launch, Some(command), true,
+            title.as_deref().and_then(meaningful_thread_name)).await
             .map_err(|e|error("local_cli_failed",format!("Original Thread {} is unchanged; its local CLI plane failed: {e}",binding.thread_id)))?;
         lifecycle.request_refresh(local.clone());
         Ok(lifecycle.created_fact(&record, &target.descriptor().display_name,
@@ -520,8 +559,8 @@ impl CodexControlService {
                 CodexTerminalStart::Resume { thread_id, yolo } => CodexCommandV1::OpenThread { endpoint_id:endpoint.id.clone(), thread_id, yolo },
             },
         }).await;
-        let binding=match response.result {
-            CodexResultV1::Binding{binding:Some(state)}=>state.binding,
+        let (binding, title, permission)=match response.result {
+            CodexResultV1::Binding{binding:Some(state)}=>(state.binding, state.thread_name, state.metadata.observed_permission),
             CodexResultV1::Error { code } if code == "resume_yolo_not_applied" => return Err(resume_yolo_error()),
             CodexResultV1::Error{code}=>return Err(error(&code,format!("Codex Thread creation failed ({code}). No terminal was created; an unknown result must be checked before retrying."))),
             _=>return Err(error("invalid_codex_response","The app-server returned no Thread identity. Check the endpoint before retrying.")),
@@ -537,7 +576,9 @@ impl CodexControlService {
         let mut launch=SessionLaunchSpec::shell(terminal_name(&binding.thread_id)?,Some(&directory));
         let command=codex_cli_command(&endpoint.socket_path, &binding.thread_id, Some(&directory));
         launch.process=ProcessRestoreSpec::CodexAppServer{owner_host_id:binding.owner_host_id.clone(),endpoint_id:endpoint.id,thread_id:binding.thread_id.clone(),socket_path:endpoint.socket_path};
-        let record=lifecycle.create_with_public_name(&client,ExecutionTargetId::new(&target_id).map_err(|e|error("invalid_target",e.to_string()))?,launch,Some(command),true).await
+        launch.startup_permission = permission;
+        let record=lifecycle.create_with_public_name(&client,ExecutionTargetId::new(&target_id).map_err(|e|error("invalid_target",e.to_string()))?,launch,Some(command),true,
+            title.as_deref().and_then(meaningful_thread_name)).await
             .map_err(|e| { let mut failure = error("codex_terminal_failed",format!("The conversation exists, but its terminal could not open: {e}. Retry resumes the same conversation.")); failure.resume = Some(recovery.clone()); failure })?;
         let session=SessionKeyV1{execution_target:ExecutionTarget::new(target_id.clone()).expect("validated target"),tmux_session_id:record.reference()};
         drop(mutation);
@@ -603,11 +644,19 @@ fn catalog_project(state: &CodexStateV1) -> &str {
     state.metadata.cwd.as_deref().and_then(|p| p.trim_end_matches('/').rsplit('/').next()).filter(|p| !p.is_empty()).unwrap_or("Unknown project")
 }
 
+fn agreed_status_value<'a>(mut values: impl Iterator<Item = &'a str>) -> Option<String> {
+    let value = values.next()?;
+    values.all(|candidate| candidate == value).then(|| value.to_owned())
+}
+
+fn meaningful_thread_name(name: &str) -> Option<&str> {
+    let name = name.trim();
+    let generated = name.strip_prefix("Session-").is_some_and(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_digit()));
+    (!name.is_empty() && !generated && !matches!(name, "Codex conversation" | "Codex Session" | "New conversation")).then_some(name)
+}
+
 pub(super) fn catalog_title(state: &CodexStateV1) -> String {
-    if let Some(name) = state.thread_name.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
-        let generated = name.strip_prefix("Session-").is_some_and(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_digit()));
-        if !generated && !matches!(name, "Codex conversation" | "Codex Session" | "New conversation") { return name.into(); }
-    }
+    if let Some(name) = state.thread_name.as_deref().and_then(meaningful_thread_name) { return name.into(); }
     if let Some(preview) = state.metadata.preview.as_deref().filter(|p| !p.trim().is_empty()) {
         return preview.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(120).collect();
     }

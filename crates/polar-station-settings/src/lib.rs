@@ -2,11 +2,13 @@ mod codex;
 mod connectors;
 mod model;
 mod repository;
+mod tmux_status_bar;
 
 pub use codex::*;
 pub use connectors::*;
 pub use model::*;
 pub use repository::*;
+pub use tmux_status_bar::*;
 pub use polar_dictate::RefineMode as VoicePromptField;
 
 mod themes;

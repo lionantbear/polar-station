@@ -6,6 +6,16 @@ use polar_inquiry_graph_model::{
 };
 use polar_station_session::routing::{form_metadata, TEXT_NODE, TARGET_NODE};
 
+fn inquiry_time(seconds: u64) -> String {
+    i64::try_from(seconds)
+        .ok()
+        .and_then(|seconds| jiff::Timestamp::from_second(seconds).ok())
+        .map(|time| time.strftime("%Y-%m-%d %H:%M UTC").to_string())
+        .unwrap_or_default()
+}
+
+
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(super) struct Key {
     pub scope: Scope,
@@ -878,7 +888,7 @@ impl Engine {
             let entries=if history {&history_keys}else{&pending};
             view["invitations"]=json!(entries.iter().map(|k| {
                 let item=&self.inquiries.items[k];
-                let time=chrono::DateTime::from_timestamp(item.created as i64,0).map(|t|t.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_default();
+                let time=inquiry_time(item.created);
                 json!({"token":self.inquiries.token(k),"title":item.title,"preview":item.preview,"time":time,"source":k.scope.thread,
                     "status":if item.done {"Submitted"}else if history {"Dismissed"}else{"Pending"}})
             }).collect::<Vec<_>>());
@@ -894,7 +904,7 @@ impl Engine {
                 let source=self.thread_titles.get(&(scope.target_id.clone(),scope.node_id.clone(),scope.thread.clone())).map(|(_,title)|title.as_str()).unwrap_or("Conversation");
                 view["source"]=json!(source);
                 view["details"]=json!(format!("{} · {} · {}",source,
-                    chrono::DateTime::from_timestamp(item.created as i64,0).map(|t|t.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_default(),
+                    inquiry_time(item.created),
                     if item.done {"Submitted"}else if history {"Dismissed"}else{"Pending"}));
                 view["created_at"]=json!(item.created);
                 view["token"] = json!(self.inquiries.token(&key));
@@ -946,7 +956,7 @@ impl Engine {
                 view["details"] = json!("Respond only when useful. Dismiss keeps an Inquiry in history.");
                 view["question"] = json!("");
                 let rows=if self.inquiries.windows[&window].history {self.inquiries.history(&scope)}else{pending.clone()};
-                view["choices"]=json!(rows.iter().enumerate().map(|(i,key)|json!({"value":self.inquiries.token(key),"label":self.inquiries.items[key].title,"context":self.inquiries.items[key].preview,"detail":format!("{} · {}",if self.inquiries.items[key].done {"Submitted"}else if history {"Dismissed"}else{"Pending"},chrono::DateTime::from_timestamp(self.inquiries.items[key].created as i64,0).map(|t|t.format("%Y-%m-%d %H:%M UTC").to_string()).unwrap_or_default()),"number":i+1,"selected":false,"enabled":true})).collect::<Vec<_>>());
+                view["choices"]=json!(rows.iter().enumerate().map(|(i,key)|json!({"value":self.inquiries.token(key),"label":self.inquiries.items[key].title,"context":self.inquiries.items[key].preview,"detail":format!("{} · {}",if self.inquiries.items[key].done {"Submitted"}else if history {"Dismissed"}else{"Pending"},inquiry_time(self.inquiries.items[key].created)),"number":i+1,"selected":false,"enabled":true})).collect::<Vec<_>>());
             }
             let encoded = serde_json::to_string(&view).unwrap_or_default();
             let state = self.inquiries.windows.get_mut(&window).unwrap();

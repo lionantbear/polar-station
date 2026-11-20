@@ -96,15 +96,15 @@ fn physicalDigit(keycode: c_uint) ?u8 {
     for (input.keycodes.entries) |entry| {
         if (entry.native != keycode) continue;
         return switch (entry.key) {
-            .digit_1 => 1,
-            .digit_2 => 2,
-            .digit_3 => 3,
-            .digit_4 => 4,
-            .digit_5 => 5,
-            .digit_6 => 6,
-            .digit_7 => 7,
-            .digit_8 => 8,
-            .digit_9 => 9,
+            .digit_1, .numpad_1 => 1,
+            .digit_2, .numpad_2 => 2,
+            .digit_3, .numpad_3 => 3,
+            .digit_4, .numpad_4 => 4,
+            .digit_5, .numpad_5 => 5,
+            .digit_6, .numpad_6 => 6,
+            .digit_7, .numpad_7 => 7,
+            .digit_8, .numpad_8 => 8,
+            .digit_9, .numpad_9 => 9,
             else => null,
         };
     }

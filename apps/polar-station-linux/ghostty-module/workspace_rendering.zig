@@ -86,6 +86,14 @@ pub const Tab = struct {
         }
         return null;
     }
+
+    pub fn sessionPane(self: Tab, target: []const u8, session: []const u8) ?*const Pane {
+        for (self.panes) |*candidate| {
+            if (candidate.isTerminal() and std.mem.eql(u8, candidate.execution_target_id, target) and
+                std.mem.eql(u8, candidate.tmux_session_id, session)) return candidate;
+        }
+        return null;
+    }
 };
 
 pub const Snapshot = struct {
@@ -116,6 +124,13 @@ pub const Snapshot = struct {
             if (candidate_tab.pane(pane_id)) |candidate_pane| {
                 return .{ .tab = candidate_tab, .pane = candidate_pane };
             }
+        }
+        return null;
+    }
+
+    pub fn sessionPane(self: Snapshot, target: []const u8, session: []const u8) ?*const Pane {
+        for (self.tabs) |candidate_tab| {
+            if (candidate_tab.sessionPane(target, session)) |candidate| return candidate;
         }
         return null;
     }

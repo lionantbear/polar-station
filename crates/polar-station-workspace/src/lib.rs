@@ -16,6 +16,7 @@ mod reference_index;
 mod runtime;
 mod schema;
 mod validation;
+mod workspace_settings;
 
 pub use command::{
     CommandEnvelope, PendingRuntimeImpact, WorkspaceCommand, WorkspaceEngine, WorkspaceTransition,
@@ -61,7 +62,7 @@ pub use reference_index::{
 };
 pub use runtime::{
     decide_recovery, ManagedSessionRecord, ProcessRestoreSpec, SessionLaunchSpec,
-    SessionOperationReceipt, SessionRecoveryDecision, SessionRecoveryStatus, SessionRuntimeState,
+    SessionOperationReceipt, SessionRecoveryDecision, SessionRecoveryStatus, SessionRuntimeState, SessionStartupGit,
     SESSION_RUNTIME_SCHEMA_VERSION,
 };
 pub use schema::{decode_catalog_json, encode_catalog_json};
@@ -90,3 +91,4 @@ pub use control_center::workspace_manager;
 pub mod portable_workspace;
 
 pub use control_center::backend_selection;
+pub use polar_station_settings::{TmuxStatusBarPreview, TmuxStatusBarSettings, TmuxStatusBarView};

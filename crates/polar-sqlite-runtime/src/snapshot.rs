@@ -71,7 +71,7 @@ pub fn seal_connection(input: &Connection, destination: &Path) -> Result<SealedS
     ensure!(parent.is_dir(), "snapshot parent must already exist");
     let temporary = tempfile::NamedTempFile::new_in(parent)?;
     let sidecars = TemporarySidecars(temporary.path().to_owned());
-    input.backup(MAIN_DB, temporary.path(), None)?;
+    input.backup(MAIN_DB, temporary.path(), rusqlite::backup::NO_PROGRESS)?;
     let output = Connection::open(temporary.path())?;
     let mode: String = output.query_row("PRAGMA journal_mode=DELETE", [], |row| row.get(0))?;
     ensure!(mode == "delete", "snapshot could not leave WAL mode");

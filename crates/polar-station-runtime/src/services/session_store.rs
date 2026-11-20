@@ -12,6 +12,9 @@ impl SessionStore {
     pub fn from_database(database: HostDatabase) -> Self {
         Self { database }
     }
+    pub(super) fn settings_repository(&self) -> polar_station_settings::SettingsRepository {
+        polar_station_settings::SettingsRepository::from_database(self.database.clone())
+    }
     
     pub fn load_runtime_or_initialize(&self) -> anyhow::Result<SessionRuntimeState> {
         self.database

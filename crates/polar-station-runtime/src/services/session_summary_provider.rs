@@ -2,33 +2,26 @@
 //!
 //! The deterministic local classifier is always authoritative for attention
 //! state. This adapter may replace only the privacy-safe summary sections. It
-//! speaks the public Codex app-server JSONL protocol and never imports Codex
-//! core implementation crates.
+//! delegates temporary read-only turns to the shared Codex backend.
 
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
-use polar_station_settings::SessionSummarySettingsV1;
 use polar_station_protocol::SessionAttentionStateV1;
+use polar_station_settings::SessionSummarySettingsV1;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::Semaphore;
 
 use super::terminal_text::sanitize_terminal_output;
 
 const MAX_SUMMARY_SECTIONS: usize = 3;
 const MAX_SUMMARY_SECTION_BYTES: usize = 128;
-const MAX_APP_SERVER_LINE_BYTES: usize = 1024 * 1024;
 
 pub type SessionSummaryFuture<'a> =
     Pin<Box<dyn Future<Output = Result<Vec<String>, String>> + Send + 'a>>;
-pub type SessionDraftFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
+pub type SessionDraftFuture<'a> = Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>>;
 pub type SessionAnalysisFuture<'a> =
     Pin<Box<dyn Future<Output = Result<SessionAnalysis, String>> + Send + 'a>>;
 
@@ -57,7 +50,6 @@ pub trait SessionSummaryProvider: std::fmt::Debug + Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct CodexAppServerSummaryProvider {
-    command: PathBuf,
     model: Option<String>,
     timeout: Duration,
     concurrency: Arc<Semaphore>,
@@ -72,16 +64,13 @@ impl CodexAppServerSummaryProvider {
             return Ok(None);
         }
         Ok(Some(Arc::new(Self {
-            command: PathBuf::from(&settings.command),
             model: settings.model.clone(),
             timeout: Duration::from_millis(settings.timeout_ms),
             concurrency: Arc::new(Semaphore::new(1)),
         })))
     }
 
-    pub async fn test_settings(
-        settings: &SessionSummarySettingsV1,
-    ) -> Result<String, String> {
+    pub async fn test_settings(settings: &SessionSummarySettingsV1) -> Result<String, String> {
         let provider = Self::from_settings(settings)?
             .ok_or_else(|| "Enable AI summaries before testing the provider".to_owned())?;
         let sections = provider
@@ -93,7 +82,6 @@ impl CodexAppServerSummaryProvider {
 
 impl SessionSummaryProvider for CodexAppServerSummaryProvider {
     fn summarize<'a>(&'a self, sections: &'a [String]) -> SessionSummaryFuture<'a> {
-        let command = self.command.clone();
         let model = self.model.clone();
         let timeout = self.timeout;
         let sections = sections.to_vec();
@@ -104,14 +92,9 @@ impl SessionSummaryProvider for CodexAppServerSummaryProvider {
                     .acquire_owned()
                     .await
                     .map_err(|_| "Codex app-server summary adapter stopped".to_owned())?;
-                generate_once(
-                    &command,
-                    model.as_deref(),
-                    &sections,
-                    GenerationTask::Summary,
-                )
-                .await
-                .map(|output| output.sections)
+                generate_once(model.as_deref(), &sections, GenerationTask::Summary)
+                    .await
+                    .map(|output| output.sections)
             })
             .await
             .map_err(|_| format!("Codex app-server summary timed out after {timeout:?}"))?
@@ -119,7 +102,6 @@ impl SessionSummaryProvider for CodexAppServerSummaryProvider {
     }
 
     fn analyze<'a>(&'a self, sections: &'a [String]) -> SessionAnalysisFuture<'a> {
-        let command = self.command.clone();
         let model = self.model.clone();
         let timeout = self.timeout;
         let sections = sections.to_vec();
@@ -130,13 +112,7 @@ impl SessionSummaryProvider for CodexAppServerSummaryProvider {
                     .acquire_owned()
                     .await
                     .map_err(|_| "Codex app-server analysis adapter stopped".to_owned())?;
-                generate_once(
-                    &command,
-                    model.as_deref(),
-                    &sections,
-                    GenerationTask::Analysis,
-                )
-                .await
+                generate_once(model.as_deref(), &sections, GenerationTask::Analysis).await
             })
             .await
             .map_err(|_| format!("Codex app-server analysis timed out after {timeout:?}"))??;
@@ -150,7 +126,6 @@ impl SessionSummaryProvider for CodexAppServerSummaryProvider {
     }
 
     fn draft<'a>(&'a self, summary: &'a str, reply: &'a str) -> SessionDraftFuture<'a> {
-        let command = self.command.clone();
         let model = self.model.clone();
         let timeout = self.timeout;
         let input = vec![summary.to_owned(), reply.to_owned()];
@@ -161,13 +136,7 @@ impl SessionSummaryProvider for CodexAppServerSummaryProvider {
                     .acquire_owned()
                     .await
                     .map_err(|_| "Codex app-server draft adapter stopped".to_owned())?;
-                generate_once(
-                    &command,
-                    model.as_deref(),
-                    &input,
-                    GenerationTask::ReplyDraft,
-                )
-                .await
+                generate_once(model.as_deref(), &input, GenerationTask::ReplyDraft).await
             })
             .await
             .map_err(|_| format!("Codex app-server draft timed out after {timeout:?}"))??;
@@ -194,97 +163,15 @@ struct ProviderOutput {
 }
 
 async fn generate_once(
-    command: &PathBuf,
     model: Option<&str>,
     sections: &[String],
     task: GenerationTask,
 ) -> Result<ProviderOutput, String> {
-    let mut child = Command::new(command)
-        .arg("app-server")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| format!("could not start Codex app-server: {error}"))?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| "Codex app-server stdin was unavailable".to_owned())?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Codex app-server stdout was unavailable".to_owned())?;
-    let mut stdout = BufReader::new(stdout);
-
-    let result = run_summary_protocol(&mut stdout, &mut stdin, model, sections, task).await;
-    let _ = child.kill().await;
-    let _ = child.wait().await;
-    result
-}
-
-async fn run_summary_protocol<R, W>(
-    reader: &mut R,
-    writer: &mut W,
-    model: Option<&str>,
-    sections: &[String],
-    task: GenerationTask,
-) -> Result<ProviderOutput, String>
-where
-    R: AsyncBufRead + Unpin,
-    W: AsyncWrite + Unpin,
-{
-    write_message(
-        writer,
-        &json!({
-            "method": "initialize",
-            "id": 1,
-            "params": {
-                "clientInfo": {
-                    "name": "polar_station_session_summary",
-                    "title": "Polar Station Session Summary",
-                    "version": env!("CARGO_PKG_VERSION")
-                }
-            }
-        }),
-    )
-    .await?;
-    wait_for_response(reader, writer, 1).await?;
-    write_message(writer, &json!({"method": "initialized", "params": {}})).await?;
-
-    let mut thread_params = serde_json::Map::from_iter([
-        ("ephemeral".to_owned(), Value::Bool(true)),
-        ("approvalPolicy".to_owned(), Value::String("never".to_owned())),
-        ("sandbox".to_owned(), Value::String("readOnly".to_owned())),
-        (
-            "serviceName".to_owned(),
-            Value::String("polar_station_session_summary".to_owned()),
-        ),
-        (
-            "baseInstructions".to_owned(),
-            Value::String(
-                match task {
+    let instructions = match task {
                     GenerationTask::Summary => "Summarize only the supplied terminal excerpt. Do not call tools, infer secrets, or add facts. Return one to three concise sections.",
                     GenerationTask::Analysis => "Classify only the supplied bounded terminal snapshot as working, review_ready, needs_attention, approval_required, decision_required, permission_required, failed, or unknown and return one to three concise evidence-grounded sections. Do not call tools, infer secrets, or add facts.",
                     GenerationTask::ReplyDraft => "Create one concise terminal-input draft answering the human reply using only the supplied privacy-safe summary. Do not call tools, add facts, or include a trailing Return. Return the draft as the only sections item.",
-                }.to_owned(),
-            ),
-        ),
-    ]);
-    if let Some(model) = model {
-        thread_params.insert("model".to_owned(), Value::String(model.to_owned()));
-    }
-    write_message(
-        writer,
-        &json!({"method": "thread/start", "id": 2, "params": thread_params}),
-    )
-    .await?;
-    let thread_response = wait_for_response(reader, writer, 2).await?;
-    let thread_id = thread_response
-        .pointer("/result/thread/id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "Codex app-server thread/start response had no thread id".to_owned())?;
-
+                };
     let excerpt = sections.join("\n\n");
     let prompt = match task {
         GenerationTask::Summary => format!(
@@ -297,145 +184,33 @@ where
             "The first block is a privacy-safe terminal summary. The second block is the human reply. Return JSON with a sections array containing exactly one editable terminal-input draft and no trailing Return.\n\n{excerpt}"
         ),
     };
-    write_message(
-        writer,
-        &json!({
-            "method": "turn/start",
-            "id": 3,
-            "params": {
-                "threadId": thread_id,
-                "input": [{"type": "text", "text": prompt}],
-                "approvalPolicy": "never",
-                "sandboxPolicy": {"type": "readOnly"},
-                "outputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "state": {
-                            "type": "string",
-                            "enum": ["working", "review_ready", "needs_attention", "approval_required", "decision_required", "permission_required", "failed", "unknown"]
-                        },
-                        "sections": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 1,
-                            "maxItems": if matches!(task, GenerationTask::ReplyDraft) { 1 } else { 3 }
-                        }
-                    },
-                    "required": if matches!(task, GenerationTask::Analysis) { vec!["state", "sections"] } else { vec!["sections"] },
-                    "additionalProperties": false
-                }
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "state": {
+                "type": "string",
+                "enum": ["working", "review_ready", "needs_attention", "approval_required", "decision_required", "permission_required", "failed", "unknown"]
+            },
+            "sections": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": if matches!(task, GenerationTask::ReplyDraft) { 1 } else { 3 }
             }
-        }),
-    )
-    .await?;
-
-    let mut agent_message = None;
-    loop {
-        let message = read_message(reader).await?;
-        handle_server_request(writer, &message).await?;
-        if message.get("id").and_then(Value::as_u64) == Some(3) && message.get("error").is_some() {
-            return Err(format!(
-                "Codex app-server turn/start failed: {}",
-                message["error"]
-            ));
-        }
-        if message.get("method").and_then(Value::as_str) == Some("item/completed")
-            && message.pointer("/params/item/type").and_then(Value::as_str) == Some("agentMessage")
-        {
-            agent_message = message
-                .pointer("/params/item/text")
-                .and_then(Value::as_str)
-                .map(ToOwned::to_owned);
-        }
-        if message.get("method").and_then(Value::as_str) == Some("turn/completed") {
-            break;
-        }
-    }
-
-    let message = agent_message
-        .ok_or_else(|| "Codex app-server completed without an agent summary".to_owned())?;
-    parse_provider_output(&message, task)
-}
-
-async fn wait_for_response<R, W>(
-    reader: &mut R,
-    writer: &mut W,
-    expected_id: u64,
-) -> Result<Value, String>
-where
-    R: AsyncBufRead + Unpin,
-    W: AsyncWrite + Unpin,
-{
-    loop {
-        let message = read_message(reader).await?;
-        handle_server_request(writer, &message).await?;
-        if message.get("id").and_then(Value::as_u64) != Some(expected_id) {
-            continue;
-        }
-        if let Some(error) = message.get("error") {
-            return Err(format!("Codex app-server request failed: {error}"));
-        }
-        return Ok(message);
-    }
-}
-
-async fn handle_server_request<W>(writer: &mut W, message: &Value) -> Result<(), String>
-where
-    W: AsyncWrite + Unpin,
-{
-    let Some(id) = message.get("id") else {
-        return Ok(());
-    };
-    if message.get("method").is_none() {
-        return Ok(());
-    }
-    write_message(
-        writer,
-        &json!({
-            "id": id,
-            "error": {
-                "code": -32601,
-                "message": "Polar Station Session summaries do not expose interactive tools"
-            }
-        }),
+        },
+        "required": if matches!(task, GenerationTask::Analysis) { vec!["state", "sections"] } else { vec!["sections"] },
+        "additionalProperties": false
+    });
+    let message = polar_inhouse_backend_codex::client::run_read_only_turn(
+        model,
+        "polar_station_session_summary",
+        instructions,
+        prompt,
+        schema,
     )
     .await
-}
-
-async fn write_message<W>(writer: &mut W, message: &Value) -> Result<(), String>
-where
-    W: AsyncWrite + Unpin,
-{
-    let mut encoded = serde_json::to_vec(message)
-        .map_err(|error| format!("could not encode Codex app-server request: {error}"))?;
-    encoded.push(b'\n');
-    writer
-        .write_all(&encoded)
-        .await
-        .map_err(|error| format!("could not write Codex app-server request: {error}"))?;
-    writer
-        .flush()
-        .await
-        .map_err(|error| format!("could not flush Codex app-server request: {error}"))
-}
-
-async fn read_message<R>(reader: &mut R) -> Result<Value, String>
-where
-    R: AsyncBufRead + Unpin,
-{
-    let mut line = String::new();
-    let bytes = reader
-        .read_line(&mut line)
-        .await
-        .map_err(|error| format!("could not read Codex app-server response: {error}"))?;
-    if bytes == 0 {
-        return Err("Codex app-server closed before completing the summary".to_owned());
-    }
-    if bytes > MAX_APP_SERVER_LINE_BYTES {
-        return Err("Codex app-server response exceeded the bounded line size".to_owned());
-    }
-    serde_json::from_str(line.trim_end())
-        .map_err(|error| format!("could not decode Codex app-server response: {error}"))
+    .map_err(|error| format!("Codex generation failed: {error:#}"))?;
+    parse_provider_output(&message, task)
 }
 
 fn parse_provider_output(message: &str, task: GenerationTask) -> Result<ProviderOutput, String> {
@@ -488,9 +263,7 @@ fn parse_analysis_state(value: &str) -> Result<SessionAttentionStateV1, String> 
     }
 }
 
-pub fn normalize_summary_sections(
-    sections: impl IntoIterator<Item = String>,
-) -> Vec<String> {
+pub fn normalize_summary_sections(sections: impl IntoIterator<Item = String>) -> Vec<String> {
     sections
         .into_iter()
         .map(|section| {

@@ -634,8 +634,7 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         case let .addSessions(tabID, sessions):
             guard let index = tabIndex(tabID) else { throw PolarStationNativeWorkspaceError.invalidBinding }
             let tab = tabs[index]
-            var seen = Set(tab.panes.map { "\($0.executionTargetID ?? "")\n\($0.tmuxSessionID ?? "")" })
-            let additions = sessions.filter { seen.insert("\($0.executionTargetID)\n\($0.tmuxSessionID)").inserted }
+            let additions = sessionAdditions(sessions)
             guard tab.panes.count + additions.count <= 9 else { throw PolarStationNativeWorkspaceError.invalidBinding }
             guard !additions.isEmpty else { return }
             let previousFocus = selectedPaneID
@@ -665,6 +664,11 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
                     removedIndex: existing
                 )
             } else {
+                let key = RuntimeSessionKey(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)
+                if let existing = tabs.lazy.flatMap(\.panes).first(where: { $0.runtimeSessionKey == key }) {
+                    try apply(.activatePane(existing.id))
+                    return
+                }
                 guard !paneID.isEmpty,
                       tabs[tab].panes.count < 9,
                       paneLocation(paneID) == nil
@@ -703,6 +707,18 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
             return selectedPane(in: tab)
         case .focus:
             return tab.mainPaneID
+        }
+    }
+
+    func sessionPaneID(execution: String, session: String) -> String? {
+        let key = RuntimeSessionKey(executionTargetID: execution, tmuxSessionID: session)
+        return tabs.lazy.flatMap(\.panes).first { $0.runtimeSessionKey == key }?.id
+    }
+
+    func sessionAdditions(_ sessions: [SessionRowProjectionV1.Identity]) -> [SessionRowProjectionV1.Identity] {
+        var seen = Set(tabs.flatMap(\.panes).compactMap(\.runtimeSessionKey))
+        return sessions.filter {
+            seen.insert(.init(executionTargetID: $0.executionTargetID, tmuxSessionID: $0.tmuxSessionID)).inserted
         }
     }
 
@@ -862,6 +878,13 @@ private struct RuntimeSessionKey: Hashable {
     let tmuxSessionID: String
 }
 
+private extension PolarStationNativePane {
+    var runtimeSessionKey: RuntimeSessionKey? {
+        guard content == nil, let executionTargetID, let tmuxSessionID else { return nil }
+        return .init(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)
+    }
+}
+
 /// The complete native-owned Workspace catalog. Exactly one Workspace is
 /// selected, and every Workspace carries its own Tab/Pane/Session mapping.
 /// Rust never receives or mirrors this table.
@@ -885,6 +908,48 @@ struct PolarStationNativeWorkspaceCatalog: Codable, Equatable, Sendable {
 
     var selectedWorkspace: PolarStationNativeWorkspace {
         workspaces.first { $0.id == selectedWorkspaceID }!
+    }
+
+    func rejectNewSessionDuplicates(comparedTo previous: Self) throws {
+        let priorCounts = previous.openSessionCounts()
+        for (identity, count) in openSessionCounts()
+        where count > 1 && count > priorCounts[identity, default: 0] {
+            throw PolarStationNativeWorkspaceError.sessionAlreadyOpen
+        }
+    }
+
+    private var openWorkspaces: [PolarStationNativeWorkspace] {
+        let open = Set(openWorkspaceIDs ?? [selectedWorkspaceID])
+        let archived = Set(archivedWorkspaceIDs ?? [])
+        return workspaces.filter { open.contains($0.id) && !archived.contains($0.id) }
+    }
+
+    func sessionTabsOutside(_ workspaceID: String) -> [SessionRowProjectionV1.Identity: String] {
+        var tabs: [SessionRowProjectionV1.Identity: String] = [:]
+        for workspace in openWorkspaces where workspace.id != workspaceID {
+            for tab in workspace.tabs {
+                for pane in tab.panes {
+                    guard let key = pane.runtimeSessionKey else { continue }
+                    let identity = SessionRowProjectionV1.Identity(executionTargetID: key.executionTargetID,
+                        tmuxSessionID: key.tmuxSessionID)
+                    if tabs[identity] == nil { tabs[identity] = tab.id }
+                }
+            }
+        }
+        return tabs
+    }
+
+    private func openSessionCounts() -> [RuntimeSessionKey: Int] {
+        var counts: [RuntimeSessionKey: Int] = [:]
+        for workspace in openWorkspaces {
+            for tab in workspace.tabs {
+                for pane in tab.panes {
+                    guard let identity = pane.runtimeSessionKey else { continue }
+                    counts[identity, default: 0] += 1
+                }
+            }
+        }
+        return counts
     }
 
     mutating func retireLegacySettings() throws {
@@ -1303,10 +1368,12 @@ enum PolarStationNativeWorkspaceError: Error, Equatable, LocalizedError {
         switch self {
         case .workspaceChanged: "The selected Workspace changed. Choose the Session again."
         case .replacementAlreadyAssigned: "Already assigned in this Workspace"
+        case .sessionAlreadyOpen: "This Session is already open in another Pane."
         default: nil
         }
     }
     case replacementAlreadyAssigned
+    case sessionAlreadyOpen
     case invalidStructure
     case invalidBinding
     case invalidFocusMain

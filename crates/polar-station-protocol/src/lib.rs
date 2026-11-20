@@ -101,7 +101,7 @@ pub use session_runtime::{
 };
 pub use settings::{
     CodexNotifyConfigStateV1, SettingsApiV1, SettingsCommandV1, SettingsRequestEnvelopeV1,
-    SettingsResponseEnvelopeV1, SettingsResultV1, SETTINGS_API_VERSION,
+    SettingsResponseEnvelopeV1, SettingsResultV1, TmuxStatusPurposeEditV1, SETTINGS_API_VERSION,
 };
 pub use workspace::{
     CanonicalLayoutProjectionV1, ClientApplicationMessage, CompanionManagedPaneProjectionV1,

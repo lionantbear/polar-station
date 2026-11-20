@@ -11,9 +11,8 @@ import PolarTmuxHostClient
     @Published var appearance = AppearanceSettingsV1()
     @Published var summary = SessionSummarySettingsV1()
     @Published var monitoring = MonitoringSettingsV1()
-    @Published var loadedWorkspaceFont:Double?
-    @Published var workspaceFont: Double = 13
     @Published var interfaceTextScale: Double = 100
+    @Published public var tmuxStatusFieldsDraft: Set<String>?
     public init() {}
 }
 

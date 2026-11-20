@@ -42,6 +42,7 @@ ResourceFileOpenHandle *polar_station_resource_file_open_new(void);
 char *polar_station_resource_file_open_dispatch(ResourceFileOpenHandle *, const uint8_t *, size_t);
 void polar_station_resource_file_open_free(ResourceFileOpenHandle *);
 uint32_t polar_station_shortcut_lookup(uint32_t platform, uint32_t key);
+char *polar_station_tmux_status_bar_view(const uint8_t *bytes, size_t len);
 StationShortcutView polar_station_shortcut_at(size_t index);
 
 typedef struct DesktopClientHandle DesktopClientHandle;

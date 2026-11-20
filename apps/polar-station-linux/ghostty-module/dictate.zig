@@ -416,6 +416,11 @@ pub const Controller = struct {
                 if (entries == .array) for (entries.array.items) |entry| {
                     if (!same(string(entry, "operation_id"), id)) continue;
                     const phase = string(entry, "phase");
+                    if (same(phase, "transcribing") and same(string(self.presentation(), "action"), "start")) {
+                        a.free(id);
+                        self.submitted_id = null;
+                        break;
+                    }
                     for ([_][]const u8{ "pending", "delivered", "copied", "unknown", "review", "cancelled", "failed" }) |terminal| {
                         if (same(phase, terminal)) {
                             a.free(id);
@@ -635,7 +640,7 @@ pub const Controller = struct {
     pub fn shortcutIntent(self: *Controller, pressed: bool, discrete: bool) u32 {
         // Portal Activated is a discrete activation; GTK capture supplies edges separately.
         return c.polar_station_shortcut_gesture_event(self.gesture, if (pressed) (if (discrete) @as(u32, 3) else 1) else 2,
-            self.submitted_id != null and !same(string(self.presentation(), "action"), "wait"), (self.enabled() and same(string(self.presentation(), "action"), "start")) or same(string(self.presentation(), "action"), "retry_open"), string(self.presentation(),"use_available_id").len>0);
+            self.submitted_id != null and !same(string(self.presentation(), "action"), "wait"), (self.enabled() and same(string(self.presentation(), "action"), "start")) or same(string(self.presentation(), "action"), "retry_open"), boolean(self.presentation(), "shortcut_use_available"));
     }
     pub fn bindHold(self: *Controller) void {
         if (self.held_id) |id| a.free(id);
@@ -764,7 +769,7 @@ pub const Controller = struct {
                 self.stopAudio();
             }
         } else if (same(kind, "copy")) {
-            if (boolean(effect,"stop_capture")) {
+            if (boolean(effect,"stop_capture") and same(id, self.capture_id orelse "")) {
                 if (self.audio) |audio| c.polar_station_dictate_audio_stop(audio);
                 self.stopAudio();
             }
@@ -781,10 +786,13 @@ pub const Controller = struct {
             }
             self.input(.{.type=receipt,.operation_id=id,.copied=copied});
         } else if (same(kind, "cancel")) {
-            self.cancelled = true;
-            self.stopAudio();
+            if (same(id, self.capture_id orelse "") or same(id, self.submitted_id orelse "")) {
+                self.cancelled = true;
+                self.stopAudio();
+            }
             c.polar_station_dictate_speech_cancel(self.speech, id.ptr, id.len);
         } else if (same(kind, "finish_capture")) {
+            if (!same(id, self.capture_id orelse "")) return;
             const audio = self.audio orelse return;
             c.polar_station_dictate_audio_stop(audio);
             // Close PCM input; shared Recording events drive the result.
@@ -837,10 +845,10 @@ pub const Controller = struct {
         } else if (same(kind, "insert_current")) {
             if(self.pending_external)|old|old.destroy();self.pending_external=null;
             if(self.pending_submit_id)|old|a.free(old);self.pending_submit_id=a.dupe(u8,id) catch null;
-            const outcome:Delivery=if(self.cancelled) .unchanged else if(self.insert_current) |insert| insert(self.context,effect) else .no_target;
+            const outcome:Delivery=if(self.cancelled and same(id, self.submitted_id orelse "")) .unchanged else if(self.insert_current) |insert| insert(self.context,effect) else .no_target;
             self.input(.{.type="delivery",.operation_id=id,.outcome=@tagName(outcome)});
 
-            self.clearTarget();
+            if (self.capture_id == null and (self.submitted_id == null or same(id, self.submitted_id.?))) self.clearTarget();
         } else if (same(kind, "insert")) {
             var outcome: Delivery = .unchanged;
             if (!self.cancelled and same(string(field(effect, "target"), "identity"), self.target_id orelse "")) {

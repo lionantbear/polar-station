@@ -44,7 +44,7 @@ mod file_matcher;
 mod file_text;
 pub use file_input::{
     DisplayRowBoundary, FileAccessPlan, FileOpenContext, FileOpenFailure, FileOpenResolution,
-    FileOpenStage, FileReferenceInput, ParsedFileReference, RecognizedFileReference, ResolvedFile,
+    FileLogicalText, FileOpenStage, FileRecognitionTrace, FileReferenceInput, ParsedFileReference, RecognizedFileReference, ResolvedFile,
     ResolvedFileSource, TextRange,
 };
 pub use file_reference::{
@@ -57,7 +57,9 @@ pub use file_text::{
 };
 
 mod file_open;
+mod file_open_diagnostics;
 pub use file_open::{FileOpenEffect, FileOpenFlow, FileOpenInput, FileOrigin};
+pub use file_open_diagnostics::FileOpenStep;
 
 mod reference_source;
 pub use reference_source::{

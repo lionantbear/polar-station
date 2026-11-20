@@ -66,6 +66,14 @@ pub fn recognize_file_input(
     input: &FileReferenceInput,
     flavor: PathFlavor,
 ) -> Result<crate::RecognizedFileReference, FileOpenFailure> {
+    recognize(input, flavor, None)
+}
+
+fn recognize(
+    input: &FileReferenceInput,
+    flavor: PathFlavor,
+    mut trace: Option<&mut Option<Box<crate::file_input::FileRecognitionTrace>>>,
+) -> Result<crate::RecognizedFileReference, FileOpenFailure> {
     input.validate()?;
     if let FileReferenceInput::Recognized {
         recognized,
@@ -104,8 +112,23 @@ pub fn recognize_file_input(
         ),
         FileReferenceInput::Recognized { .. } => unreachable!(),
     };
+    if let Some(trace) = trace.as_mut() {
+        **trace = Some(Box::new(crate::file_input::FileRecognitionTrace {
+            hit,
+            rows: rows.to_vec(),
+            logical: None,
+        }));
+    }
     let logical = crate::file_continuation::reconstruct(text, hit, rows, selection, flavor)
         .ok_or_else(missing)?;
+    if let Some(trace) = trace.and_then(|trace| trace.as_mut()) {
+        trace.logical = Some(crate::file_input::FileLogicalText {
+            text: logical.text.clone(),
+            hit: logical.hit,
+            first_row: logical.first_row,
+            last_row: logical.last_row,
+        });
+    }
     let parsed = if selection {
         let value = logical.text.trim();
         let start = logical.text.len() - logical.text.trim_start().len();
@@ -145,7 +168,18 @@ pub fn recognize_file_capture(
     input: FileReferenceInput,
     flavor: PathFlavor,
 ) -> Result<FileReferenceInput, FileOpenFailure> {
-    let recognized = recognize_file_input(&input, flavor)?;
+    if matches!(input, FileReferenceInput::Recognized { .. }) {
+        recognize_file_input(&input, flavor)?;
+        return Ok(input);
+    }
+    let mut trace = None;
+    let recognized = match recognize(&input, flavor, Some(&mut trace)) {
+        Ok(value) => value,
+        Err(mut failure) => {
+            failure.recognition_trace = trace;
+            return Err(failure);
+        }
+    };
     let hit = match &input {
         FileReferenceInput::NativeMatch { hit, .. }
         | FileReferenceInput::TerminalHit { hit, .. }
@@ -157,6 +191,7 @@ pub fn recognize_file_capture(
         hit,
         flavor,
         recognized,
+        trace,
     })
 }
 

@@ -59,6 +59,8 @@ pub struct CodexThreadMetadataV1 {
     pub parent_thread_id: Option<String>,
     pub agent_role: Option<String>,
     pub agent_nickname: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_permission: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

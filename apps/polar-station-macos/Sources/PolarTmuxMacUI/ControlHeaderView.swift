@@ -31,6 +31,7 @@ public struct ControlHeaderView: View {
     public let openConnections: @MainActor () -> Void
     @State private var awaitingDetachConfirmation = false
     @State private var awaitingDeleteConfirmation = false
+    private let previewWorkspace: (@MainActor (String) -> Void)?
     @State private var archiveTarget: String?
 
     public init(
@@ -48,8 +49,10 @@ public struct ControlHeaderView: View {
         @escaping @MainActor (
             ControlCenterIntentV1,
             @escaping @MainActor (String?) -> Void
-        ) -> Void
+        ) -> Void,
+        previewWorkspace: (@MainActor (String) -> Void)? = nil
     ) {
+        self.previewWorkspace = previewWorkspace
         self.projection = projection
         self.deleteWorkspaceAction = deleteWorkspaceAction
         self.newWorkspaceWindowAction = newWorkspaceWindowAction
@@ -65,7 +68,12 @@ public struct ControlHeaderView: View {
 
     public var body: some View {
         HStack(spacing: 4) {
-            workspacePicker
+            if let previewWorkspace, let nativeWorkspaceView {
+                WorkspaceLayoutPicker(title: selectedWorkspaceName, choices: nativeWorkspaceView.workspaceChoices, select: previewWorkspace)
+                    .frame(maxWidth: 105)
+            } else {
+                workspacePicker
+            }
 
             connectionBadge(projection.connection, attentionBadge: attentionBadge)
             Menu {
@@ -649,6 +657,62 @@ struct ProjectedActionButton: View {
                         Color.secondary.opacity(0.12),
                         in: RoundedRectangle(cornerRadius: 8)
                     )
+            }
+        }
+    }
+}
+
+
+public struct WorkspaceLayoutPicker: View {
+    let title: String
+    let choices: [NativeWorkspaceChoiceView]
+    let select: @MainActor (String) -> Void
+    @State private var open = false
+    @State private var archived = false
+
+    public init(title: String, choices: [NativeWorkspaceChoiceView], select: @escaping @MainActor (String) -> Void) {
+        self.title = title
+        self.choices = choices
+        self.select = select
+    }
+
+    public var body: some View {
+        Button {
+            archived = false
+            open.toggle()
+        } label: {
+            Label(title, systemImage: "chevron.up.chevron.down").lineLimit(1)
+        }
+        .accessibilityLabel("Workspace: \(title)")
+        .popover(isPresented: $open) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    rows(choices.filter { !$0.archived })
+                    if choices.contains(where: \.archived) {
+                        Button {
+                            archived.toggle()
+                        } label: {
+                            Label("Archived", systemImage: archived ? "minus" : "plus")
+                        }
+                        .accessibilityValue(archived ? "Expanded" : "Collapsed")
+                        if archived { rows(choices.filter(\.archived)) }
+                    }
+                }
+                .padding(10)
+                .frame(minWidth: 210, alignment: .leading)
+            }
+            .frame(minHeight: 50, maxHeight: 320)
+        }
+    }
+
+    private func rows(_ items: [NativeWorkspaceChoiceView]) -> some View {
+        ForEach(items, id: \.workspaceID) { item in
+            Button {
+                open = false
+                select(item.workspaceID)
+            } label: {
+                if item.selected { Label(item.name, systemImage: "checkmark") }
+                else { Text(item.name) }
             }
         }
     }

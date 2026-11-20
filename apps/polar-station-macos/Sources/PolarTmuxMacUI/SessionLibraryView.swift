@@ -7,6 +7,7 @@ public typealias SessionCreationSubmit = @MainActor (ControlCenterIntentV1, @esc
 public typealias SessionEditorPrepare = @MainActor () -> SessionCreationSubmit
 
 public struct SessionLibraryView: View {
+    private let readOnly: Bool
     public let endpointStates: [String: String]
     public let connections: ConnectionsProjectionV1?
     @State private var selecting = false
@@ -64,8 +65,10 @@ public struct SessionLibraryView: View {
         codexRevision: UInt64 = 0,
         applicationShortcuts: ApplicationShortcutCommandState = .init(),
         prepareEditor: SessionEditorPrepare? = nil,
-        creationRecovery: AgentSessionResumeV1? = nil
+        creationRecovery: AgentSessionResumeV1? = nil,
+        readOnly: Bool = false
     ) {
+        self.readOnly = readOnly
         self.endpointStates = endpointStates
         self.connections = connections
         self.prepareEditor = prepareEditor
@@ -95,6 +98,7 @@ public struct SessionLibraryView: View {
 
                 Spacer(minLength: 4)
 
+                if !readOnly {
                 Button {
                     selecting.toggle(); selectedSessions = []; batchTabID = nativeLayoutView?.selectedTabID
                 } label: { Image(systemName: selecting ? "checkmark.circle.fill" : "checkmark.circle") }
@@ -117,6 +121,7 @@ public struct SessionLibraryView: View {
                     .buttonStyle(.bordered)
                     .accessibilityLabel("New Session")
                     .help("New Session")
+                }
                 ProjectedActionButton(
                     action: projection.refreshAction,
                     systemImage: "arrow.clockwise",
@@ -134,7 +139,7 @@ public struct SessionLibraryView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
-            Text(projection.interactionHint)
+            Text(readOnly ? "Previewing another Workspace" : projection.interactionHint)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
@@ -166,11 +171,11 @@ public struct SessionLibraryView: View {
                                 } label: {
                                     HStack { Image(systemName: expanded ? "chevron.down" : "chevron.right"); Text(catalogGroupTitle(key)).lineLimit(1); Spacer(); Text("\(catalog.counts[key, default: 0])") }.font(.caption)
                                 }.buttonStyle(.plain)
-                                if expanded { ForEach(roots) { agent in agentTree(agent, catalog: catalog, visited: []) } }
+                                if expanded { ForEach(roots) { agent in agentTree(agent, catalog: catalog, visited: []).disabled(readOnly) } }
                             }
                             ForEach(projection.rows.filter { row in
                                 row.identity.executionTargetID == group.id && !catalog.terminals.contains(row.identity) && matches([row.displayName, row.detailLabel, row.targetLabel].compactMap { $0 }.joined(separator: " "), kind: row.sessionKind?.rawValue ?? "terminal")
-                            }) { row in sessionRow(row) }
+                            }) { row in sessionRow(row).disabled(readOnly) }
                             if let message = group.message, group.state != "empty" || !catalog.roots.values.contains(where: { $0.first?.execution_target_id == group.id }) { Text(message).font(.caption).foregroundStyle(.secondary) }
                         }
                     }

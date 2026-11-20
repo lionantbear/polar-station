@@ -16,6 +16,7 @@ fn protected_state_scope(scope: &str) -> bool {
         scope,
         "local_chat_authority_v1"
             | "peer_authorization_v1"
+            | "transport_material_updates_v1"
             | "access_plane_trust"
             | "access_bind_requests"
             | "realm_enrollment"

@@ -1,0 +1,32 @@
+[package]
+name = "polar-inhouse-backend-codex"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1"
+base64 = "0.22"
+codex-app-server-client = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-arg0 = { workspace = true }
+codex-config = { workspace = true }
+codex-core = { workspace = true }
+codex-login = { workspace = true }
+codex-feedback = { workspace = true }
+codex-http-client = { workspace = true }
+codex-models-manager = { workspace = true }
+codex-protocol = { workspace = true }
+codex-features = { workspace = true }
+polar-inhouse-contract = { workspace = true }
+polar-inhouse-prompt = { workspace = true }
+polar-runtime-paths = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+toml = "0.9.5"
+tracing = { workspace = true }
+tempfile = "3"
+process-wrap = { version = "10.0.1", features = ["tokio1"] }
+

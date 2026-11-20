@@ -3,7 +3,7 @@ import CPolarStationDesktopClient
 
 /// Only delivers native edit observations to the original Settings domain.
 @MainActor public final class SettingsEditInteraction {
-    public enum Section:String { case appearance,attention,monitoring,sessionSummary="session_summary",voice,voiceRetention="voice_retention",imessage }
+    public enum Section:String { case appearance,attention,monitoring,sessionSummary="session_summary",voice,voiceRetention="voice_retention",imessage,tmuxStatusBar="tmux_status_bar" }
     private struct State:Decodable {
         struct Row:Decodable {let section:String;let replace:Bool;let revision:UInt64?}
         let revision:UInt64?

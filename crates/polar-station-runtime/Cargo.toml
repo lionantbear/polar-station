@@ -11,10 +11,11 @@ crate-type = ["rlib"]
 [features]
 test-support = []
 default = ["codex-control", "telegram-channel"]
-codex-control = ["dep:codex-app-server-client", "dep:codex-app-server-protocol"]
+codex-control = ["dep:codex-app-server-protocol"]
 telegram-channel = ["codex-control", "dep:polar-telegram", "dep:polar-vault"]
 
 [dependencies]
+polar-inhouse-backend-codex.workspace = true
 polar-ssh = { workspace = true, features = ["runtime"] }
 polar-identity.workspace = true
 polar-station-client.workspace = true
@@ -29,7 +30,6 @@ polar-vault = { workspace = true, optional = true }
 axum.workspace = true
 base64 = "0.22"
 clap.workspace = true
-codex-app-server-client = { workspace = true, optional = true }
 codex-app-server-protocol = { workspace = true, optional = true }
 futures-util = "0.3"
 mdns-sd = "0.20.2"

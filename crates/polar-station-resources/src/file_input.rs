@@ -26,6 +26,21 @@ pub struct DisplayRowBoundary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileRecognitionTrace {
+    pub hit: usize,
+    pub rows: Vec<DisplayRowBoundary>,
+    pub logical: Option<FileLogicalText>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileLogicalText {
+    pub text: String,
+    pub hit: usize,
+    pub first_row: usize,
+    pub last_row: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FileReferenceInput {
     /// Shared Rust result; the Host validates it without scanning the screen again.
@@ -34,6 +49,8 @@ pub enum FileReferenceInput {
         hit: usize,
         flavor: PathFlavor,
         recognized: RecognizedFileReference,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trace: Option<Box<FileRecognitionTrace>>,
     },
     NativeMatch {
         text: String,
@@ -235,12 +252,16 @@ pub struct FileOpenFailure {
     pub context: Option<Box<FileOpenContext>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub captured_text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recognition_trace: Option<Box<FileRecognitionTrace>>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileOpenContext {
     pub origin: FileOrigin,
     pub paths: Vec<String>,
     pub local_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checked_path: Option<String>,
 }
 impl FileOpenFailure {
     pub fn new(stage: FileOpenStage, code: &str, message: impl Into<String>) -> Self {
@@ -250,6 +271,7 @@ impl FileOpenFailure {
             message: message.into(),
             context: None,
             captured_text: None,
+            recognition_trace: None,
         }
     }
 

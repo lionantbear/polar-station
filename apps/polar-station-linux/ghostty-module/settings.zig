@@ -1,5 +1,58 @@
 //! Settings v1 codec for the thin GTK adapter. Rust owns validation and persistence.
 const std = @import("std");
+const c = @cImport({ @cInclude("polar_station_desktop_client.h"); });
+
+pub const TmuxStatusView = struct {
+    fields: []const struct { id: []const u8, label: []const u8, selected: bool },
+    preview: []const u8,
+};
+
+pub fn tmuxStatusView(allocator: std.mem.Allocator, fields: []const []const u8, facts: ?std.json.Value, purpose: ?[]const u8) !std.json.Parsed(TmuxStatusView) {
+    const input = try std.json.Stringify.valueAlloc(allocator, .{ .fields = fields, .facts = facts, .purpose = purpose }, .{});
+    defer allocator.free(input);
+    const output = c.polar_station_tmux_status_bar_view(input.ptr, input.len);
+    if (output == null) return error.InvalidTmuxStatusFields;
+    defer c.polar_station_desktop_string_free(output);
+    return std.json.parseFromSlice(TmuxStatusView, allocator, std.mem.span(output), .{ .allocate = .alloc_always });
+}
+
+pub const WorkspaceSessionBinding = struct {
+    execution_target: []const u8,
+    tmux_session_id: []const u8,
+    source: ?@import("portable_content.zig").Source,
+};
+
+pub const TmuxPreviewTarget = struct {
+    binding: WorkspaceSessionBinding,
+    workspace_name: []const u8,
+};
+
+pub const TmuxPurposeEdit = struct {
+    pane: WorkspaceSessionBinding,
+    text: []const u8,
+};
+
+pub const tmux_preview_prefix = "tmux-preview-";
+pub const TmuxPreviewReply = struct {
+    response: struct {
+        request_id: []const u8,
+        result: struct { tmux_status_facts: ?std.json.Value = null },
+    },
+};
+
+pub fn encodeTmuxPreview(allocator: std.mem.Allocator, request_id: []const u8, target: TmuxPreviewTarget) ![]u8 {
+    return encodeRead(allocator, request_id, .{ .kind = "get_projection", .tmux_preview = target.binding, .workspace_name = target.workspace_name });
+}
+
+pub fn encodeUpdateTmuxStatusBar(allocator: std.mem.Allocator, request_id: []const u8, revision: u64, fields: []const []const u8, sessions: []const WorkspaceSessionBinding, workspace_name: []const u8, purpose: ?TmuxPurposeEdit) ![]u8 {
+    return encodeMutation(allocator, request_id, revision, .{
+        .kind = "update_tmux_status_bar",
+        .value = fields,
+        .workspace_sessions = sessions,
+        .workspace_name = workspace_name,
+        .tmux_purpose = purpose,
+    });
+}
 
 pub const ChatCache = struct { message_mib: u32 = 512, presentation_mib: u32 = 32 };
 pub const Theme = struct { mode: []const u8 = "system", preset: []const u8 = "catppuccin_mocha", terminal_theme: ?[]const u8 = null };
@@ -37,10 +90,12 @@ pub const Projection = struct {
     attention: Attention,
     monitoring: Monitoring = .{},
     session_summary: SessionSummary,
+    tmux_status_bar: ?[]const []const u8 = null,
+    tmux_status_warning: ?[]const u8 = null,
 };
 const ErrorBody = struct { code: []const u8, message: []const u8, retryable: bool };
 pub const CodexNotifyStatus = enum { missing, configured, conflict, invalid, unsafe, unsupported };
-const Result = struct { kind: []const u8, theme_projection: ?ThemeProjection = null, projection: ?Projection = null, summary: ?[]const u8 = null, execution_target_id: ?[]const u8 = null, status: ?CodexNotifyStatus = null, @"error": ?ErrorBody = null };
+const Result = struct { kind: []const u8, tmux_status_bar: ?[]const []const u8 = null, tmux_status_warning: ?[]const u8 = null, theme_projection: ?ThemeProjection = null, projection: ?Projection = null, summary: ?[]const u8 = null, execution_target_id: ?[]const u8 = null, status: ?CodexNotifyStatus = null, @"error": ?ErrorBody = null };
 const Response = struct { protocol_version: u32, api: []const u8, request_id: []const u8, revision: u64, result: Result };
 const Frame = struct { type: []const u8, response: Response };
 
@@ -70,6 +125,8 @@ pub const Model = struct {
             return error.InvalidSettingsResponse;
         if (parsed.value.response.result.projection) |*projected| {
             projected.theme_projection = parsed.value.response.result.theme_projection;
+            projected.tmux_status_bar = parsed.value.response.result.tmux_status_bar;
+            projected.tmux_status_warning = parsed.value.response.result.tmux_status_warning;
             if(self.projection()) |current| if(projected.revision<current.revision) {parsed.deinit();return;};
             if (self.current) |*value| value.deinit();
             self.current = parsed;

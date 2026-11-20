@@ -21,6 +21,7 @@ const Window = @import("../class/window.zig").Window;
 const control = @import("control_center/model.zig");
 const control_center_intent = @import("control_center/intent.zig");
 const layout_policy = @import("control_center/layout_policy.zig");
+const layout_view = @import("layout_map_view.zig");
 const inbox = @import("inbox.zig");
 const width_preferences = @import("control_center/width_preferences.zig");
 const pane_interaction = @import("pane_interaction.zig");
@@ -38,12 +39,8 @@ const log = std.log.scoped(.polar_station_controller);
 pub const ActionFn = *const fn (?*anyopaque, u64, Action) void;
 pub const PaneDropFn = *const fn (?*anyopaque, u64, pane_interaction.PaneDrop) void;
 
-const MapBodyRef = struct {
-    widget: *gtk.Widget,
-    grid: ?*gtk.Grid,
-    display_mode: control.DisplayMode,
-    row_span: usize,
-};
+const MapBodyRef = layout_view.Body;
+const PaneButtonRef = layout_view.PaneButtonRef;
 
 const controller_css =
     \\.polar-station-controller-root button.flat,
@@ -56,7 +53,8 @@ const controller_css =
     \\.polar-station-bottom-strip label {
     \\  font-size: 10px;
     \\}
-    \\.polar-station-controller-root flowboxchild {
+    \\.polar-station-controller-root flowboxchild,
+    \\.polar-station-expanded-cards > flowboxchild {
     \\  padding: 0;
     \\}
     \\.polar-station-pane-action {
@@ -124,10 +122,10 @@ pub const Controller = struct {
     restore_popover: *gtk.Popover,
     lifecycle_button: *gtk.Button,
     lifecycle_image: *gtk.Image,
-    sessions_revealer: *gtk.Revealer,
+    expanded_cards: *gtk.FlowBox,
+    workspace_manager: ?*@import("workspace_manager_window.zig").Manager = null,
+    workspace_layout_changed: ?*const fn (*Controller, ?[]const u8) void = null,
     sessions_panel: *gtk.Box,
-    sessions_separator: *gtk.Separator,
-    layout_region: *gtk.Box,
     sessions_title: *gtk.Label,
     sessions_hint: *gtk.Label,
     sessions_refresh_button: *gtk.Button,
@@ -167,8 +165,6 @@ pub const Controller = struct {
     width_drag_pointer_start: ?f64 = null,
     width_preferences_store: ?width_preferences.Preferences = null,
     iphone_window: ?*adw.Window = null,
-    font_size_content: ?*gtk.Box = null,
-    font_size_spin: ?*gtk.SpinButton = null,
     session_end: ?*session_end_window.Window = null,
     rename_window: ?*adw.Window = null,
     rename_heading: ?*gtk.Label = null,
@@ -361,6 +357,7 @@ pub const Controller = struct {
         const workspace_menu_box = menuBox();
         workspace_popover.setChild(workspace_menu_box.as(gtk.Widget));
         workspace_menu.setPopover(workspace_popover);
+        _ = gtk.Popover.signals.closed.connect(workspace_popover, *gtk.Box, collapseArchived, workspace_menu_box, .{});
         header.append(workspace_menu.as(gtk.Widget));
 
         const rename_workspace = gtk.Button.newWithLabel("Rename Workspace");
@@ -500,19 +497,8 @@ pub const Controller = struct {
         sessions_panel.append(sessions_scroller.as(gtk.Widget));
         sessions_panel.as(gtk.Widget).addCssClass("sidebar");
 
-        const sessions_revealer = gtk.Revealer.new();
-        // Wayland compositors do not guarantee a client-requested resize while
-        // a mapped toplevel is animating. Reveal atomically so the sidebar and
-        // its accessible children cannot remain stuck at a zero allocation.
-        sessions_revealer.setTransitionType(.none);
-        sessions_revealer.setTransitionDuration(0);
-        sessions_revealer.setChild(sessions_panel.as(gtk.Widget));
-        sessions_revealer.as(gtk.Widget).setSizeRequest(
-            layout_policy.sessions_outer_width,
-            -1,
-        );
-        sessions_revealer.as(gtk.Widget).setVexpand(1);
-
+        const expanded_cards = layout_view.newExpandedCards();
+        _ = expanded_cards.as(gobject.Object).refSink();
         const layout_box = gtk.Box.new(.vertical, layout_policy.layout_tab_spacing);
         layout_box.as(gtk.Widget).setHexpand(1);
         setMargins(
@@ -541,14 +527,6 @@ pub const Controller = struct {
         width_resize_handle.as(gtk.Widget).setVexpand(1);
         width_resize_handle.as(gtk.Widget).setCursorFromName("col-resize");
 
-        const body = gtk.Box.new(.horizontal, 0);
-        body.as(gtk.Widget).setVexpand(1);
-        const sessions_separator = gtk.Separator.new(.vertical);
-        const layout_body = gtk.Box.new(.horizontal, 0);
-        layout_body.as(gtk.Widget).setVexpand(1);
-        body.append(sessions_revealer.as(gtk.Widget));
-        body.append(sessions_separator.as(gtk.Widget));
-        layout_body.append(layout_scroller.as(gtk.Widget));
         const layout_header = gtk.Box.new(.horizontal, 4);
         setMargins(layout_header.as(gtk.Widget), 10);
         const layout_title = label("Layout", "heading");
@@ -559,14 +537,14 @@ pub const Controller = struct {
         layout_header.append(layout_title.as(gtk.Widget));
         const layout_region = gtk.Box.new(.vertical, 0);
         layout_region.append(layout_header.as(gtk.Widget));
-        layout_region.append(layout_body.as(gtk.Widget));
+        layout_region.append(layout_scroller.as(gtk.Widget));
         const settings_page = try @import("settings_navigation.zig").Page.create(allocator);
         const settings_stack = gtk.Stack.new();
         settings_stack.as(gtk.Widget).setHexpand(1);
         settings_stack.as(gtk.Widget).setVexpand(1);
         settings_stack.setHhomogeneous(0); settings_stack.setVhomogeneous(0);
-        body.append(layout_region.as(gtk.Widget));
-        _ = settings_stack.addNamed(body.as(gtk.Widget), "layout");
+        _ = settings_stack.addNamed(layout_region.as(gtk.Widget), "layout");
+        _ = settings_stack.addNamed(sessions_panel.as(gtk.Widget), "sessions");
         _ = settings_stack.addNamed(settings_page.root.as(gtk.Widget), "settings");
         settings_stack.setVisibleChildName("layout");
 
@@ -647,7 +625,9 @@ pub const Controller = struct {
         footer.as(gtk.Widget).setMarginBottom(4);
         footer.as(gtk.Widget).setMarginStart(3);
         footer.as(gtk.Widget).setMarginEnd(3);
+        // Kept as a controller-owned action widget for shortcut state.
         layout_header.append(sessions_button.as(gtk.Widget));
+        sessions_button.as(gtk.Widget).setVisible(0);
         mode_button.as(gtk.Widget).setHexpand(1);
         resources.as(gtk.Widget).setHexpand(1);
         iphone.as(gtk.Widget).setHexpand(1);
@@ -721,10 +701,8 @@ pub const Controller = struct {
             .restore_popover = restore_popover,
             .lifecycle_button = lifecycle,
             .lifecycle_image = lifecycle_image,
-            .sessions_revealer = sessions_revealer,
+            .expanded_cards = expanded_cards,
             .sessions_panel = sessions_panel,
-            .sessions_separator = sessions_separator,
-            .layout_region = layout_region,
             .sessions_title = sessions_title,
             .sessions_hint = sessions_subtitle,
             .sessions_search = sessions_search,
@@ -915,6 +893,7 @@ pub const Controller = struct {
     }
 
     pub fn deinit(self: *Controller) void {
+        if (self.host_alive and self.workspace_manager != null) self.host_window.setExpandedWorkspaceLayout(null);
         self.settings_page.deinit();
         if(self.idea_binding_pane) |v| self.allocator.free(v);
         if(self.idea_binding_view) |v| self.allocator.free(v);
@@ -947,13 +926,10 @@ pub const Controller = struct {
         self.clearPendingTabSelection();
         self.clearSessionRows();
         self.clearWorkspaceMap();
+        self.expanded_cards.as(gobject.Object).unref();
         if (self.pending_map_render_source) |source| _ = glib.Source.remove(source);
         self.map_action_popovers.deinit(self.allocator);
         if (self.iphone_window) |window| auxiliary.destroy(window);
-        if (self.font_size_content) |content| {
-            if(content.as(gtk.Widget).getParent()) |parent| if(gobject.ext.cast(gtk.Box,parent.as(gobject.Object))) |box| box.remove(content.as(gtk.Widget));
-            content.as(gobject.Object).unref();
-        }
         self.clearRenameTarget();
         if (self.session_directory) |window| window.deinit();
         if (self.session_end) |window| window.deinit();
@@ -964,6 +940,7 @@ pub const Controller = struct {
             window.deinit();
             self.allocator.destroy(window);
         }
+        if (self.workspace_manager) |manager| manager.deinit();
         if (self.ssh_target_window) |window| auxiliary.destroy(window);
         self.ssh_target_draft.deinit(self.allocator);
         if (self.new_workspace_window) |window| auxiliary.destroy(window);
@@ -1027,6 +1004,7 @@ pub const Controller = struct {
     }
 
     pub fn hide(self: *Controller) void {
+        self.changeExpandedLayout(false, null);
         self.cancelPaneDrag();
         if (self.lifecycle.control_center == .absent) return;
         self.lifecycle.controlCenterHidden();
@@ -1152,7 +1130,7 @@ pub const Controller = struct {
             const executor = self.native_executor;
             if (executor == null or executor.?.nativePaneView(id) == null or !std.mem.eql(u8, self.located_workspace_id orelse "", workspace_map.workspace_id)) self.clearSessionLocate();
         }
-        self.renderWorkspaceMap(projection, &workspace_map);
+        self.renderWorkspaceMap(&workspace_map);
         self.renderBottomBar(projection);
         self.renderInbox();
         self.renderMoreMenu(projection);
@@ -1277,19 +1255,30 @@ pub const Controller = struct {
         if (self.native_executor) |executor| {
             if (executor.nativeWorkspaceCatalog()) |catalog| {
                 for (catalog.workspaces) |workspace| {
-                    if (catalog.isArchived(workspace.workspace_id)) {
-                        self.appendRestoreWorkspace(self.workspace_menu_box, workspace.workspace_id, workspace.workspace_name);
-                        continue;
-                    }
+                    if (catalog.isArchived(workspace.workspace_id)) continue;
                     self.appendWorkspaceChoice(
                         workspace.workspace_id,
                         workspace.workspace_name,
                         std.mem.eql(
                             u8,
                             workspace.workspace_id,
-                            catalog.selected_workspace_id,
+                            workspace_map.workspace_id,
                         ),
                     );
+                }
+                if (catalog.archived_workspace_ids.len > 0) {
+                    const expander = gtk.Expander.new("+ Archived");
+                    const rows = gtk.Box.new(.vertical, 4);
+                    for (catalog.workspaces) |workspace| if (catalog.isArchived(workspace.workspace_id)) {
+                        const button = gtk.Button.new();
+                        setButtonLabel(self.allocator, button, workspace.workspace_name) catch continue;
+                        setWidgetName(self.allocator, button.as(gtk.Widget), workspace.workspace_id) catch continue;
+                        connect(button, Controller, workspacePreviewClicked, self);
+                        rows.append(button.as(gtk.Widget));
+                    };
+                    expander.setChild(rows.as(gtk.Widget));
+                    self.workspace_menu_box.append(expander.as(gtk.Widget));
+                    _ = gobject.Object.signals.notify.connect(expander.as(gobject.Object), *gtk.Expander, archiveExpanded, expander, .{ .detail = "expanded" });
                 }
             } else {}
         } else {
@@ -1303,7 +1292,7 @@ pub const Controller = struct {
             connect(button, Controller, newWorkspaceWindowClicked, self);
             self.workspace_menu_box.append(button.as(gtk.Widget));
         }
-        if (projection.action("workspace.archive")) |action| self.appendWorkspaceConfirmedAction(action, deleteWorkspaceConfirmed);
+
         if (projection.header.workspace_menu_detach_action) |*action| {
             const close = gtk.Button.new();
             setButtonLabel(self.allocator, close, action.label) catch return;
@@ -1393,7 +1382,7 @@ pub const Controller = struct {
         ) catch {};
         button.as(gtk.Widget).setTooltipText("Select Workspace");
         if (selected) button.as(gtk.Widget).addCssClass("suggested-action");
-        connect(button, Controller, workspaceClicked, self);
+        connect(button, Controller, workspacePreviewClicked, self);
         self.workspace_menu_box.append(button.as(gtk.Widget));
         if (selected) {
             const selected_name = self.allocator.dupeZ(u8, name) catch return;
@@ -1632,11 +1621,10 @@ pub const Controller = struct {
             adjustment.getPageSize(),
         ));
         std.log.debug(
-            "Control Center sessions rendered rows={d} reveal_child={} child_revealed={} has_first_row={}",
+            "Control Center sessions rendered rows={d} mapped={} has_first_row={}",
             .{
                 projection.sessions.rows.len,
-                self.sessions_revealer.getRevealChild() != 0,
-                self.sessions_revealer.getChildRevealed() != 0,
+                self.sessions_panel.as(gtk.Widget).getMapped() != 0,
                 self.sessions_list.as(gtk.Widget).getFirstChild() != null,
             },
         );
@@ -2407,29 +2395,19 @@ pub const Controller = struct {
         self: *Controller,
         sessions_visible: bool,
     ) void {
-        const drawer_visible = self.active_tab == .layout and sessions_visible;
-        self.settings_stack.setVisibleChildName(switch (self.active_tab) { .layout => "layout", .inbox => "inbox", .settings => "settings" });
+        self.settings_stack.setVisibleChildName(switch (self.active_tab) {
+            .layout => if (sessions_visible) "sessions" else "layout",
+            .inbox => "inbox",
+            .settings => "settings",
+        });
         const was_rendering = self.rendering;
         self.rendering = true;
         self.mode_button.setActive(@intFromBool(self.active_tab == .layout));
         self.iphone_button.setActive(@intFromBool(self.active_tab == .inbox));
         self.resources_button.setActive(@intFromBool(self.active_tab == .settings));
         self.rendering = was_rendering;
-        self.sessions_revealer.as(gtk.Widget).setVisible(@intFromBool(drawer_visible));
-        self.sessions_separator.as(gtk.Widget).setVisible(@intFromBool(drawer_visible));
-        self.sessions_revealer.setRevealChild(
-            @intFromBool(drawer_visible),
-        );
-        self.sessions_revealer.as(gtk.Widget).setSizeRequest(
-            if (drawer_visible) layout_policy.sessions_outer_width else 0,
-            -1,
-        );
         self.sessions_panel.as(gtk.Widget).setSizeRequest(
-            if (drawer_visible)
-                layout_policy.sessions_outer_width -
-                    (2 * layout_policy.controller_section_margin)
-            else
-                0,
+            self.map_width - (2 * layout_policy.controller_section_margin),
             -1,
         );
         self.layout_scroller.as(gtk.Widget).setSizeRequest(
@@ -2471,11 +2449,11 @@ pub const Controller = struct {
     }
 
     fn controllerWidth(self: *const Controller) c_int {
-        return layout_policy.controllerWidth(self.active_tab, self.sessions_visible, self.map_width);
+        return layout_policy.controllerWidth(self.active_tab, false, self.map_width);
     }
 
     fn setControlCenterWidth(self: *Controller, requested: c_int, commit: bool) void {
-        const selected = layout_policy.resizedPageWidth(self.active_tab, self.sessions_visible, @min(requested, self.availablePanelWidth()));
+        const selected = layout_policy.resizedPageWidth(self.active_tab, false, @min(requested, self.availablePanelWidth()));
         self.map_width = selected;
         self.inbox_scroller.as(gtk.Widget).setSizeRequest(selected, -1);
         self.updateMapBodyGeometry();
@@ -2485,23 +2463,7 @@ pub const Controller = struct {
 
     fn updateMapBodyGeometry(self: *Controller) void {
         for (self.pane_buttons.items) |pane| pane.updateDensity(self.map_width);
-        const gap: c_uint = @intCast(
-            layout_policy.scaledPaneGridGap(self.map_width),
-        );
-        for (self.map_bodies.items) |body| {
-            body.widget.setSizeRequest(
-                -1,
-                layout_policy.scaledTabBodyHeight(
-                    body.display_mode,
-                    body.row_span,
-                    self.map_width,
-                ),
-            );
-            if (body.grid) |grid| {
-                grid.setColumnSpacing(gap);
-                grid.setRowSpacing(gap);
-            }
-        }
+        for (self.map_bodies.items) |body| body.updateGeometry(self.map_width);
         self.layout_box.as(gtk.Widget).queueResize();
     }
 
@@ -2535,7 +2497,6 @@ pub const Controller = struct {
 
     fn renderWorkspaceMap(
         self: *Controller,
-        projection: *const control.Projection,
         workspace_map: *const control.WorkspaceMap,
     ) void {
         for (self.map_action_popovers.items) |popover| {
@@ -2552,18 +2513,21 @@ pub const Controller = struct {
             .workspace_id = workspace_map.workspace_id,
             .tabs = workspace_map.tabs,
             .located_pane = self.located_pane_id,
+            .expanded = self.sessions_visible,
         })) return;
         self.clearWorkspaceMap();
 
         for (workspace_map.tabs, 0..) |tab, tab_index| {
             const card = self.makeTabCard(
-                projection,
                 &tab,
                 tab_index,
                 workspace_map.tabs,
             ) catch continue;
-            self.layout_box.append(card.as(gtk.Widget));
+            if (self.sessions_visible) {
+                self.expanded_cards.insert(card.as(gtk.Widget), -1);
+            } else self.layout_box.append(card.as(gtk.Widget));
         }
+        if (self.sessions_visible) if (self.workspace_manager) |manager| manager.queueExpandedCardLayout();
     }
 
     fn clearSessionLocate(self: *Controller) void {
@@ -2666,27 +2630,6 @@ pub const Controller = struct {
         return executor.nativeSelectedTabId();
     }
 
-    fn paneViewsForTab(
-        _: *const Controller,
-        _: *const control.Projection,
-        tab: *const control.Tab,
-        storage: *[9]control.Pane,
-    ) []const control.Pane {
-        if (tab.visual_pane_ids.len == tab.panes.len) {
-            var count: usize = 0;
-            for (tab.visual_pane_ids) |id| for (tab.panes) |pane| {
-                if (std.mem.eql(u8, id, pane.id)) {
-                    storage[count] = pane;
-                    count += 1;
-                    break;
-                }
-            };
-            return storage[0..count];
-        }
-        for (tab.panes, 0..) |pane, index| storage[index] = pane;
-        return storage[0..tab.panes.len];
-    }
-
     fn nativeSessionAssignment(
         self: *const Controller,
         execution_target_id: []const u8,
@@ -2699,66 +2642,16 @@ pub const Controller = struct {
         );
     }
 
-    fn displayModeForTab(_: *const Controller, tab: *const control.Tab) control.DisplayMode {
-        return tab.display_mode;
-    }
-    fn placementForPane(self: *const Controller, tab: *const control.Tab, pane: control.Pane) !layout_policy.GridPlacement {
-        var fallback: [9][]const u8 = undefined;
-        for (tab.panes, 0..) |candidate, index| fallback[index] = candidate.id;
-        const visual = if (tab.visual_pane_ids.len == tab.panes.len) tab.visual_pane_ids else fallback[0..tab.panes.len];
-        return layout_policy.gridPlacementForMapWidth(visual, tab.display_mode, pane.id, self.map_width);
-    }
-
     fn makeTabCard(
         self: *Controller,
-        projection: *const control.Projection,
         tab: *const control.Tab,
         tab_index: usize,
         all_tabs: []const control.Tab,
     ) !*gtk.Box {
-        const display_mode = self.displayModeForTab(tab);
-        var pane_storage: [9]control.Pane = undefined;
-        const panes = self.paneViewsForTab(
-            projection,
-            tab,
-            &pane_storage,
-        );
-        const selected_tab = tab.selected;
-        var total_rows: usize = 1;
-        var total_columns: usize = 1;
-        for (panes) |pane| {
-            const placement = self.placementForPane(tab, pane) catch continue;
-            total_rows = @max(
-                total_rows,
-                @as(usize, @intCast(
-                    placement.row + placement.row_span,
-                )),
-            );
-            total_columns = @max(
-                total_columns,
-                @as(usize, @intCast(
-                    placement.column + placement.column_span,
-                )),
-            );
-        }
-        const card_layout = layout_policy.tabCardLayoutForMapWidth(
-            display_mode,
-            total_rows,
-            total_columns,
-            self.map_width,
-        );
-        const card = gtk.Box.new(.vertical, layout_policy.tab_header_body_spacing);
-        // The list owns outer spacing; card margins must not duplicate it.
-        card.as(gtk.Widget).addCssClass("card");
-        card.as(gtk.Widget).setHalign(.fill);
-        card.as(gtk.Widget).setHexpand(
-            @intFromBool(card_layout.card_hexpand),
-        );
-        card.as(gtk.Widget).setValign(.start);
-        card.as(gtk.Widget).setVexpand(
-            @intFromBool(card_layout.card_vexpand),
-        );
-        if (selected_tab) card.as(gtk.Widget).addCssClass("polar-tab-selected");
+        const view = try layout_view.makeTabCard(self.allocator, tab, tab_index, all_tabs.len, self.map_width, null);
+        const card = view.root;
+        const select = view.select;
+        const header_actions = view.actions;
         const context = try self.makeTabButtonContext(
             tab,
             tab_index,
@@ -2788,56 +2681,13 @@ pub const Controller = struct {
             drop_target.as(gtk.EventController),
         );
 
-        const header = gtk.Box.new(.horizontal, 4);
-        header.as(gtk.Widget).addCssClass("polar-tab-header");
-        const header_actions = gtk.Box.new(.horizontal, 4);
-        if (selected_tab) header.as(gtk.Widget).addCssClass("polar-tab-selected-header");
-        header.as(gtk.Widget).setSizeRequest(
-            -1,
-            card_layout.header_height,
-        );
-        const tab_selection = gtk.ToggleButton.new();
-        tab_selection.setActive(@intFromBool(selected_tab));
-        const select = tab_selection.as(gtk.Button);
-        select.setCanShrink(1);
-        select.as(gtk.Widget).setHexpand(1);
-        try setButtonLabel(self.allocator, select, tab.title);
-        if (select.getChild()) |child| {
-            if (gobject.ext.cast(gtk.Label, child)) |title_label| {
-                title_label.setXalign(0);
-                title_label.setEllipsize(.end);
-                title_label.setWrap(0);
-            }
-        }
-        try setWidgetName(self.allocator, select.as(gtk.Widget), tab.id);
-        select.as(gtk.Widget).addCssClass("flat");
-        select.as(gtk.Widget).setTooltipText(if (selected_tab) "Current Tab" else "Select Tab");
-        // Selection already has a tinted header and outline; retain ordinary text.
         connect(select, Controller, tabClicked, self);
-
-        const pane_count_text = try std.fmt.allocPrint(
-            self.allocator,
-            "{d}",
-            .{
-                panes.len,
-            },
-        );
-        defer self.allocator.free(pane_count_text);
-        const pane_count = label("", "caption");
-        pane_count.setWrap(0);
-        pane_count.setEllipsize(.end);
-        pane_count.as(gtk.Widget).addCssClass("dim-label");
-        try setLabel(self.allocator, pane_count, pane_count_text);
         const tab_drag = gtk.DragSource.new();
         tab_drag.setActions(gdk.DragAction.flags_move);
         _ = gtk.DragSource.signals.prepare.connect(tab_drag, *TabButtonContext, tabDragPrepare, context, .{});
         _ = gtk.DragSource.signals.drag_end.connect(tab_drag, *TabButtonContext, tabDragEnd, context, .{});
         _ = gtk.DragSource.signals.drag_cancel.connect(tab_drag, *TabButtonContext, tabDragCancel, context, .{});
         select.as(gtk.Widget).addController(tab_drag.as(gtk.EventController));
-        header.append(gtk.Image.newFromIconName(if (display_mode == .monitor) "view-grid-symbolic" else "view-dual-symbolic").as(gtk.Widget));
-        header.append(select.as(gtk.Widget));
-        header.append(header_actions.as(gtk.Widget));
-        header_actions.append(pane_count.as(gtk.Widget));
         const card_menu = gtk.MenuButton.new();
         card_menu.as(gtk.Widget).setSizeRequest(32, 32);
         card_menu.setIconName("view-more-symbolic");
@@ -2858,18 +2708,8 @@ pub const Controller = struct {
         connect(rename, TabButtonContext, tabRenameClicked, context);
         card_actions.append(rename.as(gtk.Widget));
 
-        const move_earlier = gtk.Button.newFromIconName("go-up-symbolic");
-        const move_later = gtk.Button.newFromIconName("go-down-symbolic");
-        move_earlier.as(gtk.Widget).setSensitive(@intFromBool(tab_index > 0));
-        move_later.as(gtk.Widget).setSensitive(@intFromBool(tab_index + 1 < all_tabs.len));
-        connect(move_earlier, TabButtonContext, tabMoveEarlierClicked, context);
-        connect(move_later, TabButtonContext, tabMoveLaterClicked, context);
-        move_earlier.as(gtk.Widget).setTooltipText("Move Up");
-        move_later.as(gtk.Widget).setTooltipText("Move Down");
-        move_earlier.as(gtk.Widget).addCssClass("flat");
-        move_later.as(gtk.Widget).addCssClass("flat");
-        header_actions.prepend(move_later.as(gtk.Widget));
-        header_actions.prepend(move_earlier.as(gtk.Widget));
+        connect(view.move_earlier, TabButtonContext, tabMoveEarlierClicked, context);
+        connect(view.move_later, TabButtonContext, tabMoveLaterClicked, context);
 
         const delete = gtk.MenuButton.new();
         delete.setIconName("user-trash-symbolic");
@@ -2925,111 +2765,24 @@ pub const Controller = struct {
         }
         delete.setLabel("Delete Tab…");
         card_actions.append(delete.as(gtk.Widget));
-        card.append(header.as(gtk.Widget));
-
-        if (panes.len == 0) {
-            const empty = gtk.Box.new(.vertical, 5);
-            setMargins(empty.as(gtk.Widget), 18);
-            empty.as(gtk.Widget).addCssClass("view");
-            empty.as(gtk.Widget).setSizeRequest(
-                -1,
-                card_layout.body_height,
-            );
-            try self.map_bodies.append(self.allocator, .{
-                .widget = empty.as(gtk.Widget),
-                .grid = null,
-                .display_mode = display_mode,
-                .row_span = total_rows,
-            });
-            const empty_title = label("Add a Session to this Tab", "heading");
-            const empty_detail = label(
-                "This empty Tab is a quiet Session assignment target.",
-                "dim-label",
-            );
-            empty.append(empty_title.as(gtk.Widget));
-            empty.append(empty_detail.as(gtk.Widget));
-            card.append(empty.as(gtk.Widget));
-            return card;
-        }
-
-        const grid = gtk.Grid.new();
-        const scaled_gap: c_uint = @intCast(
-            layout_policy.scaledPaneGridGap(self.map_width),
-        );
-        grid.setColumnSpacing(scaled_gap);
-        grid.setRowSpacing(scaled_gap);
-        grid.setColumnHomogeneous(1);
-        grid.setRowHomogeneous(1);
-        grid.as(gtk.Widget).setHalign(.fill);
-        grid.as(gtk.Widget).setHexpand(
-            @intFromBool(card_layout.grid_hexpand),
-        );
-        grid.as(gtk.Widget).setValign(.start);
-        grid.as(gtk.Widget).setVexpand(
-            @intFromBool(card_layout.grid_vexpand),
-        );
-        grid.as(gtk.Widget).setSizeRequest(-1, card_layout.body_height);
-        try self.map_bodies.append(self.allocator, .{
-            .widget = grid.as(gtk.Widget),
-            .grid = grid,
-            .display_mode = display_mode,
-            .row_span = total_rows,
-        });
-        for (panes) |pane| {
-            const placement = self.placementForPane(tab, pane) catch continue;
-            const tile = try self.makePaneTile(
-                tab,
-                &pane,
-                card_layout,
-                @intCast(placement.column_span),
-                @intCast(total_columns),
-            );
-            grid.attach(
-                tile.as(gtk.Widget),
-                placement.column,
-                placement.row,
-                placement.column_span,
-                placement.row_span,
-            );
-        }
-        card.append(grid.as(gtk.Widget));
+        try self.map_bodies.append(self.allocator, view.body);
+        for (view.tiles[0..view.count]) |pane| try self.connectPaneTile(tab, pane);
         return card;
     }
 
-    fn makePaneTile(
-        self: *Controller,
-        tab: *const control.Tab,
-        pane: *const control.Pane,
-        card_layout: layout_policy.TabCardLayout,
-        column_span: c_int,
-        total_columns: c_int,
-    ) !*gtk.Box {
-        const tile = gtk.Box.new(.vertical, 4);
-        tile.as(gtk.Widget).setHexpand(
-            @intFromBool(card_layout.pane_tile_hexpand),
-        );
-        tile.as(gtk.Widget).setVexpand(
-            @intFromBool(card_layout.pane_tile_vexpand),
-        );
-        tile.as(gtk.Widget).addCssClass("card");
-        if (pane.selected) tile.as(gtk.Widget).addCssClass("accent");
+    fn connectPaneTile(self: *Controller, tab: *const control.Tab, pane_ref: PaneButtonRef) !void {
+        const tile = pane_ref.tile;
         const context = try self.makePaneButtonContext(
             tab.id,
-            pane.id,
+            pane_ref.pane_id,
         );
-        tile.as(gobject.Object).weakRef(
+        pane_ref.tile.as(gobject.Object).weakRef(
             paneButtonContextWeakNotify,
             context,
         );
 
-        const button = gtk.Button.new();
-        button.setCanShrink(1);
+        const button = pane_ref.button;
         context.button = button;
-        button.as(gtk.Widget).addCssClass("polar-station-pane-action");
-        try setWidgetName(self.allocator, button.as(gtk.Widget), pane.id);
-        button.as(gtk.Widget).setHexpand(1);
-        button.as(gtk.Widget).setVexpand(1);
-        button.as(gtk.Widget).addCssClass("flat");
         // Selection belongs to the containing card; this is not a primary action.
         connect(button, PaneButtonContext, paneClicked, context);
         // Observe the press without introducing a competing gesture recognizer.
@@ -3063,85 +2816,13 @@ pub const Controller = struct {
         _ = gtk.DropTarget.signals.drop.connect(pane_drop, *PaneButtonContext, paneDroppedOnPane, context, .{});
         button.as(gtk.Widget).addController(pane_drop.as(gtk.EventController));
 
-        const content = gtk.Box.new(.vertical, 2);
-        content.as(gtk.Widget).setMarginTop(
-            layout_policy.pane_tile_vertical_padding,
-        );
-        content.as(gtk.Widget).setMarginBottom(
-            layout_policy.pane_tile_vertical_padding,
-        );
-        content.as(gtk.Widget).setMarginStart(
-            layout_policy.pane_tile_horizontal_padding,
-        );
-        content.as(gtk.Widget).setMarginEnd(
-            layout_policy.pane_tile_horizontal_padding,
-        );
-        const primary = gtk.Box.new(.horizontal, 2);
-        const status = label("●", "caption");
-        status.as(gtk.Widget).addCssClass(
-            if (pane.transport_status == .online) "success" else "error",
-        );
-        status.as(gtk.Widget).setTooltipText(
-            if (pane.session_presence == .ended) "Session ended" else if (pane.transport_status == .online) "Connected" else "Disconnected",
-        );
-        const session = label("", "heading");
-        session.setWrap(0);
-        session.setWidthChars(1);
-        session.setEllipsize(.end);
-        session.as(gtk.Widget).setHexpand(1);
-        try setLabel(self.allocator, session, pane.session_name);
-        const source = label("", "caption");
-        source.setWrap(0);
-        source.setWidthChars(1);
-        source.as(gtk.Widget).setHexpand(1);
-        source.setEllipsize(.end);
-        source.as(gtk.Widget).addCssClass("dim-label");
-        try setLabel(self.allocator, source, switch (pane.target_kind) {
-            .local => "Local",
-            .ssh => "SSH",
-            .wsl => "WSL",
-        });
-        primary.append(status.as(gtk.Widget));
-        primary.append(session.as(gtk.Widget));
-        if (pane.session_presence == .ended) {
-            const ended = label("Ended", "caption");
-            ended.as(gtk.Widget).addCssClass("error");
-            primary.append(ended.as(gtk.Widget));
-        }
-        content.append(primary.as(gtk.Widget));
-        content.append(source.as(gtk.Widget));
-        const attention = paneAttentionStateLabel(
-            self.allocator,
-            pane.attention,
-        ) catch null;
-        if (attention) |value| content.append(value.as(gtk.Widget));
-        button.setChild(content.as(gtk.Widget));
-        const pane_ref: PaneButtonRef = .{
-            .pane_id = pane.id,
-            .tile = tile.as(gtk.Widget),
-            .button = button,
-            .content = content,
-            .status = status,
-            .attention = attention,
-            .attention_visible = pane.attention.state != .idle and pane.attention.state != .unknown,
-            .column_span = column_span,
-            .total_columns = total_columns,
-        };
         if (self.located_pane_id) |id| {
-            if (std.mem.eql(u8, id, pane.id)) {
-                tile.as(gtk.Widget).addCssClass("polar-pane-located");
-                tile.as(gtk.Widget).setOpacity(self.locateOpacity());
+            if (std.mem.eql(u8, id, pane_ref.pane_id)) {
+                tile.addCssClass("polar-pane-located");
+                tile.setOpacity(self.locateOpacity());
             }
         }
-        pane_ref.updateDensity(self.map_width);
         self.pane_buttons.append(self.allocator, pane_ref) catch {};
-        const tooltip = try std.fmt.allocPrintSentinel(self.allocator, "{s}\n{s}\n{s}\n{s}", .{
-            pane.session_name,                                                                                                               pane.target_label,
-            if (pane.session_presence == .ended) "Session ended" else if (pane.transport_status == .online) "Connected" else "Disconnected", if (attention) |value| std.mem.span(value.getLabel()) else "",
-        }, 0);
-        defer self.allocator.free(tooltip);
-        button.as(gtk.Widget).setTooltipText(tooltip);
-
         const context_menu = gtk.Popover.new();
         const context_box = menuBox();
         const remove = gtk.Button.newWithLabel(
@@ -3171,8 +2852,6 @@ pub const Controller = struct {
         button.as(gtk.Widget).addController(
             context_click.as(gtk.EventController),
         );
-        tile.append(button.as(gtk.Widget));
-        return tile;
     }
 
     fn renderBottomBar(
@@ -3247,7 +2926,6 @@ pub const Controller = struct {
         );
         font_size.button.as(gtk.Widget).addCssClass("flat");
         if (projection.action("managed.terminal.font.size")) |action| {
-            setLabel(self.allocator, font_size.text, action.label) catch {};
             renderActionState(self.allocator, font_size.button, action);
             connect(font_size.button, Controller, fontSizeClicked, self);
         } else {
@@ -3612,29 +3290,6 @@ pub const Controller = struct {
         _ = self.session_create_name.?.as(gtk.Widget).grabFocus();
     }
 
-    pub fn workspaceFontWidget(self: *Controller) *gtk.Widget {
-        if (self.font_size_content == null) {
-            const content = gtk.Box.new(.vertical, 8);
-            _ = content.as(gobject.Object).refSink();
-            content.append(label("Current Workspace Font", "heading").as(gtk.Widget));
-            const spin = gtk.SpinButton.newWithRange(10, 32, 1);
-            spin.setValue(@floatFromInt(if(self.native_executor) |executor| executor.nativeManagedTerminalFontSize() orelse 14 else 14));
-            content.append(spin.as(gtk.Widget));
-            const buttons = gtk.Box.new(.horizontal, 8);
-            const cancel = gtk.Button.newWithLabel("Reset");
-            const apply = gtk.Button.newWithLabel("Apply");
-            connect(cancel, Controller, fontSizeCancelClicked, self);
-            connect(apply, Controller, fontSizeApplyClicked, self);
-            buttons.append(cancel.as(gtk.Widget));buttons.append(apply.as(gtk.Widget));
-            content.append(buttons.as(gtk.Widget));
-            self.font_size_content=content;self.font_size_spin=spin;
-        }
-        return self.font_size_content.?.as(gtk.Widget);
-    }
-    fn presentFontSizeEditor(self:*Controller) void {
-        self.openSettings(.{.page="workspace"});
-    }
-
     fn presentNewWorkspaceEditor(self: *Controller) void {
         if (self.new_workspace_window == null) {
             const window = auxiliary.create(self.app);
@@ -3774,13 +3429,13 @@ pub const Controller = struct {
         self.connections.?.connectCodex(self.model.host_id);
 
     }
-    pub fn importWorkspaceHosts(self:*Controller,bytes:[]const u8,parent:?*gtk.Window,callback:*const fn(?*anyopaque) void,context:?*anyopaque) void {
+    pub fn importWorkspaceHosts(self:*Controller,bytes:[]const u8,parent:?*gtk.Window,inline_parent:?*gtk.Box,callback:*const fn(?*anyopaque) void,context:?*anyopaque) void {
         self.ensureConnections();
         const projection=self.model.projection() orelse return;
         if(self.connections)|connections|{
             connections.update(projection.connections);
             const review=connections.transfer() orelse return;
-            review.parent=parent;review.on_review_closed=callback;review.review_context=context;
+            review.parent=parent;review.inline_parent=inline_parent;review.on_review_closed=callback;review.review_context=context;
             if(review.window)|window|window.setTransientFor(parent);
             connections.importHostsBundle(bytes);
         }
@@ -4117,7 +3772,24 @@ pub const Controller = struct {
         destination.*.?.as(gtk.Window).present();
     }
 
+    fn isWorkspaceMutation(action: Action) bool {
+        return switch (action) {
+            .toggle_session_assignment, .quick_create_session, .use_existing_session, .create_session,
+            .create_codex_session, .create_agent_session, .rename_workspace,
+            .select_tab, .rename_tab, .add_tab, .delete_tab, .reorder_tab,
+            .reorder_pane, .move_pane, .remove_pane, .select_pane, .activate_pane,
+            .toggle_display_mode => true,
+            else => false,
+        };
+    }
+
     fn dispatch(self: *Controller, action: Action) void {
+        if (self.sessions_visible) if (self.workspace_manager) |manager| {
+            if (manager.isPreview() and isWorkspaceMutation(action)) {
+                manager.problem("Switch to this Workspace before assigning or editing Sessions.");
+                return;
+            }
+        };
         self.action_fn(self.action_context, self.controller_id, action);
     }
 
@@ -4237,6 +3909,7 @@ pub const Controller = struct {
         self.map_bodies.clearRetainingCapacity();
         self.map_action_popovers.clearRetainingCapacity();
         clearBox(self.layout_box);
+        while (self.expanded_cards.as(gtk.Widget).getFirstChild()) |child| self.expanded_cards.remove(child);
     }
 
     fn trackMapActionPopover(self: *Controller, popover: *gtk.Popover) !void {
@@ -4266,6 +3939,24 @@ pub const Controller = struct {
         }
         if (self.host_alive) self.render();
         return 0;
+    }
+
+    fn archiveExpanded(_: *gobject.Object, _: *gobject.ParamSpec, expander: *gtk.Expander) callconv(.c) void {
+        expander.setLabel(if (expander.getExpanded() != 0) "− Archived" else "+ Archived");
+    }
+
+    fn collapseArchived(_: *gtk.Popover, rows: *gtk.Box) callconv(.c) void {
+        var child = rows.as(gtk.Widget).getFirstChild();
+        while (child) |widget| : (child = widget.getNextSibling()) {
+            if (gobject.ext.cast(gtk.Expander, widget)) |expander| expander.setExpanded(0);
+        }
+    }
+
+    fn workspacePreviewClicked(button: *gtk.Button, self: *Controller) callconv(.c) void {
+        const id = self.allocator.dupe(u8, std.mem.span(button.as(gtk.Widget).getName())) catch return;
+        defer self.allocator.free(id);
+        self.workspace_menu.popdown();
+        self.openExpandedLayout(id);
     }
 
     fn workspaceClicked(button: *gtk.Button, self: *Controller) callconv(.c) void {
@@ -4913,38 +4604,6 @@ pub const Controller = struct {
         };
         popover.setPointingTo(&rect);
         popover.popup();
-    }
-
-    fn paneAttentionStateLabel(
-        allocator: std.mem.Allocator,
-        attention: control.SessionAttention,
-    ) !*gtk.Label {
-        const text: []const u8 = switch (attention.state) {
-            .idle, .unknown => "",
-            .working => "Working",
-            .review_ready => "Review ready",
-            .needs_attention => "Needs attention",
-            .approval_required => "Approval required",
-            .decision_required => "Decision required",
-            .permission_required => "Permission required",
-            .failed => "Failed",
-        };
-        const result = try ownedLabel(allocator, text, "caption");
-        result.as(gtk.Widget).addCssClass(switch (attention.state) {
-            .approval_required,
-            .decision_required,
-            .permission_required,
-            .failed,
-            => "error",
-            .review_ready, .needs_attention => "warning",
-            .working => "accent",
-            .idle, .unknown => "dim-label",
-        });
-        result.setEllipsize(.end);
-        result.as(gtk.Widget).setVisible(
-            @intFromBool(attention.state != .idle and attention.state != .unknown),
-        );
-        return result;
     }
 
     fn panePointerEntered(
@@ -6167,30 +5826,30 @@ pub const Controller = struct {
         self.dispatch(.{ .invoke_action = .{ .action_id = "window.close" } });
     }
 
-    fn sessionsToggled(
-        button: *gtk.ToggleButton,
-        self: *Controller,
-    ) callconv(.c) void {
-        if (self.rendering) return;
-        const visible = button.getActive() != 0;
-        if (visible and !self.admitsPanels(true, self.active_tab)) {
-            self.rendering = true; button.setActive(0); self.rendering = false; return;
-        }
-        self.sessions_visible = visible;
-        self.applySidebarLayout(self.sessions_visible);
-        if (self.sessions_visible) self.render();
+    pub fn openExpandedLayout(self: *Controller, preview: ?[]const u8) void {
+        if (!self.admitsPanels(false, .layout)) return;
+        self.tab_restored = true;
+        self.active_tab = .layout;
+        self.changeExpandedLayout(true, preview);
     }
 
-    fn closeSessionsClicked(
-        _: *gtk.Button,
-        self: *Controller,
-    ) callconv(.c) void {
-        if (!self.sessions_visible) return;
-        self.sessions_visible = false;
-        self.rendering = true;
-        self.sessions_button.setActive(0);
-        self.rendering = false;
-        self.applySidebarLayout(false);
+    pub fn changeExpandedLayout(self: *Controller, expanded: bool, preview: ?[]const u8) void {
+        if (expanded) {
+            const executor = self.native_executor orelse return;
+            if (executor.nativeWorkspaceSnapshot() == null) return;
+        }
+        self.sessions_visible = expanded;
+        if (self.workspace_layout_changed) |changed| changed(self, preview);
+        self.applySidebarLayout(expanded);
+        if (self.isVisible()) self.render();
+    }
+
+    fn sessionsToggled(button: *gtk.ToggleButton, self: *Controller) callconv(.c) void {
+        if (!self.rendering) self.changeExpandedLayout(button.getActive() != 0, null);
+    }
+
+    fn closeSessionsClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
+        self.changeExpandedLayout(false, null);
     }
 
     fn restorePanelVisibility(self: *Controller) void {
@@ -6209,7 +5868,8 @@ pub const Controller = struct {
     }
 
     fn selectTab(self: *Controller, tab: layout_policy.ControlCenterTab) void {
-        if (!self.admitsPanels(self.sessions_visible, tab)) {
+        if (tab != .layout and self.sessions_visible) self.changeExpandedLayout(false, null);
+        if (!self.admitsPanels(false, tab)) {
             self.applySidebarLayout(self.sessions_visible);
             return;
         }
@@ -6223,7 +5883,8 @@ pub const Controller = struct {
 
     fn layoutToggled(_: *gtk.ToggleButton, self: *Controller) callconv(.c) void {
         if (self.rendering) return;
-        self.selectTab(.layout);
+        if (self.active_tab == .layout) self.changeExpandedLayout(!self.sessions_visible, null)
+        else self.selectTab(.layout);
     }
 
     fn inboxToggled(_: *gtk.ToggleButton, self: *Controller) callconv(.c) void {
@@ -6288,20 +5949,9 @@ pub const Controller = struct {
 
     fn fontSizeClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
         self.more_menu.popdown();
-        self.presentFontSizeEditor();
-    }
-
-    fn fontSizeCancelClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
-        self.font_size_spin.?.setValue(@floatFromInt(if(self.native_executor) |executor| executor.nativeManagedTerminalFontSize() orelse 14 else 14));
-    }
-
-    fn fontSizeApplyClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
-        const raw = self.font_size_spin.?.getValueAsInt();
-        if (raw < 10 or raw > 32) return;
-        self.dispatch(.{ .set_managed_terminal_font_size = .{
-            .points = @intCast(raw),
-        } });
-
+        if (self.native_executor) |executor| {
+            if (executor.nativeWorkspaceSnapshot() != null) self.openSettings(.{ .page = "workspace" });
+        }
     }
 
     fn newWorkspaceClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
@@ -6429,7 +6079,7 @@ fn sessionAssignmentAction(
         return &session.assignment_action;
     return switch (assignment) {
         .available => &actions.add,
-        .assigned_here => &actions.assigned_elsewhere,
+        .assigned_here => &actions.remove,
         .assigned_elsewhere => &actions.assigned_elsewhere,
         .tab_full => &actions.tab_full,
         .no_managed_tab => &actions.no_managed_tab,
@@ -6536,32 +6186,6 @@ const PendingPaneAction = union(enum) {
 };
 
 const PendingPaneMove = pane_interaction.PaneDrop;
-
-const PaneButtonRef = struct {
-    pane_id: []const u8,
-    tile: *gtk.Widget,
-    button: *gtk.Button,
-    content: *gtk.Box,
-    status: *gtk.Label,
-    attention: ?*gtk.Label,
-    attention_visible: bool,
-    column_span: c_int,
-    total_columns: c_int,
-
-    fn updateDensity(self: PaneButtonRef, map_width: c_int) void {
-        const gap = layout_policy.scaledPaneGridGap(map_width);
-        const available = layout_policy.layoutMapPaneBodyWidth(map_width) - gap * (self.total_columns - 1);
-        const slot_width = @divTrunc(available * self.column_span, self.total_columns);
-        const compact = slot_width < 64;
-        const padding: c_int = if (compact) 2 else layout_policy.pane_tile_horizontal_padding;
-        self.content.as(gtk.Widget).setMarginStart(padding);
-        self.content.as(gtk.Widget).setMarginEnd(padding);
-        self.content.as(gtk.Widget).setMarginTop(if (compact) 2 else layout_policy.pane_tile_vertical_padding);
-        self.content.as(gtk.Widget).setMarginBottom(if (compact) 2 else layout_policy.pane_tile_vertical_padding);
-        self.status.as(gtk.Widget).setVisible(@intFromBool(!compact));
-        if (self.attention) |attention| attention.as(gtk.Widget).setVisible(@intFromBool(!compact and self.attention_visible));
-    }
-};
 
 const PaneButtonContext = struct {
     allocator: std.mem.Allocator,

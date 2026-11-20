@@ -51,6 +51,7 @@ const PANE_FORMAT: &str = "#{pane_id}\t#{window_id}\t#{pane_index}\t#{pane_title
 const TOPOLOGY_PANE_FORMAT: &str =
     "#{pane_id}\t#{window_id}\t#{pane_index}\t#{pane_title}\t#{pane_active}\t#{pane_dead}";
 const MANAGED_SESSION_MARKER: &str = "@polar_station_managed_session";
+const SESSION_PURPOSE: &str = "@polar_station_status_purpose";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TmuxServerKey {
@@ -74,6 +75,16 @@ pub struct TmuxWindowActivity {
     pub window_id: String,
     pub session_id: String,
     pub activity_epoch: u64,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct TmuxSessionStartupFacts {
+    pub host: String,
+    pub directory: String,
+    pub explicit_window_name: String,
+    pub user: String,
+    pub purpose: String,
+    pub command: String,
 }
 
 #[derive(Debug, Clone)]
@@ -549,6 +560,81 @@ impl TmuxClient {
             marker.to_string(),
         ])
         .await?;
+        Ok(())
+    }
+
+    /// Read creation-time display facts on the same host as the tmux session.
+    pub async fn startup_display_facts(&self, session: &str) -> TmuxResult<TmuxSessionStartupFacts> {
+        validate_stable_session_id(session)?;
+        // A Session's directory is stable if its shell later runs cd. The
+        // first Window is the one used by Station's existing Agent rename.
+        let first_window = format!("{session}:^");
+        let values = self
+            .run_checked([
+                "display-message", "-p", "-t", &first_window,
+                "#{host_short}\t#{s/\t/ /:session_path}\t#{?automatic-rename,,#{s/\t/ /:window_name}}\t#{s/\t/ /:user}\t#{s/\t/ /:@polar_station_status_purpose}\t#{pane_start_command}",
+            ])
+            .await?;
+        let mut fields = values.trim_end_matches(['\r', '\n']).splitn(6, '\t');
+        let [Some(host), Some(directory), Some(explicit_window_name), Some(user), Some(purpose), Some(command)] =
+            std::array::from_fn(|_| fields.next()) else {
+                return Err(TmuxError::parse_failed("invalid tmux startup display facts"));
+            };
+        Ok(TmuxSessionStartupFacts {
+            host: host.to_owned(),
+            directory: directory.to_owned(),
+            explicit_window_name: explicit_window_name.to_owned(),
+            user: user.to_owned(),
+            purpose: purpose.strip_prefix("v1:").and_then(|v| v.strip_suffix(":end")).unwrap_or_default().to_owned(),
+            command: command.to_owned(),
+        })
+    }
+
+    /// Set a literal line on this session. Hashes in user data must never
+    /// become tmux format expressions, style sequences or shell jobs.
+    pub async fn set_session_status_line(&self, session: &str, text: &str) -> TmuxResult<()> {
+        self.ensure_mutation_target()?;
+        validate_stable_session_id(session)?;
+        self.run_checked_batch(session_status_commands(session, text)).await?;
+        Ok(())
+    }
+
+    /// Refresh an existing Session only while its observed identity still holds.
+    pub async fn set_bound_session_status_line(
+        &self,
+        binding: &TmuxSessionBinding,
+        text: &str,
+    ) -> TmuxResult<()> {
+        self.set_bound_session_status(binding, text, None).await
+    }
+
+    pub async fn set_bound_session_status(
+        &self,
+        binding: &TmuxSessionBinding,
+        text: &str,
+        purpose: Option<&str>,
+    ) -> TmuxResult<()> {
+        self.ensure_mutation_target()?;
+        let mut commands = session_status_commands(&binding.session_id, text);
+        if let Some(purpose) = purpose {
+            if purpose.chars().count() > 128 || purpose.chars().any(char::is_control) {
+                return Err(TmuxError::invalid_input("Invalid Session purpose"));
+            }
+            commands.insert(0, vec!["set-option".into(), "-t".into(), binding.session_id.clone(),
+                SESSION_PURPOSE.into(), format!("v1:{purpose}:end")]);
+        }
+        let commands = commands
+            .iter()
+            .map(|args| args.iter().map(|arg| target::quote_tmux_argument(arg)).collect::<Vec<_>>().join(" "))
+            .collect::<Vec<_>>()
+            .join(" ; ");
+        let output = self.run_checked_owned(vec![
+            "if-shell".into(), "-F".into(), "-t".into(), binding.session_id.clone(),
+            binding.condition()?, commands, "display-message -p POLAR_SESSION_IDENTITY_CHANGED".into(),
+        ]).await?;
+        if output.trim() == "POLAR_SESSION_IDENTITY_CHANGED" {
+            return Err(TmuxError::target_not_found("The original Session identity changed; its status bar was not refreshed"));
+        }
         Ok(())
     }
 
@@ -1265,6 +1351,21 @@ fn validate_object_name(value: &str, label: &str) -> TmuxResult<()> {
         )));
     }
     Ok(())
+}
+
+fn session_status_commands(session: &str, text: &str) -> Vec<Vec<String>> {
+    let option = |name: &str, value: String| {
+        vec!["set-option".into(), "-t".into(), session.into(), name.into(), value]
+    };
+    if text.is_empty() {
+        return vec![option("status", "off".into())];
+    }
+    let mut literal = text.chars().filter(|c| !c.is_control()).collect::<String>().replace('#', "##");
+    // A trailing semicolon in a command argument is a command separator.
+    if literal.ends_with(';') {
+        literal.push_str("#{?0,,}");
+    }
+    vec![option("status-format[0]", literal), option("status", "on".into())]
 }
 
 fn validate_target(value: &str, label: &str) -> TmuxResult<()> {

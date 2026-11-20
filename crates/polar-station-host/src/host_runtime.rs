@@ -1714,6 +1714,7 @@ async fn process_application_request(
                         request_id: request.request_id,
                         revision: 0,
                         result: polar_station_protocol::SettingsResultV1::Error {
+                            tmux_status_bar: None,
                             error: ProtocolError::new(
                                 "command_not_allowed",
                                 "Companion clients cannot read or edit desktop Settings",
@@ -1726,7 +1727,13 @@ async fn process_application_request(
             } else {
                 match &state.settings {
                     Some(settings) => HostApplicationMessage::SettingsV1(Box::new(
-                        settings.dispatch(*request).await,
+                        settings.dispatch(*request, polar_station_runtime::services::settings_service::SettingsSessionAccess {
+                            lifecycle: &state.session_lifecycle,
+                            targets: &state.targets,
+                            ssh: &state.ssh_connections,
+                            #[cfg(feature = "codex-control")]
+                            codex: state.codex.as_deref(),
+                        }).await,
                     )),
                     None => HostApplicationMessage::SettingsV1(Box::new(
                         polar_station_protocol::SettingsResponseEnvelopeV1 {
@@ -1735,6 +1742,7 @@ async fn process_application_request(
                             request_id: request.request_id,
                             revision: 0,
                             result: polar_station_protocol::SettingsResultV1::Error {
+                                tmux_status_bar: None,
                                 error: ProtocolError::new(
                                     "settings_unavailable",
                                     "Settings are unavailable",

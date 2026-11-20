@@ -308,17 +308,18 @@ fn routing_card(v:&Value, transcript:&Transcript) -> Option<(String,String,bool)
     if selected.is_none(){body.push_str("\nChoose a target in the Chat Bar.");}
     Some((status.into(),body,false))
 }
+fn message_clock(seconds: u64, zone: jiff::tz::TimeZone) -> Option<String> {
+    let time = jiff::Timestamp::from_second(i64::try_from(seconds).ok()?).ok()?;
+    Some(time.to_zoned_datetime(zone).strftime("%H:%M").to_string())
+}
+
+
+
 fn message_card_with_tools(v: &Value, transcript: &Transcript, columns: usize, expanded:Option<bool>, tool_row:&mut Option<usize>) -> Vec<TextRun> {
     let (name, identity) = author(v);
     let clock = v["created_at"]
         .as_u64()
-        .and_then(|s| i64::try_from(s).ok())
-        .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
-        .map(|time| {
-            time.with_timezone(&chrono::Local)
-                .format("%H:%M")
-                .to_string()
-        })
+        .and_then(|seconds| message_clock(seconds, jiff::tz::TimeZone::system()))
         .unwrap_or_default();
     let mut out = Vec::new();
     if let Some((status,body,compact))=routing_card(v,transcript) {

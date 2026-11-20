@@ -301,7 +301,7 @@ index 039e853aa..4a669d308 100644
 diff --git a/src/apprt/gtk/class/surface.zig b/src/apprt/gtk/class/surface.zig
 --- a/src/apprt/gtk/class/surface.zig
 +++ b/src/apprt/gtk/class/surface.zig
-@@ -739,6 +739,43 @@
+@@ -739,6 +739,28 @@
          return priv.core_surface;
      }
 
@@ -319,33 +319,18 @@ diff --git a/src/apprt/gtk/class/surface.zig b/src/apprt/gtk/class/surface.zig
 +    ) !ManagedFontSync {
 +        const priv = self.private();
 +        if (priv.core_surface) |surface| {
-+            if (surface.font_size.points != points or
-+                !surface.font_size_adjusted)
-+            {
-+                _ = try surface.performBindingAction(
-+                    .{ .set_font_size = points },
-+                );
-+            }
++            try surface.synchronizeManagedFontSize(points);
++            priv.managed_font_request = null;
 +            return .synchronized;
 +        }
-+
-+        if (priv.font_size_request) |size| {
-+            size.points = points;
-+        } else {
-+            const size = glib.ext.create(font.face.DesiredSize);
-+            size.* = .{ .points = points };
-+            priv.font_size_request = size;
-+        }
-+        self.as(gobject.Object).notifyByPspec(
-+            properties.@"font-size-request".impl.param_spec,
-+        );
++        priv.managed_font_request = points;
 +        return .pending_realization;
 +    }
 +
      pub fn rt(self: *Self) *ApprtSurface {
          const priv = self.private();
          return &priv.rt_surface;
-@@ -792,6 +829,10 @@
+@@ -792,6 +814,10 @@
      /// then we should force a redraw.
      pub fn redraw(self: *Self) void {
          const priv = self.private();
@@ -452,13 +437,16 @@ index c01cad618..5454a08ed 100644
 
  const log = std.log.scoped(.gtk_ghostty_window);
 
-@@ -257,6 +262,19 @@ pub const Window = extern struct {
+@@ -257,6 +262,22 @@ pub const Window = extern struct {
          context_menu_page: ?*adw.TabPage = null,
 
          // Template bindings
 +        main_menu: *gio.Menu,
 +        polar_station_shell: *gtk.Overlay,
 +        polar_station_body: *gtk.Box,
++        workspace_layout_overlay: ?*gtk.Overlay = null,
++        workspace_layout_widget: ?*gtk.Widget = null,
++        workspace_layout_focus: ?*gtk.Widget = null,
 +        polar_station_terminal: *gtk.ScrolledWindow,
 +        polar_station_pane: ?*gtk.Widget = null,
 +        polar_station_baseline_width: c_int = 0,
@@ -504,7 +492,7 @@ index c01cad618..5454a08ed 100644
 +        )) self.as(gtk.Window).fullscreen();
 
          // If we have an explicit title set, we set that immediately
-@@ -881,6 +914,378 @@ pub const Window = extern struct {
+@@ -881,6 +914,411 @@ pub const Window = extern struct {
          return self.private().tab_view;
      }
 
@@ -647,6 +635,39 @@ index c01cad618..5454a08ed 100644
 +        if (priv.shortcut_hud) |hud|
 +            hud.setVisible(@intFromBool(priv.shortcut_modifiers.visible()));
 +        polar_tmux.setNumberBadgesVisible(self, priv.shortcut_modifiers.visible());
++    }
++
++    pub fn setExpandedWorkspaceLayout(self: *Self, view: ?*gtk.Widget) void {
++        const priv = self.private();
++        if (priv.workspace_layout_widget == view) return;
++        const tab_view = priv.tab_view.as(gtk.Widget);
++        const overlay = priv.workspace_layout_overlay orelse blk: {
++            const host = gtk.Overlay.new();
++            _ = tab_view.as(gobject.Object).ref();
++            priv.toast_overlay.setChild(null);
++            host.setChild(tab_view);
++            priv.toast_overlay.setChild(host.as(gtk.Widget));
++            tab_view.as(gobject.Object).unref();
++            priv.workspace_layout_overlay = host;
++            break :blk host;
++        };
++        if (priv.workspace_layout_widget) |previous| overlay.removeOverlay(previous);
++        priv.workspace_layout_widget = view;
++        if (view) |widget| {
++            if (self.as(gtk.Window).getFocus()) |focused| {
++                _ = focused.as(gobject.Object).ref();
++                priv.workspace_layout_focus = focused;
++            }
++            overlay.addOverlay(widget);
++            tab_view.setSensitive(0);
++        } else {
++            tab_view.setSensitive(1);
++            if (priv.workspace_layout_focus) |focused| {
++                _ = focused.grabFocus();
++                focused.as(gobject.Object).unref();
++                priv.workspace_layout_focus = null;
++            }
++        }
 +    }
 +
 +    /// Attach the Polar Station controller as the optional start child of the
@@ -913,6 +934,17 @@ index c01cad618..5454a08ed 100644
      }
 
      fn propMenuActive(
+@@ -1227,6 +1227,10 @@
+     fn dispose(self: *Self) callconv(.c) void {
+         const priv = self.private();
+
++        if (priv.workspace_layout_focus) |focused| {
++            focused.as(gobject.Object).unref();
++            priv.workspace_layout_focus = null;
++        }
+         priv.command_palette.set(null);
+
+         if (priv.config) |v| {
 @@ -1303,3 +1716,7 @@ pub const Window = extern struct {
      fn btnNewTab(_: *adw.SplitButton, self: *Self) callconv(.c) void {
 +        if (comptime build_options.polar_tmux) {
@@ -1110,8 +1142,8 @@ index 3e63b6026..f46693a60 100644
 -
 +    if (cfg.polar_tmux) {
 +        exe.addIncludePath(b.path("src/apprt/gtk/polar_tmux"));
-+        exe.addLibraryPath(.{ .cwd_relative = cfg.polar_station_client_lib_dir.? });
-+        exe.linkSystemLibrary("polar_station_desktop_ffi");
++        const client_archive = b.pathJoin(&.{ cfg.polar_station_client_lib_dir.?, "libpolar_station_desktop_ffi.a" });
++        exe.addObjectFile(.{ .cwd_relative = client_archive });
 +        exe.linkSystemLibrary("dl");
 +        exe.linkSystemLibrary("pthread");
 +        exe.linkSystemLibrary("m");

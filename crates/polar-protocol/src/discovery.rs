@@ -114,7 +114,8 @@ fn validate_generation(generation: [u8; 16]) -> Result<(), ProtocolError> {
 
 fn validate_intent(intent: String) -> Result<String, ProtocolError> {
     let trimmed = intent.trim();
-    if trimmed == "announce" {
+    if trimmed == "announce" || (trimmed == intent && trimmed.strip_prefix("wss-link/").is_some_and(|hex|
+        hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))) {
         Ok(trimmed.to_string())
     } else {
         Err(ProtocolError::InvalidIntent)

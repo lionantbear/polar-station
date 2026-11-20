@@ -27,7 +27,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::{Mutex as AsyncMutex, OnceCell, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Mutex as AsyncMutex, OnceCell, OwnedSemaphorePermit, Semaphore, watch};
 use zeroize::Zeroize;
 
 pub const PCM_ENCODING: &str = "pcm_s16le";
@@ -394,6 +394,7 @@ pub enum VoiceError {
     AuthRequired,
     Timeout,
     AudioConnectionTimeout,
+    AudioConnectionLost,
     FinalTranscriptTimeout,
     TestRecordingFailed,
     TranscriptionFailed,
@@ -423,6 +424,7 @@ impl VoiceError {
             Self::ProviderUnavailable
                 | Self::Timeout
                 | Self::AudioConnectionTimeout
+                | Self::AudioConnectionLost
                 | Self::FinalTranscriptTimeout
                 | Self::TranscriptionFailed
                 | Self::MediaJitterExceeded
@@ -453,6 +455,7 @@ impl VoiceError {
             Self::AuthRequired => "voice.auth_required",
             Self::Timeout => "voice.timeout",
             Self::AudioConnectionTimeout => "voice.audio_connection_timeout",
+            Self::AudioConnectionLost => "voice.audio_connection_lost",
             Self::FinalTranscriptTimeout => "voice.final_transcript_timeout",
             Self::TestRecordingFailed => "voice.test_recording_failed",
             Self::TranscriptionFailed => "voice.transcription_failed",
@@ -611,10 +614,33 @@ struct OperationEntry {
     result: OnceCell<Result<VoiceTranscribeResult, VoiceError>>,
 }
 
-struct ActiveStream {
+struct StreamEntry {
     format: VoiceStreamFormat,
     reference: TranscriptionReference,
     instructions: Option<String>,
+    active: OnceCell<Arc<ActiveStream>>,
+    cancelled: watch::Sender<bool>,
+}
+
+struct StreamOpening<'a> {
+    entries: &'a Mutex<HashMap<String, Arc<StreamEntry>>>,
+    id: &'a str,
+    entry: Arc<StreamEntry>,
+}
+
+impl Drop for StreamOpening<'_> {
+    fn drop(&mut self) {
+        let mut entries = self.entries.lock().expect("voice streams lock");
+        if !self.entry.active.initialized()
+            && Arc::strong_count(&self.entry) == 2
+            && entries.get(self.id).is_some_and(|entry| Arc::ptr_eq(entry, &self.entry))
+        {
+            entries.remove(self.id);
+        }
+    }
+}
+
+struct ActiveStream {
     provider_session: Arc<dyn VoiceStreamingSession>,
     state: AsyncMutex<ActiveStreamState>,
     _permit: OwnedSemaphorePermit,
@@ -635,7 +661,7 @@ pub struct VoiceRuntime {
     config: VoiceRuntimeConfig,
     concurrency: Arc<Semaphore>,
     operations: Mutex<HashMap<String, Arc<OperationEntry>>>,
-    streams: AsyncMutex<HashMap<String, Arc<ActiveStream>>>,
+    streams: Mutex<HashMap<String, Arc<StreamEntry>>>,
 }
 
 impl VoiceRuntime {
@@ -650,7 +676,7 @@ impl VoiceRuntime {
             config,
             concurrency: Arc::new(Semaphore::new(maximum_host_concurrency)),
             operations: Mutex::new(HashMap::new()),
-            streams: AsyncMutex::new(HashMap::new()),
+            streams: Mutex::new(HashMap::new()),
         }
     }
 
@@ -804,44 +830,63 @@ impl VoiceRuntime {
             }
             if !provider.instructions_supported() { return Err(VoiceError::InstructionsUnsupported); }
         }
-        let mut streams = self.streams.lock().await;
-        if let Some(existing) = streams.get(&request.operation_id) {
-            if existing.format != request.format || existing.reference != request.reference || existing.instructions != request.instructions {
+        let entry = {
+            let mut streams = self.streams.lock().expect("voice streams lock");
+            let entry = streams.entry(request.operation_id.clone()).or_insert_with(|| {
+                Arc::new(StreamEntry {
+                    format: request.format.clone(),
+                    reference: request.reference.clone(),
+                    instructions: request.instructions.clone(),
+                    active: OnceCell::new(),
+                    cancelled: watch::channel(false).0,
+                })
+            });
+            if entry.format != request.format || entry.reference != request.reference || entry.instructions != request.instructions {
                 return Err(VoiceError::OperationConflict);
             }
-            let next_sequence = existing.state.lock().await.next_sequence;
-            return Ok(VoiceStreamBeginResult {
-                operation_id: request.operation_id,
-                next_sequence,
-            });
-        }
-        let permit = Arc::clone(&self.concurrency)
-            .try_acquire_owned()
-            .map_err(|_| VoiceError::ProviderUnavailable)?;
-        let provider_session = tokio::time::timeout(
-            self.config.provider_timeout,
-            provider.begin_observed(request.format.clone(), request.reference.clone(), request.instructions.clone(), observer.map(|observer|inspection::InputObservation{request_id:request.operation_id.clone(),observer})),
-        )
-        .await
-        .map_err(|_| VoiceError::Timeout)??;
-        streams.insert(
-            request.operation_id.clone(),
-            Arc::new(ActiveStream {
-                format: request.format,
-                reference: request.reference,
-                instructions: request.instructions,
+            Arc::clone(entry)
+        };
+        let opening = StreamOpening { entries: &self.streams, id: &request.operation_id, entry };
+        let mut cancelled = opening.entry.cancelled.subscribe();
+        let stream = opening.entry.active.get_or_try_init(|| async {
+            let permit = Arc::clone(&self.concurrency)
+                .try_acquire_owned()
+                .map_err(|_| VoiceError::ProviderUnavailable)?;
+            let provider_session = tokio::select! {
+                biased;
+                _ = cancelled.wait_for(|value| *value) => return Err(VoiceError::StreamNotFound),
+                result = tokio::time::timeout(self.config.provider_timeout,
+                    provider.begin_observed(request.format, request.reference, request.instructions,
+                        observer.map(|observer| inspection::InputObservation {
+                            request_id: request.operation_id.clone(), observer,
+                        })),
+                ) => result.map_err(|_| VoiceError::Timeout)??,
+            };
+            Ok(Arc::new(ActiveStream {
                 provider_session,
                 state: AsyncMutex::new(ActiveStreamState {
                     accepting_packets: true,
                     ..ActiveStreamState::default()
                 }),
                 _permit: permit,
-            }),
-        );
+            }))
+        }).await?;
+        if *opening.entry.cancelled.borrow() {
+            return Err(VoiceError::StreamNotFound);
+        }
+        let next_sequence = stream.state.lock().await.next_sequence;
+        drop(opening);
         Ok(VoiceStreamBeginResult {
             operation_id: request.operation_id,
-            next_sequence: 0,
+            next_sequence,
         })
+    }
+
+    fn active_stream(&self, id: &str) -> Result<Arc<ActiveStream>, VoiceError> {
+        self.streams.lock().expect("voice streams lock").get(id)
+            .and_then(|entry| entry.active.get())
+            .cloned()
+            .ok_or(VoiceError::StreamNotFound)
     }
 
     pub async fn stream_transcript_updates(
@@ -849,11 +894,7 @@ impl VoiceRuntime {
         operation_id: &str,
     ) -> Result<Option<tokio::sync::watch::Receiver<transcription::TranscriptSnapshot>>, VoiceError>
     {
-        let streams = self.streams.lock().await;
-        let stream = streams
-            .get(operation_id)
-            .ok_or(VoiceError::StreamNotFound)?;
-        Ok(stream.provider_session.transcript_updates())
+        Ok(self.active_stream(operation_id)?.provider_session.transcript_updates())
     }
 
     pub async fn stream_append(
@@ -866,13 +907,7 @@ impl VoiceRuntime {
             &request.packet,
             self.config.maximum_stream_packets,
         )?;
-        let stream = self
-            .streams
-            .lock()
-            .await
-            .get(&request.operation_id)
-            .cloned()
-            .ok_or(VoiceError::StreamNotFound)?;
+        let stream = self.active_stream(&request.operation_id)?;
         let mut state = stream.state.lock().await;
         if let Some(error) = state.terminal_error.as_ref() {
             return Err(error.clone());
@@ -926,13 +961,7 @@ impl VoiceRuntime {
         &self,
         operation_id: &str,
     ) -> Result<VoiceStreamCommitResult, VoiceError> {
-        let stream = self
-            .streams
-            .lock()
-            .await
-            .get(operation_id)
-            .cloned()
-            .ok_or(VoiceError::StreamNotFound)?;
+        let stream = self.active_stream(operation_id)?;
         let request = {
             let state = stream.state.lock().await;
             let packets = state.packets.values().cloned().collect::<Vec<_>>();
@@ -951,13 +980,7 @@ impl VoiceRuntime {
         request: VoiceStreamCommitRequest,
     ) -> Result<VoiceStreamCommitResult, VoiceError> {
         validate_operation_id(&request.operation_id)?;
-        let stream = self
-            .streams
-            .lock()
-            .await
-            .get(&request.operation_id)
-            .cloned()
-            .ok_or(VoiceError::StreamNotFound)?;
+        let stream = self.active_stream(&request.operation_id)?;
         let retained_packets = {
             let mut state = stream.state.lock().await;
             if let Some(error) = state.terminal_error.as_ref() {
@@ -986,7 +1009,14 @@ impl VoiceRuntime {
         .await;
         // Retire admission before cancellation: a stalled provider must not retain
         // the operation indefinitely after its deadline.
-        self.streams.lock().await.remove(&request.operation_id);
+        {
+            let mut entries = self.streams.lock().expect("voice streams lock");
+            if entries.get(&request.operation_id).and_then(|entry| entry.active.get())
+                .is_some_and(|active| Arc::ptr_eq(active, &stream))
+            {
+                entries.remove(&request.operation_id);
+            }
+        }
         let provider_result = match provider_result {
             Ok(result) => result,
             Err(_) => {
@@ -1010,12 +1040,16 @@ impl VoiceRuntime {
         request: VoiceStreamAbortRequest,
     ) -> Result<VoiceStreamAbortResult, VoiceError> {
         validate_operation_id(&request.operation_id)?;
-        let stream = self
+        let entry = self
             .streams
             .lock()
-            .await
+            .expect("voice streams lock")
             .remove(&request.operation_id)
             .ok_or(VoiceError::StreamNotFound)?;
+        entry.cancelled.send_replace(true);
+        let Some(stream) = entry.active.get() else {
+            return Ok(VoiceStreamAbortResult { aborted: true });
+        };
         let provider_is_terminal = {
             let mut state = stream.state.lock().await;
             state.accepting_packets = false;

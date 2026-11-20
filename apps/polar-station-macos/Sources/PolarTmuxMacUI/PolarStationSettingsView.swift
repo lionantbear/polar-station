@@ -9,7 +9,6 @@ import AppKit
         case intelligence = "Intelligence"
         case voice = "Voice"
         case notifications = "Notifications"
-        case workspace = "Workspace"
         case connections = "Connections"
         case resources = "Resources"
         var id: String { rawValue }
@@ -27,7 +26,6 @@ import AppKit
     public let errorMessage: String?
     public let providerTestResult: String?
     public let codexNotifyStatus: CodexNotifyConfigStateV1?
-    public let currentWorkspaceFontSize: UInt8?
     public let reload: () -> Void
     public let updateAppearance: (AppearanceSettingsV1) -> Void
     public let updateAttention: (AttentionSettingsV1) -> Void
@@ -36,7 +34,6 @@ import AppKit
     public let testSessionSummary: (SessionSummarySettingsV1) -> Void
     public let inspectCodexNotify: () -> Void
     public let configureCodexNotify: () -> Void
-    public let updateWorkspaceFont: (UInt8) -> Void
     public let openConnections: () -> Void
     public let openResources: () -> Void
     public let dismiss: @MainActor () -> Void
@@ -60,13 +57,11 @@ import AppKit
     @Binding private var appearance: AppearanceSettingsV1
     @Binding private var summary: SessionSummarySettingsV1
     @Binding private var monitoring: MonitoringSettingsV1
-    @Binding private var loadedWorkspaceFont: Double?
-    @Binding private var workspaceFont: Double
     @Binding private var interfaceTextScale: Double
 
     public init(
         projection: SettingsProjectionV1?, isLoading: Bool, errorMessage: String?,
-        providerTestResult: String?, codexNotifyStatus: CodexNotifyConfigStateV1?, currentWorkspaceFontSize: UInt8?, reload: @escaping () -> Void,
+        providerTestResult: String?, codexNotifyStatus: CodexNotifyConfigStateV1?, reload: @escaping () -> Void,
         updateAppearance: @escaping (AppearanceSettingsV1) -> Void,
         updateAttention: @escaping (AttentionSettingsV1) -> Void,
         updateMonitoring: @escaping (MonitoringSettingsV1) -> Void,
@@ -74,7 +69,6 @@ import AppKit
         testSessionSummary: @escaping (SessionSummarySettingsV1) -> Void,
         inspectCodexNotify: @escaping () -> Void,
         configureCodexNotify: @escaping () -> Void,
-        updateWorkspaceFont: @escaping (UInt8) -> Void,
         openConnections: @escaping () -> Void, openResources: @escaping () -> Void,
         openConnectors: @escaping () -> Void = {},
         dismiss: @escaping @MainActor () -> Void,
@@ -108,8 +102,6 @@ import AppKit
         self._appearance=Binding(get:{formBuffer.appearance},set:{formBuffer.appearance=$0})
         self._summary=Binding(get:{formBuffer.summary},set:{formBuffer.summary=$0})
         self._monitoring=Binding(get:{formBuffer.monitoring},set:{formBuffer.monitoring=$0})
-        self._loadedWorkspaceFont=Binding(get:{formBuffer.loadedWorkspaceFont},set:{formBuffer.loadedWorkspaceFont=$0})
-        self._workspaceFont=Binding(get:{formBuffer.workspaceFont},set:{formBuffer.workspaceFont=$0})
         self._interfaceTextScale=Binding(get:{formBuffer.interfaceTextScale},set:{formBuffer.interfaceTextScale=$0})
         self.promptEditor=promptEditor
         self._selectedPage = State(initialValue: initialPage.flatMap(Page.init(rawValue:)) ?? (initialVoicePage ? .voice : .appearance))
@@ -117,12 +109,12 @@ import AppKit
         self.openSetup = openSetup
         self.requestConnector = requestConnector; self.requestCodex = requestCodex
         self.projection = projection; self.isLoading = isLoading; self.errorMessage = errorMessage
-        self.providerTestResult = providerTestResult; self.codexNotifyStatus = codexNotifyStatus; self.currentWorkspaceFontSize = currentWorkspaceFontSize
+        self.providerTestResult = providerTestResult; self.codexNotifyStatus = codexNotifyStatus
         self.reload = reload; self.updateAppearance = updateAppearance; self.updateAttention = updateAttention
         self.updateMonitoring = updateMonitoring
         self.updateSessionSummary = updateSessionSummary; self.testSessionSummary = testSessionSummary
         self.inspectCodexNotify = inspectCodexNotify; self.configureCodexNotify = configureCodexNotify
-        self.updateWorkspaceFont = updateWorkspaceFont; self.openConnections = openConnections; self.openResources = openResources
+        self.openConnections = openConnections; self.openResources = openResources
         self.dismiss = dismiss;self.openConnectors=openConnectors
         self.messagesSettings = messagesSettings; self.messagesStatus = messagesStatus
         self.messagesError = messagesError; self.isMessagesLoading = isMessagesLoading
@@ -246,7 +238,6 @@ import AppKit
             }
             Section("AI Session summaries") {
                 Toggle("Use Codex app-server summaries", isOn: $summary.enabled)
-                TextField("Codex executable", text: $summary.command)
                 TextField("Model (Auto when empty)", text: Binding(get: { summary.model ?? "" }, set: { summary.model = $0.isEmpty ? nil : $0 }))
                 Stepper("Timeout: \(summary.timeoutMilliseconds / 1000) seconds", value: $summary.timeoutMilliseconds, in: 1_000...60_000, step: 1_000)
                 HStack { Button("Test Provider") { testSessionSummary(summary) }.disabled(!summary.enabled); Button("Save") { updateSessionSummary(summary) } }
@@ -304,13 +295,6 @@ import AppKit
                 ))
                 Text("Notifications use generic aggregate text and never include terminal output.").foregroundStyle(.secondary)
             }
-        case .workspace:
-            Section("Current Workspace") {
-                Slider(value: $workspaceFont, in: 10...32, step: 1)
-                Text("Terminal font: \(Int(workspaceFont)) pt")
-                Button("Apply to Current Workspace") { updateWorkspaceFont(UInt8(workspaceFont)) }
-                Text("Font remains part of the selected Workspace, not global Settings.").foregroundStyle(.secondary)
-            }
         case .connections:
             Section { Button("Open Connections…", action: openConnections) } footer: { Text("Connection targets remain in the Host target registry.") }
         case .resources:
@@ -328,13 +312,9 @@ import AppKit
         }
         if editLease?.replaces(.sessionSummary) != false { summary = projection.sessionSummary }
         if editLease?.replaces(.monitoring) != false { monitoring = projection.monitoring }
-        if loadedWorkspaceFont == nil || workspaceFont == loadedWorkspaceFont {
-            workspaceFont = Double(currentWorkspaceFontSize ?? 13)
-        }
-        loadedWorkspaceFont = Double(currentWorkspaceFontSize ?? 13)
     }
 
     private func symbol(_ page: Page) -> String {
-        switch page { case .voice: "mic"; case .appearance: "paintbrush"; case .intelligence: "sparkles"; case .notifications: "bell"; case .workspace: "rectangle.3.group"; case .connections: "network"; case .resources: "externaldrive" }
+        switch page { case .voice: "mic"; case .appearance: "paintbrush"; case .intelligence: "sparkles"; case .notifications: "bell"; case .connections: "network"; case .resources: "externaldrive" }
     }
 }

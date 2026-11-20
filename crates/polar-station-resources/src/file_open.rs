@@ -2,8 +2,8 @@
 //! Resource execution and OS opening are separate operations with typed results.
 use crate::{
     FileAccess, FileAccessPlan, FileOpenContext, FileOpenFailure, FileOpenResolution,
-    FileOpenStage, FileReference, FileReferenceInput, OpenStrategy, ResolvedFile,
-    ResolvedFileSource, ResourceId,
+    FileOpenStage, FileOpenStep, FileReference, FileReferenceInput, OpenStrategy, PathFlavor,
+    ResolvedFile, ResolvedFileSource, ResourceId, TextRange, file_open_diagnostics,
 };
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +39,10 @@ pub enum FileOpenInput {
     },
     Retry {
         request_id: String,
+    },
+    EditReference {
+        request_id: String,
+        text: String,
     },
     Failed {
         request_id: String,
@@ -97,6 +101,10 @@ pub enum FileOpenEffect {
         code: String,
         message: String,
         can_retry: bool,
+        summary: &'static str,
+        steps: Vec<FileOpenStep>,
+        edit_text: Option<String>,
+        edit_range: Option<TextRange>,
     },
     ShowProgress {
         request_id: String,
@@ -163,38 +171,59 @@ impl FileOpenFlow {
                 origin: file.source.origin.clone(),
                 paths: vec![file.reference.path.clone()],
                 local_path: None,
+                checked_path: Some(file.reference.path.clone()),
             },
             Phase::Opening { file, local_path } => FileOpenContext {
                 origin: file.source.origin.clone(),
                 paths: vec![file.reference.path.clone()],
                 local_path: Some(local_path.clone()),
+                checked_path: Some(file.reference.path.clone()),
             },
             _ => FileOpenContext {
                 origin: p.origin.clone(),
                 paths: vec![],
                 local_path: None,
+                checked_path: None,
             },
         };
         let failure = failure.with_context(context);
-        let message = failure.display_message();
         p.phase = Phase::Failed;
         vec![
             FileOpenEffect::DismissProgress {
                 request_id: p.request_id.clone(),
             },
-            FileOpenEffect::ShowError {
-                request_id: p.request_id.clone(),
-                stage: failure.stage,
-                code: failure.code,
-                message,
-                can_retry: true,
-            },
+            Self::error(p.request_id.clone(), failure, Some(&p.input)),
         ]
+    }
+    fn error(
+        request_id: String,
+        failure: FileOpenFailure,
+        input: Option<&FileReferenceInput>,
+    ) -> FileOpenEffect {
+        FileOpenEffect::ShowError {
+            request_id,
+            summary: file_open_diagnostics::summary(&failure),
+            steps: file_open_diagnostics::steps(input, &failure),
+            edit_text: input.map(|value| value.text().to_owned()),
+            edit_range: input.and_then(file_open_diagnostics::edit_range),
+            message: failure.display_message(),
+            can_retry: matches!(input, Some(FileReferenceInput::Recognized { .. })),
+            stage: failure.stage,
+            code: failure.code,
+        }
     }
     fn resolve(p: &mut Pending, request_id: String) -> Vec<FileOpenEffect> {
         p.request_id = request_id;
         p.phase = Phase::Resolving;
         p.refresh_pending = None;
+        match crate::recognize_file_capture(p.input.clone(), PathFlavor::Posix) {
+            Ok(input) => p.input = input,
+            Err(failure) => return Self::fail(p, failure),
+        }
+        let mut input = p.input.clone();
+        if let FileReferenceInput::Recognized { trace, .. } = &mut input {
+            *trace = None;
+        }
         vec![
             FileOpenEffect::ShowProgress {
                 request_id: p.request_id.clone(),
@@ -203,7 +232,7 @@ impl FileOpenFlow {
             FileOpenEffect::ResolveOpen {
                 request_id: p.request_id.clone(),
                 origin: p.origin.clone(),
-                input: p.input.clone(),
+                input,
             },
         ]
     }
@@ -250,13 +279,7 @@ impl FileOpenFlow {
                             "The source Session is unavailable.",
                         )
                     });
-                    effects.push(FileOpenEffect::ShowError {
-                        request_id,
-                        stage: failure.stage,
-                        code: failure.code,
-                        message: failure.message,
-                        can_retry: false,
-                    });
+                    effects.push(Self::error(request_id, failure, None));
                     return effects;
                 }
             };
@@ -288,6 +311,12 @@ impl FileOpenFlow {
                 if p.request_id == request_id && matches!(p.phase, Phase::Failed) =>
             {
                 Self::resolve(&mut p, format!("{request_id}-retry"))
+            }
+            FileOpenInput::EditReference { request_id, text }
+                if p.request_id == request_id && matches!(p.phase, Phase::Failed) =>
+            {
+                p.input = FileReferenceInput::Selection { text };
+                Self::resolve(&mut p, format!("{request_id}-edit"))
             }
             FileOpenInput::Refresh { request_id } => match p.phase.clone() {
                 Phase::Resolving | Phase::Planning { .. } => {

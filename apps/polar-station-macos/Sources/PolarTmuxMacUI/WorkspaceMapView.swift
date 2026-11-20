@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct WorkspaceTabDragPayload: Codable, Hashable {
     let workspaceID: String
     let tabID: String
+    let mapID: UUID
 
 }
 
@@ -17,10 +18,12 @@ public struct PaneTabMoveDragPayload:
 {
     public let sourceTabID: String
     public let paneID: String
+    let mapID: UUID?
 
-    public init(sourceTabID: String, paneID: String) {
+    public init(sourceTabID: String, paneID: String, mapID: UUID? = nil) {
         self.sourceTabID = sourceTabID
         self.paneID = paneID
+        self.mapID = mapID
     }
 
     public static var transferRepresentation: some TransferRepresentation {
@@ -125,6 +128,7 @@ public struct NativeWorkspaceLayoutView: Equatable, Sendable {
     public let selectedTabID: String
     public let selectedPaneID: String?
     public let workspaceChoices: [NativeWorkspaceChoiceView]
+    public let otherOpenSessionTabs: [SessionRowProjectionV1.Identity: String]
     public let tabs: [NativeTabLayoutView]
 
     public init(
@@ -134,6 +138,7 @@ public struct NativeWorkspaceLayoutView: Equatable, Sendable {
         selectedTabID: String,
         selectedPaneID: String?,
         workspaceChoices: [NativeWorkspaceChoiceView] = [],
+        otherOpenSessionTabs: [SessionRowProjectionV1.Identity: String] = [:],
         tabs: [NativeTabLayoutView]
     ) {
         self.workspaceID = workspaceID
@@ -143,6 +148,7 @@ public struct NativeWorkspaceLayoutView: Equatable, Sendable {
         self.selectedTabID = selectedTabID
         self.selectedPaneID = selectedPaneID
         self.workspaceChoices = workspaceChoices
+        self.otherOpenSessionTabs = otherOpenSessionTabs
         self.tabs = tabs
     }
 
@@ -488,6 +494,11 @@ public struct WorkspaceMapView: View {
     public let liveSessions: [PolarTmuxSessionProjection]
     public let emitIntent: @MainActor (ControlCenterIntentV1) -> Void
 
+    private let expanded: Bool
+    private let readOnly: Bool
+    private let draftBindings: [String: String]?
+    @State private var mapID = UUID()
+    @State private var columnsThatFit = 1
     @State private var renamingTab: WorkspaceTabProjectionV1?
     @State private var tabTitleDraft = ""
     @State private var summaryPane: WorkspacePaneProjectionV1?
@@ -499,24 +510,41 @@ public struct WorkspaceMapView: View {
         nativeView: NativeWorkspaceLayoutView? = nil,
         sessions: [SessionRowProjectionV1] = [],
         liveSessions: [PolarTmuxSessionProjection] = [],
+        draftBindings: [String: String]? = nil,
+        expanded: Bool = false,
+        readOnly: Bool = false,
         emitIntent: @escaping @MainActor (ControlCenterIntentV1) -> Void
     ) {
         self.controlRevision = controlRevision
         self.nativeView = nativeView
         self.sessions = sessions
         self.liveSessions = liveSessions
+        self.expanded = expanded
+        self.readOnly = readOnly
+        self.draftBindings = draftBindings
         self.emitIntent = emitIntent
     }
 
     public var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(minimum: 0), spacing: 12, alignment: .topLeading),
+                    count: columnCount
+                ),
+                alignment: .leading,
+                spacing: 12
+            ) {
                 ForEach(renderedTabs) { tab in
-                    tabCard(tab)
+                    tabCard(tab).disabled(readOnly).allowsHitTesting(!readOnly)
                 }
             }
             .padding(12)
         }
+        .onGeometryChange(for: Int.self) { geometry in
+            // The ScrollView content owns two 12-point insets.
+            max(1, Int((geometry.size.width - 24 + 12) / (320 + 12)))
+        } action: { columnsThatFit = $0 }
         .background(StationTheme.shared.surface)
         .overlay {
             if renderedTabs.isEmpty {
@@ -559,7 +587,7 @@ public struct WorkspaceMapView: View {
         .alert(
             "Rename Tab",
             isPresented: Binding(
-                get: { renamingTab != nil },
+                get: { draftBindings == nil && renamingTab != nil },
                 set: { if !$0 { renamingTab = nil } }
             )
         ) {
@@ -585,6 +613,10 @@ public struct WorkspaceMapView: View {
         }
     }
 
+    private var columnCount: Int {
+        draftBindings == nil && !expanded ? 1 : min(columnsThatFit, max(1, nativeView?.tabs.count ?? 0))
+    }
+
     private var renderedTabs: [WorkspaceTabProjectionV1] {
         NativeWorkspaceLayoutProjection.tabs(
             nativeView: nativeView,
@@ -599,7 +631,7 @@ public struct WorkspaceMapView: View {
         let nativeTab = nativeView?.tab(tab.id)
         let displayMode = nativeTab?.displayMode ?? tab.displayMode
         let acceptsPane: (PaneTabMoveDragPayload) -> Bool = { payload in
-            guard let source = renderedTabs.first(where: {
+            guard payload.mapID == mapID, let source = renderedTabs.first(where: {
                       $0.id == payload.sourceTabID
                   }),
                   source.panes.contains(where: {
@@ -632,13 +664,13 @@ public struct WorkspaceMapView: View {
                 .accessibilityLabel(tab.title)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAddTraits(tab.selected ? .isSelected : [])
-                .accessibilityAction { emit(.selectTab(tabID: tab.id)) }
+                .accessibilityAction { selectOrRename(tab) }
                 .overlay {
                     GeometryReader { geometry in
                         TabDragSourceView(
                             visualFrame: geometry.frame(in: .global),
-                            payload: WorkspaceTabDragPayload(workspaceID: nativeView?.workspaceID ?? "", tabID: tab.id),
-                            onSelect: { emit(.selectTab(tabID: tab.id)) }
+                            payload: WorkspaceTabDragPayload(workspaceID: nativeView?.workspaceID ?? "", tabID: tab.id, mapID: mapID),
+                            onSelect: { selectOrRename(tab) }
                         )
                     }
                 }
@@ -651,8 +683,8 @@ public struct WorkspaceMapView: View {
                         .buttonStyle(.borderless).disabled(index + 1 == renderedTabs.count).accessibilityLabel("Move Down").help("Move Down")
                 }
                 Menu {
-                    Button("Rename…") { tabTitleDraft = tab.title; renamingTab = tab }
-                    if let action = tab.deleteAction {
+                    Button("Rename…") { startRename(tab) }
+                    if draftBindings == nil, let action = tab.deleteAction {
                         Button(action.label, role: .destructive) {
                             if let id = action.confirmation?.id { emit(.deleteTab(tabID: tab.id, confirmationID: id)) }
                         }.disabled(!action.enabled)
@@ -666,6 +698,15 @@ public struct WorkspaceMapView: View {
                 TabCardLayoutPolicy.headerMinimumHeight
             )
 
+            if draftBindings != nil, renamingTab?.id == tab.id {
+                HStack {
+                    TextField("Tab title", text: $tabTitleDraft)
+                        .onSubmit { submitTabTitle(tab) }
+                    Button("Rename") { submitTabTitle(tab) }
+                    Button("Cancel") { renamingTab = nil }
+                }
+                .padding(.bottom, 6)
+            }
 
             Divider()
 
@@ -674,7 +715,7 @@ public struct WorkspaceMapView: View {
                     VStack(spacing: 6) {
                         Image(systemName: "rectangle.dashed")
                             .foregroundStyle(.secondary)
-                        Text("Add a Session to this Tab")
+                        Text(draftBindings == nil ? "Add a Session to this Tab" : "Drop a Pane here")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -724,8 +765,9 @@ public struct WorkspaceMapView: View {
                     visualFrame: geometry.frame(in: .global),
                     canAccept: { _ in false },
                     onDrop: { _, _ in },
+                    horizontalTabOrder: columnCount > 1,
                     canAcceptTab: { payload in
-                        payload.workspaceID == nativeView?.workspaceID && payload.tabID != tab.id && renderedTabs.contains(where: { $0.id == payload.tabID })
+                        payload.mapID == mapID && payload.workspaceID == nativeView?.workspaceID && payload.tabID != tab.id && renderedTabs.contains(where: { $0.id == payload.tabID })
                     },
                     onTabDrop: { payload, after in
                         guard let index = renderedTabs.firstIndex(where: { $0.id == tab.id }) else { return }
@@ -743,14 +785,13 @@ public struct WorkspaceMapView: View {
         .contextMenu {
             if let renameAction = tab.renameAction {
                 Button {
-                    tabTitleDraft = tab.title
-                    renamingTab = tab
+                    startRename(tab)
                 } label: {
                     Label(renameAction.label, systemImage: "pencil")
                 }
                 .disabled(!renameAction.enabled)
             }
-            if let deleteAction = tab.deleteAction {
+            if draftBindings == nil, let deleteAction = tab.deleteAction {
                 Button(role: .destructive) {
                     guard let confirmationID = deleteAction.confirmation?.id
                     else { return }
@@ -811,6 +852,24 @@ public struct WorkspaceMapView: View {
         .clipped()
     }
 
+    private func selectOrRename(_ tab: WorkspaceTabProjectionV1) {
+        if draftBindings != nil {
+            startRename(tab)
+        } else {
+            emit(.selectTab(tabID: tab.id))
+        }
+    }
+
+    private func startRename(_ tab: WorkspaceTabProjectionV1) {
+        tabTitleDraft = tab.title
+        renamingTab = tab
+    }
+
+    private func submitTabTitle(_ tab: WorkspaceTabProjectionV1) {
+        emit(.renameTab(tabID: tab.id, title: tabTitleDraft))
+        renamingTab = nil
+    }
+
     private func paneTile(
         _ pane: WorkspacePaneProjectionV1,
         in tab: WorkspaceTabProjectionV1
@@ -823,6 +882,9 @@ public struct WorkspaceMapView: View {
                         .frame(width: 8, height: 8)
                 }
 
+                if draftBindings != nil, tab.displayMode == .focus, tab.focusedPaneID == pane.id {
+                    Text("MAIN").font(.caption2.weight(.semibold))
+                }
                 Text(pane.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -833,7 +895,7 @@ public struct WorkspaceMapView: View {
                         .accessibilityLabel("Session ended")
                 }
             }
-            Text(pane.sourceLabel)
+            Text(draftBindings?[pane.id] ?? pane.sourceLabel)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -857,6 +919,7 @@ public struct WorkspaceMapView: View {
         .accessibilityLabel(
             "\(pane.title), \(pane.sourceLabel), \(pane.runtimeState)"
         )
+        .help(draftBindings?[pane.id] ?? "\(pane.title) · \(pane.targetLabel)")
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(pane.selected ? .isSelected : [])
         .accessibilityAction {
@@ -878,9 +941,11 @@ public struct WorkspaceMapView: View {
                     visualFrame: geometry.frame(in: .global),
                     dragPayload: PaneTabMoveDragPayload(
                         sourceTabID: tab.id,
-                        paneID: pane.id
+                        paneID: pane.id,
+                        mapID: mapID
                     ),
                     onSelect: {
+                        guard draftBindings == nil else { return }
                         summaryPane = pane
                         emitIntent(ControlCenterIntentV1(
                             controlRevision: controlRevision,
@@ -912,7 +977,7 @@ public struct WorkspaceMapView: View {
                 PaneDropDestinationView(
                     visualFrame: geometry.frame(in: .global),
                     canAccept: { payload in
-                        payload.paneID != pane.id
+                        payload.mapID == mapID && payload.paneID != pane.id
                             && (payload.sourceTabID == tab.id || tab.panes.count < 9)
                             && renderedTabs.first(where: { $0.id == payload.sourceTabID })?.panes.contains(where: { $0.id == payload.paneID }) == true
                     },
@@ -932,18 +997,17 @@ public struct WorkspaceMapView: View {
             }
         }
         .contextMenu {
-            Button(role: .destructive) {
-                emitIntent(ControlCenterIntentV1(
-                    controlRevision: controlRevision,
-                    operation: .removePane(paneID: pane.id)
-                ))
-            } label: {
-                Label(
-                    tab.panes.count == 1
-                        ? "Remove Pane (Keep Empty Tab)"
-                        : "Remove from Tab",
-                    systemImage: "trash"
-                )
+            if draftBindings == nil {
+                Button(role: .destructive) {
+                    emit(.removePane(paneID: pane.id))
+                } label: {
+                    Label(
+                        tab.panes.count == 1
+                            ? "Remove Pane (Keep Empty Tab)"
+                            : "Remove from Tab",
+                        systemImage: "trash"
+                    )
+                }
             }
         }
         .background {

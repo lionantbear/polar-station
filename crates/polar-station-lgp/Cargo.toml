@@ -19,7 +19,7 @@ polar-inquiry-graph-model.workspace = true
 polar-station-session.workspace = true
 polar-edge-presentation.workspace = true
 polar-ideacave-presentation.workspace = true
-chrono = "=0.4.44"
+jiff.workspace = true
 unicode-width = "=0.2.2"
 unicode-segmentation = "=1.12.0"
 

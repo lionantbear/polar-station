@@ -115,6 +115,14 @@ impl Phase {
                 | Self::Submitting
         )
     }
+
+    fn capturing(self) -> bool {
+        matches!(self, Self::Starting | Self::Recording)
+    }
+}
+
+fn realtime_recording(entry: &Entry) -> bool {
+    entry.host_recording && entry.transcription_mode == Some(polar_dictate::TranscriptionMode::Realtime)
 }
 
 #[derive(Debug, Serialize)]
@@ -126,6 +134,7 @@ pub struct Presentation<'a> {
     pub cancel_id: Option<&'a str>,
     pub use_original_id: Option<&'a str>,
     pub use_available_id: Option<&'a str>,
+    pub shortcut_use_available: bool,
     pub status: std::borrow::Cow<'a, str>,
     pub saved_samples: u64,
     pub setup_required: bool,
@@ -428,6 +437,7 @@ pub struct Engine {
     selected_panel: Option<String>,
     preview_actions:std::collections::BTreeMap<String,completion::CompletionIntent>,
     panel_interaction:std::collections::BTreeSet<String>,
+    waiting_to_insert: std::collections::BTreeMap<String, Effect>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -466,14 +476,14 @@ impl Engine {
             .collect()
     }
     pub fn presentation(&self) -> Presentation<'_> {
-        let active = self.entries.iter().find(|e| e.phase.active());
-        let recording =
-            active.is_some_and(|e| matches!(e.phase, Phase::Starting | Phase::Recording));
+        let active = self.active_entry();
+        let recording = active.is_some_and(|e| e.phase.capturing());
+        let blocked = self.capture_blocked();
         let latest = active.or_else(|| self.entries.last());
         Presentation {
             action: if recording {
                 "stop"
-            } else if active.is_some() {
+            } else if blocked {
                 "wait"
             } else {
                 "start"
@@ -483,7 +493,7 @@ impl Engine {
             } else {
                 "Start Dictate"
             },
-            enabled: recording || active.is_none(),
+            enabled: recording || !blocked,
             operation_id: active.map(|e| e.operation_id.as_str()),
             cancel_id: active
                 .filter(|e| !matches!(e.phase,Phase::Delivering|Phase::Submitting))
@@ -510,6 +520,8 @@ impl Engine {
             use_available_id: active
                 .filter(|e| matches!(e.phase, Phase::Transcribing | Phase::Rewriting))
                 .map(|e| e.operation_id.as_str()),
+            shortcut_use_available: blocked && !recording && active
+                .is_some_and(|e| matches!(e.phase, Phase::Transcribing | Phase::Rewriting)),
             status: if let Some(entry) = latest {
                 if entry.phase == Phase::Recording {
                     format!(
@@ -527,7 +539,7 @@ impl Engine {
             },
             saved_samples: latest.map_or(0, |entry| entry.saved_samples),
             shortcut_status: self.shortcut_status.label(),
-            shortcut_hint: if active.is_some_and(|e| matches!(e.phase, Phase::Transcribing | Phase::Rewriting)) {
+            shortcut_hint: if blocked && active.is_some_and(|e| matches!(e.phase, Phase::Transcribing | Phase::Rewriting)) {
                 "Press the Dictate shortcut to stop processing and insert available text".into()
             } else if self.shortcut_trigger.is_empty() {
                 "Configure Dictate shortcut in Voice settings".into()
@@ -542,6 +554,39 @@ impl Engine {
             cancel_label: "Cancel",
         }
     }
+    fn active_entry(&self) -> Option<&Entry> {
+        self.entries.iter().find(|entry| entry.phase.capturing())
+            .or_else(|| self.entries.iter().rev().find(|entry| entry.phase.active()))
+    }
+
+    fn capture_blocked(&self) -> bool {
+        self.entries.iter().any(|entry| {
+            entry.phase.active() && (entry.phase.capturing() || !realtime_recording(entry))
+        })
+    }
+
+    fn order_insertions(&mut self, mut effects: Vec<Effect>) -> Vec<Effect> {
+        effects.retain(|effect| {
+            if let Effect::InsertCurrent { operation_id, .. } = effect {
+                if self.entries.iter().any(|entry| entry.operation_id == *operation_id && realtime_recording(entry)) {
+                    self.waiting_to_insert.insert(operation_id.clone(), effect.clone());
+                    return false;
+                }
+            }
+            true
+        });
+        self.waiting_to_insert.retain(|id, _| {
+            self.entries.iter().any(|entry| entry.operation_id == *id && entry.phase == Phase::Delivering)
+        });
+        // Current-focus insertions resolve their target at delivery. Admit them
+        // in capture order, one receipt at a time, so their focus can coincide.
+        if let Some(entry) = self.entries.iter().find(|entry| realtime_recording(entry) && entry.phase.active()) {
+            if let Some(next) = self.waiting_to_insert.remove(&entry.operation_id) {
+                effects.push(next);
+            }
+        }
+        effects
+    }
     pub fn set_recording_mode(&mut self, id: &str, mode: polar_dictate::TranscriptionMode) {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.operation_id == id) {
             entry.transcription_mode = Some(mode);
@@ -552,18 +597,18 @@ impl Engine {
             .selected_panel
             .as_ref()
             .and_then(|id| self.entries.iter().find(|entry| &entry.operation_id == id))
-            .or_else(|| self.entries.iter().find(|e| e.phase.active()))
+            .or_else(|| self.active_entry())
             .or_else(|| self.entries.last())
         else {
             return serde_json::Value::Null;
         };
-        let timeout = entry.error.as_deref()
+        let failure = entry.error.as_deref()
             .filter(|_| entry.phase == Phase::Failed)
-            .and_then(preview::timeout_copy);
+            .and_then(preview::failure_copy);
         let can_retry = entry.phase == Phase::Failed && entry.host_recording && entry.saved_samples > 0;
         if self.hidden_panel.as_deref() == Some(&entry.operation_id)
             || matches!(entry.phase, Phase::Cancelled | Phase::Copied | Phase::Delivering | Phase::Delivered)
-            || (entry.phase == Phase::Failed && timeout.is_none() && entry.saved_samples == 0 && entry.text.is_empty())
+            || (entry.phase == Phase::Failed && failure.is_none() && entry.saved_samples == 0 && entry.text.is_empty())
         {
             return serde_json::Value::Null;
         }
@@ -586,8 +631,8 @@ impl Engine {
         } else {
             heading
         };
-        let heading = timeout.map_or(heading, |(title, _)| title.into());
-        let failure_notice = timeout.map(|(_, detail)| {
+        let heading = failure.map_or(heading, |(title, _)| title.into());
+        let failure_notice = failure.map(|(_, detail)| {
             if can_retry { format!("{detail}\nYour recording is saved.") } else { detail.into() }
         });
         let status = if entry.phase == Phase::Recording {
@@ -632,7 +677,7 @@ impl Engine {
             .collect();
         self.entries.retain(|entry| entry.operation_id != id);
         self.preview_actions.remove(id);self.panel_interaction.remove(id);
-        effects
+        self.order_insertions(effects)
     }
     /// Project an authoritative saved recording without running any effect.
     /// The next explicit Focus reuses the normal rewrite/delivery path.
@@ -819,6 +864,11 @@ impl Engine {
         Ok(())
     }
     pub fn dispatch(&mut self, input: Input) -> Result<Vec<Effect>, String> {
+        let effects = self.dispatch_inner(input)?;
+        Ok(self.order_insertions(effects))
+    }
+
+    fn dispatch_inner(&mut self, input: Input) -> Result<Vec<Effect>, String> {
         let mut effects = Vec::new();
         match input {
             Input::UseAvailable { operation_id } => {
@@ -1149,7 +1199,7 @@ impl Engine {
                 if conversation_context.as_ref().is_some_and(|s| s.len()>8192 || s.contains('\0')) {
                     return Err("Invalid conversation reference".into());
                 }
-                effects = self.dispatch(Input::Start {
+                effects = self.dispatch_inner(Input::Start {
                     reference,
                     operation_id,
                     targets,
@@ -1185,16 +1235,7 @@ impl Engine {
                 if targets.len() > 16 {
                     return Err("Too many Dictate targets".into());
                 }
-                if self.entries.iter().any(|e| {
-                    matches!(
-                        e.phase,
-                        Phase::Starting
-                            | Phase::Recording
-                            | Phase::Transcribing
-                            | Phase::Rewriting
-                            | Phase::Delivering
-                    )
-                }) {
+                if self.capture_blocked() {
                     return Err("Dictate is already active".into());
                 }
                 let protected_focus = targets

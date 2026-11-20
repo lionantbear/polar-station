@@ -12,8 +12,10 @@ pub enum SettingsRoute {
     Agents,
     Intelligence,
     Appearance,
+    TmuxStatusBar,
     Workspace,
-    Workspaces,
+    #[serde(alias = "workspaces")]
+    WorkspaceLayout,
     StationBackend,
     Voice { section: Option<String> },
     Connections { target: Option<String>, object: Option<String>, #[serde(default,skip_serializing_if="Option::is_none")] section: Option<super::connections::Page> },
@@ -62,7 +64,11 @@ impl SettingsNavigation {
                 if route != self.route {
                     // Navigation depth is semantic, not a log of every clicked object.
                     // A feature link always has the directory as its parent.
-                    self.history = if route == SettingsRoute::Home { vec![] } else { vec![SettingsRoute::Home] };
+                    self.history = match route {
+                        SettingsRoute::Home => vec![],
+                        SettingsRoute::Workspace | SettingsRoute::TmuxStatusBar => vec![SettingsRoute::Home, SettingsRoute::AppearanceGroup],
+                        _ => vec![SettingsRoute::Home],
+                    };
                     self.route = route;
                 }
             }
@@ -91,8 +97,9 @@ impl SettingsNavigation {
                 SettingsRoute::Agents => "Agents & connections",
                 SettingsRoute::Intelligence => "Session intelligence",
                 SettingsRoute::Appearance => "Appearance",
-                SettingsRoute::Workspace => "Workspace",
-                SettingsRoute::Workspaces => "Workspace",
+                SettingsRoute::TmuxStatusBar => "tmux Status Bar",
+                SettingsRoute::Workspace => "Workspace Preferences",
+                SettingsRoute::WorkspaceLayout => "Layout",
                 SettingsRoute::StationBackend => "Station Backend",
                 SettingsRoute::Voice { .. } => "Voice",
                 SettingsRoute::Connections { .. } => "Agents & connections",
@@ -107,7 +114,8 @@ impl SettingsNavigation {
             entries: match &self.route {
                 SettingsRoute::AppearanceGroup => vec![
                     entry("Appearance", "Theme and application text", "paintbrush", SettingsRoute::Appearance),
-                    entry("Workspace", "Workspace preferences", "square.split.2x2", SettingsRoute::Workspace),
+                    entry("tmux Status Bar", "Static Session fields", "terminal", SettingsRoute::TmuxStatusBar),
+                    entry("Workspace Preferences", "Terminal font", "square.split.2x2", SettingsRoute::Workspace),
                 ],
                 SettingsRoute::Agents => vec![
                     entry("Machines & endpoints", "SSH, Polar and Codex", "network", SettingsRoute::Connections { target: None, object: None, section: None }),
@@ -116,7 +124,6 @@ impl SettingsNavigation {
                 _ => vec![
                 entry("Setup & diagnostics", "This computer and remote hosts", "checkmark.shield", SettingsRoute::Setup { remote: false }),
                 entry("Appearance & Workspace", "Theme, text and layout", "paintbrush", SettingsRoute::AppearanceGroup),
-                entry("Workspace", "Saved Workspaces and layout", "rectangle.3.group", SettingsRoute::Workspaces),
                 entry("Station Backend", "Local compact or full Polar; applies to every Workspace", "server.rack", SettingsRoute::StationBackend),
                 entry("Voice", "Dictate, cleanup and terminology", "mic", SettingsRoute::Voice { section: None }),
                 entry("Agents & connections", "Accounts, endpoints and machines", "network", SettingsRoute::Agents),

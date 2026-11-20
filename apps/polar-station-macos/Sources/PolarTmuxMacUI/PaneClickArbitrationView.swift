@@ -430,6 +430,7 @@ public struct PaneDropDestinationView: NSViewRepresentable {
     private let visualFrame: CGRect
     private let canAccept: @MainActor (PaneTabMoveDragPayload) -> Bool
     private let onDrop: @MainActor (PaneTabMoveDragPayload, Bool) -> Void
+    private let horizontalTabOrder: Bool
     private let canAcceptTab: (@MainActor (WorkspaceTabDragPayload) -> Bool)?
     private let onTabDrop: (@MainActor (WorkspaceTabDragPayload, Bool) -> Void)?
 
@@ -437,24 +438,28 @@ public struct PaneDropDestinationView: NSViewRepresentable {
         visualFrame: CGRect,
         canAccept: @escaping @MainActor (PaneTabMoveDragPayload) -> Bool,
         onDrop: @escaping @MainActor (PaneTabMoveDragPayload, Bool) -> Void,
+        horizontalTabOrder: Bool = false,
         canAcceptTab: (@MainActor (WorkspaceTabDragPayload) -> Bool)? = nil,
         onTabDrop: (@MainActor (WorkspaceTabDragPayload, Bool) -> Void)? = nil
     ) {
         self.visualFrame = visualFrame
         self.canAccept = canAccept
         self.onDrop = onDrop
+        self.horizontalTabOrder = horizontalTabOrder
         self.canAcceptTab = canAcceptTab
         self.onTabDrop = onTabDrop
     }
 
     public func makeNSView(context: Context) -> PaneDropObservationView {
-        PaneDropObservationView(
+        let view = PaneDropObservationView(
             visualFrame: visualFrame,
             canAccept: canAccept,
             onDrop: onDrop,
             canAcceptTab: canAcceptTab,
             onTabDrop: onTabDrop
         )
+        view.horizontalTabOrder = horizontalTabOrder
+        return view
     }
 
     public func updateNSView(
@@ -465,6 +470,7 @@ public struct PaneDropDestinationView: NSViewRepresentable {
         view.visualFrame = visualFrame
         view.canAccept = canAccept
         view.onDrop = onDrop
+        view.horizontalTabOrder = horizontalTabOrder
         view.canAcceptTab = canAcceptTab
         view.onTabDrop = onTabDrop
     }
@@ -473,6 +479,7 @@ public struct PaneDropDestinationView: NSViewRepresentable {
 @MainActor
 public final class PaneDropObservationView: NSView {
     fileprivate var interactionEnabled = true
+    fileprivate var horizontalTabOrder = false
     fileprivate var visualFrame: CGRect
     fileprivate var canAccept: @MainActor (PaneTabMoveDragPayload) -> Bool
     fileprivate var onDrop: @MainActor (PaneTabMoveDragPayload, Bool) -> Void
@@ -598,7 +605,12 @@ public final class PaneDropObservationView: NSView {
         let point = window.map { convert($0.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil) } ?? .zero
         let line = CALayer()
         line.backgroundColor = NSColor.controlAccentColor.cgColor
-        line.frame = CGRect(x: 0, y: point.y >= bounds.height / 2 ? bounds.height - 3 : 0, width: bounds.width, height: 3)
+        let after = tabDropIsAfter(point)
+        if horizontalTabOrder {
+            line.frame = CGRect(x: after ? bounds.width - 3 : 0, y: 0, width: 3, height: bounds.height)
+        } else {
+            line.frame = CGRect(x: 0, y: after == isFlipped ? bounds.height - 3 : 0, width: bounds.width, height: 3)
+        }
         layer?.addSublayer(line)
         insertionLine = line
     }
@@ -607,8 +619,8 @@ public final class PaneDropObservationView: NSView {
         clearDropIndicator()
         if case .tab(let tab) = payload {
             let point = dropPoint ?? window.map { convert($0.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil) } ?? .zero
-            let y = isFlipped ? point.y : bounds.height - point.y
-            onTabDrop?(tab, y >= bounds.height / 2); return
+            onTabDrop?(tab, tabDropIsAfter(point))
+            return
         }
         guard case .pane(let pane) = payload else { return }
         let point = dropPoint ?? window.map { convert($0.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil) } ?? .zero
@@ -616,6 +628,11 @@ public final class PaneDropObservationView: NSView {
         let y = (isFlipped ? point.y : bounds.height - point.y) / max(bounds.height, 1)
         let after = min(1 - x, 1 - y) < min(x, y)
         onDrop(pane, after)
+    }
+
+    private func tabDropIsAfter(_ point: NSPoint) -> Bool {
+        if horizontalTabOrder { return point.x >= bounds.midX }
+        return (isFlipped ? point.y : bounds.height - point.y) >= bounds.midY
     }
 
     private func acceptedPayload(from sender: any NSDraggingInfo) -> WorkspaceNativeDragPayload? {

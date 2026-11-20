@@ -123,6 +123,8 @@ public struct ControlCenterPresentation {
 }
 
 public struct ControlCenterView: View {
+    private let previewWorkspace: (@MainActor (String) -> Void)?
+    private let workspacePreviewOnly: Bool
     public let projection: ControlCenterProjectionV1
     public let nativeLayoutView: NativeWorkspaceLayoutView?
     public let presentation: ControlCenterBodyPresentation
@@ -158,6 +160,8 @@ public struct ControlCenterView: View {
     @State private var widthDragStart: CGFloat?
 
     public init(
+        previewWorkspace: (@MainActor (String) -> Void)? = nil,
+        workspacePreviewOnly: Bool = false,
         projection: ControlCenterProjectionV1,
         nativeLayoutView: NativeWorkspaceLayoutView? = nil,
         presentation: ControlCenterBodyPresentation,
@@ -193,6 +197,8 @@ public struct ControlCenterView: View {
         self.prepareSessionEditor = prepareSessionEditor
         self.sessionCreationRecovery = sessionCreationRecovery
         self.readSessionEditor = readSessionEditor
+        self.previewWorkspace = previewWorkspace
+        self.workspacePreviewOnly = workspacePreviewOnly
         self.projection = projection
         self.nativeLayoutView = nativeLayoutView
         self.presentation = presentation
@@ -228,15 +234,7 @@ public struct ControlCenterView: View {
                         .help("Codex sessions")
                 }
                 Spacer()
-                Button {
-                    emitPresentationAction(.toggleSessions)
-                } label: {
-                    Image(systemName: "terminal")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Show or hide Sessions")
-                .help("Show or hide Sessions")
-                .accessibilityValue(bodyPresentation.sessionsVisible ? "Open" : "Closed")
+
             }
             .padding(8)
             HStack(spacing: 0) {
@@ -275,7 +273,8 @@ public struct ControlCenterView: View {
                 applicationShortcuts: applicationShortcuts,
                 emitIntent: emitIntent,
                 openConnections: { settingsNavigation.open(.init(page:"connections")) },
-                submitSSHTarget: submitSSHTarget
+                submitSSHTarget: submitSSHTarget,
+                previewWorkspace: previewWorkspace
             )
 
             Divider()
@@ -294,7 +293,13 @@ public struct ControlCenterView: View {
                         controlRevision: projection.controlRevision,
                         dismiss: { emitPresentationAction(.toggleSessions) },
                         emitIntent: emitIntent,
-                        submitOperation: submitSSHTarget,
+                        submitOperation: { intent, completion in
+                            guard !workspacePreviewOnly else {
+                                completion("Switch to this Workspace before assigning or editing Sessions.")
+                                return
+                            }
+                            submitSSHTarget(intent, completion)
+                        },
                         readSessionEditor: readSessionEditor,
                         openCodex: requestCodex == nil ? nil : { @MainActor identity in
                             codexSession = PolarTmuxSessionKey(executionTarget: identity.executionTargetID, tmuxSessionID: identity.tmuxSessionID)
@@ -303,12 +308,13 @@ public struct ControlCenterView: View {
                         codexRevision: codexStateRevision,
                         applicationShortcuts: applicationShortcuts,
                         prepareEditor: prepareSessionEditor,
-                        creationRecovery: sessionCreationRecovery
+                        creationRecovery: sessionCreationRecovery,
+                        readOnly: workspacePreviewOnly
                     )
-                    .frame(width: ControlCenterWidthPolicy.sessionsWidth)
-                    Divider()
+                    .frame(width: bodyPresentation.mapWidth)
+                } else {
+                    layoutRegion
                 }
-                layoutRegion
               }
               .modifier(ControlCenterPageVisibility(active: bodyPresentation.selectedTab == .layout, width: bodyPresentation.preferredWidth))
               SettingsPane(navigation: settingsNavigation, content: settingsContent)
@@ -363,6 +369,10 @@ public struct ControlCenterView: View {
                 emitWorkspaceOperation: emitWorkspaceOperation,
                 emitIntent: emitIntent,
                 openSettings: settingsNavigation.show,
+                openWorkspacePreferences: {
+                    settingsNavigation.open(.init(page: "workspace"))
+                    emitPresentationAction(.selectTab(.settings))
+                },
                 showLayout: settingsNavigation.showLayout,
                 settingsVisible: bodyPresentation.selectedTab == .settings
             )

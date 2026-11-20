@@ -1,5 +1,6 @@
 //! Durable Session identity and recovery facts. Native layout is not stored here.
 pub mod runtime;
+mod status_bar;
 use super::session_registry::{DiscoveredSession, SessionRegistry};
 use anyhow::{Context, Result};
 use polar_tmux_core::{TmuxClient, TmuxErrorKind};
@@ -118,6 +119,7 @@ enum RefreshAdmission {
 
 pub struct SessionLifecycle {
     store: SessionStore,
+    settings: polar_station_settings::SettingsRepository,
     state: Mutex<SessionRuntimeState>,
     observations: Mutex<BTreeMap<String, ObservedTarget>>,
     observation_published: tokio::sync::Notify,
@@ -314,7 +316,7 @@ impl SessionLifecycle {
                     let mut launch = SessionLaunchSpec::shell(name, working_directory.as_deref());
                     launch.process = ProcessRestoreSpec::Claude { session_id: session_id.clone() };
                     let initial = new.then(||claude_initial_command(&session_id));
-                    let created = self.create_with_public_name(&client, target_id.clone(), launch, initial, true).await?;
+                    let created = self.create_with_public_name(&client, target_id.clone(), launch, initial, true, None).await?;
                     return Ok(Some(self.created_fact(&created, &target.descriptor().display_name,
                         ssh.transport_generation(target_id.as_str()).await).await));
                 }
@@ -1101,12 +1103,12 @@ impl SessionLifecycle {
         launch: SessionLaunchSpec,
         initial_command: Option<String>,
     ) -> Result<ManagedSessionRecord> {
-        self.create_with_public_name(client, target, launch, initial_command, false).await
+        self.create_with_public_name(client, target, launch, initial_command, false, None).await
     }
 
     pub async fn create_with_public_name(
         &self, client: &TmuxClient, target: ExecutionTargetId, mut launch: SessionLaunchSpec,
-        initial_command: Option<String>, reuse_public_name: bool,
+        initial_command: Option<String>, reuse_public_name: bool, status_title: Option<&str>,
     ) -> Result<ManagedSessionRecord> {
         launch.validate()?;
         anyhow::ensure!(initial_command.is_some() || !matches!(&launch.process, ProcessRestoreSpec::CodexForwardedCli { .. }),
@@ -1148,6 +1150,14 @@ impl SessionLifecycle {
                 .map(|pane| pane.current_path.clone())
                 .filter(|path| !path.is_empty());
         }
+        if id == allocated_id {
+            launch.startup_git = status_bar::read_startup_git(client, launch.working_directory.as_deref()).await;
+        } else if let Some(existing) = self.record_for(target.as_str(), &format!("station-session-{id}")).await {
+            launch.startup_git = existing.launch.startup_git;
+            launch.startup_permission = existing.launch.startup_permission;
+        } else {
+            launch.startup_permission = None;
+        }
         let record = ManagedSessionRecord {
             id,
             execution_target_id: target,
@@ -1162,6 +1172,11 @@ impl SessionLifecycle {
             process_completed: false,
         };
         self.save_session(record.clone()).await?;
+        if id == allocated_id {
+            if let Err(error) = self.configure_status_bar(client, &record, status_title).await {
+                tracing::warn!(%error, "Could not set tmux Session status bar");
+            }
+        }
         // The target operation write gate excludes an older observation commit.
         // Merge the exact create response into the existing canonical observation.
         let mut observations = self.observations.lock().await;
@@ -1347,6 +1362,7 @@ impl SessionLifecycle {
     pub fn open(store: SessionStore) -> Result<Self> {
         Ok(Self {
             state: Mutex::new(store.load_runtime_or_initialize()?),
+            settings: store.settings_repository(),
             store,
             observations: Mutex::new(BTreeMap::new()),
             observation_published: tokio::sync::Notify::new(),

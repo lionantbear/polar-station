@@ -28,6 +28,8 @@ pub const Transfer = struct {
     context: ?*anyopaque,
     dispatch: Dispatch,
     parent: ?*gtk.Window = null,
+    review_box: ?*gtk.Box = null,
+    status: ?*gtk.Label = null,
     send: ?*const fn (?*anyopaque, []const u8) anyerror!void = null,
     send_context: ?*anyopaque = null,
     dialog: ?*gtk.NativeDialog = null,
@@ -58,11 +60,23 @@ pub const Transfer = struct {
     pub fn problem(self: *Transfer, message: []const u8) void {
         const z = self.allocator.dupeZ(u8, message) catch return;
         defer self.allocator.free(z);
-        const d = adw.MessageDialog.new(self.parent, "Workspace transfer", z);
-        d.addResponse("close", "Close");
-        d.setCloseResponse("close");
-        d.as(gtk.Window).present();
+        if (self.status) |status| status.setText(z);
     }
+    fn clearReview(self: *Transfer) void {
+        if (self.review_box) |box| {
+            while (box.as(gtk.Widget).getFirstChild()) |child| box.remove(child);
+        }
+        self.name = null;
+    }
+
+    fn reviewLabel(box: *gtk.Box, text: [:0]const u8) void {
+        const label = gtk.Label.new(text);
+        label.setXalign(0);
+        label.setWrap(1);
+        label.setSelectable(1);
+        box.append(label.as(gtk.Widget));
+    }
+
     fn checked(self: *Transfer, result: std.json.Parsed(Value)) ?std.json.Parsed(Value) {
         if (field(result.value, "error") == .string) {
             self.problem(string(result.value, "error"));
@@ -72,7 +86,7 @@ pub const Transfer = struct {
         return result;
     }
     pub fn exportWorkspace(self: *Transfer, bytes: []const u8) void {
-        if (self.pending_id != null or self.dialog != null or self.review != null) return;
+        if (self.pending_id != null or self.dialog != null) return;
         const parsed = std.json.parseFromSlice(Value, self.allocator, bytes, .{ .allocate = .alloc_always }) catch return;
         if (self.native) |v| v.deinit();
         self.native = parsed;
@@ -82,7 +96,7 @@ pub const Transfer = struct {
         self.request(.{ .type = "export_content", .bindings = field(prepared.value, "bindings"), .target_ids = field(prepared.value, "target_ids") });
     }
     pub fn openWorkspace(self: *Transfer, bytes: []const u8) void {
-        if (self.pending_id != null or self.dialog != null or self.review != null) return;
+        if (self.pending_id != null or self.dialog != null) return;
         const saved = std.json.parseFromSlice(Value, self.allocator, bytes, .{ .allocate = .alloc_always }) catch return;
         if (self.native) |v| v.deinit();
         self.native = saved;
@@ -103,6 +117,7 @@ pub const Transfer = struct {
         if (self.pending_id != null) return;
         const id = std.fmt.allocPrint(self.allocator, "workspace-transfer-{x}", .{std.crypto.random.int(u64)}) catch return;
         self.pending_id = id;
+        self.problem("Reading Workspace references…");
         const bytes = std.json.Stringify.valueAlloc(self.allocator, .{ .type = "application_request", .request = .{ .protocol_version = @as(u32, 1), .api = "control_center_v1", .request_id = id, .frontend_session_id = "workspace-transfer", .expected_control_revision = @as(?u64, null), .command = .{ .type = "host_transfer", .request = value } } }, .{}) catch {
             self.failed("Cannot encode transfer request.");
             return;
@@ -140,6 +155,7 @@ pub const Transfer = struct {
             return true;
         }
         const response = field(result, "result");
+        self.problem("");
         if (std.mem.eql(u8, string(response, "type"), "content_exported")) {
             const native = self.native orelse return true;
             // A view has its own source identity; imported unresolved views retain it.
@@ -173,33 +189,32 @@ pub const Transfer = struct {
     }
     fn confirmImport(self: *Transfer) void {
         const prepared = self.prepared orelse return;
-        const preview = field(prepared.value, "preview");
-        const text = self.allocator.dupeZ(u8, string(preview, "summary")) catch return;
+        const box = self.review_box orelse return;
+        self.clearReview();
+        const text = self.allocator.dupeZ(u8, string(field(prepared.value, "preview"), "summary")) catch return;
         defer self.allocator.free(text);
-        const d = adw.MessageDialog.new(self.parent, "Import Workspace", text);
-        d.as(gtk.Widget).setSizeRequest(560, -1);
+        reviewLabel(box, text);
         const entry = gtk.Entry.new();
         const entry_name = self.allocator.dupeZ(u8, string(field(prepared.value, "native"), "name")) catch return;
         defer self.allocator.free(entry_name);
         entry.as(gtk.Editable).setText(entry_name);
-        d.setExtraChild(entry.as(gtk.Widget));
         self.name = entry;
-        d.addResponse("cancel", "Cancel");
-        d.addResponse("import", "Import Workspace");
-        d.setDefaultResponse("cancel");
-        d.setCloseResponse("cancel");
-        self.review = d;
-        _ = adw.MessageDialog.signals.response.connect(d, *Transfer, confirmResponse, self, .{});
-        d.as(gtk.Window).present();
+        box.append(entry.as(gtk.Widget));
+        const actions = gtk.Box.new(.horizontal, 8);
+        const ok = gtk.Button.newWithLabel("Import Workspace");
+        const cancel = gtk.Button.newWithLabel("Cancel");
+        actions.append(ok.as(gtk.Widget));
+        actions.append(cancel.as(gtk.Widget));
+        box.append(actions.as(gtk.Widget));
+        _ = gtk.Button.signals.clicked.connect(ok, *Transfer, confirmResponse, self, .{});
+        _ = gtk.Button.signals.clicked.connect(cancel, *Transfer, cancelInline, self, .{});
     }
-    fn confirmResponse(_: *adw.MessageDialog, response: [*:0]const u8, self: *Transfer) callconv(.c) void {
-        defer {
-            self.review = null;
-            self.name = null;
-        }
-        if (!std.mem.eql(u8, std.mem.span(response), "import")) return;
-        const prepared = if (self.prepared) |*v| v else return;
-        const name = std.mem.span(self.name.?.as(gtk.Editable).getText());
+    fn cancelInline(_: *gtk.Button, self: *Transfer) callconv(.c) void {
+        self.clearReview();
+    }
+    fn confirmResponse(_: *gtk.Button, self: *Transfer) callconv(.c) void {
+        const prepared = self.prepared orelse return;
+        const name = std.mem.span((self.name orelse return).as(gtk.Editable).getText());
         if (std.mem.trim(u8, name, " \t\r\n").len == 0) {
             self.problem("Workspace name is required.");
             return;
@@ -209,6 +224,7 @@ pub const Transfer = struct {
         const bytes = std.json.Stringify.valueAlloc(self.allocator, native, .{}) catch return;
         defer self.allocator.free(bytes);
         self.dispatch(self.context, "import_commit", string(native, "id"), bytes);
+        self.clearReview();
     }
     fn resolve(self: *Transfer) void {
         const package = self.package orelse return;
@@ -221,30 +237,39 @@ pub const Transfer = struct {
         self.request(.{ .type = "resolve", .sources = sources.items });
     }
     pub fn reviewHosts(self: *Transfer) void {
-        const d = adw.MessageDialog.new(self.parent, "Workspace Hosts", "Review and import the included Hosts first. Host changes are saved separately. When finished, continue to review the complete Workspace; missing Hosts will be listed before import.");
-        d.addResponse("cancel", "Cancel");
-        d.addResponse("hosts", "Review Hosts…");
-        d.addResponse("continue", "Continue…");
-        d.setDefaultResponse("hosts");
-        d.setCloseResponse("cancel");
-        self.review = d;
-        _ = adw.MessageDialog.signals.response.connect(d, *Transfer, hostResponse, self, .{});
-        d.as(gtk.Window).present();
+        const box = self.review_box orelse return;
+        self.clearReview();
+        reviewLabel(box, "Review included Hosts or continue to see which references are recognized.");
+        const actions = gtk.Box.new(.horizontal, 8);
+        const hosts = gtk.Button.newWithLabel("Review Hosts…");
+        const next = gtk.Button.newWithLabel("Continue");
+        const cancel = gtk.Button.newWithLabel("Cancel");
+        actions.append(hosts.as(gtk.Widget));
+        actions.append(next.as(gtk.Widget));
+        actions.append(cancel.as(gtk.Widget));
+        box.append(actions.as(gtk.Widget));
+        _ = gtk.Button.signals.clicked.connect(hosts, *Transfer, reviewIncludedHosts, self, .{});
+        _ = gtk.Button.signals.clicked.connect(next, *Transfer, continueImport, self, .{});
+        _ = gtk.Button.signals.clicked.connect(cancel, *Transfer, cancelInline, self, .{});
     }
+
     pub fn hostsReviewed(context: ?*anyopaque) void {
         const self: *Transfer = @ptrCast(@alignCast(context orelse return));
         self.reviewHosts();
     }
-    fn hostResponse(_: *adw.MessageDialog, response: [*:0]const u8, self: *Transfer) callconv(.c) void {
-        self.review = null;
-        const action = std.mem.span(response);
-        if (std.mem.eql(u8, action, "hosts")) {
-            const package = self.package orelse return;
-            const bytes = std.json.Stringify.valueAlloc(self.allocator, field(package.value, "hosts"), .{}) catch return;
-            defer self.allocator.free(bytes);
-            self.dispatch(self.context, "import_hosts", "", bytes);
-        } else if (std.mem.eql(u8, action, "continue")) self.resolve();
+
+    fn reviewIncludedHosts(_: *gtk.Button, self: *Transfer) callconv(.c) void {
+        const package = self.package orelse return;
+        const bytes = std.json.Stringify.valueAlloc(self.allocator, field(package.value, "hosts"), .{}) catch return;
+        defer self.allocator.free(bytes);
+        self.dispatch(self.context, "import_hosts", "", bytes);
     }
+
+    fn continueImport(_: *gtk.Button, self: *Transfer) callconv(.c) void {
+        self.clearReview();
+        self.resolve();
+    }
+
     fn openFile(self: *Transfer, saving: bool) void {
         if (self.dialog != null) return;
         const chooser = gtk.FileChooserNative.new(if (saving) "Export Workspace" else "Import Workspace", self.parent, if (saving) .save else .open, if (saving) "Export" else "Choose", "Cancel");

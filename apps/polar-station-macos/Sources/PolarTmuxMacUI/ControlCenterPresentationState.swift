@@ -7,6 +7,8 @@ public enum ControlCenterTab: Equatable, Sendable {
 
 public enum ControlCenterPresentationAction: Equatable, Sendable {
     case selectTab(ControlCenterTab)
+    case pressLayout
+    case expandLayout
     case toggleSessions
     case resize(width: CGFloat, commit: Bool)
 }
@@ -25,10 +27,10 @@ public struct ControlCenterBodyPresentation: Equatable, Sendable {
     }
     public var layoutMapVisible: Bool { selectedTab == .layout }
     public var inboxVisible: Bool { selectedTab == .inbox }
-    public var dividerVisible: Bool { selectedTab == .layout && sessionsVisible }
+    public var dividerVisible: Bool { false }
     public var preferredWidth: CGFloat {
         ControlCenterWidthPolicy.controllerWidth(tab: selectedTab, mapWidth: mapWidth,
-            sessionsVisible: sessionsVisible)
+            sessionsVisible: false)
     }
 }
 
@@ -70,7 +72,15 @@ public final class ControlCenterPresentationState: ObservableObject {
         switch action {
         case let .selectTab(tab):
             next.selectedTab = tab
+            if tab != .layout { next.sessionsVisible = false }
+        case .pressLayout:
+            next.sessionsVisible = next.selectedTab == .layout && !next.sessionsVisible
+            next.selectedTab = .layout
+        case .expandLayout:
+            next.selectedTab = .layout
+            next.sessionsVisible = true
         case .toggleSessions:
+            next.selectedTab = .layout
             next.sessionsVisible.toggle()
         case let .resize(width, _):
             let requested = min(width, availableWidth - 321)
@@ -80,7 +90,7 @@ public final class ControlCenterPresentationState: ObservableObject {
         }
         guard next.preferredWidth + 321 <= availableWidth else { return false }
         switch action {
-        case .selectTab: restoredTab = true
+        case .selectTab, .pressLayout, .expandLayout: restoredTab = true
         case let .resize(_, commit): resizing = !commit
         case .toggleSessions: break
         }

@@ -3,7 +3,7 @@ use super::jitter::{
     JitterPlayout, OPUS_SILENCE_PACKET, ProviderIngressTiming, ProviderJitterBuffer,
 };
 use super::{
-    CodexVoiceProvider, OPUS_FRAME_DURATION, ProviderResources, TRANSCRIPT_WAIT, voice_failure,
+    CodexVoiceProvider, OPUS_FRAME_DURATION, ProviderResources, SnapshotAuth, TRANSCRIPT_WAIT, voice_failure,
 };
 use codex_protocol::protocol::RealtimeEvent;
 use codex_api::RealtimeContextAppendChannel;
@@ -14,13 +14,181 @@ use polar_voice::{
     VoiceStreamingTranscriptionProvider, TranscriptionReference, TranscriptionReferenceSupport,
 };
 use std::{
+    collections::VecDeque,
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::{Mutex, mpsc, oneshot, watch};
+use tokio::sync::{Mutex, Notify, Semaphore, mpsc, oneshot, watch};
+use tokio::task::JoinHandle;
 use tracing::Instrument;
 
 const RECOGNITION_REFERENCE_WAIT: Duration = Duration::from_secs(30);
+const DIAL_WAIT: Duration = Duration::from_secs(50);
+const WARM_CALLS: usize = 2;
+const TOTAL_CALLS: usize = 3;
+type SidebandEvents = Mutex<mpsc::Receiver<Result<Option<RealtimeEvent>, VoiceError>>>;
+
+#[derive(Clone, PartialEq, Eq)]
+struct Preparation {
+    auth: Arc<SnapshotAuth>,
+    instructions: Option<String>,
+}
+
+struct PreparedCall {
+    task: JoinHandle<Result<ProviderResources, VoiceError>>,
+    status: watch::Receiver<DialStatus>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DialStatus {
+    Dialing,
+    Ready,
+    Failed,
+}
+
+impl Drop for PreparedCall {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+impl PreparedCall {
+    async fn ready(mut self) -> Result<ProviderResources, VoiceError> {
+        (&mut self.task).await.map_err(|_| VoiceError::TranscriptionFailed)?
+    }
+}
+
+#[derive(Default)]
+struct PreparedState {
+    config: Option<Preparation>,
+    calls: VecDeque<PreparedCall>,
+}
+
+pub(super) struct PreparedCalls {
+    state: Mutex<PreparedState>,
+    claim_order: Mutex<()>,
+    capacity: Arc<Semaphore>,
+    updated: Notify,
+}
+
+impl Default for PreparedCalls {
+    fn default() -> Self {
+        Self {
+            state: Mutex::default(),
+            claim_order: Mutex::new(()),
+            capacity: Arc::new(Semaphore::new(TOTAL_CALLS)),
+            updated: Notify::new(),
+        }
+    }
+}
+
+fn take_prepared_call(calls: &mut VecDeque<PreparedCall>) -> Option<PreparedCall> {
+    let mut dialing = false;
+    let ready = calls.iter().position(|call| match *call.status.borrow() {
+        DialStatus::Ready => true,
+        DialStatus::Dialing => {
+            dialing = true;
+            false
+        }
+        DialStatus::Failed => false,
+    });
+    match ready {
+        Some(index) => calls.remove(index),
+        None if dialing => None,
+        None => calls.pop_front(), // Both dials failed. Return one of the errors.
+    }
+}
+
+impl CodexVoiceProvider {
+    fn dial_stream(&self, config: Preparation) -> PreparedCall {
+        let provider = self.clone();
+        let (status_sender, status) = watch::channel(DialStatus::Dialing);
+        let task = tokio::spawn(async move {
+            // A queued task does not own a connection until it has a permit.
+            let slot = provider.prepared.capacity.clone().acquire_owned().await
+                .map_err(|_| VoiceError::ProviderUnavailable)?;
+            let result = tokio::time::timeout(DIAL_WAIT, provider.connect_media_with_auth(
+                None, None, config.instructions.as_deref(), config.auth, Some(slot),
+            ))
+            .await
+            .unwrap_or_else(|_| Err(voice_failure("peer_dial", VoiceError::AudioConnectionTimeout)));
+            status_sender.send_replace(if result.is_ok() { DialStatus::Ready } else { DialStatus::Failed });
+            provider.prepared.updated.notify_waiters();
+            result
+        });
+        PreparedCall { task, status }
+    }
+
+    fn fill_prepared(&self, state: &mut PreparedState, config: &Preparation) {
+        state.calls.retain(|call| *call.status.borrow() != DialStatus::Failed);
+        while state.calls.len() < WARM_CALLS {
+            state.calls.push_back(self.dial_stream(config.clone()));
+        }
+    }
+
+    async fn prepare_calls(&self, config: &Preparation) {
+        let mut state = self.prepared.state.lock().await;
+        if state.config.as_ref() != Some(config) {
+            state.calls.clear();
+            state.config = Some(config.clone());
+            self.prepared.updated.notify_waiters();
+        }
+        self.fill_prepared(&mut state, config);
+    }
+
+    async fn claim_prepared(&self, config: &Preparation) -> PreparedCall {
+        // Only admission is FIFO. Dials and every recording that has already
+        // claimed a connection continue independently.
+        let _claim = self.prepared.claim_order.lock().await;
+        let mut waited = false;
+        loop {
+            let changed = self.prepared.updated.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            {
+                let mut state = self.prepared.state.lock().await;
+                if state.config.as_ref() != Some(config) {
+                    // The recording retains its frozen configuration when
+                    // Settings changes the pool while it is waiting.
+                    return self.dial_stream(config.clone());
+                }
+                if let Some(selected) = take_prepared_call(&mut state.calls) {
+                    self.fill_prepared(&mut state, config);
+                    let source = match (*selected.status.borrow(), waited) {
+                        (DialStatus::Failed, _) => "dial_failed",
+                        (_, true) => "in_flight",
+                        (_, false) => "ready",
+                    };
+                    tracing::info!(target: "polar_dictate::latency", event="voice.connection_acquired",
+                        source);
+                    return selected;
+                }
+            }
+            waited = true;
+            changed.await;
+        }
+    }
+
+    async fn take_stream(&self, config: &Preparation) -> Result<ProviderResources, VoiceError> {
+        self.prepare_calls(config).await;
+        // Both prepared calls may have expired. Leave room to use a new dial.
+        for attempt in 0..=WARM_CALLS {
+            let call = self.claim_prepared(config).await;
+            match call.ready().await {
+                Ok(resources) if resources.prepared_usable(&config.auth, config.instructions.as_deref()).await => {
+                    return Ok(resources);
+                }
+                Ok(mut resources) => resources.close_all().await,
+                Err(VoiceError::AuthRequired) => return Err(VoiceError::AuthRequired),
+                Err(error) if attempt == WARM_CALLS => return Err(error),
+                Err(_) => {}
+            }
+        }
+        Err(voice_failure("prepared_session_stale", VoiceError::TranscriptionFailed))
+    }
+}
+
+
 
 enum StreamingCommand {
     Packet {
@@ -112,23 +280,12 @@ impl VoiceStreamingTranscriptionProvider for CodexVoiceProvider {
                 return Err(error);
             }
         };
-        let mut slot = self.prepared.lock().await;
-        if let Some(resources) = slot.as_ref() {
-            if resources.prepared_usable(&auth, instructions.as_deref()).await {
-                return Ok(());
-            }
-        }
-        if let Some(mut resources) = slot.take() {
-            resources.close_all().await;
-        }
-        *slot = Some(self.connect_transcription_session(instructions.as_deref()).await?);
+        self.prepare_calls(&Preparation { auth, instructions }).await;
         Ok(())
     }
     async fn release_prepared(&self) {
-        let resources = self.prepared.lock().await.take();
-        if let Some(mut resources) = resources {
-            resources.close_all().await;
-        }
+        *self.prepared.state.lock().await = PreparedState::default();
+        self.prepared.updated.notify_waiters();
     }
     async fn begin(
         &self,
@@ -155,15 +312,7 @@ impl VoiceStreamingTranscriptionProvider for CodexVoiceProvider {
                 return Err(error);
             }
         };
-        let prepared = self.prepared.lock().await.take();
-        let mut resources = match prepared {
-            Some(resources) if resources.prepared_usable(&auth, instructions.as_deref()).await => resources,
-            Some(mut resources) => {
-                resources.close_all().await;
-                self.connect_transcription_session(instructions.as_deref()).await?
-            }
-            None => self.connect_transcription_session(instructions.as_deref()).await?,
-        };
+        let mut resources = self.take_stream(&Preparation { auth, instructions }).await?;
         if let Some(o)=&observation { o.emit("session.instructions","submitted",resources.stream_input.clone()).await; }
         // A prepared transport has no recording reference. Bind this recording
         // once, before handing a packet inlet to the caller; never add a sleep.
@@ -222,6 +371,24 @@ async fn run_streaming_session(
     let mut jitter = ProviderJitterBuffer::default();
     let mut ingress_timing = ProviderIngressTiming::default();
     let mut maximum_media_write = Duration::ZERO;
+    let mut last_audio_write: Option<Instant> = None;
+    let mut peer_state = resources.peer().state.clone();
+    let reader = resources.sideband().events();
+    let (send_event, receive_event) = mpsc::channel(64);
+    let mut receive_event = Mutex::new(receive_event);
+    let mut reader_task = tokio::task::JoinSet::new();
+    // The SDK may consume a frame before its future finishes updating the
+    // transcript. Keep that reader alive across packet ticks and session.close.
+    reader_task.spawn(async move {
+        loop {
+            let event = reader.next_event().await
+                .map_err(|_| voice_failure("sideband_event", VoiceError::TranscriptionFailed));
+            let terminal = !matches!(event, Ok(Some(_)));
+            if send_event.send(event).await.is_err() || terminal {
+                break;
+            }
+        }
+    });
     let mut playout = tokio::time::interval(OPUS_FRAME_DURATION);
     playout.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     playout.tick().await;
@@ -229,6 +396,9 @@ async fn run_streaming_session(
         loop {
             tokio::select! {
                 biased;
+                _ = super::wait_for_peer(&mut peer_state, false) => {
+                    return Err(voice_failure("peer_media_terminal", VoiceError::AudioConnectionLost));
+                },
                 command = commands.recv(), if jitter.can_accept_packet() => match command {
                     Some(StreamingCommand::Packet { packet, arrived_at }) => {
                         if let Some(gap) = ingress_timing.observe(arrived_at) {
@@ -248,17 +418,18 @@ async fn run_streaming_session(
                         return Err(VoiceError::TranscriptionFailed);
                     }
                 },
-                event = resources.sideband().next_event() => {
-                    let event = event.map_err(|_| VoiceError::TranscriptionFailed)?;
+                event = receive_event.get_mut().recv() => {
+                    let event = event.ok_or(VoiceError::TranscriptionFailed)??;
                     update_transcript(&updates, event)?;
                 },
                 _ = playout.tick() => match jitter.tick()? {
                     JitterPlayout::Wait => {}
-                    JitterPlayout::Packet(packet) => write_playout_packet(
-                        &resources,
-                        &packet,
-                        &mut maximum_media_write,
-                    ).await?,
+                    JitterPlayout::Packet(packet) => {
+                        write_playout_packet(&resources, &packet, &mut maximum_media_write).await?;
+                        if last_audio_write.replace(Instant::now()).is_none() {
+                            tracing::info!(target: "polar_dictate::latency", event="voice.first_audio_written");
+                        }
+                    }
                     JitterPlayout::ReserveSilence | JitterPlayout::StallSilence | JitterPlayout::Silence | JitterPlayout::TailSilence => write_playout_packet(
                         &resources,
                         OPUS_SILENCE_PACKET,
@@ -270,18 +441,20 @@ async fn run_streaming_session(
                         tracing::info!(target: "polar_dictate::latency", event="voice.input_drained",
                             committed_packets=jitter.committed_packet_count,
                             played_through=jitter.next_sequence,
+                            last_audio_age_ms=last_audio_write.map(|at| at.elapsed().as_millis()),
                             confirmed_segments=snapshot.confirmed.len(), partial_bytes=snapshot.partial.len(),
                             "Realtime input drained before session close");
                         // Complete follows every committed audio packet and the
                         // provider-only tail. Request protocol finalization before
                         // waiting for the final transcript, as complete-PCM does.
-                        return finish_stream(&resources,&updates,&mut commands).await;
+                        return finish_stream(&resources, &updates, &mut commands, &receive_event).await;
                     },
                 }
             }
         }
     }
     .await;
+    reader_task.shutdown().await;
     super::media_diagnostics::trace(&resources.peer().peer, "stream_finished").await;
     let stats = jitter.stats();
     let transcript = updates.borrow().clone();
@@ -312,19 +485,30 @@ async fn finish_stream(
     resources: &ProviderResources,
     updates: &watch::Sender<TranscriptSnapshot>,
     commands: &mut mpsc::Receiver<StreamingCommand>,
+    events: &SidebandEvents,
 ) -> Result<String, VoiceError> {
     let close_started = Instant::now();
-    resources
-        .sideband()
-        .writer()
-        .send_payload(serde_json::json!({"type":"session.close"}).to_string())
+    let writer = resources.sideband().writer();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        writer.send_payload(serde_json::json!({"type":"session.close"}).to_string()),
+    )
         .await
+        .map_err(|_| voice_failure("stream_finish_write", VoiceError::Timeout))?
         .map_err(|_| voice_failure("stream_finish", VoiceError::TranscriptionFailed))?;
     tracing::info!(target: "polar_dictate::latency", event="voice.close_written",
         elapsed_ms=close_started.elapsed().as_millis(), deadline_ms=TRANSCRIPT_WAIT.as_millis(),
         "Realtime session.close written; awaiting final transcript and closure");
     tokio::select! {
-        result=wait_for_transcript_updates(resources,Some(updates)) => result,
+        result=async {
+            collect_until_closed(
+                || async { events.lock().await.recv().await.ok_or(VoiceError::TranscriptionFailed)? },
+                Some(updates),
+                tokio::time::Instant::now() + TRANSCRIPT_WAIT,
+            ).await?;
+            final_transcript_text(resources, updates)
+                .await.ok_or(VoiceError::TranscriptionFailed)
+        } => result,
         _=commands.recv()=>Err(VoiceError::TranscriptionFailed),
     }
 }
@@ -375,13 +559,6 @@ fn update_transcript(
 pub(super) async fn wait_for_transcript(
     resources: &ProviderResources,
 ) -> Result<String, VoiceError> {
-    wait_for_transcript_updates(resources, None).await
-}
-
-async fn wait_for_transcript_updates(
-    resources: &ProviderResources,
-    updates: Option<&watch::Sender<TranscriptSnapshot>>,
-) -> Result<String, VoiceError> {
     let segments = collect_until_closed(
         || async {
             resources
@@ -390,11 +567,11 @@ async fn wait_for_transcript_updates(
                 .await
                 .map_err(|_| voice_failure("sideband_event", VoiceError::TranscriptionFailed))
         },
-        updates,
+        None,
         tokio::time::Instant::now() + TRANSCRIPT_WAIT,
     )
     .await?;
-    final_transcript_text(resources, &segments, updates)
+    transcript_from_active_tail(resources, &segments)
         .await
         .ok_or(VoiceError::TranscriptionFailed)
 }
@@ -489,10 +666,8 @@ where
 
 async fn final_transcript_text(
     resources: &ProviderResources,
-    completed: &[String],
-    updates: Option<&watch::Sender<TranscriptSnapshot>>,
+    updates: &watch::Sender<TranscriptSnapshot>,
 ) -> Option<String> {
-    if let Some(updates) = updates {
         let snapshot = updates.borrow().clone();
         let canonical = resources.sideband().events().take_transcript_tail().await;
         let canonical = canonical
@@ -507,9 +682,7 @@ async fn final_transcript_text(
             canonical_bytes=canonical.len(), confirmed_bytes=confirmed.len(),
             canonical_matches_confirmed=canonical.trim()==confirmed.trim(),
             "Realtime SDK and Station final transcript comparison");
-        return (!snapshot.speech_pending && !snapshot.confirmed.is_empty()).then_some(confirmed);
-    }
-    transcript_from_active_tail(resources, completed).await
+        (!snapshot.speech_pending && !snapshot.confirmed.is_empty()).then_some(confirmed)
 }
 
 async fn transcript_from_active_tail(

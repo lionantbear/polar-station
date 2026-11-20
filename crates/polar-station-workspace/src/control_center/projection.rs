@@ -239,7 +239,7 @@ pub fn project_control_center(
     let more_actions = vec![
         ControlActionProjection::enabled(
             "managed.terminal.font.size",
-            format!("Ghostty Font Size… ({font_size}pt)"),
+            "Ghostty Font Size…",
             ControlActionRole::Secondary,
         ),
         ControlActionProjection::enabled(

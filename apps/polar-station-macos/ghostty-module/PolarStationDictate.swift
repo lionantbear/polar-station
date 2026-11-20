@@ -79,7 +79,7 @@ final class PolarStationDictate {
     private(set) var error: String?
     private var ready = false
     private var stopped = false
-    var backendSwitchBlocked: Bool { captureID != nil || submittedID != nil }
+    var backendSwitchBlocked: Bool { captureID != nil || submittedID != nil || presentation["operation_id"] is String }
     private var captureID: String?
     private var submittedID: String?
     private var heldID: String?
@@ -226,7 +226,7 @@ final class PolarStationDictate {
         guard !stopped else { return }
         let intent = polar_station_shortcut_gesture_event_at(gesture, pressed ? 1 : 2, UInt64(ProcessInfo.processInfo.systemUptime * 1000),
             submittedID != nil && presentation["action"] as? String != "wait",
-            (enabled && presentation["action"] as? String == "start") || presentation["action"] as? String == "retry_open", presentation["use_available_id"] is String)
+            (enabled && presentation["action"] as? String == "start") || presentation["action"] as? String == "retry_open", presentation["shortcut_use_available"] as? Bool ?? false)
         if intent == 2 && pressed { heldID = submittedID }
         executeShortcut(intent)
     }
@@ -269,7 +269,7 @@ final class PolarStationDictate {
                 if edge == 4 { self.cancel() }
                 let intent = polar_station_shortcut_gesture_event_at(self.gesture, edge, eventMS,
                     self.submittedID != nil && self.presentation["action"] as? String != "wait",
-                    (self.enabled && self.presentation["action"] as? String == "start") || self.presentation["action"] as? String == "retry_open", self.presentation["use_available_id"] is String)
+                    (self.enabled && self.presentation["action"] as? String == "start") || self.presentation["action"] as? String == "retry_open", self.presentation["shortcut_use_available"] as? Bool ?? false)
                 if intent == 2 && (edge == 1 || edge == 3) { self.heldID = self.submittedID }
                 self.executeShortcut(intent)
             }
@@ -424,8 +424,13 @@ final class PolarStationDictate {
         error = result["ok"] as? Bool == true ? nil : result["error"] as? String
         if error != nil { submittedID = nil }
         view = result
-        if let id = submittedID, let entry = (result["entries"] as? [[String: Any]])?.first(where: { $0["operation_id"] as? String == id }),
-           ["delivered", "copied", "unknown", "review", "pending", "cancelled", "failed"].contains(entry["phase"] as? String ?? "") { submittedID = nil }
+        if let id = submittedID, let entry = (result["entries"] as? [[String: Any]])?.first(where: { $0["operation_id"] as? String == id }) {
+            let phase = entry["phase"] as? String ?? ""
+            if ["delivered", "copied", "unknown", "review", "pending", "cancelled", "failed"].contains(phase)
+                || (phase == "transcribing" && presentation["action"] as? String == "start") {
+                submittedID = nil
+            }
+        }
         if presentation["setup_required"] as? Bool == true,
            let entry=(result["entries"] as? [[String:Any]])?.last,
            let operation=entry["operation_id"] as? String, shownSetupOperation != operation {
@@ -505,7 +510,11 @@ final class PolarStationDictate {
                 }, limit: { [weak self] _ in self?.finish() },
                 failed: { [weak self] id, message in
                     NSLog("Dictate microphone failure %@: %@", id, message)
-                    self?.audio.cancel(); self?.cancelSpeech(id); self?.captureID = nil
+                    if self?.captureID == id {
+                        self?.audio.cancel()
+                        self?.captureID = nil
+                    }
+                    self?.cancelSpeech(id)
                     self?.input(["type":"failed", "operation_id":id, "error":message])
                     MicrophonePermissionPresentation.showCaptureFailureIfNeeded()
                 })
@@ -582,14 +591,16 @@ final class PolarStationDictate {
     }
     private func deliver(id:String,target:StationDictateTarget?,source:[String:Any]?,text:String,missing:StationDictateTarget.Delivery,send:Bool=false) {
         guard !cancelled.contains(id),let target else {
-            input(["type":"delivery","operation_id":id,"outcome":cancelled.contains(id) ? "unchanged":missing.rawValue]);captured.removeAll();return
+            input(["type":"delivery","operation_id":id,"outcome":cancelled.contains(id) ? "unchanged":missing.rawValue])
+            if captureID == nil && (submittedID == nil || submittedID == id) { captured.removeAll() }
+            return
         }
         target.insert(text) {[weak self,target] outcome in
             guard let self,!self.stopped else{return}
             if outcome == .applied,let source{target.sourceApplied?(source)}
             if send && outcome == .applied {self.pendingSubmit=(id,target,text)}
             self.input(["type":"delivery","operation_id":id,"outcome":outcome.rawValue])
-            self.captured.removeAll()
+            if self.captureID == nil && (self.submittedID == nil || self.submittedID == id) { self.captured.removeAll() }
         }
     }
 

@@ -96,12 +96,22 @@ impl ProcessRestoreSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionStartupGit {
+    pub branch: Option<String>,
+    pub worktree: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionLaunchSpec {
     pub session_name: String,
     #[serde(default)]
     pub working_directory: Option<String>,
     #[serde(default)]
     pub process: ProcessRestoreSpec,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub startup_git: Option<SessionStartupGit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub startup_permission: Option<String>,
 }
 
 impl SessionLaunchSpec {
@@ -110,6 +120,8 @@ impl SessionLaunchSpec {
             session_name: session_name.into(),
             working_directory: working_directory.map(str::to_owned),
             process: ProcessRestoreSpec::Shell,
+            startup_git: None,
+            startup_permission: None,
         }
     }
 
@@ -126,6 +138,8 @@ impl SessionLaunchSpec {
                 session_id: session_id.into(),
                 yolo,
             },
+            startup_git: None,
+            startup_permission: None,
         };
         spec.validate()?;
         Ok(spec)

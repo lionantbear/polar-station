@@ -1,0 +1,13 @@
+[package]
+name = "libsqlite3-sys"
+version = "0.37.0"
+edition = "2021"
+publish = false
+description = "Compatibility facade for the SQLite binding version required by Pi"
+
+[features]
+default = []
+bundled = ["sqlite3-sys/bundled"]
+
+[dependencies]
+sqlite3-sys = { package = "libsqlite3-sys", version = "0.39.1", default-features = false }

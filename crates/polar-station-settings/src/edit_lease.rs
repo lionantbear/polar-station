@@ -13,9 +13,10 @@ pub enum SettingsEditSection {
     Voice,
     VoiceRetention,
     Imessage,
+    TmuxStatusBar,
 }
 impl SettingsEditSection {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Appearance,
         Self::Attention,
         Self::Monitoring,
@@ -23,6 +24,7 @@ impl SettingsEditSection {
         Self::Voice,
         Self::VoiceRetention,
         Self::Imessage,
+        Self::TmuxStatusBar,
     ];
 }
 #[derive(Debug, Deserialize)]

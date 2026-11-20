@@ -15,7 +15,7 @@ impl CodexControlService {
         if endpoint.owner_host_id!=self.owner || endpoint.control_mode!=CodexControlModeV1::Local{return Err("local_codex_start_only")}
         if self.endpoint(id).await.is_ok(){return Ok(CodexResultV1::Settings{settings:self.config.read().await.clone()})}
         let home=std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(||std::env::var_os("HOME").map(|p|PathBuf::from(p).join(".codex"))).ok_or("codex_home_unavailable")?;
-        let socket=codex_app_server_client::app_server_control_socket_path(&home).map_err(|_|"codex_home_unavailable")?;
+        let socket=polar_inhouse_backend_codex::client::app_server_control_socket_path(&home).map_err(|_|"codex_home_unavailable")?;
         if socket.as_path()!=std::path::Path::new(&endpoint.socket_path){return Err("codex_start_requires_default_endpoint")}
         // Reuse the same login-shell executable resolution as existing session launch.
         // Codex owns the daemon's startup lock, package and readiness management.

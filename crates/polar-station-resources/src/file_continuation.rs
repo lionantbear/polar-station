@@ -6,6 +6,8 @@ pub(crate) struct LogicalText {
     pub hit: usize,
     offsets: Vec<usize>,
     pub continued: bool,
+    pub first_row: usize,
+    pub last_row: usize,
 }
 impl LogicalText {
     pub fn ranges(&self, range: TextRange) -> Vec<TextRange> {
@@ -91,6 +93,8 @@ pub(crate) fn reconstruct(
         hit: mapped_hit,
         offsets,
         continued: first != last,
+        first_row: first + 1,
+        last_row: last + 1,
     })
 }
 
@@ -114,6 +118,9 @@ fn connects(previous: &Row<'_>, next: &Row<'_>, flavor: PathFlavor) -> bool {
             return false;
         }
     }
+    if completes_parenthesized_reference(left, right, flavor) {
+        return true;
+    }
     // Ordinary multiword prose is a paragraph boundary. A filename can have
     // spaces, so a path-shaped trailing word remains part of the same chain.
     let last_word = right.split_whitespace().next_back().unwrap_or(right);
@@ -121,6 +128,44 @@ fn connects(previous: &Row<'_>, next: &Row<'_>, flavor: PathFlavor) -> bool {
         return false;
     }
     true
+}
+
+fn completes_parenthesized_reference(left: &str, right: &str, flavor: PathFlavor) -> bool {
+    let mut depth = 0;
+    let opening = left.char_indices().rev().find_map(|(index, c)| match c {
+        ')' => {
+            depth += 1;
+            None
+        }
+        '(' if depth == 0 => Some(index),
+        '(' => {
+            depth -= 1;
+            None
+        }
+        _ => None,
+    });
+    let Some(opening) = opening else { return false };
+    let prefix = &left[opening + 1..];
+    if prefix.is_empty() {
+        return false;
+    }
+    depth = 0;
+    let closing = right.char_indices().find_map(|(index, c)| match c {
+        '(' => {
+            depth += 1;
+            None
+        }
+        ')' if depth == 0 => Some(index),
+        ')' => {
+            depth -= 1;
+            None
+        }
+        _ => None,
+    });
+    let Some(closing) = closing.filter(|index| *index > 0) else { return false };
+    let joined = format!("{prefix}{}", &right[..closing]);
+    crate::file_matcher::reference_at(&joined, 0, flavor)
+        .is_some_and(|found| found.range.end == joined.len())
 }
 fn independent_row(text: &str) -> bool {
     if text.starts_with(['•', '│', '>'])

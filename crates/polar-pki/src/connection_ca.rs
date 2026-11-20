@@ -19,6 +19,7 @@ pub trait ConnectionCa: Send + Sync {
     fn uses_hardware_key(&self) -> bool {
         false
     }
+    fn authorization_oid(&self) -> Option<&crate::authorization::AuthorizationOid> { None }
     fn owner(&self) -> NodeId;
     fn as_peer_ca_cert(&self) -> PeerCaCert;
     async fn sign_csr(

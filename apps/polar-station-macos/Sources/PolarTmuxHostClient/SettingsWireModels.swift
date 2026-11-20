@@ -147,13 +147,17 @@ public struct SettingsProjectionV1: Codable, Equatable, Sendable {
     public var attention: AttentionSettingsV1
     public var monitoring: MonitoringSettingsV1
     public var sessionSummary: SessionSummarySettingsV1
+    public var tmuxStatusBar: [String]?
+    public var tmuxStatusWarning: String? = nil
+    public var tmuxStatusFacts: [String: String]? = nil
     public init(
         schemaVersion: UInt32 = 1,
         revision: UInt64 = 0,
         appearance: AppearanceSettingsV1 = .init(),
         attention: AttentionSettingsV1 = .init(),
         monitoring: MonitoringSettingsV1 = .init(),
-        sessionSummary: SessionSummarySettingsV1 = .init()
+        sessionSummary: SessionSummarySettingsV1 = .init(),
+        tmuxStatusBar: [String]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.revision = revision
@@ -161,8 +165,9 @@ public struct SettingsProjectionV1: Codable, Equatable, Sendable {
         self.attention = attention
         self.monitoring = monitoring
         self.sessionSummary = sessionSummary
+        self.tmuxStatusBar = tmuxStatusBar
     }
-    enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version"; case revision, appearance, attention, monitoring; case sessionSummary = "session_summary" }
+    enum CodingKeys: String, CodingKey { case schemaVersion = "schema_version"; case revision, appearance, attention, monitoring; case sessionSummary = "session_summary"; case tmuxStatusBar = "tmux_status_bar" }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -172,7 +177,8 @@ public struct SettingsProjectionV1: Codable, Equatable, Sendable {
             appearance: try c.decode(AppearanceSettingsV1.self, forKey: .appearance),
             attention: try c.decode(AttentionSettingsV1.self, forKey: .attention),
             monitoring: try c.decodeIfPresent(MonitoringSettingsV1.self, forKey: .monitoring) ?? .init(),
-            sessionSummary: try c.decode(SessionSummarySettingsV1.self, forKey: .sessionSummary)
+            sessionSummary: try c.decode(SessionSummarySettingsV1.self, forKey: .sessionSummary),
+            tmuxStatusBar: try c.decodeIfPresent([String].self, forKey: .tmuxStatusBar)
         )
     }
 }
@@ -181,24 +187,53 @@ public enum CodexNotifyConfigStateV1: String, Codable, Equatable, Sendable {
     case missing, configured, conflict, invalid, unsafe, unsupported
 }
 
+public struct TmuxStatusPurposeEditV1: Encodable, Equatable, Sendable {
+    public let pane: PolarTmuxPaneContentBinding
+    public let text: String
+
+    public init(pane: PolarTmuxPaneContentBinding, text: String) {
+        self.pane = pane
+        self.text = text
+    }
+}
+
 public enum SettingsCommandV1: Encodable, Equatable, Sendable {
     case getProjection
+    case previewTmuxStatusBar(PolarTmuxPaneContentBinding, workspaceName: String?)
     case updateAppearance(AppearanceSettingsV1)
     case updateAttention(AttentionSettingsV1)
     case updateMonitoring(MonitoringSettingsV1)
     case updateSessionSummary(SessionSummarySettingsV1)
+    case updateTmuxStatusBar([String], workspaceSessions: [PolarTmuxPaneContentBinding], workspaceName: String?, purpose: TmuxStatusPurposeEditV1?)
     case testSessionSummaryProvider(SessionSummarySettingsV1)
     case getCodexNotifyStatus(executionTargetID: String)
     case configureCodexNotify(executionTargetID: String)
-    enum CodingKeys: String, CodingKey { case kind, value; case executionTargetID = "execution_target_id" }
+    enum CodingKeys: String, CodingKey {
+        case kind, value
+        case executionTargetID = "execution_target_id"
+        case workspaceSessions = "workspace_sessions"
+        case tmuxPreview = "tmux_preview"
+        case workspaceName = "workspace_name"
+        case tmuxPurpose = "tmux_purpose"
+    }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case .getProjection: try c.encode("get_projection", forKey: .kind)
+        case .previewTmuxStatusBar(let binding, let workspaceName):
+            try c.encode("get_projection", forKey: .kind)
+            try c.encode(binding, forKey: .tmuxPreview)
+            try c.encodeIfPresent(workspaceName, forKey: .workspaceName)
         case .updateAppearance(let value): try c.encode("update_appearance", forKey: .kind); try c.encode(value, forKey: .value)
         case .updateAttention(let value): try c.encode("update_attention", forKey: .kind); try c.encode(value, forKey: .value)
         case .updateMonitoring(let value): try c.encode("update_monitoring", forKey: .kind); try c.encode(value, forKey: .value)
         case .updateSessionSummary(let value): try c.encode("update_session_summary", forKey: .kind); try c.encode(value, forKey: .value)
+        case .updateTmuxStatusBar(let value, let workspaceSessions, let workspaceName, let purpose):
+            try c.encode("update_tmux_status_bar", forKey: .kind)
+            try c.encode(value, forKey: .value)
+            if !workspaceSessions.isEmpty { try c.encode(workspaceSessions, forKey: .workspaceSessions) }
+            try c.encodeIfPresent(workspaceName, forKey: .workspaceName)
+            try c.encodeIfPresent(purpose, forKey: .tmuxPurpose)
         case .testSessionSummaryProvider(let value): try c.encode("test_session_summary_provider", forKey: .kind); try c.encode(value, forKey: .value)
         case .getCodexNotifyStatus(let target): try c.encode("get_codex_notify_status", forKey: .kind); try c.encode(target, forKey: .executionTargetID)
         case .configureCodexNotify(let target): try c.encode("configure_codex_notify", forKey: .kind); try c.encode(target, forKey: .executionTargetID)
@@ -221,17 +256,23 @@ public enum SettingsResultV1: Codable, Equatable, Sendable {
     case providerTested(String)
     case codexNotifyStatus(String, CodexNotifyConfigStateV1)
     case error(PolarTmuxProtocolError, SettingsProjectionV1?)
-    enum CodingKeys: String, CodingKey { case kind, projection, summary, error, status; case themeProjection = "theme_projection"; case executionTargetID = "execution_target_id" }
+    enum CodingKeys: String, CodingKey { case kind, projection, summary, error, status; case themeProjection = "theme_projection"; case tmuxStatusBar = "tmux_status_bar"; case tmuxStatusWarning = "tmux_status_warning"; case tmuxStatusFacts = "tmux_status_facts"; case executionTargetID = "execution_target_id" }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switch try c.decode(String.self, forKey: .kind) {
         case "projection":
             var value = try c.decode(SettingsProjectionV1.self, forKey: .projection)
             value.themeProjection = try c.decodeIfPresent(ThemeProjectionV1.self, forKey: .themeProjection)
+            value.tmuxStatusBar = try c.decodeIfPresent([String].self, forKey: .tmuxStatusBar)
+            value.tmuxStatusWarning = try c.decodeIfPresent(String.self, forKey: .tmuxStatusWarning)
+            value.tmuxStatusFacts = try c.decodeIfPresent([String: String].self, forKey: .tmuxStatusFacts)
             self = .projection(value)
         case "provider_tested": self = try .providerTested(c.decode(String.self, forKey: .summary))
         case "codex_notify_status": self = try .codexNotifyStatus(c.decode(String.self, forKey: .executionTargetID), c.decode(CodexNotifyConfigStateV1.self, forKey: .status))
-        case "error": self = try .error(c.decode(PolarTmuxProtocolError.self, forKey: .error), c.decodeIfPresent(SettingsProjectionV1.self, forKey: .projection))
+        case "error":
+            var value = try c.decodeIfPresent(SettingsProjectionV1.self, forKey: .projection)
+            value?.tmuxStatusBar = try c.decodeIfPresent([String].self, forKey: .tmuxStatusBar)
+            self = try .error(c.decode(PolarTmuxProtocolError.self, forKey: .error), value)
         default: throw DecodingError.dataCorruptedError(forKey: .kind, in: c, debugDescription: "unknown Settings result")
         }
     }

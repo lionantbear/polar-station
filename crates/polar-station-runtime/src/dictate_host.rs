@@ -108,7 +108,7 @@ impl DictateHost {
                     ),
                 ),
                 VoiceRuntimeConfig {
-                    maximum_host_concurrency: 1,
+                    maximum_host_concurrency: 3,
                     maximum_stream_packets: 30_000,
                     provider_timeout: Duration::from_secs(100),
                     ..Default::default()

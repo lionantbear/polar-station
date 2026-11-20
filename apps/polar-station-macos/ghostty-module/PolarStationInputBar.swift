@@ -759,13 +759,16 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
             onExit?()
             return true
         }
-        guard selector == #selector(NSResponder.insertNewline(_:)), !textView.hasMarkedText() else { return false }
+        let event = NSApp.currentEvent
+        let keypadNewline = event?.keyCode == 76
+            && selector == NSSelectorFromString("insertNewlineIgnoringFieldEditor:")
+        guard (selector == #selector(NSResponder.insertNewline(_:)) || keypadNewline),
+              !textView.hasMarkedText() else { return false }
         if inquiryActive {
-            let event = NSApp.currentEvent
             guard event?.modifierFlags.intersection([.command,.option,.control,.shift]) == [.command] else { return false }
             if event?.isARepeat != true { sendPressed() }; return true
         }
-        let flags = NSApp.currentEvent?.modifierFlags.intersection(.deviceIndependentFlagsMask) ?? []
+        let flags = event?.modifierFlags.intersection(.deviceIndependentFlagsMask) ?? []
         if flags.contains(.shift) || flags.contains(.option) || flags.contains(.control) { return false }
         if (isIdea || sendMode == .modifiedEnter) && !flags.contains(.command) { return false }
         sendPressed(); return true

@@ -230,6 +230,19 @@ const fn digit(number: u8, mac_keycode: u16) -> StationShortcut {
 }
 
 pub fn station_shortcut(platform: u32, native_key: u32) -> Option<&'static StationShortcut> {
+    // macOS virtual keycodes and GDK keyvals for the keypad number keys.
+    const MAC_KEYPAD_DIGITS: [u32; 9] = [83, 84, 85, 86, 87, 88, 89, 91, 92];
+    let keypad_number = match platform {
+        1 => MAC_KEYPAD_DIGITS
+            .iter()
+            .position(|&key| key == native_key)
+            .map(|index| index as u32 + 1),
+        2 if (0xffb1..=0xffb9).contains(&native_key) => Some(native_key - 0xffb0),
+        _ => None,
+    };
+    if let Some(number) = keypad_number {
+        return STATION_SHORTCUTS.iter().find(|entry| u32::from(entry.number) == number);
+    }
     STATION_SHORTCUTS.iter().find(|entry| match platform {
         1 => u32::from(entry.mac_keycode) == native_key,
         2 => entry.linux_keyval == native_key,

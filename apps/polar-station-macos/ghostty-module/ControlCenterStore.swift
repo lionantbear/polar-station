@@ -80,6 +80,7 @@ final class ControlCenterStore: ObservableObject {
     @Published private(set) var isMessagesLoading = false
     @Published private(set) var settingsProjection: SettingsProjectionV1? = .init()
     @Published private(set) var settingsError: String?
+    @Published private(set) var tmuxStatusWarning: String?
     @Published private(set) var settingsProviderTestResult: String?
     @Published private(set) var codexNotifyStatus: CodexNotifyConfigStateV1?
     @Published private(set) var inboxPage: InboxPageV1 = .init(
@@ -603,6 +604,18 @@ final class ControlCenterStore: ObservableObject {
                 self.settingsError = "Notification authorization state is unavailable."
             }
         }
+    }
+
+    func updateTmuxStatusBar(_ fields: [String], workspaceSessions: [PolarTmuxPaneContentBinding], workspaceName: String?, purpose: TmuxStatusPurposeEditV1?, editLease: SettingsEditInteraction) {
+        tmuxStatusWarning = nil
+        sendSettings(.updateTmuxStatusBar(fields, workspaceSessions: workspaceSessions, workspaceName: workspaceName, purpose: purpose), editLease: editLease, section: .tmuxStatusBar)
+    }
+
+    func readTmuxStatusFacts(_ binding: PolarTmuxPaneContentBinding, workspaceName: String?) async -> [String: String]? {
+        let request = SettingsRequestEnvelopeV1(requestID: requestID(), command: .previewTmuxStatusBar(binding, workspaceName: workspaceName))
+        guard let response = try? await backendSession.requestSettings(request),
+              case .projection(let projection) = response.result else { return nil }
+        return projection.tmuxStatusFacts
     }
 
     func updateSessionSummarySettings(_ value: SessionSummarySettingsV1,editLease:SettingsEditInteraction?=nil) {
@@ -1436,6 +1449,9 @@ final class ControlCenterStore: ObservableObject {
                 if case .projection(let value)=response.result {savedRevision=value.revision} else {savedRevision=nil}
                 editLease?.complete(id,accepted:accepted,revision:savedRevision)
                 acceptSettings(response)
+                if section == .tmuxStatusBar, case .projection(let saved) = response.result {
+                    tmuxStatusWarning = saved.tmuxStatusWarning
+                }
             case .rejected(let message), .outcomeUnknown(let message):
                 editLease?.complete(id,accepted:false,revision:nil)
                 settingsError = message

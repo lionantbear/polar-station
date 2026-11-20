@@ -208,6 +208,17 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         residentPanes[paneID]?.surface ?? setupPanes[paneID]?.view ?? displayPanes[paneID]?.display.view
     }
 
+    @discardableResult
+    func synchronizeFontSize(_ points: UInt8, in controller: TerminalController) -> Int {
+        var failures = 0
+        for view in controller.surfaceTree {
+            guard let surface = view.surface,
+                  ghostty_surface_synchronize_polar_font_size(surface, Float32(points))
+            else { failures += 1; continue }
+        }
+        return failures
+    }
+
     func surfaces(
         for panes: [PolarStationNativePane],
         controller: TerminalController,

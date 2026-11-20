@@ -60,7 +60,7 @@ impl CodexControlService {
                     .and_then(|bytes| String::from_utf8(bytes).ok()).map(std::path::PathBuf::from)
             };
             let Some(home) = home else { return; };
-            let Ok(socket) = codex_app_server_client::app_server_control_socket_path(&home) else { return; };
+            let Ok(socket) = polar_inhouse_backend_codex::client::app_server_control_socket_path(&home) else { return; };
             let Some(socket) = socket.as_path().to_str() else { return; };
             let mut config = self.config.write().await;
             if config.endpoints.iter().any(|e| e.execution_target_id == target_id && e.socket_path == socket) { return; }

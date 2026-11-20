@@ -1287,17 +1287,19 @@ async fn run_worker(
                             if config.client_state_path.is_some() {
                                 if let LocalHostFrame::ApplicationResponse {response:polar_station_protocol::HostApplicationMessage::SettingsV1(response)}=&mut frame {
                                     let appearance=backend.lock().unwrap_or_else(|v|v.into_inner()).preferences.appearance.clone();
-                                    if let polar_station_protocol::SettingsResultV1::Projection {projection,theme_projection}=&mut response.result {
+                                    if let polar_station_protocol::SettingsResultV1::Projection {projection,theme_projection,tmux_status_bar,..}=&mut response.result {
                                         if let Some(value)=appearance {projection.appearance=value;}
                                         else {let _=content.try_send(DesktopWorkerRequest::Preferences(preferences::Change::Initialize(projection.appearance.clone())));}
                                         **theme_projection=projection.appearance.theme.projection();
                                         let mut state=state.lock().unwrap_or_else(|v|v.into_inner());
+                                        if let Some(configured) = tmux_status_bar { projection.tmux_status_bar = configured.clone(); }
                                         state.backend_settings_revision=projection.revision;
                                         state.present_settings(projection);
                                         response.revision=projection.revision;
-                                    } else if let polar_station_protocol::SettingsResultV1::Error {projection:Some(projection),..}=&mut response.result {
+                                    } else if let polar_station_protocol::SettingsResultV1::Error {projection:Some(projection),tmux_status_bar,..}=&mut response.result {
                                         if let Some(value)=appearance {projection.appearance=value;}
                                         let mut state=state.lock().unwrap_or_else(|v|v.into_inner());
+                                        if let Some(configured) = tmux_status_bar { projection.tmux_status_bar = configured.clone(); }
                                         state.backend_settings_revision=projection.revision;
                                         state.present_settings(projection);
                                         response.revision=projection.revision;

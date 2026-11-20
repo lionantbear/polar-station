@@ -1084,7 +1084,8 @@ impl<P: Ports> Application<P> {
                 }
             }
             let mut admitted = Vec::new();
-            for effect in processing_effects {
+            let mut processing_effects = std::collections::VecDeque::from(processing_effects);
+            while let Some(effect) = processing_effects.pop_front() {
                 if let super::Effect::Insert {
                     operation_id, text, ..
                 }
@@ -1127,10 +1128,10 @@ impl<P: Ports> Application<P> {
                             self.delivery_tokens.insert(operation_id.clone(), token);
                         }
                         Err(_) => {
-                            self.engine.dispatch(Input::Delivery {
+                            processing_effects.extend(self.engine.dispatch(Input::Delivery {
                                 operation_id: operation_id.clone(),
                                 outcome: super::DeliveryOutcome::Unchanged,
-                            })?;
+                            })?);
                             continue;
                         }
                     }

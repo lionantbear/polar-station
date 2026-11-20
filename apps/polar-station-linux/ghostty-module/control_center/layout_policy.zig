@@ -55,6 +55,15 @@ pub const monitor_row_height: c_int = 56;
 pub const focus_minimum_body_height: c_int = 200;
 pub const monitor_minimum_body_height: c_int = 170;
 
+pub const expanded_layout_gap: c_uint = 12;
+const expanded_layout_column_width: usize = 320;
+
+pub fn expandedLayoutColumnCount(available_width: c_int, tab_count: usize) c_uint {
+    const width: usize = @intCast(@max(0, available_width));
+    const fitting = (width + expanded_layout_gap) / (expanded_layout_column_width + expanded_layout_gap);
+    return @intCast(@max(1, @min(fitting, tab_count)));
+}
+
 pub fn layoutMapPaneBodyWidth(map_width: c_int) c_int {
     return @max(
         @as(c_int, 1),

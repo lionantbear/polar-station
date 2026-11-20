@@ -19,11 +19,15 @@ impl PreviewAction {
     }
 }
 
-pub(super) fn timeout_copy(code: &str) -> Option<(&'static str, &'static str)> {
+pub(super) fn failure_copy(code: &str) -> Option<(&'static str, &'static str)> {
     match code {
         "voice.audio_connection_timeout" => Some((
             "Audio connection timed out",
             "The audio connection could not be established.",
+        )),
+        "voice.audio_connection_lost" => Some((
+            "Audio connection closed",
+            "The audio connection closed before the recording was sent.",
         )),
         "voice.final_transcript_timeout" => Some((
             "Final transcript timed out",

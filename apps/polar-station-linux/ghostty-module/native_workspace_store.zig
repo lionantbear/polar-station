@@ -79,6 +79,70 @@ pub const Catalog = struct {
         }
         return null;
     }
+
+    fn isOpen(self: Catalog, id: []const u8) bool {
+        if (self.isArchived(id)) return false;
+        for (self.open_workspace_ids) |open_id| {
+            if (std.mem.eql(u8, open_id, id)) return true;
+        }
+        return self.open_workspace_ids.len == 0 and std.mem.eql(u8, self.selected_workspace_id, id);
+    }
+
+    pub fn hasOpenSession(self: Catalog, target: []const u8, session: []const u8) bool {
+        for (self.workspaces) |workspace| {
+            if (self.isOpen(workspace.workspace_id) and workspace.sessionPane(target, session) != null) return true;
+        }
+        return false;
+    }
+
+    /// A layout written by an older version may already contain repeated
+    /// bindings. Keep that layout editable while rejecting additional clients.
+    pub fn rejectNewSessionDuplicates(self: Catalog, previous: Catalog, allocator: std.mem.Allocator) !void {
+        var counts = try self.openSessionCounts(allocator);
+        defer counts.deinit(allocator);
+        var prior = try previous.openSessionCounts(allocator);
+        defer prior.deinit(allocator);
+        for (counts.keys(), counts.values()) |key, count| {
+            if (count > 1 and count > (prior.get(key) orelse 0)) return error.SessionAlreadyOpen;
+        }
+    }
+
+    const SessionKey = struct {
+        target: []const u8,
+        session: []const u8,
+    };
+
+    const SessionKeyContext = struct {
+        pub fn hash(_: @This(), key: SessionKey) u32 {
+            var hasher = std.hash.Wyhash.init(0);
+            hasher.update(key.target);
+            hasher.update(key.session);
+            return @truncate(hasher.final());
+        }
+
+        pub fn eql(_: @This(), left: SessionKey, right: SessionKey, _: usize) bool {
+            return std.mem.eql(u8, left.target, right.target) and std.mem.eql(u8, left.session, right.session);
+        }
+    };
+    const SessionCounts = std.ArrayHashMapUnmanaged(SessionKey, usize, SessionKeyContext, true);
+
+    fn openSessionCounts(self: Catalog, allocator: std.mem.Allocator) !SessionCounts {
+        var counts: SessionCounts = .empty;
+        errdefer counts.deinit(allocator);
+        for (self.workspaces) |workspace| {
+            if (!self.isOpen(workspace.workspace_id)) continue;
+            for (workspace.tabs) |tab| for (tab.panes) |pane| {
+                if (!pane.isTerminal()) continue;
+                const entry = try counts.getOrPut(allocator, .{
+                    .target = pane.execution_target_id,
+                    .session = pane.tmux_session_id,
+                });
+                if (!entry.found_existing) entry.value_ptr.* = 0;
+                entry.value_ptr.* += 1;
+            };
+        }
+        return counts;
+    }
 };
 
 pub const OwnedCatalog = struct {

@@ -693,11 +693,7 @@ pub const Executor = struct {
     }
 
     pub fn hasSessionView(self: *const Executor, execution: []const u8, session: []const u8) bool {
-        const snapshot=self.nativeWorkspaceSnapshot() orelse return false;
-        for(snapshot.tabs) |tab| for(tab.panes) |pane| {
-            if(std.mem.eql(u8,pane.execution_target_id,execution) and std.mem.eql(u8,pane.tmux_session_id,session)) return true;
-        };
-        return false;
+        return self.nativePaneIdForSession(execution, session) != null;
     }
     pub const ShownView = struct { workspace: []const u8, tab: []const u8, pane: []const u8, reused: bool };
     pub fn showSession(self: *Executor, execution: []const u8, session: []const u8) !ShownView {
@@ -736,6 +732,9 @@ pub const Executor = struct {
             return error.SourcePaneUnavailable;
         };
         if (!std.mem.eql(u8,tab_id,self.nativeSelectedTabId() orelse return error.SourceTabUnavailable)) return error.SourceTabUnavailable;
+        if (before.sessionPane(execution, session)) |existing| {
+            if (self.nativePaneIdForSessionInTab(tab_id, execution, session) == null) return existing.id;
+        }
         var arena = std.heap.ArenaAllocator.init(self.allocator); defer arena.deinit();
         var candidate = try workspace_state.State.planAddSessions(arena.allocator(),before,tab_id,&.{.{.execution_target_id=execution,.tmux_session_id=session}});
         if ((candidate.tab(tab_id) orelse return error.SourceTabUnavailable).display_mode == .focus) {
@@ -769,7 +768,14 @@ pub const Executor = struct {
         if (!std.mem.eql(u8, before.workspace_id, workspace_id)) return error.WorkspaceChanged;
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
-        const candidate = try workspace_state.State.planAddSessions(arena.allocator(), before, tab_id, sessions);
+        const catalog = self.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable;
+        var additions: std.ArrayListUnmanaged(controller_model.SessionIdentity) = .empty;
+        for (sessions) |session| {
+            if (!catalog.hasOpenSession(session.execution_target_id, session.tmux_session_id)) {
+                try additions.append(arena.allocator(), session);
+            }
+        }
+        const candidate = try workspace_state.State.planAddSessions(arena.allocator(), before, tab_id, additions.items);
         if (candidate.workspace_revision == before.workspace_revision) return;
         try self.workspace.begin();
         defer self.workspace.end();
@@ -955,6 +961,12 @@ pub const Executor = struct {
         try self.refreshTransferredWorkspace();
     }
 
+    pub fn applySavedWorkspaceFont(self: *Executor) !void {
+        const snapshot = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        const applied = if (self.current) |*value| value else return;
+        try applied.synchronizeManagedFontSize(snapshot.font_size_points);
+    }
+
     pub fn refreshEditedWorkspace(self: *Executor) !void {
         if (self.nativeWorkspaceSnapshot()) |snapshot| try self.applySnapshot(snapshot, .preserve_native);
     }
@@ -1118,10 +1130,11 @@ pub const Executor = struct {
         return true;
     }
 
-    fn applyWorkspaceAction(self: *Executor, action: control_intent.Action) !bool {
+    fn applyWorkspaceAction(self: *Executor, requested: control_intent.Action) !bool {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
         const before = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        const action = try workspace_state.State.resolveSessionAssignment(before, requested);
         const observed = if (self.current) |*current| current.activeNativeTabId() else null;
         const candidate = try self.workspace.planAction(arena.allocator(), action, observed);
         if(@import("main.zig").settingsPromptRemoved(self.managed_window,candidate) or self.setupRemoved(candidate)) {
@@ -1300,6 +1313,7 @@ pub const Executor = struct {
 
     fn enqueueNativeState(self: *Executor, catalog: native_workspace_store.Catalog) !void {
         if (self.catalog_owner) |owner| return owner.enqueueNativeState(catalog);
+        if (self.workspace.catalog) |previous| try catalog.rejectNewSessionDuplicates(previous.value, self.allocator);
         const store = self.workspace_store orelse return;
         const callback = self.lifecycle().submit_native_state orelse return error.ContentWorkerUnavailable;
         const document = try native_workspace_store.encodeCatalog(self.allocator, catalog);
@@ -1405,20 +1419,8 @@ pub const Executor = struct {
         tmux_session_id: []const u8,
     ) ?[]const u8 {
         const workspace = self.nativeWorkspaceSnapshot() orelse return null;
-        for (workspace.tabs) |tab| {
-            for (tab.panes) |pane| {
-                if (std.mem.eql(
-                    u8,
-                    pane.execution_target_id,
-                    execution_target_id,
-                ) and std.mem.eql(
-                    u8,
-                    pane.tmux_session_id,
-                    tmux_session_id,
-                )) return pane.id;
-            }
-        }
-        return null;
+        const pane = workspace.sessionPane(execution_target_id, tmux_session_id) orelse return null;
+        return pane.id;
     }
 
     pub fn nativePaneIdForSessionInTab(
@@ -1461,6 +1463,10 @@ pub const Executor = struct {
                     .pane_id = pane.id,
                 } };
             }
+        }
+        const catalog = self.nativeWorkspaceCatalog() orelse return .no_managed_tab;
+        if (catalog.hasOpenSession(execution_target_id, tmux_session_id)) {
+            return .{ .assigned_elsewhere = .{ .tab_id = selected_tab.id } };
         }
         if (selected_tab.panes.len >= 9) {
             return .{ .tab_full = .{ .tab_id = selected_tab.id } };
@@ -2225,7 +2231,9 @@ const AppliedRenderState = struct {
         const selected = snapshot.tab(selected_tab_id) orelse
             return error.UnknownTab;
         _ = selected;
-        try self.synchronizeManagedFontSize(snapshot.font_size_points);
+        self.synchronizeManagedFontSize(snapshot.font_size_points) catch |err| {
+            std.log.warn("Could not apply saved Workspace font: {s}", .{@errorName(err)});
+        };
         self.workspace_id = try self.arena.allocator().dupe(
             u8,
             snapshot.workspace_id,
@@ -2882,20 +2890,24 @@ const AppliedRenderState = struct {
     ) !void {
         var surface_count: usize = 0;
         var pre_realization_count: usize = 0;
+        var failed = false;
         for (self.tabs.items) |tab| {
             if (!tab.active) continue;
             const tree = tab.tab.getSurfaceTree() orelse continue;
             var iterator = tree.iterator();
             while (iterator.next()) |entry| {
                 surface_count += 1;
-                if (try entry.view.synchronizeManagedFontSize(
-                    @floatFromInt(points),
-                ) == .pending_realization) {
+                const result = entry.view.synchronizeManagedFontSize(@floatFromInt(points)) catch |err| {
+                    std.log.warn("Could not synchronize terminal font: {s}", .{@errorName(err)});
+                    failed = true;
+                    continue;
+                };
+                if (result == .pending_realization) {
                     pre_realization_count += 1;
                 }
             }
         }
-        if (surface_count == 0) return error.ManagedSurfaceUnavailable;
+        if (surface_count == 0 or failed) return error.ManagedSurfaceUnavailable;
         std.log.info(
             "Polar Station managed font synchronized: points={d} surfaces={d} pre_realization={d}",
             .{ points, surface_count, pre_realization_count },

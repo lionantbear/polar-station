@@ -1,6 +1,6 @@
 //! Local-only native file adapters. No native structure is sent to a Host.
 use super::*;
-mod settings;
+use crate::workspace_settings as settings;
 use polar_station_protocol::{PaneContentBindingV1, PolarConnectionV1, PortableHostV1};
 use serde_json::{json, Value};
 
@@ -42,7 +42,10 @@ struct SavedPane {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Request {
     WorkspaceDirectory { catalog: Value },
+    WorkspaceFont { workspace_id: String, points: i64 },
+    SetWorkspaceFont { catalog: Value, workspace_id: String, points: i64 },
     WorkspaceDetails { catalog: Value, workspace_id: String },
+    EditWorkspaceDraft { workspace: Value, workspace_id: String, revision: u64, layout: settings::Layout, operation: settings::Operation },
     UpdateWorkspace { catalog: Value, workspace_id: String, revision: u64, layout: settings::Layout },
     PrepareCatalog {catalog:Value},
     ProtectCatalog {catalog:Value,bundle:HostExportBundleV1,sources:Vec<TerminalSourceV1>},
@@ -89,7 +92,10 @@ fn native(value: Value) -> Result<SavedWorkspace, String> {
 pub fn dispatch(request: Request) -> Result<Value, String> {
     match request {
         Request::WorkspaceDirectory { catalog } => settings::directory(&catalog),
+        Request::WorkspaceFont { workspace_id, points } => settings::font_preference(&workspace_id, points),
+        Request::SetWorkspaceFont { catalog, workspace_id, points } => settings::set_font(catalog, &workspace_id, points),
         Request::WorkspaceDetails { catalog, workspace_id } => settings::detail(&catalog, &workspace_id),
+        Request::EditWorkspaceDraft { workspace, workspace_id, revision, layout, operation } => settings::edit(workspace, &workspace_id, revision, layout, operation),
         Request::UpdateWorkspace { catalog, workspace_id, revision, layout } => settings::update(catalog, &workspace_id, revision, layout),
         Request::PrepareCatalog {catalog}=>{
             let workspaces=catalog.get("workspaces").and_then(Value::as_array).ok_or("Missing Workspace catalog")?;

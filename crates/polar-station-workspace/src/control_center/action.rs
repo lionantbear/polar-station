@@ -256,8 +256,15 @@ pub fn decide_workspace_lifecycle(input: WorkspaceLifecycleInput) -> WorkspaceLi
             "close" | "workspace.detach" => { result.effect = "close".into(); None }
             "create" => { result.effect = "create".into(); None }
             "delete" | "workspace.delete" => Some("Workspaces cannot be deleted. Use Archive Workspace."),
-            "open" if target.is_some_and(|id| active.contains(&id)) => {
-                result.effect = if target.is_some_and(|id| input.open.contains(id) && input.bound.as_ref() != Some(id)) { "focus" } else { "bind" }.into();
+            "open" | "open_new" if target.is_some_and(|id| active.contains(&id)) => {
+                let new_window = input.action == "open_new";
+                result.effect = if target.is_some_and(|id| input.open.contains(id) && (new_window || input.bound.as_ref() != Some(id))) {
+                    "focus"
+                } else if new_window {
+                    "open_new"
+                } else {
+                    "bind"
+                }.into();
                 result.selected = target.unwrap().clone(); None
             }
             "archive" if target != input.bound.as_ref() || target.is_none() => Some("The Workspace that requested archive is no longer bound to this window."),

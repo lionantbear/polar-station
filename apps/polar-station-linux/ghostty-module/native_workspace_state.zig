@@ -214,8 +214,8 @@ pub const State = struct {
         const tab = source.tab(tab_id) orelse return error.UnknownTab;
         var additions: std.ArrayListUnmanaged(controller_model.SessionIdentity) = .empty;
         for (sessions) |session| {
+            if (source.sessionPane(session.execution_target_id, session.tmux_session_id) != null) continue;
             var exists = false;
-            for (tab.panes) |pane| { if (std.mem.eql(u8, pane.execution_target_id, session.execution_target_id) and std.mem.eql(u8, pane.tmux_session_id, session.tmux_session_id)) { exists = true; break; } }
             for (additions.items) |added| { if (std.mem.eql(u8, added.execution_target_id, session.execution_target_id) and std.mem.eql(u8, added.tmux_session_id, session.tmux_session_id)) { exists = true; break; } }
             if (!exists) try additions.append(allocator, session);
         }
@@ -231,11 +231,22 @@ pub const State = struct {
         return candidate;
     }
 
-    pub fn planSnapshotAction(allocator: std.mem.Allocator, workspace: renderpkg.Snapshot, immediate_action: ?control_intent.Action, observed_tab: ?[]const u8) !renderpkg.Snapshot {
+    pub fn resolveSessionAssignment(workspace: renderpkg.Snapshot, action: control_intent.Action) !control_intent.Action {
+        if (action != .toggle_session_assignment) return action;
+        const assignment = action.toggle_session_assignment;
+        const target_id = assignment.tab_id orelse return error.MissingNativeIdentity;
+        const target = workspace.tab(target_id) orelse return error.UnknownTab;
+        if (target.sessionPane(assignment.execution_target_id, assignment.tmux_session_id) != null) return action;
+        const pane = workspace.sessionPane(assignment.execution_target_id, assignment.tmux_session_id) orelse return action;
+        return .{ .activate_pane = .{ .pane_id = pane.id } };
+    }
+
+    pub fn planSnapshotAction(allocator: std.mem.Allocator, workspace: renderpkg.Snapshot, requested_action: ?control_intent.Action, observed_tab: ?[]const u8) !renderpkg.Snapshot {
         const source = try view.workspace(allocator, workspace);
         if (source.tabs.len == 0) return error.InvalidWorkspace;
         const selected_native_tab_id = observed_tab orelse source.selected_tab_id;
         if (workspace.tab(selected_native_tab_id) == null) return error.UnknownTab;
+        const immediate_action = if (requested_action) |action| try resolveSessionAssignment(workspace, action) else null;
         if (immediate_action) |action| switch (action) {
             .delete_tab => |deleted| {
                 // A stale menu or repeated click must not decrement the
@@ -247,18 +258,6 @@ pub const State = struct {
                 if (source.tabs.len > 1 and deleted.replacement_tab_id != null) {
                     return error.InvalidNativeIdentity;
                 }
-            },
-            .toggle_session_assignment => |assignment| {
-                const target_tab_id = assignment.tab_id orelse
-                    return error.MissingNativeIdentity;
-                var target_exists = false;
-                for (source.tabs) |tab| {
-                    if (std.mem.eql(u8, tab.id, target_tab_id)) {
-                        target_exists = true;
-                        break;
-                    }
-                }
-                if (!target_exists) return error.UnknownTab;
             },
             else => {},
         };
@@ -1250,6 +1249,9 @@ fn renderedHasPane(panes: []const renderpkg.Pane, pane_id: []const u8) bool {
 
 
 // Both windows share stored mappings but retain their own selected Workspace.
+
+
+
 
 
 

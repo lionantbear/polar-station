@@ -70,6 +70,7 @@ pub struct DictateSpeech {
     runtime: Option<tokio::runtime::Runtime>,
     active: Mutex<Option<SpeechWork>>,
     capture: Mutex<Option<Capture>>,
+    saving: Mutex<Vec<Capture>>,
     drains: Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 struct SpeechWork {
@@ -144,6 +145,7 @@ impl DictateSpeech {
             runtime: Some(runtime),
             active: Mutex::new(None),
             capture: Mutex::new(None),
+            saving: Mutex::new(Vec::new()),
             drains: Mutex::new(Vec::new()),
         })
     }
@@ -293,14 +295,20 @@ impl DictateSpeech {
             self.set_history(Some(callback), context);
         }
         let mut capture = self.capture.lock().map_err(|_| "Voice client stopped")?;
-        if capture
-            .as_ref()
-            .is_some_and(|c| c.sender.is_none() && c.task.is_finished())
-        {
-            capture.take();
-        }
-        if capture.is_some() {
+        if capture.as_ref().is_some_and(|c| c.sender.is_some()) {
             return Err("A recording is already active".into());
+        }
+        {
+            let mut saving = self.saving.lock().map_err(|_| "Voice client stopped")?;
+            saving.retain(|c| !c.task.is_finished());
+            if saving.iter().any(|c| c.id == id)
+                || capture.as_ref().is_some_and(|c| c.id == id && !c.task.is_finished())
+            {
+                return Err("A recording with this ID is still being saved".into());
+            }
+            if let Some(previous) = capture.take().filter(|c| !c.task.is_finished()) {
+                saving.push(previous);
+            }
         }
         let (sender, mut receiver) = mpsc::channel::<Vec<u8>>(256);
         let pending = Arc::new(AtomicUsize::new(0));
@@ -412,6 +420,14 @@ impl DictateSpeech {
         capture.sender.take();
         true
     }
+    fn take_capture(&self, id: &str) -> Result<Option<Capture>, String> {
+        let mut capture = self.capture.lock().map_err(|_| "Voice client stopped")?;
+        if capture.as_ref().is_some_and(|c| c.id == id) {
+            return Ok(capture.take());
+        }
+        let mut saving = self.saving.lock().map_err(|_| "Voice client stopped")?;
+        Ok(saving.iter().position(|c| c.id == id).map(|index| saving.swap_remove(index)))
+    }
     pub fn reserve(&self, id: &str) -> Result<(), String> {
         if !polar_dictate::identifier(id) {
             return Err("Invalid Dictate operation".into());
@@ -457,14 +473,7 @@ impl DictateSpeech {
             }
         }
         let _release = Release(&self.active);
-        let capture = {
-            let mut capture = self.capture.lock().map_err(|_| "Voice client stopped")?;
-            if capture.as_ref().is_some_and(|c| c.id == id) {
-                capture.take()
-            } else {
-                None
-            }
-        };
+        let capture = self.take_capture(&id)?;
         self.runtime.as_ref().ok_or("Voice client stopped")?.block_on(Abortable::new(async {
             if let Some(capture)=capture {
                 drop(capture.sender); capture.task.await.map_err(|_|"Audio writer stopped; saved audio retained")??;
@@ -498,13 +507,7 @@ impl DictateSpeech {
                 work.abort.abort();
             }
         }
-        let capture = self.capture.lock().ok().and_then(|mut c| {
-            if c.as_ref().is_some_and(|c| c.id == id) {
-                c.take()
-            } else {
-                None
-            }
-        });
+        let capture = self.take_capture(id).ok().flatten();
         if let Some(capture) = capture {
             capture.cancelled.store(true, Ordering::Release);
             finished = Some(capture.finished.clone());
@@ -563,11 +566,15 @@ impl Drop for DictateSpeech {
                 .get_mut()
                 .map(std::mem::take)
                 .unwrap_or_default();
+            let saving = self.saving.get_mut().map(std::mem::take).unwrap_or_default();
             // Native teardown waits for the final durable ACK. A wedged Host is
             // bounded; it never turns a missing ACK into a successful save.
             let _ = std::thread::spawn(move || {
                 runtime.block_on(async {
                     let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                        for capture in saving {
+                            let _ = capture.task.await;
+                        }
                         for task in drains {
                             let _ = task.await;
                         }

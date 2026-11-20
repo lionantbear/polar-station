@@ -24,6 +24,8 @@ pub struct SettingsV1 {
     pub session_summary: SessionSummarySettingsV1,
     #[serde(default)]
     pub session_creation: SessionCreationSettingsV1,
+    #[serde(default)]
+    pub tmux_status_bar: crate::TmuxStatusBarSettings,
 }
 
 impl Default for SettingsV1 {
@@ -36,6 +38,7 @@ impl Default for SettingsV1 {
             monitoring: MonitoringSettingsV1::default(),
             session_summary: SessionSummarySettingsV1::default(),
             session_creation: SessionCreationSettingsV1::default(),
+            tmux_status_bar: crate::TmuxStatusBarSettings::default(),
         }
     }
 }
@@ -253,6 +256,7 @@ pub enum SettingsSectionUpdateV1 {
     Attention(AttentionSettingsV1),
     Monitoring(MonitoringSettingsV1),
     SessionSummary(SessionSummarySettingsV1),
+    TmuxStatusBar(crate::TmuxStatusBarSettings),
 }
 
 impl SettingsSectionUpdateV1 {
@@ -263,6 +267,7 @@ impl SettingsSectionUpdateV1 {
                 settings.appearance = value;
             }
             Self::Attention(value) => settings.attention = value,
+            Self::TmuxStatusBar(value) => settings.tmux_status_bar = value,
             Self::Monitoring(value) => {
                 value.validate()?;
                 settings.session_summary.quiet_period_ms = value.quiet_period_ms;

@@ -37,7 +37,7 @@ impl CodexControlService {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".codex")))
             .ok_or("codex_home_missing")?;
-        let socket = codex_app_server_client::app_server_control_socket_path(&home)
+        let socket = polar_inhouse_backend_codex::client::app_server_control_socket_path(&home)
             .map_err(|_| "codex_socket_invalid")?;
         self.setup_current_at(
             revision,

@@ -1,11 +1,10 @@
 //! Station's adapter to the existing upstream remote client; no embedded startup.
-use codex_app_server_client::{
-    AppServerClient, AppServerEvent, AppServerRequestHandle, RemoteAppServerClient,
-    RemoteAppServerConnectArgs, RemoteAppServerEndpoint,
+use codex_app_server_protocol::{ServerNotification, ServerRequest, ThreadItemPayload};
+use polar_inhouse_backend_codex::client::{
+    connect_unix, next_event, AppServerEvent, SessionRequests,
 };
-use codex_app_server_protocol::{ClientRequest, ServerNotification, ServerRequest, ThreadItemPayload};
 use serde_json::Value;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -17,32 +16,14 @@ pub(super) struct EndpointEvent {
 }
 
 pub(super) struct CodexEndpoint {
-    handle: AppServerRequestHandle,
+    handle: SessionRequests,
     local_socket_path: String,
-    next_request: AtomicU64,
     connected: Arc<AtomicBool>,
     stop: Option<oneshot::Sender<()>>,
     forward: Option<Arc<super::ssh_socket_forward::SshSocketForward>>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(super) enum RpcFailure {
-    InvalidRequest,
-    Unavailable,
-    Rejected,
-    Unknown,
-}
-
-impl RpcFailure {
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::InvalidRequest => "invalid_codex_request",
-            Self::Unavailable => "codex_unavailable",
-            Self::Rejected => "codex_rejected",
-            Self::Unknown => "codex_result_unknown",
-        }
-    }
-}
+pub(super) use polar_inhouse_backend_codex::client::RequestFailure as RpcFailure;
 
 impl CodexEndpoint {
     pub async fn connect(
@@ -52,30 +33,19 @@ impl CodexEndpoint {
         events: mpsc::Sender<EndpointEvent>,
         forward: Option<Arc<super::ssh_socket_forward::SshSocketForward>>,
     ) -> Result<Self, RpcFailure> {
-        let endpoint = RemoteAppServerEndpoint::UnixSocket {
-            socket_path: socket_path
-                .try_into()
-                .map_err(|_| RpcFailure::InvalidRequest)?,
-        };
-        let remote = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
-            required_human_approval: false,
-            endpoint,
-            client_name: "polar_station".into(),
-            client_version: env!("CARGO_PKG_VERSION").into(),
-            experimental_api: true,
-            mcp_server_openai_form_elicitation: false,
-            opt_out_notification_methods: vec![
+        let mut client = connect_unix(
+            std::path::Path::new(socket_path),
+            "polar_station",
+            vec![
                 "item/agentMessage/delta".into(),
                 "item/commandExecution/outputDelta".into(),
                 "item/reasoning/textDelta".into(),
                 "item/reasoning/summaryTextDelta".into(),
             ],
-            channel_capacity: 64,
-        })
+        )
         .await
         .map_err(|_| RpcFailure::Unavailable)?;
-        let mut client = AppServerClient::Remote(remote);
-        let handle = client.request_handle();
+        let handle = SessionRequests::new(&client);
         let connected = Arc::new(AtomicBool::new(true));
         let live = connected.clone();
         let (stop, mut cancelled) = oneshot::channel();
@@ -84,7 +54,7 @@ impl CodexEndpoint {
             loop {
                 let event = tokio::select! {
                     _ = &mut cancelled => break,
-                    event = client.next_event() => event,
+                    event = next_event(&mut client) => event.map(|received| received.event),
                 };
                 let event = if transport.as_ref().is_some_and(|f| !f.current()) {
                     None
@@ -125,7 +95,6 @@ impl CodexEndpoint {
         Ok(Self {
             handle,
             local_socket_path: socket_path.to_owned(),
-            next_request: AtomicU64::new(1),
             connected,
             stop: Some(stop),
             forward,
@@ -142,24 +111,19 @@ impl CodexEndpoint {
         &self.local_socket_path
     }
 
-    #[tracing::instrument(target = "polar_station_operation", name = "codex_upstream_request", skip_all,
-        fields(component = "Codex", method))]
+    #[tracing::instrument(
+        target = "polar_station_operation",
+        name = "codex_upstream_request",
+        skip_all,
+        fields(component = "Codex", method)
+    )]
     pub async fn request(&self, method: &'static str, params: Value) -> Result<Value, RpcFailure> {
         if !self.connected() {
             return Err(RpcFailure::Unavailable);
         }
-        // Decode into the pinned upstream contract, which remains the sole DTO
-        // definition. Station never serializes a competing JSON-RPC protocol.
-        let request: ClientRequest = serde_json::from_value(serde_json::json!({
-            "id": format!("station-{}", self.next_request.fetch_add(1, Ordering::Relaxed)),
-            "method": method, "params": params,
-        }))
-        .map_err(|_| RpcFailure::InvalidRequest)?;
-        match tokio::time::timeout(Duration::from_secs(10), self.handle.request(request)).await {
-            Ok(Ok(Ok(value))) => Ok(value),
-            Ok(Ok(Err(_))) => Err(RpcFailure::Rejected),
-            Ok(Err(_)) | Err(_) => Err(RpcFailure::Unknown),
-        }
+        self.handle
+            .request(method, params, Duration::from_secs(10))
+            .await
     }
 }
 
@@ -192,5 +156,8 @@ pub(super) fn relevant_event(event: &AppServerEvent) -> bool {
                 | ServerRequest::ToolRequestUserInput { .. }
         ),
         AppServerEvent::Disconnected { .. } | AppServerEvent::Lagged { .. } => true,
+        // Cloud reply stream events do not describe the Station endpoint.
+        AppServerEvent::ThreadStreamDisconnected(_)
+        | AppServerEvent::ThreadStreamReconnected(_) => false,
     }
 }

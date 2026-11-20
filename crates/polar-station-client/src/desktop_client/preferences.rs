@@ -117,12 +117,16 @@ pub(super) async fn save(
                 projection.appearance = written.appearance.unwrap_or_default();
                 state.present_settings(&mut projection);
                 SettingsResultV1::Projection {
+                    tmux_status_bar: Some(projection.tmux_status_bar.clone()),
+                    tmux_status_warning: None,
+                    tmux_status_facts: None,
                     theme_projection: Box::new(projection.appearance.theme.projection()),
                     projection,
                 }
             }
             Err(error) => SettingsResultV1::Error {
                 error: ProtocolError::new("client_preferences_failed", error.to_string(), false),
+                tmux_status_bar: state.settings_snapshot.as_ref().map(|settings| settings.tmux_status_bar.clone()),
                 projection: state.settings_snapshot.clone(),
             },
         };

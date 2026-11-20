@@ -148,6 +148,7 @@
             }
         }
         var workspaceID: String? { workspace?.id }
+        var workspaceName: String? { workspace?.name }
         var panelVisibility: (layout: Bool, inbox: Bool) {
             (workspace?.layoutMapVisible ?? true, workspace?.inboxVisible ?? false)
         }
@@ -317,7 +318,6 @@
             return coordinator
         }()
         private var installedTabStructures: [String: InstalledTabStructure] = [:]
-        private var appliedFontSize: UInt8?
         private let ownedPersistence: PolarStationNativeWorkspacePersistence?
         private var persistence: PolarStationNativeWorkspacePersistence? { (catalogOwner ?? self).ownedPersistence }
         private let ownedPersistenceQueue = DispatchQueue(label: "com.polarealm.PolarStation.native-state", qos: .utility)
@@ -462,7 +462,7 @@
             _ intent: NativeTabSelectionIngressState.Intent
         ) {
             tabGroupCoordinator.completeNativeTabSelection(intent)
-            reconcileIdeaPresentation()
+            reconcilePaneVisibility()
         }
 
         var initialControllerIsAttached: Bool {
@@ -506,9 +506,9 @@
             tabGroupCoordinator.windowDidExitFullScreen(window)
         }
 
-        func authorizeLifecycle(_ action: String) throws {
+        func authorizeLifecycle(_ action: String, target: String? = nil) throws {
             guard let catalog else { throw PolarStationNativeExecutorError.workspaceUnavailable }
-            _ = try catalog.lifecycle(action, bound: workspaceID)
+            _ = try catalog.lifecycle(action, bound: workspaceID, target: target)
         }
         func prepareUnboundWindow() {
             workspace = nil
@@ -522,7 +522,6 @@
             workspace = restoreSelection ? catalog?.selectedWorkspace : nil
             pendingWorkspace = workspace
             installedTabStructures.removeAll()
-            appliedFontSize = nil
             tabGroupCoordinator.reset()
             surfaceCoordinator.reset()
         }
@@ -680,7 +679,17 @@
         }
 
         func hasSessionView(execution: String, session: String) -> Bool {
-            workspace?.tabs.contains(where: { $0.panes.contains(where: { $0.executionTargetID == execution && $0.tmuxSessionID == session }) }) == true
+            sessionPaneID(execution: execution, session: session) != nil
+        }
+        func sessionPaneID(execution: String, session: String) -> String? {
+            workspace?.sessionPaneID(execution: execution, session: session)
+        }
+        func activateSessionPane(_ paneID: String, present: (NSWindow) -> Void) async throws {
+            try await performImmediate(.activatePane(paneID: paneID))
+            if let tabID = workspace?.selectedTabID,
+               let window = tabGroupCoordinator.controller(for: tabID)?.window {
+                present(window)
+            }
         }
         func showSession(execution: String, session: String, present: (NSWindow) -> Void) async throws -> PolarTmuxShownSession {
             guard let current = workspace else { throw PolarStationNativeWorkspaceError.invalidBinding }
@@ -713,6 +722,12 @@
                   let session = target["tmux_session_id"] as? String else {
                 throw NSError(domain:"PolarStation.SessionView",code:1,userInfo:[NSLocalizedDescriptionKey:"The originating tab or target is unavailable. Task not sent."])
             }
+            if let existing = candidate.sessionPaneID(execution: execution, session: session),
+               !tab.panes.contains(where: { $0.id == existing }) {
+                try await surfaceCoordinator.waitForTerminalView(
+                    paneID: existing, binding: .init(executionTargetID: execution, tmuxSessionID: session))
+                return
+            }
             let responder = window.firstResponder
             var changed = false
             if !tab.panes.contains(where: { $0.executionTargetID == execution && $0.tmuxSessionID == session }) {
@@ -744,8 +759,8 @@
             guard var candidate = workspace, candidate.id == workspaceID, var candidateCatalog = catalog,
                   let tab = candidate.tabs.first(where: { $0.id == tabID })
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
-            var seen = Set(tab.panes.map { "\($0.executionTargetID ?? "")\n\($0.tmuxSessionID ?? "")" })
-            let additions = sessions.filter { seen.insert("\($0.executionTargetID)\n\($0.tmuxSessionID)").inserted }
+            let otherTabs = candidateCatalog.sessionTabsOutside(workspaceID)
+            let additions = candidate.sessionAdditions(sessions.filter { otherTabs[$0] == nil })
             guard tab.panes.count + additions.count <= 9 else { throw PolarStationNativeWorkspaceError.invalidBinding }
             guard !additions.isEmpty else { return }
             try candidate.apply(.addSessions(tabID: tabID, sessions: additions))
@@ -1001,8 +1016,9 @@
         }
 
         private func persistLifecycle(_ candidate: PolarStationNativeWorkspaceCatalog) async throws {
-            guard StationMutationScope.active, let revision = catalog?.revision,
-                  revision < UInt64.max, candidate.revision == revision + 1 else { throw PolarStationNativeExecutorError.workspaceChanged }
+            guard StationMutationScope.active, let previous = catalog,
+                  previous.revision < UInt64.max, candidate.revision == previous.revision + 1 else { throw PolarStationNativeExecutorError.workspaceChanged }
+            try candidate.rejectNewSessionDuplicates(comparedTo: previous)
             if let persistence {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     persistenceQueue.async {
@@ -1039,6 +1055,33 @@
             candidate.revision += 1
             try candidate.validate()
             try await persistLifecycle(candidate)
+        }
+
+        func saveTerminalFont(workspaceID id: String, points: Int) async throws -> Int {
+            var failures = 0
+            try await serialized { [self] in
+                guard initialReadFinished, workspaceID == id, let catalog, let current = workspace else {
+                    throw PolarStationNativeExecutorError.workspaceChanged
+                }
+                let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(catalog))
+                let edited = try WorkspaceManagerWindow.transfer([
+                    "action": "set_workspace_font", "catalog": object, "workspace_id": id, "points": points,
+                ])
+                if Int(current.managedTerminalFontSizePoints) != points {
+                    var candidate = try JSONDecoder().decode(PolarStationNativeWorkspaceCatalog.self,
+                        from: JSONSerialization.data(withJSONObject: edited))
+                    guard candidate.revision < UInt64.max else { throw PolarStationNativeExecutorError.workspaceChanged }
+                    candidate.revision += 1
+                    try await persistLifecycle(candidate)
+                    workspace = candidate.selectedWorkspace
+                    catalogChanged?()
+                }
+                guard let workspace, workspace.id == id else { return }
+                for controller in tabGroupCoordinator.allControllers {
+                    failures += surfaceCoordinator.synchronizeFontSize(workspace.managedTerminalFontSizePoints, in: controller)
+                }
+            }
+            return failures
         }
 
         func saveWorkspaceSettings(_ id: String, candidate: @escaping @MainActor () throws -> Data?) async throws {
@@ -1472,14 +1515,44 @@
             ])
         }
 
+        func selectedTerminalBinding() -> PolarTmuxPaneContentBinding? {
+            guard let workspace, let id = workspace.selectedPaneID,
+                  let pane = workspace.tabs.first(where: { $0.id == workspace.selectedTabID })?
+                    .panes.first(where: { $0.id == id }) else { return nil }
+            return Self.terminalBinding(pane)
+        }
+
+        private static func terminalBinding(_ pane: PolarStationNativePane) -> PolarTmuxPaneContentBinding? {
+            guard pane.content == nil, let target = pane.executionTargetID,
+                  let session = pane.tmuxSessionID else { return nil }
+            return PolarTmuxPaneContentBinding(
+                executionTarget: target, tmuxSessionID: session, source: pane.source
+            )
+        }
+
+        func workspaceTerminalBindings() -> [PolarTmuxPaneContentBinding] {
+            workspace?.tabs.flatMap { tab in
+                tab.panes.compactMap { Self.terminalBinding($0) }
+            } ?? []
+        }
+
         func layoutView() -> NativeWorkspaceLayoutView? {
-            guard let catalog else { return nil }
+            guard initialReadFinished, let catalog else { return nil }
             let choices = catalog.workspaces.map { NativeWorkspaceChoiceView(workspaceID: $0.id, name: $0.name,
                 selected: $0.id == workspaceID, archived: (catalog.archivedWorkspaceIDs ?? []).contains($0.id)) }
             guard let workspace else {
                 return NativeWorkspaceLayoutView(workspaceID: "", workspaceName: "Open Workspace", managedTerminalFontSizePoints: 14,
                     selectedTabID: "", selectedPaneID: nil, workspaceChoices: choices, tabs: [])
             }
+            return Self.layoutView(for: workspace, choices: choices,
+                otherOpenSessionTabs: catalog.sessionTabsOutside(workspace.id))
+        }
+
+        static func layoutView(
+            for workspace: PolarStationNativeWorkspace,
+            choices: [NativeWorkspaceChoiceView] = [],
+            otherOpenSessionTabs: [SessionRowProjectionV1.Identity: String] = [:]
+        ) -> NativeWorkspaceLayoutView? {
             let tabs = workspace.tabs.compactMap(nativeTabLayoutView)
             guard tabs.count == workspace.tabs.count else { return nil }
             return NativeWorkspaceLayoutView(
@@ -1491,11 +1564,12 @@
                 selectedTabID: workspace.selectedTabID,
                 selectedPaneID: workspace.selectedPaneID,
                 workspaceChoices: choices,
+                otherOpenSessionTabs: otherOpenSessionTabs,
                 tabs: tabs
             )
         }
 
-        private func nativeTabLayoutView(
+        private static func nativeTabLayoutView(
             _ tab: PolarStationNativeTab
         ) -> NativeTabLayoutView? {
             if tab.panes.isEmpty {
@@ -1557,11 +1631,11 @@
             )
         }
 
-        private func leastCommonMultiple(_ left: Int, _ right: Int) -> Int {
+        private static func leastCommonMultiple(_ left: Int, _ right: Int) -> Int {
             left / greatestCommonDivisor(left, right) * right
         }
 
-        private func greatestCommonDivisor(_ first: Int, _ second: Int) -> Int {
+        private static func greatestCommonDivisor(_ first: Int, _ second: Int) -> Int {
             var left = first
             var right = second
             while right != 0 {
@@ -1653,8 +1727,11 @@
         }
 
         private let graphicsWindowScope = UUID().uuidString
-        private func reconcileIdeaPresentation(_ installed: PolarStationNativeWorkspace? = nil) {
+        private func reconcilePaneVisibility(_ installed: PolarStationNativeWorkspace? = nil) {
             guard let current = installed ?? workspace else { return }
+            for tab in current.tabs {
+                tabGroupCoordinator.controller(for: tab.id)?.synchronizeStationSurfaceVisibility()
+            }
             let selected = tabGroupCoordinator.selectedManagedTabID() ?? current.selectedTabID
             let tab = current.tabs.first { $0.id == selected }
             // Both layouts retain the Tab panes; focus is not visibility.
@@ -1690,6 +1767,7 @@
                 focusIfActive: focusIfActive,
                 preservePendingFocus: preservePendingFocus
             )
+            let fontSize = workspace.managedTerminalFontSizePoints
             var installedAll = true
             let controllers = tabGroupCoordinator.reconcileTabs(
                 workspace.tabs,
@@ -1714,19 +1792,17 @@
                     || installedTabStructures[tab.id] != structure
                     || !physicalTreeIntact
                 {
-                    let installed = install(
+                    guard install(
                         tab: tab,
                         in: controller,
-                        fontSize: workspace.managedTerminalFontSizePoints
-                    )
-                    if installed {
-                        installedTabStructures[tab.id] = structure
-                    } else {
+                        fontSize: fontSize
+                    ) else {
                         installedAll = false
+                        return
                     }
-                } else {
-                    installedTabStructures[tab.id] = structure
                 }
+                installedTabStructures[tab.id] = structure
+                surfaceCoordinator.synchronizeFontSize(fontSize, in: controller)
             }
 
             if retireAbsent {
@@ -1736,11 +1812,10 @@
                     liveTabIDs.contains($0.key)
                 }
             }
-            applyFontSize(workspace.managedTerminalFontSizePoints)
             reconcileSurfaceGeometry()
             refreshNumberBadges()
             reconcileInputSelection(workspace)
-            reconcileIdeaPresentation(workspace)
+            reconcilePaneVisibility(workspace)
             return installedAll && controllers.count == workspace.tabs.count
         }
 
@@ -1857,20 +1932,6 @@
                 left: first.node,
                 right: right
             ))
-        }
-
-        private func applyFontSize(_ points: UInt8) {
-            guard appliedFontSize != points else { return }
-            appliedFontSize = points
-            for tab in workspace?.tabs ?? [] {
-                guard let controller = tabGroupCoordinator.controller(for: tab.id)
-                else { continue }
-                for pane in tab.panes {
-                    guard let surface = surfaceCoordinator.surface(for: pane.id)
-                    else { continue }
-                    controller.performAction("set_font_size:\(points)", on: surface)
-                }
-            }
         }
 
         private func reconcileSurfaceGeometry() {
