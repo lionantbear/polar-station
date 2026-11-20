@@ -2148,7 +2148,7 @@
     "vendor/libsqlite3-sys-037-compat/src/lib.rs": "100644"
   },
   "files": {
-    ".github/workflows/release.yml": "fef9faf96c66a18ead5625e1f2dddd7e8d1978fedd3f11afed053925b5139ff0",
+    ".github/workflows/release.yml": "77f7954feca15aeb5b273e454349b0e5fbee1a7384302fdcf6e2edec1366c7dd",
     ".gitignore": "8631fb165c7f6231a297a739cf68fa1a531a1fea2aabe652c6285a67caad0ec5",
     "BUILD_LINUX.md": "3339fcb725d61b5a92dc07399ce99f79df86fb01874b07bbe3f05aa7454e2da5",
     "BUILD_MACOS.md": "3f19663b6d2dae1c1eb3ed8d43d55917bd7a3235ed439ebc0740228c411a8256",
@@ -4211,11 +4211,6 @@
   "symlinks": {
     "apps/polar-ideacave-godot/addons/polar_graphics": "../../../crates/polar-graphics-godot/godot/addons/polar_graphics"
   },
-  "syntax_cleanup": {
-    "changed_files": 302,
-    "status": "passed"
-  },
-  "third_party_license_audit": "pending",
   "sync_managed_paths": [
     ".gitignore",
     "BUILD_LINUX.md",
@@ -6261,5 +6256,10 @@
     "vendor/grammers-tl-gen/src/structs.rs",
     "vendor/libsqlite3-sys-037-compat/Cargo.toml",
     "vendor/libsqlite3-sys-037-compat/src/lib.rs"
-  ]
+  ],
+  "syntax_cleanup": {
+    "changed_files": 302,
+    "status": "passed"
+  },
+  "third_party_license_audit": "pending"
 }
