@@ -59,6 +59,7 @@ pub(super) fn wire_session_library(
                 identity: wire_session_key(&row.identity),
                 session_kind: match row.session_kind {
                     polar_station_workspace::SessionKind::Terminal => polar_station_protocol::SessionKindV1::Terminal,
+                    polar_station_workspace::SessionKind::Command => polar_station_protocol::SessionKindV1::Command,
                     polar_station_workspace::SessionKind::CodexPlane => polar_station_protocol::SessionKindV1::CodexPlane,
                     polar_station_workspace::SessionKind::ClaudePlane => polar_station_protocol::SessionKindV1::ClaudePlane,
                 },

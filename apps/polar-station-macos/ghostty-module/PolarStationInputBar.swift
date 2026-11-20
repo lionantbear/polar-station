@@ -29,6 +29,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     }
     var onExit: (() -> Void)?
     var onQuote: (() -> Void)?
+    var onSendHistory: (([String: Any]) -> Void)?
     var onDraft: ((String) -> Void)?; var onSend: ((String) -> Void)?
     var onReferences: (() -> Void)?
     var onActivity: (() -> Void)?
@@ -66,6 +67,8 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
     private let statusButton = NSButton(title: "●", target: nil, action: nil)
     private let statusPopover = NSPopover()
     private let send = NSButton(title: "Send", target: nil, action: nil)
+    private let sendHistory = NSButton(title: "▾", target: nil, action: nil)
+    private var sendHistoryRows: [[String: Any]] = []
     private let quote = NSButton(title: "❞", target: nil, action: nil)
     private let retry = NSButton(title: "Reconnect", target: nil, action: nil)
     private let older = NSMenuItem(title: "Load older messages", action: #selector(olderPressed), keyEquivalent: "")
@@ -160,6 +163,10 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         let scroll = editorScroll
         scroll.translatesAutoresizingMaskIntoConstraints = false
         send.target = self; send.action = #selector(sendPressed); send.isEnabled = false
+        sendHistory.target = self; sendHistory.action = #selector(openSendHistory)
+        sendHistory.isHidden = true
+        sendHistory.toolTip = "Send history"
+        sendHistory.setAccessibilityLabel("Send history")
         toggle.target = self; toggle.action = #selector(toggleExpanded)
         targetButton.target = self; targetButton.action = #selector(choosePressed)
         targetButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -192,7 +199,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         ideaAttach.setAccessibilityLabel("Insert node")
         ideaReferenceMenu.addItem(withTitle:"References")
         ideaAttach.isHidden = true; ideaReferenceMenu.isHidden = true
-        footerLayout = StationFooterLayout(leading: [ideaMenu, targetButton], trailing: [ideaAttach, quote, tools, dictateControls], primary: send, viewport: editorScroll, target: targetButton)
+        footerLayout = StationFooterLayout(leading: [ideaMenu, targetButton], trailing: [ideaAttach, quote, tools, dictateControls], primary: send, history: sendHistory, viewport: editorScroll, target: targetButton)
         footerLayout.onDensityChanged = { [weak self] compact in self?.renderDensity(compact) }
         addSubview(footerLayout)
         footerLayout.translatesAutoresizingMaskIntoConstraints = false
@@ -256,6 +263,8 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         if let closedObserver { NotificationCenter.default.removeObserver(closedObserver) }; closedObserver = nil
     }
     func clearSelection() {
+        sendHistory.isHidden = true
+        sendHistoryRows = []
         genericLease = nil; refineProject = nil; conversationContext = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
         focusWork?.cancel(); focusWork=nil
         hideInquiry()
@@ -529,6 +538,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         renderFooterControls(); resizeEditor()
     }
     func update(_ effect: [String: Any]) {
+        updateSendHistory(effect)
         genericLease = nil; refineProject = nil; conversationContext = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
         dictateRevision = (effect["draft_revision"] as? NSNumber)?.uint64Value ?? 0
         setIdeaMode(false)
@@ -553,6 +563,35 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         showStatus(message.isEmpty ? (connection == "live" ? "Connected" : connection) : message)
         renderFooterControls(); resizeEditor()
     }
+    private func updateSendHistory(_ effect: [String: Any]) {
+        sendHistoryRows = effect["send_history"] as? [[String: Any]] ?? []
+        sendHistory.isHidden = effect["send_history"] == nil
+        sendHistory.isEnabled = !sendHistoryRows.isEmpty
+    }
+    @objc private func openSendHistory() {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for row in sendHistoryRows {
+            guard let status = row["status"] as? String, let preview = row["preview"] as? String,
+                  let action = row["action"] as? String, let intent = row["intent"] as? String else { continue }
+            let title = action.isEmpty ? "\(status) · \(preview)" : "\(action) · \(status) · \(preview)"
+            let item = NSMenuItem(title: title, action: #selector(chooseSendHistory(_:)), keyEquivalent: "")
+            item.target = self
+            if let lease = genericLease {
+                item.representedObject = ["type": "recover_send", "lease": lease, "intent": intent] as [String: Any]
+            } else if let paneID {
+                item.representedObject = ["type": "recover_content_send", "pane_id": paneID,
+                                          "draft_revision": dictateRevision, "intent": intent] as [String: Any]
+            }
+            item.isEnabled = !action.isEmpty
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sendHistory.bounds.minY), in: sendHistory)
+    }
+    @objc private func chooseSendHistory(_ item: NSMenuItem) {
+        guard let request = item.representedObject as? [String: Any] else { return }
+        onSendHistory?(request)
+    }
     private func setIdeaMode(_ value: Bool) {
         if isIdea != value { lastIdeaEditor = nil; closeIdeaPopovers(); leaveIdeaInstruction() }
         draftEditor.setIdeaDocument(value)
@@ -567,6 +606,7 @@ final class StationInputBarView: NSView, NSTextViewDelegate, NSPopoverDelegate {
         toggle.title = value ? (expanded ? "▾ Idea" : "▸ Idea") : (expanded ? "▾ Chat" : "▸ Chat")
     }
     func updateIdea(_ effect: [String: Any]) {
+        updateSendHistory(effect)
         genericLease = nil; refineProject = nil; conversationContext = nil; targetButton.isEnabled = true; quote.isHidden = true; retry.title = "Reconnect"
         dictateRevision = (effect["draft_revision"] as? NSNumber)?.uint64Value ?? 0
         hideInquiry()
@@ -1037,16 +1077,22 @@ final class StationFooterLayout: NSView {
     private var normalTargetWidth:CGFloat = 140
     private var normalMinimum:CGFloat = 0
     private var viewportAnchors: [NSLayoutConstraint] = []
-    init(leading: [NSView], trailing: [NSView], primary: NSButton, viewport: NSScrollView, target: NSButton) {
+    init(leading: [NSView], trailing: [NSView], primary: NSButton, history: NSButton? = nil, viewport: NSScrollView, target: NSButton) {
         self.viewport = viewport
         super.init(frame: .zero)
         for v in leading { leadingControls.addArrangedSubview(v) }
         for v in trailing { trailingControls.addArrangedSubview(v) }
         let primarySlot = NSView(); primarySlot.translatesAutoresizingMaskIntoConstraints = false
-        primary.translatesAutoresizingMaskIntoConstraints = false; primarySlot.addSubview(primary)
+        let sendControls = NSStackView(views: [primary])
+        if let history { sendControls.addArrangedSubview(history) }
+        sendControls.orientation = .horizontal
+        sendControls.alignment = .bottom
+        sendControls.spacing = 0
+        sendControls.translatesAutoresizingMaskIntoConstraints = false
+        primarySlot.addSubview(sendControls)
         trailingControls.addArrangedSubview(primarySlot)
         let width = ["Send", "Sending…", "Retry"].map { NSButton(title:$0,target:nil,action:nil).fittingSize.width }.max() ?? 80
-        NSLayoutConstraint.activate([primary.widthAnchor.constraint(equalToConstant:width),primary.leadingAnchor.constraint(equalTo:primarySlot.leadingAnchor),primary.trailingAnchor.constraint(equalTo:primarySlot.trailingAnchor),primary.bottomAnchor.constraint(equalTo:primarySlot.bottomAnchor),primarySlot.heightAnchor.constraint(equalToConstant:30)])
+        NSLayoutConstraint.activate([primary.widthAnchor.constraint(equalToConstant:width),sendControls.leadingAnchor.constraint(equalTo:primarySlot.leadingAnchor),sendControls.trailingAnchor.constraint(equalTo:primarySlot.trailingAnchor),sendControls.bottomAnchor.constraint(equalTo:primarySlot.bottomAnchor),primarySlot.heightAnchor.constraint(equalToConstant:30)])
         for group in [leadingControls,trailingControls] {
             group.orientation = .horizontal; group.alignment = .bottom; group.spacing = 6
             group.distribution = .fill

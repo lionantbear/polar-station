@@ -44,6 +44,8 @@ pub enum SessionEditorRequestV1 {
     InspectTools { execution_target_id:String },
     PrepareTools { execution_target_id:String, tmux:bool, codex:bool, codex_service:bool, #[serde(default, skip_serializing_if = "is_false")] claude:bool, #[serde(default,skip_serializing_if="ToolSetupDeliveryV1::is_external")] delivery:ToolSetupDeliveryV1 },
     SetCreationYolo { yolo: bool },
+    CheckEndpoint { execution_target_id: String, endpoint_id: String },
+    EnsureLocalCodex { endpoint_id: String },
     HistoryDetail { execution_target_id: String, endpoint_id: String, thread_id: String },
     History {
         execution_target_id: String,
@@ -73,8 +75,8 @@ pub enum SessionEditorRequestV1 {
 impl SessionEditorRequestV1 {
     pub fn is_read_only(&self) -> bool {
         match self {
-            Self::SetCreationYolo { .. } | Self::PrepareTools { .. } => false,
-            Self::InspectTools { .. } | Self::HistoryDetail { .. }
+            Self::SetCreationYolo { .. } | Self::PrepareTools { .. } | Self::EnsureLocalCodex { .. } => false,
+            Self::InspectTools { .. } | Self::CheckEndpoint { .. } | Self::HistoryDetail { .. }
             | Self::History { .. }
             | Self::LaunchContext { .. }
             | Self::BrowseDirectory { .. }
@@ -88,6 +90,13 @@ impl SessionEditorRequestV1 {
             Self::PrepareTools { execution_target_id,tmux,codex,codex_service,claude,.. } => { if (!codex && !tmux && !claude) || (*codex_service && !codex) {return Err(ProtocolValidationError::InvalidControlCenterCommand)} execution_target_id },
             Self::InspectTools { execution_target_id } => execution_target_id,
             Self::SetCreationYolo { .. } => return Ok(()),
+            Self::EnsureLocalCodex { endpoint_id } => {
+                return crate::validate_stable_identifier(endpoint_id, "Codex endpoint");
+            }
+            Self::CheckEndpoint { execution_target_id, endpoint_id } => {
+                crate::validate_stable_identifier(endpoint_id, "Codex endpoint")?;
+                execution_target_id
+            }
             Self::HistoryDetail { execution_target_id, endpoint_id, thread_id } => {
                 crate::CodexCommandV1::ReadHistoryDetail { endpoint_id: endpoint_id.clone(), thread_id: thread_id.clone() }.validate()?;
                 execution_target_id
@@ -163,6 +172,8 @@ pub struct SessionTargetToolsV1 {
  pub native_setup:bool,
  pub execution_target_id:String, pub tmux:SessionToolStateV1, pub codex:SessionToolStateV1, pub codex_control_enabled:bool,
  #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub default_local_codex_endpoint: Option<String>,
+ #[serde(default, skip_serializing_if = "Option::is_none")]
  pub claude: Option<SessionToolStateV1>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,6 +194,8 @@ pub enum SessionEditorResultV1 {
     ToolsLaunched { execution_target_id:String },
     ToolsPrepared { setup:ToolSetupLaunchV1 },
     CreationYolo { yolo: bool },
+    EndpointReady,
+    EndpointLoginRequired,
     Directory {
         directory: SessionDirectoryV1,
     },
@@ -198,10 +211,16 @@ impl SessionEditorResultV1 {
             Self::ToolsLaunched {execution_target_id} => crate::validate_stable_identifier(execution_target_id,"execution target"),
             Self::Tools { tools } => {
                 if tools.len()>2 { return Err(ProtocolValidationError::InvalidControlCenterCommand); }
-                for tool in tools { crate::validate_stable_identifier(&tool.execution_target_id,"execution target")?; }
+                for tool in tools {
+                    crate::validate_stable_identifier(&tool.execution_target_id,"execution target")?;
+                    if let Some(endpoint) = &tool.default_local_codex_endpoint {
+                        crate::validate_stable_identifier(endpoint, "default local Codex endpoint")?;
+                    }
+                }
                 Ok(())
             }
-            Self::History { .. } | Self::HistoryDetail { .. } | Self::CreationYolo { .. } => Ok(()),
+            Self::History { .. } | Self::HistoryDetail { .. } | Self::CreationYolo { .. }
+            | Self::EndpointReady | Self::EndpointLoginRequired => Ok(()),
             Self::LaunchContext { directory, .. } | Self::Directory { directory } => {
                 crate::validate_stable_identifier(
                     &directory.execution_target_id,

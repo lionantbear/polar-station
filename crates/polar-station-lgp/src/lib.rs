@@ -6,5 +6,6 @@ mod window;
 mod record;
 mod text;
 pub mod presentation;
+pub mod send_history;
 pub mod state;
 pub use state::{Effect, Engine, Input, Scope};

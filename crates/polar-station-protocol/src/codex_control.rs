@@ -127,6 +127,7 @@ pub struct CodexLoadedThreadV1 {
 pub enum CodexCommandV1 {
     GetUi,
     StartLocalServer { endpoint_id:String },
+    CheckEndpoint { endpoint_id: String },
     GetSettings,
     GetTelegramStatus,
     SetupCurrentTelegram {
@@ -345,7 +346,8 @@ impl CodexCommandV1 {
                 }
                 Ok(())
             }
-            Self::StartLocalServer { endpoint_id } | Self::ListLoaded { endpoint_id } => {
+            Self::StartLocalServer { endpoint_id } | Self::CheckEndpoint { endpoint_id }
+            | Self::ListLoaded { endpoint_id } => {
                 validate_stable_identifier(endpoint_id, "Codex endpoint")
             }
             Self::Bind {
@@ -461,6 +463,7 @@ pub enum CodexResultV1 {
     Settings {
         settings: CodexControlSettingsV1,
     },
+    EndpointReady,
     Thread {
         thread: CodexHistoryThreadV1,
         #[serde(default, skip_serializing_if = "Option::is_none")]

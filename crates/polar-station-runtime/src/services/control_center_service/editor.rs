@@ -9,7 +9,7 @@ impl ControlCenterService {
     ) -> Result<SessionEditorResultV1, ControlCenterErrorV1> {
         match request {
             SessionEditorRequestV1::InspectTools { execution_target_id } => {
-                Ok(SessionEditorResultV1::Tools { tools:self.editor_tool_facts(&execution_target_id,false).await })
+                Ok(SessionEditorResultV1::Tools { tools:self.editor_tool_facts(&execution_target_id).await })
             }
             SessionEditorRequestV1::PrepareTools {execution_target_id,tmux,codex,codex_service,claude,delivery} => {
                 #[cfg(feature="codex-control")]
@@ -20,15 +20,6 @@ impl ControlCenterService {
                 let transport=if let Some(lease)=&lease {polar_tmux_core::TmuxTarget::from(lease.endpoint())}else{target.configured_target().clone()};
                 #[cfg(not(feature="codex-control"))]
                 if codex {return Err(control_error("codex_unsupported","This Host does not support Codex."))}
-                #[cfg(feature="codex-control")]
-                if codex_service {
-                    let service=self.codex.get().ok_or_else(||control_error("codex_unavailable","Codex control is unavailable."))?;
-                    if !service.config.read().await.enabled {
-                        let _operation=tokio::time::timeout(std::time::Duration::from_secs(1),service.operations.lock()).await.map_err(|_|control_error("codex_busy","Codex is busy; try preparation again when ready."))?;
-                        let mut config=service.config.read().await.clone();
-                        if !config.enabled {config.enabled=true;service.save_control_settings(config.revision,config).await.map_err(|e|control_error(e,"Could not enable Codex control. Try again."))?;}
-                    }
-                }
                 if let Some(lease)=&lease {self.ssh_connections.validate(lease).await.map_err(|_|control_error("ssh_changed","SSH connection changed; retry."))?;}
                 if delivery==polar_station_protocol::ToolSetupDeliveryV1::NativePane {
                     let script=super::super::target_tools::prepared_script(&transport,tmux,codex,codex_service,claude).await
@@ -48,6 +39,45 @@ impl ControlCenterService {
                 let yolo = settings.set_new_codex_yolo(yolo)
                     .map_err(|_| control_error("settings_save_failed", "YOLO preference could not be saved. Try again."))?;
                 Ok(SessionEditorResultV1::CreationYolo { yolo })
+            }
+            SessionEditorRequestV1::CheckEndpoint { execution_target_id, endpoint_id } => {
+                #[cfg(feature = "codex-control")]
+                {
+                    self.codex.get().ok_or_else(|| control_error("codex_unavailable", "Codex is unavailable."))?
+                        .check_session_endpoint(&execution_target_id, &endpoint_id).await
+                }
+                #[cfg(not(feature = "codex-control"))]
+                {
+                    let _ = (execution_target_id, endpoint_id);
+                    Err(control_error("codex_unsupported", "This Host does not support Codex."))
+                }
+            }
+            SessionEditorRequestV1::EnsureLocalCodex { endpoint_id } => {
+                #[cfg(feature = "codex-control")]
+                {
+                    let service = self.codex.get().ok_or_else(|| {
+                        control_error("codex_unavailable", "Codex is unavailable on this Host.")
+                    })?;
+                    match service.prepare_local_codex(&endpoint_id).await {
+                        Ok(true) => Ok(SessionEditorResultV1::EndpointReady),
+                        Ok(false) => Ok(SessionEditorResultV1::EndpointLoginRequired),
+                        Err(code) => Err(control_error(code, match code {
+                            "codex_not_installed" => "Codex is not installed on this machine.",
+                            "codex_start_timeout" => "The local Codex service took too long to start.",
+                            "codex_start_failed" => "The Codex CLI could not start its local service.",
+                            "codex_handshake_timeout" => "The local Codex service did not finish connecting in time.",
+                            "codex_handshake_failed" => "Codex started, but Polar Station could not connect to it.",
+                            "codex_account_check_timeout" => "The local Codex service did not respond to the account check.",
+                            "codex_account_check_failed" => "Polar Station could not check the Codex account.",
+                            _ => "The local Codex service could not be prepared.",
+                        })),
+                    }
+                }
+                #[cfg(not(feature = "codex-control"))]
+                {
+                    let _ = endpoint_id;
+                    Err(control_error("codex_unsupported", "This Host does not support Codex."))
+                }
             }
             SessionEditorRequestV1::HistoryDetail { execution_target_id, endpoint_id, thread_id } => {
                 #[cfg(feature = "codex-control")]
@@ -139,7 +169,7 @@ impl ControlCenterService {
                 };
                 Ok::<_,ControlCenterErrorV1>((directory,notice))
                 };
-                let (directory,tools)=tokio::join!(directory_future,self.editor_tool_facts(&execution_target_id,true));
+                let (directory,tools)=tokio::join!(directory_future,self.editor_tool_facts(&execution_target_id));
                 let (directory,notice)=directory?;
                 let yolo = self.connection_dependencies.get()
                     .ok_or_else(|| control_error("settings_unavailable", "Desktop settings are unavailable."))?.settings
@@ -170,17 +200,18 @@ impl ControlCenterService {
         }
     }
 
-    async fn editor_tool_facts(&self,id:&str,discover:bool)->Vec<polar_station_protocol::SessionTargetToolsV1> {
-        #[cfg(feature="codex-control")]
-        let enabled=if let Some(c)=self.codex.get(){
-            let enabled=c.config.read().await.enabled;
-            if enabled && discover {let _=tokio::time::timeout(std::time::Duration::from_secs(2),c.discover_account_endpoint(id)).await;}
-            enabled
-        }else{false};
-        #[cfg(not(feature="codex-control"))]
-        let enabled=false;
-        #[cfg(not(feature="codex-control"))]
-        let _ = discover;
+    async fn editor_tool_facts(&self, id: &str) -> Vec<polar_station_protocol::SessionTargetToolsV1> {
+        #[cfg(feature = "codex-control")]
+        let enabled = self.codex.get().is_some();
+        #[cfg(not(feature = "codex-control"))]
+        let enabled = false;
+        let discover = async {
+            #[cfg(feature = "codex-control")]
+            if let Some(codex) = self.codex.get() {
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2),
+                    codex.check_default_endpoints(id)).await;
+            }
+        };
         let inspect=|id:String| async move {
             let result=tokio::time::timeout(std::time::Duration::from_secs(3),async {
                 let target=self.targets.get(&id)?;
@@ -191,10 +222,27 @@ impl ControlCenterService {
                 if let Some(lease)=&lease{self.ssh_connections.validate(lease).await.ok()?;}
                 Some(facts)
             }).await.ok().flatten();
-            result.unwrap_or(polar_station_protocol::SessionTargetToolsV1{native_setup:true,execution_target_id:id,tmux:polar_station_protocol::SessionToolStateV1::Unavailable,codex:polar_station_protocol::SessionToolStateV1::Unavailable,codex_control_enabled:enabled,claude:Some(polar_station_protocol::SessionToolStateV1::Unavailable)})
+            result.unwrap_or(polar_station_protocol::SessionTargetToolsV1{native_setup:true,execution_target_id:id,tmux:polar_station_protocol::SessionToolStateV1::Unavailable,codex:polar_station_protocol::SessionToolStateV1::Unavailable,codex_control_enabled:enabled,default_local_codex_endpoint:None,claude:Some(polar_station_protocol::SessionToolStateV1::Unavailable)})
         };
-        if id==crate::target_registry::LOCAL_TARGET_ID {vec![inspect(id.into()).await]}
-        else {let (a,b)=tokio::join!(inspect(id.into()),inspect(crate::target_registry::LOCAL_TARGET_ID.into()));vec![a,b]}
+        let inspect_required = async {
+            let local = crate::target_registry::LOCAL_TARGET_ID;
+            if id == local {
+                vec![inspect(id.into()).await]
+            } else {
+                let (target, local) = tokio::join!(inspect(id.into()), inspect(local.into()));
+                vec![target, local]
+            }
+        };
+        #[allow(unused_mut)]
+        let (_, mut facts) = tokio::join!(discover, inspect_required);
+        #[cfg(feature = "codex-control")]
+        if let Some(codex) = self.codex.get() {
+            if let Some(local) = facts.iter_mut().find(|target|
+                target.execution_target_id == crate::target_registry::LOCAL_TARGET_ID) {
+                local.default_local_codex_endpoint = codex.local_account_endpoint_id().await;
+            }
+        }
+        facts
     }
 
     async fn read_directory(

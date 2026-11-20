@@ -48,14 +48,19 @@ struct SessionEditorSheet: View {
     let requestCodex: CodexRequestHandler?
     let readSessionEditor: SessionEditorReader?
     let pick: (@MainActor (String,String,String,String) -> Void)?
+    let knownSessions: [SessionEditorInteraction.Candidate]
+    let layout: NativeWorkspaceLayoutView?
+    let agents: [AgentSessionCatalogRowV1]
+    let attach: @MainActor (SessionRowProjectionV1.Identity, @escaping @MainActor (String?) -> Void) -> Void
     let cancel: @MainActor () -> Void
     let submit: @MainActor (ControlCenterIntentOperationV1, @escaping @MainActor (String?, [String]) -> Void) -> Void
     @FocusState private var nameFocused: Bool
+    @FocusState private var directoryFocused: Bool
+    @FocusState private var searchFocused: Bool
     @State private var capturedDestination = ""
     @Environment(\.stationToolSetupPorts) private var toolSetup
     @StateObject private var editor = SessionEditorInteraction()
     @StateObject private var connectionForm = ConnectionsFormBuffer()
-    @State private var directoryOpen = false
     @State private var manualOpen = false
     @State private var manualDraft = ""
     @State private var previewExpanded = false
@@ -111,10 +116,7 @@ struct SessionEditorSheet: View {
         get { editor.state?.draft.name ?? "" }
         nonmutating set { editor.edit { $0.name = newValue } }
     }
-    private var workingDirectory: String {
-        get { editor.state?.draft.directory ?? "" }
-        nonmutating set { editor.edit { $0.directory = newValue } }
-    }
+    private var workingDirectory: String { editor.state?.draft.directory ?? "" }
     private var command: String {
         get { editor.state?.draft.command ?? "" }
         nonmutating set { editor.edit { $0.command = newValue } }
@@ -150,6 +152,10 @@ struct SessionEditorSheet: View {
         controlRevision: UInt64,
         submitConnections: @escaping SessionEditorSubmit,
         pick: (@MainActor (String,String,String,String) -> Void)? = nil,
+        knownSessions: [SessionEditorInteraction.Candidate],
+        layout: NativeWorkspaceLayoutView?,
+        agents: [AgentSessionCatalogRowV1],
+        attach: @escaping @MainActor (SessionRowProjectionV1.Identity, @escaping @MainActor (String?) -> Void) -> Void,
         cancel: @escaping @MainActor () -> Void,
         submit:
             @escaping @MainActor (ControlCenterIntentOperationV1, @escaping @MainActor (String?, [String]) -> Void) -> Void
@@ -168,6 +174,10 @@ struct SessionEditorSheet: View {
         self.requestCodex = requestCodex
         self.readSessionEditor = readSessionEditor
         self.pick = pick
+        self.knownSessions = knownSessions
+        self.layout = layout
+        self.agents = agents
+        self.attach = attach
         self.cancel = cancel
         self.submit = submit
 
@@ -183,19 +193,11 @@ struct SessionEditorSheet: View {
             Divider()
             if browsingHistory {
                 historyPicker.padding(.horizontal, 20).padding(.vertical, 12)
+            } else if showsCreationOptions && agentMode == "resume" {
+                knownSessionPicker.padding(20)
             } else {
-                HSplitView {
-                    if showsCreationOptions, !readingDirectory, let readSessionEditor {
-                        SessionDirectoryPicker(target: selectedTargetID,
-                            endpoint: sessionType == "codex" ? optional(endpointID) : nil,
-                            initialPath: workingDirectory, embedded: true, read: readSessionEditor,
-                            choose: { workingDirectory = $0 }, cancel: {})
-                            .id(selectedTargetID + "|" + endpointID)
-                            .frame(minWidth: 340, maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                    ScrollView { newSessionForm.padding(24).frame(maxWidth: 720, alignment: .leading) }
-                        .frame(minWidth: 420, maxWidth: .infinity)
-                }
+                ScrollView { newSessionForm.padding(24).frame(maxWidth: 720, alignment: .leading) }
+                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
             }
             if let submissionError {
                 Text(submissionError).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 20)
@@ -243,9 +245,11 @@ struct SessionEditorSheet: View {
         .onAppear {
             optionsOpen = true
             if capturedDestination.isEmpty { capturedDestination = destination }
-            nameFocused = request.initialMode != "resume" && request.resumeAgent == nil
+            nameFocused = !showsCreationOptions
+            directoryFocused = showsCreationOptions && request.initialMode != "resume" && request.resumeAgent == nil
             editor.submit = submit
             editor.pick = pick
+            editor.attach = attach
             var draft = SessionEditorInteraction.Draft()
             draft.bind_only = binding
             draft.target = request.resumeAgent?.execution_target_id ?? sourceSession?.executionTargetID ?? localTargetID
@@ -257,23 +261,17 @@ struct SessionEditorSheet: View {
             }
             if binding { draft.target = localTargetID }
             editor.toolSetup=toolSetup
-            editor.startCodex=requestCodex
             editor.open(draft, endpoints: availableEndpoints, source: sourceSession, read: readSessionEditor)
+            editor.knownSessions(knownSessions)
         }
         .onDisappear { editor.action("close") }
         .onChange(of: endpoints) { _ in editor.endpoints(endpoints) }
+        .onChange(of: knownSessions) { editor.knownSessions($0) }
         .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in editor.action("returned_from_tools") }
         .onChange(of: recovery) { value in
             guard let value else { return }
             editor.edit { $0.target = value.execution_target_id; $0.session_type = "codex"; $0.endpoint = value.endpoint_id; $0.mode = "resume"; $0.original_id = value.thread_id }
             editor.manual(value.thread_id)
-        }
-        .sheet(isPresented: $directoryOpen) {
-            if let readSessionEditor {
-                SessionDirectoryPicker(target: selectedTargetID, endpoint: sessionType == "codex" ? optional(endpointID) : nil,
-                    initialPath: workingDirectory, read: readSessionEditor,
-                    choose: { workingDirectory = $0; directoryOpen = false }, cancel: { directoryOpen = false })
-            }
         }
         .interactiveDismissDisabled(pending)
     }
@@ -299,14 +297,25 @@ struct SessionEditorSheet: View {
                         ForEach(availableEndpoints.filter { $0.execution_target_id == selectedTargetID }, id: \.id) { Text($0.id).tag($0.id) }
                     }.labelsHidden().frame(minWidth: 120, maxWidth: 200).accessibilityLabel("App server")
                     if editor.state?.can_start_local_server == true || editor.state?.server_starting == true {
-                        Button{editor.action("start_local_server")}label:{Image(systemName:editor.state?.server_starting == true ? "hourglass" : "power")}
-                            .help(editor.state?.server_start_label ?? "Start local Codex app server").accessibilityLabel(editor.state?.server_start_label ?? "Start local Codex app server").disabled(editor.state?.can_start_local_server != true)
+                        Button { editor.action("app_server_action") } label: {
+                            Image(systemName: editor.state?.server_starting == true ? "hourglass" : "arrow.clockwise")
+                        }
+                        .help(editor.state?.server_start_label ?? "Retry Codex connection")
+                        .accessibilityLabel(editor.state?.server_start_label ?? "Retry Codex connection")
+                        .disabled(editor.state?.can_start_local_server != true)
+                    } else if let state = editor.state, state.can_check_endpoint || state.endpoint_checking {
+                        Button { editor.action("app_server_action") } label: {
+                            Image(systemName: state.endpoint_checking ? "hourglass" : "bolt.horizontal.circle")
+                        }
+                        .help("Check connection")
+                        .accessibilityLabel("Check connection")
+                        .disabled(state.endpoint_checking)
                     }
                     Button { manageOpen = true } label: { Image(systemName: "gearshape") }
                         .help("Manage app servers").accessibilityLabel("Manage…").disabled(connections == nil)
                 }
                 Spacer(minLength: 0)
-                if isAgent && !binding { modeTab("New", value: "new"); modeTab("Resume", value: "resume") }
+                if !binding { modeTab("New", value: "new"); modeTab("Resume", value: "resume") }
             }
         }.controlSize(.small)
     }
@@ -333,7 +342,19 @@ struct SessionEditorSheet: View {
                     GridRow {
                         Text("Working directory").foregroundStyle(.secondary).frame(width: 120, alignment: .trailing)
                         HStack {
-                            TextField("Working directory", text: field(\.directory)).onSubmit(submitOnce)
+                            TextField("Working directory", text: field(\.directory)).focused($directoryFocused).onSubmit(submitOnce)
+                            if agentMode != "resume", readSessionEditor != nil {
+                                Button("Browse") { editor.action("toggle_directory_browser") }
+                                    .accessibilityValue(editor.state?.directory_browser == nil ? "Collapsed" : "Expanded")
+                            }
+                        }
+                    }
+                    if let browser = editor.state?.directory_browser {
+                        GridRow {
+                            Color.clear.frame(width: 120, height: 0)
+                            SessionDirectoryPicker(state: browser, selectedPath: workingDirectory,
+                                navigate: editor.browseDirectory, choose: editor.chooseDirectory,
+                                retry: { editor.action("retry_directory_browse") })
                         }
                     }
                 }
@@ -364,6 +385,36 @@ struct SessionEditorSheet: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var knownSessionPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            let rows = editor.state?.known_sessions ?? []
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(rows) { row in
+                        let selected = editor.state?.known_selection == row.identity
+                        Button { editor.chooseKnownSession(row.identity) } label: {
+                            HStack {
+                                SessionLocationBadges(numbers: layout?.sessionTabNumbers([row.identity]) ?? [])
+                                Text(row.display_name).lineLimit(1)
+                                Spacer()
+                                if selected { Image(systemName: "checkmark") }
+                            }.padding(7).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selected ? .isSelected : [])
+                    }
+                    if rows.isEmpty {
+                        Text("No existing Sessions on this Host").foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if sessionType == "claude" {
+                TextField("Claude session UUID", text: field(\.original_id)).onSubmit(submitOnce)
+                TextField("Session name", text: field(\.name)).onSubmit(submitOnce)
+            }
+        }
+    }
+
     private func selectHistory(_ id: String, checked: Bool) {
         editor.select(id, checked: checked)
         historyFocusRequest += 1
@@ -372,7 +423,8 @@ struct SessionEditorSheet: View {
     private var historyPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                TextField("Search conversations", text: field(\.search)).submitScope()
+                TextField("Search conversations", text: field(\.search))
+                    .focused($searchFocused).onAppear { searchFocused = true }.submitScope()
                 Menu {
                     Toggle("Archived", isOn: field(\.archived))
                     Toggle("Include subagents", isOn: field(\.subagents))
@@ -394,6 +446,7 @@ struct SessionEditorSheet: View {
                                         set: { selectHistory(row.id, checked: $0) }))
                                         .labelsHidden().toggleStyle(.checkbox)
                                     HStack(spacing: 8) {
+                                        SessionLocationBadges(numbers: historyTabNumbers(row.thread_id))
                                         Text(row.display_name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                                         Text(URL(fileURLWithPath: row.cwd).lastPathComponent)
                                             .font(.caption).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: 90)
@@ -440,6 +493,14 @@ struct SessionEditorSheet: View {
             Text(text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(StationTheme.shared.surface, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func historyTabNumbers(_ threadID: String) -> [Int] {
+        guard let layout else { return [] }
+        let bindings = agents.filter {
+            $0.execution_target_id == selectedTargetID && $0.endpoint_id == endpointID && $0.thread_id == threadID
+        }.flatMap { $0.terminals ?? [] }
+        return layout.sessionTabNumbers(bindings)
     }
 
     private var historyDetails: some View {
@@ -530,17 +591,8 @@ struct SessionEditorSheet: View {
         showsCreationOptions && sessionType == "command"
     }
 
-    private var isAgent: Bool {
-        showsCreationOptions && (sessionType == "codex" || sessionType == "claude")
-    }
-
     private var localCLIEndpointSupported: Bool { editor.state?.local_cli_supported ?? false }
     private var canSubmit: Bool { editor.state?.can_submit ?? false }
-
-    private func optional(_ value: String) -> String? {
-        let value = trimmed(value)
-        return value.isEmpty ? nil : value
-    }
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -430,7 +430,6 @@ pub fn init(app: *Application) !void {
     };
     state.?.resources_panel.action_context = &state.?;
     state.?.resources_panel.projection_fn = resourceEditorProjection;
-    state.?.codex_window.server_started=codexServerStarted;
     state.?.settings_panel.action_context = &state.?;
     state.?.codex_window.context = &state.?;
     state.?.connector_window.context = &state.?;
@@ -2989,17 +2988,12 @@ fn clearPendingControlEffects(current: *State) void {
     current.pending_control_effects.clearRetainingCapacity();
 }
 
-fn codexServerStarted(raw:?*anyopaque,controller_id:u64,token:u64,message:?[]const u8) void {
-    const current:*State=@ptrCast(@alignCast(raw orelse return));
-    if(controllerById(current,controller_id)) |controller| controller.editorInput(.{.type="server_started",.token=token,.@"error"=message});
-}
 fn sendControllerRequest(
     current: *State,
     controller_id: u64,
     action: controller_pane.Action,
 ) void {
     if (current.quitting) return;
-    if(action==.start_local_codex){const value=action.start_local_codex;current.codex_window.startLocalServer(value.owner_host_id,value.endpoint_id,controller_id,value.token);return;}
     const executor = current.controllerExecutor(controller_id) orelse return;
     if (action == .invoke_action and (std.mem.eql(u8, action.invoke_action.action_id, "workspace.window.new") or std.mem.eql(u8, action.invoke_action.action_id, "native.open_local_terminal"))) {
         var decision = executor.lifecycleDecision("new_window", null) catch return;
@@ -3618,6 +3612,7 @@ fn filePresentationAction(action:@import("file_open_presentation.zig").Action) v
     switch(action){
         .cancel=>|id|{native_file_launcher.cancel(.terminal);resourceFileInput(current,.{.type="cancel_request",.request_id=id});},
         .retry=>|id|resourceFileInput(current,.{.type="retry",.request_id=id}),
+        .edit=>|value|resourceFileInput(current,.{.type="edit_reference",.request_id=value.id,.text=value.text}),
         .choose=>|choice|resourceFileInput(current,.{.type="choose",.request_id=choice.id,.index=choice.index}),
         .mapping=>|choice|resourceFileInput(current,.{.type="mapping_decision",.request_id=choice.id,.confirmed=choice.confirmed}),
     }

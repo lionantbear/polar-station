@@ -606,7 +606,7 @@ pub const Panel = struct {
         defer c.polar_station_desktop_string_free(response);
         const Change = struct { type: []const u8, machine: ?model.MachineConnection = null, polar: ?model.PolarConnection = null };
         const Effect = struct { request: std.json.Value = .null, bundle: std.json.Value = .null, type: []const u8, token: ?u64 = null, expected_revision: std.json.Value = .null, settings: ?codex_wire.Settings = null, change: ?Change = null };
-        const View = struct { codex_settings: ?codex_wire.Settings = null, codex_draft: ?codex_wire.Endpoint = null, codex_enabled: bool = false, pending: bool, editing: bool, confirm_discard: bool, message: ?[]const u8 = null, confirmation: []const u8, save_label: []const u8, discard_label: []const u8, keep_label: []const u8 };
+        const View = struct { codex_settings: ?codex_wire.Settings = null, codex_draft: ?codex_wire.Endpoint = null, pending: bool, editing: bool, confirm_discard: bool, message: ?[]const u8 = null, confirmation: []const u8, save_label: []const u8, discard_label: []const u8, keep_label: []const u8 };
         const Output = struct { view: ?View = null, effects: []const Effect = &.{}, @"error": ?[]const u8 = null };
         const parsed = std.json.parseFromSlice(Output, self.allocator, std.mem.span(response), .{ .ignore_unknown_fields = true }) catch return;
         defer parsed.deinit();
@@ -615,7 +615,7 @@ pub const Panel = struct {
         // Snapshot arrival never mutates native input widgets or their IME selection.
         self.editing = view.editing;
         self.pending=view.pending;
-        if(self.codex_view)|page|page.update(view.codex_settings,view.codex_draft,view.codex_enabled,view.pending or self.codex_request!=null);
+        if(self.codex_view)|page|page.update(view.codex_settings,view.codex_draft,view.pending or self.codex_request!=null);
         if(self.codex_page)self.renderMode();
         if (view.message) |message| { if (self.status) |status| self.text(status, message); }
         if (view.confirm_discard and self.leave_dialog == null and self.content != null) {

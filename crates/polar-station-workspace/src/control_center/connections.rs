@@ -58,7 +58,6 @@ pub enum ConnectionsInput {
     },
     DraftCodex {
         endpoint: CodexEndpointSettingsV1,
-        enabled: bool,
     },
     Edit {
         change: ConnectionChangeV1,
@@ -108,7 +107,6 @@ pub struct ConnectionsView {
     pub facts: ConnectionsProjectionV1,
     pub codex_settings: Option<CodexControlSettingsV1>,
     pub codex_draft: Option<CodexEndpointSettingsV1>,
-    pub codex_enabled: bool,
     pub save_label: String,
     pub discard_label: String,
     pub keep_label: String,
@@ -133,7 +131,6 @@ struct CodexDraft {
     endpoint: CodexEndpointSettingsV1,
     existing: bool,
     remove: bool,
-    enabled: bool,
     owner: String,
 }
 impl CodexDraft {
@@ -175,7 +172,6 @@ impl CodexDraft {
         } else {
             candidate.endpoints.push(endpoint);
         }
-        candidate.enabled = self.enabled;
         candidate
             .validate()
             .map_err(|e| format!("Settings were not saved: {e}. Your draft is retained."))?;
@@ -205,7 +201,7 @@ impl ConnectionsEngine {
     }
     fn dirty(&self) -> bool {
         if let Some(d) = &self.codex_draft {
-            return !d.existing || d.endpoint != d.original || d.enabled != d.baseline.enabled;
+            return !d.existing || d.endpoint != d.original;
         }
         self.draft
             .as_ref()
@@ -230,10 +226,6 @@ impl ConnectionsEngine {
                 .as_ref()
                 .filter(|d| !d.remove)
                 .map(|d| d.endpoint.clone()),
-            codex_enabled: self.codex_draft.as_ref().map_or_else(
-                || self.codex_settings.as_ref().is_some_and(|s| s.enabled),
-                |d| d.enabled,
-            ),
             save_label: if self.pending.is_some() {
                 "Saving…"
             } else {
@@ -364,18 +356,16 @@ impl ConnectionsEngine {
                     endpoint,
                     existing: id.is_some(),
                     remove: false,
-                    enabled: settings.enabled,
                     owner: self.codex_owner.clone(),
                 });
                 self.message = None;
             }
-            ConnectionsInput::DraftCodex { endpoint, enabled } => {
+            ConnectionsInput::DraftCodex { endpoint } => {
                 if let Some(draft) = &mut self.codex_draft {
                     if endpoint.execution_target_id == draft.original.execution_target_id
                         && (!draft.existing || endpoint.id == draft.original.id)
                     {
                         draft.endpoint = endpoint;
-                        draft.enabled = enabled;
                     }
                 }
             }

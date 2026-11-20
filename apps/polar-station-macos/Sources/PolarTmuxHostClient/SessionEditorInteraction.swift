@@ -4,6 +4,23 @@ import CPolarStationDesktopClient
 
 /// Only JSON/C ABI delivery and native task bindings. All editor decisions live in Rust.
 @MainActor public final class SessionEditorInteraction: ObservableObject {
+    public struct DirectoryBrowser: Decodable {
+        public let listing: SessionDirectoryV1?
+        public let loading: Bool
+        public let error: String?
+    }
+    public struct Candidate: Codable, Equatable, Identifiable {
+        public let identity: SessionRowProjectionV1.Identity
+        public let display_name: String
+        public let kind: SessionRowProjectionV1.SessionKind
+        public var id: SessionRowProjectionV1.Identity { identity }
+
+        public init(_ row: SessionRowProjectionV1) {
+            identity = row.identity
+            display_name = row.displayName
+            kind = row.sessionKind ?? .terminal
+        }
+    }
     public struct Draft: Codable, Equatable {
         public var bind_only = false
         public var target = ""
@@ -34,6 +51,8 @@ import CPolarStationDesktopClient
         public let can_start_local_server:Bool
         public let server_starting:Bool
         public let server_start_label:String
+        public let can_check_endpoint: Bool
+        public let endpoint_checking: Bool
         public let history: [CodexHistoryThreadV1]
         public let selected: [String]
         public let manual: Bool
@@ -41,6 +60,9 @@ import CPolarStationDesktopClient
         public let history_loading: Bool
         public let detail_loading: Bool
         public let directory_loading: Bool
+        public let directory_browser: DirectoryBrowser?
+        public let known_sessions: [Candidate]
+        public let known_selection: SessionRowProjectionV1.Identity?
         public let history_error: String?
         public let detail_error: String?
         public let message: String?
@@ -61,6 +83,7 @@ import CPolarStationDesktopClient
         let thread_id: String?
         let owner_host_id: String?
         let title: String?
+        let identity: SessionRowProjectionV1.Identity?
     }
     // This is only a decode adapter for the existing typed Host contract.
     struct Request: Decodable {
@@ -69,6 +92,7 @@ import CPolarStationDesktopClient
         let endpoint_id: String?
         let thread_id: String?
         let source_session_id: String?
+        let path: String?
         let owner_host_id: String?
         let tmux_session_id: String?
         let cursor: String?
@@ -86,10 +110,13 @@ import CPolarStationDesktopClient
             case "inspect_tools": .inspectTools(target:execution_target_id ?? "")
             case "prepare_tools": .prepareTools(target:execution_target_id ?? "",tmux:tmux ?? false,codex:codex ?? false,codexService:codex_service ?? false,claude:claude ?? false,delivery:delivery ?? .externalTerminal)
             case "set_creation_yolo": yolo.map { .setCreationYolo($0) }
+            case "check_endpoint": .checkEndpoint(target: execution_target_id ?? "", endpoint: endpoint_id ?? "")
+            case "ensure_local_codex": endpoint_id.map { .ensureLocalCodex(endpoint: $0) }
             case "history": .history(target: execution_target_id ?? "", endpoint: endpoint_id ?? "", cursor: cursor,
                 search: search_term, archived: archived ?? false, subagents: include_subagents ?? false)
             case "history_detail": .historyDetail(target: execution_target_id ?? "", endpoint: endpoint_id ?? "", thread: thread_id ?? "")
             case "launch_context": .launchContext(target: execution_target_id ?? "", sourceSession: source_session_id)
+            case "browse_directory": path.map { .browseDirectory(target: execution_target_id ?? "", path: $0, endpoint: endpoint_id) }
             case "preview_end": .previewEnd(.init(executionTargetID: execution_target_id ?? "", tmuxSessionID: tmux_session_id ?? ""))
             case "preview_end_agent": .previewEndAgent(target: execution_target_id ?? "", owner: owner_host_id ?? "", endpoint: endpoint_id ?? "", thread: thread_id ?? "")
             default: nil
@@ -105,6 +132,7 @@ import CPolarStationDesktopClient
     private var reads: [UInt64: Task<Void, Never>] = [:]
     private var reader: SessionEditorReader?
     public var pick: (@MainActor (String, String, String, String) -> Void)?
+    public var attach: (@MainActor (SessionRowProjectionV1.Identity, @escaping @MainActor (String?) -> Void) -> Void)?
     public var submit: (@MainActor (ControlCenterIntentOperationV1, @escaping @MainActor (String?, [String]) -> Void) -> Void)?
     @Published public private(set) var state: State?
     public init() {}
@@ -117,7 +145,6 @@ import CPolarStationDesktopClient
         dispatch(["type":"open_end", "request":object(request)])
     }
     public var toolSetup:ToolSetupNativePorts?
-    public var startCodex:CodexRequestHandler?
     public func endpoints(_ endpoints: [CodexEndpointSettingsV1]) { dispatch(["type":"endpoints", "endpoints":object(endpoints)]) }
     public func edit(_ change: (inout Draft) -> Void) {
         guard var draft = state?.draft else { return }; change(&draft)
@@ -128,6 +155,14 @@ import CPolarStationDesktopClient
     }
     public func activate(_ id:String) { dispatch(["type":"activate","id":id]) }
     public func manual(_ id: String) { dispatch(["type":"manual", "id":id]) }
+    public func browseDirectory(_ path: String) { dispatch(["type":"browse_directory", "path":path]) }
+    public func chooseDirectory(_ path: String) { dispatch(["type":"choose_directory", "path":path]) }
+    public func knownSessions(_ sessions: [Candidate]) {
+        dispatch(["type":"known_sessions", "sessions":object(sessions)])
+    }
+    public func chooseKnownSession(_ identity: SessionRowProjectionV1.Identity) {
+        dispatch(["type":"choose_known_session", "identity":object(identity)])
+    }
     public func action(_ type: String) { dispatch(["type":type]) }
     private func object<T: Encodable>(_ value: T) -> Any {
         (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? NSNull()
@@ -175,19 +210,6 @@ import CPolarStationDesktopClient
                     self?.dispatch(["type":"setup_exited","token":effect.token,"exit_code":code as Any? ?? NSNull()])
                 })
             case "focus_setup":if let id=effect.setup_id {toolSetup?.focus(id)}
-            case "start_local_server":
-                guard let endpoint=effect.endpoint_id,let owner=effect.owner_host_id else{continue}
-                let handler=startCodex
-                reads[effect.token]=Task{[weak self] in
-                    var error:String?
-                    do {
-                        guard let handler else{throw PolarTmuxLocalIPCError.connectionClosed}
-                        let response=try await handler(owner,.startLocalServer(endpoint:endpoint))
-                        if case .error(let code)=response.result{error=code}
-                    }catch let failure{error=failure.localizedDescription}
-                    self?.reads.removeValue(forKey:effect.token)
-                    self?.dispatch(["type":"server_started","token":effect.token,"error":error as Any? ?? NSNull()])
-                }
             case "cancel": reads.removeValue(forKey: effect.token)?.cancel()
             case "read", "save_preference":
                 guard let request = effect.request else { continue }
@@ -212,6 +234,13 @@ import CPolarStationDesktopClient
                 submit(operation) { [weak self] error, completed in
                     self?.dispatch(["type":"submitted", "token":effect.token, "error":error as Any? ?? NSNull(), "completed":completed])
                 }
+            case "attach":
+                guard let identity = effect.identity, let attach else {
+                    dispatch(["type":"submitted", "token":effect.token, "error":"The original Tab is unavailable.", "completed":[String]()]); continue
+                }
+                attach(identity) { [weak self] error in
+                    self?.dispatch(["type":"submitted", "token":effect.token, "error":error as Any? ?? NSNull(), "completed":[String]()])
+                }
             default: break
             }
         }
@@ -231,8 +260,10 @@ extension SessionEditorResultV1 {
         case .toolsPrepared(let setup):value=["type":"tools_prepared","setup":object(setup)]
         case .toolsLaunched(let target):value=["type":"tools_launched","execution_target_id":target]
         case .creationYolo(let yolo): value = ["type":"creation_yolo", "yolo":yolo]
+        case .endpointReady: value = ["type":"endpoint_ready"]
+        case .endpointLoginRequired: value = ["type":"endpoint_login_required"]
+        case .directory(let directory): value = ["type":"directory", "directory":object(directory)]
         case .endPreview(let preview): value = ["type":"end_preview", "preview":object(preview)]
-        default: break
         }
         return value
     }

@@ -776,7 +776,9 @@ impl SessionLifecycle {
                 record.map_or_else(|| session.id.clone(), ManagedSessionRecord::reference);
             facts.push(SessionFact {
                 identity: SessionKey::new(target_id.clone(), StableTmuxSessionId::new(&identity)?),
-                session_kind: SessionKind::from_terminal_name(&session.name).map_or(SessionKind::Terminal, |(kind, _)| kind),
+                session_kind: record.map(|record| SessionKind::from_restore_spec(&record.launch.process))
+                    .or_else(|| SessionKind::from_terminal_name(&session.name).map(|(kind, _)| kind))
+                    .unwrap_or_default(),
                 original_agent_id: SessionKind::from_terminal_name(&session.name).map(|(_, id)| id.to_owned()),
                 display_name: session.name.clone(),
                 target_label: label.to_owned(),

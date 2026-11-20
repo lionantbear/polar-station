@@ -7,6 +7,7 @@ use tokio::time::Instant;
 
 pub(super) const LIMIT: usize = 64;
 const TIMEOUT: Duration = Duration::from_secs(8);
+const CODEX_PREPARATION_TIMEOUT: Duration = Duration::from_secs(50);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFailure {
     pub request_id: String,
@@ -64,6 +65,11 @@ impl Requests {
             .as_str()
             .or_else(|| command["type"].as_str())
             .unwrap_or("");
+        let timeout = if verb == "session_editor" && command["request"]["type"] == "ensure_local_codex" {
+            CODEX_PREPARATION_TIMEOUT
+        } else {
+            TIMEOUT
+        };
         // Unknown commands are conservatively effectful, never safe to replay.
         let mutation = if verb == "session_editor" {
             !serde_json::from_value::<SessionEditorRequestV1>(command["request"].clone())
@@ -111,7 +117,7 @@ impl Requests {
                 api: v["api"].as_str().unwrap_or("tmux_v1").into(),
                 owner: v.get("owner_host_id").cloned(),
                 target: v.get("execution_target").cloned(),
-                deadline: now + TIMEOUT,
+                deadline: now + timeout,
                 writing: false,
                 detached: false,
                 mutation,

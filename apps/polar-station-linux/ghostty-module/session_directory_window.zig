@@ -1,203 +1,223 @@
-//! A native view of directory facts returned by the shared target owner.
+//! Native directory controls for the shared Session editor projection.
 const std = @import("std");
 const gtk = @import("gtk");
-const adw = @import("adw");
 const gobject = @import("gobject");
-const Application = @import("../class/application.zig").Application;
-const auxiliary = @import("auxiliary_window.zig");
-pub const Directory = struct {
-    execution_target_id: []const u8,
-    home: []const u8,
+
+pub const Listing = struct {
     path: []const u8,
+    home: []const u8,
     parent: ?[]const u8,
     directories: []const []const u8,
 };
-pub const Window = struct {
-    allocator: std.mem.Allocator,
-    native: *adw.Window,
-    embedded: bool = false,
-    embedded_root: ?*gtk.Widget = null,
-    cancel: *gtk.Button,
-    path: *gtk.Entry,
-    crumbs: *gtk.Box,
-    list: *gtk.ListBox,
-    status: *gtk.Label,
-    choose: *gtk.Button,
-    directory: ?std.json.Parsed(Directory) = null,
-    context: ?*anyopaque,
-    navigate: *const fn (?*anyopaque, []const u8) void,
-    selected: *const fn (?*anyopaque, []const u8) void,
-    const Row = struct { owner: *Window, path: []u8 };
 
-    pub fn create(allocator: std.mem.Allocator, app: *Application, parent: *gtk.Window, context: ?*anyopaque, navigate: *const fn (?*anyopaque, []const u8) void, selected: *const fn (?*anyopaque, []const u8) void) !*Window {
-        const self = try allocator.create(Window);
-        const native = auxiliary.create(app);
-        native.as(gtk.Window).setTitle("Choose Startup Directory");
-        native.as(gtk.Window).setTransientFor(parent);
-        native.as(gtk.Window).setDefaultSize(540, 420);
-        native.as(gtk.Window).setHideOnClose(1);
-        const box = gtk.Box.new(.vertical, 10);
-        box.as(gtk.Widget).setMarginTop(16);
-        box.as(gtk.Widget).setMarginBottom(16);
-        box.as(gtk.Widget).setMarginStart(16);
-        box.as(gtk.Widget).setMarginEnd(16);
-        const top = gtk.Box.new(.horizontal, 6);
-        const home = gtk.Button.newWithLabel("Home");
-        const up = gtk.Button.newWithLabel("Up");
-        const path = gtk.Entry.new();
-        path.as(gtk.Widget).setHexpand(1);
-        top.append(home.as(gtk.Widget));
-        top.append(up.as(gtk.Widget));
-        top.append(path.as(gtk.Widget));
-        const crumbs = gtk.Box.new(.horizontal, 4);
-        const crumb_scroll = gtk.ScrolledWindow.new();
-        crumb_scroll.setPolicy(.automatic, .never);
-        crumb_scroll.setChild(crumbs.as(gtk.Widget));
-        const list = gtk.ListBox.new();
-        list.setSelectionMode(.none);
-        const scroll = gtk.ScrolledWindow.new();
-        scroll.setChild(list.as(gtk.Widget));
-        scroll.as(gtk.Widget).setVexpand(1);
-        const status = gtk.Label.new("");
-        status.setWrap(1);
-        const actions = gtk.Box.new(.horizontal, 6);
-        actions.as(gtk.Widget).setHalign(.end);
-        const cancel = gtk.Button.newWithLabel("Cancel");
-        const choose = gtk.Button.newWithLabel("Choose This Directory");
-        choose.as(gtk.Widget).addCssClass("suggested-action");
-        actions.append(cancel.as(gtk.Widget));
-        actions.append(choose.as(gtk.Widget));
-        box.append(top.as(gtk.Widget));
-        box.append(crumb_scroll.as(gtk.Widget));
-        box.append(scroll.as(gtk.Widget));
-        box.append(status.as(gtk.Widget));
-        box.append(actions.as(gtk.Widget));
-        native.setContent(box.as(gtk.Widget));
-        self.* = .{ .allocator = allocator, .native = native, .path = path, .crumbs = crumbs, .list = list, .status = status, .choose = choose, .cancel = cancel, .context = context, .navigate = navigate, .selected = selected };
-        _ = gtk.Button.signals.clicked.connect(home, *Window, homeClicked, self, .{});
-        _ = gtk.Button.signals.clicked.connect(up, *Window, upClicked, self, .{});
-        _ = gtk.Button.signals.clicked.connect(cancel, *Window, cancelClicked, self, .{});
-        _ = gtk.Button.signals.clicked.connect(choose, *Window, chooseClicked, self, .{});
-        _ = gtk.Entry.signals.activate.connect(path, *Window, pathActivated, self, .{});
+pub const View = struct {
+    listing: ?Listing,
+    loading: bool,
+    @"error": ?[]const u8,
+};
+
+pub const Browser = struct {
+    const PathAction = struct {
+        allocator: std.mem.Allocator,
+        browser: *Browser,
+        path: []const u8,
+        choose: bool,
+    };
+    const Folder = struct {
+        name: *gtk.Button,
+        check: *gtk.Widget,
+    };
+
+    allocator: std.mem.Allocator,
+    root: *gtk.Box,
+    toolbar: *gtk.Box,
+    list: *gtk.Box,
+    scroll: *gtk.ScrolledWindow,
+    status: *gtk.Label,
+    retry_button: *gtk.Button,
+    folders: std.ArrayList(Folder) = .empty,
+    listing_path: ?[]const u8 = null,
+    context: *anyopaque,
+    navigate: *const fn (*anyopaque, []const u8) void,
+    choose: *const fn (*anyopaque, []const u8) void,
+    retry: *const fn (*anyopaque) void,
+
+    pub fn create(
+        allocator: std.mem.Allocator,
+        context: *anyopaque,
+        navigate: *const fn (*anyopaque, []const u8) void,
+        choose: *const fn (*anyopaque, []const u8) void,
+        retry: *const fn (*anyopaque) void,
+    ) !*Browser {
+        const self = try allocator.create(Browser);
+        self.* = .{
+            .allocator = allocator,
+            .root = gtk.Box.new(.vertical, 6),
+            .toolbar = gtk.Box.new(.horizontal, 6),
+            .list = gtk.Box.new(.vertical, 2),
+            .scroll = gtk.ScrolledWindow.new(),
+            .status = gtk.Label.new(""),
+            .retry_button = gtk.Button.newWithLabel("Retry"),
+            .context = context,
+            .navigate = navigate,
+            .choose = choose,
+            .retry = retry,
+        };
+        _ = self.root.as(gobject.Object).refSink();
+        self.root.as(gtk.Widget).setVisible(0);
+        self.status.setWrap(1);
+        self.status.setXalign(0);
+        self.retry_button.as(gtk.Widget).setHalign(.start);
+        self.scroll.setPolicy(.never, .automatic);
+        self.scroll.as(gtk.Widget).setSizeRequest(-1, 152);
+        self.scroll.setChild(self.list.as(gtk.Widget));
+        const toolbar_scroll = gtk.ScrolledWindow.new();
+        toolbar_scroll.setPolicy(.automatic, .never);
+        toolbar_scroll.setChild(self.toolbar.as(gtk.Widget));
+        self.root.append(toolbar_scroll.as(gtk.Widget));
+        self.root.append(self.scroll.as(gtk.Widget));
+        self.root.append(self.status.as(gtk.Widget));
+        self.root.append(self.retry_button.as(gtk.Widget));
+        _ = gtk.Button.signals.clicked.connect(self.retry_button, *Browser, retryClicked, self, .{});
         return self;
     }
-    pub fn embed(self: *Window, split: *gtk.Paned) void {
-        if (self.embedded) return;
-        const content = self.native.getContent() orelse return;
-        _ = content.as(gobject.Object).ref();
-        self.native.setContent(null);
-        split.setStartChild(content);
-        content.as(gobject.Object).unref();
-        self.embedded = true;
-        self.embedded_root = content;
-        content.as(gobject.Object).weakRef(embeddedFreed, self);
-        self.cancel.as(gtk.Widget).setVisible(0);
-    }
-    fn embeddedFreed(data: ?*anyopaque, _: *gobject.Object) callconv(.c) void {
-        const self: *Window = @ptrCast(@alignCast(data orelse return));
-        self.embedded_root = null;
-    }
-    pub fn deinit(self: *Window) void {
-        if (self.embedded_root) |root| if (root.getParent()) |parent| {
-            if (gobject.ext.cast(gtk.Paned, parent)) |split| split.setStartChild(null);
-        };
-        auxiliary.destroy(self.native);
-        if (self.directory) |directory| directory.deinit();
-        const allocator = self.allocator;
-        allocator.destroy(self);
-    }
-    pub fn loading(self: *Window) void {
-        while (self.list.as(gtk.Widget).getFirstChild()) |child| self.list.remove(child);
-        while (self.crumbs.as(gtk.Widget).getFirstChild()) |child| self.crumbs.remove(child);
-        if (self.directory) |old| old.deinit();
-        self.directory = null;
-        self.beginRead();
-        if (!self.embedded) self.native.as(gtk.Window).present();
-    }
-    pub fn beginRead(self: *Window) void {
-        self.status.setLabel("Reading the selected machine…");
-        self.choose.as(gtk.Widget).setSensitive(0);
-    }
-    pub fn failed(self: *Window, message: []const u8) void {
-        const text = self.allocator.dupeZ(u8, message) catch return;
-        defer self.allocator.free(text);
-        self.status.setLabel(text);
-    }
-    pub fn apply(self: *Window, directory: Directory) !void {
-        if (!self.embedded and self.native.as(gtk.Widget).getVisible() == 0) return;
-        const json = try std.json.Stringify.valueAlloc(self.allocator, directory, .{});
-        defer self.allocator.free(json);
-        const owned = try std.json.parseFromSlice(Directory, self.allocator, json, .{ .allocate = .alloc_always });
-        while (self.list.as(gtk.Widget).getFirstChild()) |child| self.list.remove(child);
-        if (self.directory) |old| old.deinit();
-        self.directory = owned;
-        const path = try self.allocator.dupeZ(u8, directory.path);
-        defer self.allocator.free(path);
-        self.path.as(gtk.Editable).setText(path);
-        for (owned.value.directories) |entry| {
-            const title = try self.allocator.dupeZ(u8, std.fs.path.basename(entry));
-            defer self.allocator.free(title);
-            const button = gtk.Button.newWithLabel(title);
-            button.as(gtk.Widget).addCssClass("flat");
-            const row = try self.allocator.create(Row);
-            row.* = .{ .owner = self, .path = try self.allocator.dupe(u8, entry) };
-            button.as(gobject.Object).weakRef(rowFreed, row);
-            _ = gtk.Button.signals.clicked.connect(button, *Row, rowClicked, row, .{});
-            self.list.append(button.as(gtk.Widget));
+
+    pub fn deinit(self: *Browser) void {
+        self.clear();
+        if (self.root.as(gtk.Widget).getParent()) |parent| {
+            if (gobject.ext.cast(gtk.Box, parent)) |box| box.remove(self.root.as(gtk.Widget));
         }
-        while (self.crumbs.as(gtk.Widget).getFirstChild()) |child| self.crumbs.remove(child);
-        try self.appendCrumb("/", "/");
-        var parts = std.mem.splitScalar(u8, directory.path, '/');
-        var prefix = try self.allocator.dupe(u8, "");
-        defer self.allocator.free(prefix);
+        self.root.as(gobject.Object).unref();
+        self.folders.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+
+    fn clear(self: *Browser) void {
+        if (self.listing_path) |path| self.allocator.free(path);
+        self.listing_path = null;
+        self.folders.clearRetainingCapacity();
+        while (self.list.as(gtk.Widget).getFirstChild()) |child| self.list.remove(child);
+        while (self.toolbar.as(gtk.Widget).getFirstChild()) |child| self.toolbar.remove(child);
+    }
+
+    pub fn render(self: *Browser, view: ?View, selected_path: []const u8) !void {
+        self.root.as(gtk.Widget).setVisible(@intFromBool(view != null));
+        const state = view orelse {
+            if (self.listing_path != null) self.clear();
+            return;
+        };
+        const status = if (state.loading) "Reading the selected machine…" else if (state.@"error") |message| message else if (state.listing != null and state.listing.?.directories.len == 0) "No subfolders" else "";
+        const status_z = try self.allocator.dupeZ(u8, status);
+        defer self.allocator.free(status_z);
+        self.status.setLabel(status_z);
+        self.status.as(gtk.Widget).setVisible(@intFromBool(status.len != 0));
+        self.retry_button.as(gtk.Widget).setVisible(@intFromBool(state.@"error" != null));
+        self.scroll.as(gtk.Widget).setVisible(@intFromBool(state.listing != null and state.listing.?.directories.len != 0));
+
+        const listing = state.listing orelse {
+            self.clear();
+            return;
+        };
+        if (self.listing_path == null or !std.mem.eql(u8, self.listing_path.?, listing.path)) {
+            self.clear();
+            errdefer self.clear();
+            try self.build(listing);
+            self.listing_path = try self.allocator.dupe(u8, listing.path);
+        }
+        for (self.folders.items, listing.directories) |folder, path| {
+            const chosen = std.mem.eql(u8, selected_path, path);
+            folder.check.setVisible(@intFromBool(chosen));
+            if (chosen) {
+                folder.name.as(gtk.Widget).removeCssClass("flat");
+                folder.name.as(gtk.Widget).addCssClass("suggested-action");
+            } else {
+                folder.name.as(gtk.Widget).removeCssClass("suggested-action");
+                folder.name.as(gtk.Widget).addCssClass("flat");
+            }
+        }
+    }
+
+    fn build(self: *Browser, listing: Listing) !void {
+        try self.appendNavigation("Home", listing.home);
+        try self.appendNavigation("Up", listing.parent);
+        try self.appendNavigation("/", "/");
+        var parts = std.mem.splitScalar(u8, listing.path, '/');
+        var prefix_length: usize = 0;
         while (parts.next()) |part| {
-            if (part.len == 0) continue;
-            const next = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ prefix, part });
-            self.allocator.free(prefix);
-            prefix = next;
-            try self.appendCrumb(prefix, part);
+            prefix_length += part.len;
+            if (part.len != 0) try self.appendNavigation(part, listing.path[0..prefix_length]);
+            prefix_length += 1;
         }
-        self.status.setLabel(if (directory.directories.len == 0) "No subfolders" else "");
-        self.choose.as(gtk.Widget).setSensitive(1);
+
+        try self.folders.ensureTotalCapacity(self.allocator, listing.directories.len);
+        for (listing.directories) |path| {
+            const name_z = try self.allocator.dupeZ(u8, std.fs.path.basename(path));
+            defer self.allocator.free(name_z);
+            const row = gtk.Box.new(.horizontal, 6);
+            self.list.append(row.as(gtk.Widget));
+            const name = gtk.Button.new();
+            name.as(gtk.Widget).setHexpand(1);
+            const label = gtk.Label.new(name_z);
+            label.setXalign(0);
+            label.as(gtk.Widget).setHexpand(1);
+            const check = gtk.Image.newFromIconName("object-select-symbolic").as(gtk.Widget);
+            const content = gtk.Box.new(.horizontal, 6);
+            content.append(gtk.Image.newFromIconName("folder-symbolic").as(gtk.Widget));
+            content.append(label.as(gtk.Widget));
+            content.append(check);
+            name.setChild(content.as(gtk.Widget));
+            row.append(name.as(gtk.Widget));
+            try self.bind(name, path, true);
+
+            const enter = gtk.Button.newFromIconName("go-next-symbolic");
+            enter.as(gtk.Widget).setTooltipText("Browse subfolders");
+            row.append(enter.as(gtk.Widget));
+            try self.bind(enter, path, false);
+            self.folders.appendAssumeCapacity(.{ .name = name, .check = check });
+        }
     }
-    fn appendCrumb(self: *Window, path: []const u8, label: []const u8) !void {
-        const text = try self.allocator.dupeZ(u8, label);
-        defer self.allocator.free(text);
-        const button = gtk.Button.newWithLabel(text);
-        button.as(gtk.Widget).addCssClass("flat");
-        const row = try self.allocator.create(Row);
-        row.* = .{ .owner = self, .path = try self.allocator.dupe(u8, path) };
-        button.as(gobject.Object).weakRef(rowFreed, row);
-        _ = gtk.Button.signals.clicked.connect(button, *Row, rowClicked, row, .{});
-        self.crumbs.append(button.as(gtk.Widget));
+
+    fn appendNavigation(self: *Browser, label: []const u8, path: ?[]const u8) !void {
+        const title = try self.allocator.dupeZ(u8, label);
+        defer self.allocator.free(title);
+        const button = gtk.Button.newWithLabel(title);
+        self.toolbar.append(button.as(gtk.Widget));
+        if (path) |value| {
+            try self.bind(button, value, false);
+        } else {
+            button.as(gtk.Widget).setSensitive(0);
+        }
     }
-    fn rowFreed(data: ?*anyopaque, _: *gobject.Object) callconv(.c) void {
-        const row: *Row = @ptrCast(@alignCast(data orelse return));
-        const allocator = row.owner.allocator;
-        allocator.free(row.path);
-        allocator.destroy(row);
-    }
-    fn rowClicked(_: *gtk.Button, row: *Row) callconv(.c) void {
-        row.owner.navigate(row.owner.context, row.path);
-    }
-    fn homeClicked(_: *gtk.Button, self: *Window) callconv(.c) void {
-        if (self.directory) |data| self.navigate(self.context, data.value.home);
-    }
-    fn upClicked(_: *gtk.Button, self: *Window) callconv(.c) void {
-        if (self.directory) |data| if (data.value.parent) |path| {
-            self.navigate(self.context, path);
+
+    fn bind(self: *Browser, button: *gtk.Button, path: []const u8, choose: bool) !void {
+        const action = try self.allocator.create(PathAction);
+        errdefer self.allocator.destroy(action);
+        action.* = .{
+            .allocator = self.allocator,
+            .browser = self,
+            .path = try self.allocator.dupe(u8, path),
+            .choose = choose,
         };
+        button.as(gobject.Object).weakRef(freeAction, action);
+        _ = gtk.Button.signals.clicked.connect(button, *PathAction, pathClicked, action, .{});
     }
-    fn pathActivated(entry: *gtk.Entry, self: *Window) callconv(.c) void {
-        self.navigate(self.context, std.mem.span(entry.as(gtk.Editable).getText()));
+
+    fn freeAction(data: ?*anyopaque, _: *gobject.Object) callconv(.c) void {
+        const action: *PathAction = @ptrCast(@alignCast(data orelse return));
+        action.allocator.free(action.path);
+        action.allocator.destroy(action);
     }
-    fn chooseClicked(_: *gtk.Button, self: *Window) callconv(.c) void {
-        const path = if (self.directory) |data| data.value.path else return;
-        // Close first; selecting never recreates a directory or submits creation.
-        self.native.as(gtk.Widget).setVisible(0);
-        self.selected(self.context, path);
+
+    fn pathClicked(_: *gtk.Button, action: *PathAction) callconv(.c) void {
+        const browser = action.browser;
+        if (action.choose) {
+            browser.choose(browser.context, action.path);
+        } else {
+            browser.navigate(browser.context, action.path);
+        }
     }
-    fn cancelClicked(_: *gtk.Button, self: *Window) callconv(.c) void {
-        self.native.as(gtk.Widget).setVisible(0);
+
+    fn retryClicked(_: *gtk.Button, self: *Browser) callconv(.c) void {
+        self.retry(self.context);
     }
 };

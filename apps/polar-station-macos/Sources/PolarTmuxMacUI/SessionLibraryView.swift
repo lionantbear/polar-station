@@ -15,6 +15,10 @@ public struct SessionLibraryView: View {
     @State private var batchTabID: String?
     @State private var sessionSearch = ""
     @State private var sessionFilter = "all"
+    @State private var hostFilter = ""
+    @State private var projectFilter = ""
+    @State private var groupMode = "By Host"
+    @State private var sortMode = "Default order"
     @State private var collapsedGroups: Set<String> = []
     public let prepareEditor: SessionEditorPrepare?
     public let creationRecovery: AgentSessionResumeV1?
@@ -90,7 +94,11 @@ public struct SessionLibraryView: View {
     }
 
     public var body: some View {
-        let catalog = AgentCatalogIndex(agents: agentSessions, groups: groups, layout: nativeLayoutView, query: sessionSearch, filter: sessionFilter)
+        let scopedAgents = agentSessions.filter { agent in
+            (hostFilter.isEmpty || agent.execution_target_id == hostFilter)
+                && (projectFilter.isEmpty || agent.metadata?.cwd == projectFilter)
+        }
+        let catalog = AgentCatalogIndex(agents: scopedAgents, groups: groups, layout: nativeLayoutView, query: sessionSearch, filter: sessionFilter)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(projection.title)
@@ -145,16 +153,57 @@ public struct SessionLibraryView: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
 
-            TextField("Search sessions", text: $sessionSearch).padding(.horizontal, 10)
-            Picker("Type", selection: $sessionFilter) {
-                Text("All types").tag("all"); Text("Codex").tag("codex")
-                Text("Claude").tag("claude"); Text("Terminal").tag("terminal")
+            HStack {
+                TextField("Search sessions", text: $sessionSearch)
+                Menu("Filter") {
+                    Picker("Type", selection: $sessionFilter) {
+                        Text("All types").tag("all"); Text("Codex").tag("codex")
+                        Text("Claude").tag("claude"); Text("Terminal").tag("terminal")
+                    }
+                    Picker("Host", selection: $hostFilter) {
+                        Text("All Hosts").tag("")
+                        ForEach(groups) { Text($0.title).tag($0.id) }
+                    }
+                    Picker("Project", selection: $projectFilter) {
+                        Text("All projects").tag("")
+                        ForEach(projectPaths, id: \.self) { project in
+                            Text(URL(fileURLWithPath: project).lastPathComponent).tag(project)
+                        }
+                    }
+                    Button("Clear filters") {
+                        sessionFilter = "all"
+                        hostFilter = ""
+                        projectFilter = ""
+                    }
+                }.fixedSize()
+            }.padding(.horizontal, 10)
+            HStack {
+                Picker("Group", selection: $groupMode) {
+                    ForEach(["By Host", "By Tab", "No grouping"], id: \.self) { Text($0) }
+                }.labelsHidden()
+                Picker("Sort", selection: $sortMode) {
+                    ForEach(["Default order", "Name A–Z", "Name Z–A", "Recent activity"], id: \.self) { Text($0) }
+                }.labelsHidden()
             }.padding(10)
             Divider()
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(groups) { group in
+                    if groupMode == "By Tab", let layout = nativeLayoutView {
+                        ForEach(Array(layout.tabs.enumerated()), id: \.element.tabID) { index, tab in
+                            HStack {
+                                Text("\(index + 1) \(tab.title)").font(.caption.bold())
+                                Spacer()
+                                if tab.tabID == layout.selectedTabID { Text("Current").font(.caption) }
+                            }
+                            listedSessions(catalog, tabNumber: index + 1)
+                        }
+                        Text("Other sessions").font(.caption.bold())
+                        listedSessions(catalog, tabNumber: 0)
+                    } else if groupMode == "No grouping" {
+                        listedSessions(catalog, tabNumber: nil)
+                    } else {
+                    ForEach(groups.filter { hostFilter.isEmpty || $0.id == hostFilter }) { group in
                         let hostKey = "host:" + group.id
                         let hostExpanded = !sessionSearch.isEmpty || !expandedCatalogGroups.contains(hostKey)
                         Button {
@@ -171,13 +220,14 @@ public struct SessionLibraryView: View {
                                 } label: {
                                     HStack { Image(systemName: expanded ? "chevron.down" : "chevron.right"); Text(catalogGroupTitle(key)).lineLimit(1); Spacer(); Text("\(catalog.counts[key, default: 0])") }.font(.caption)
                                 }.buttonStyle(.plain)
-                                if expanded { ForEach(roots) { agent in agentTree(agent, catalog: catalog, visited: []).disabled(readOnly) } }
+                                if expanded { ForEach(ordered(roots, title: \.display_name, time: { $0.metadata?.updated_at })) { agent in agentTree(agent, catalog: catalog, visited: []).disabled(readOnly) } }
                             }
-                            ForEach(projection.rows.filter { row in
-                                row.identity.executionTargetID == group.id && !catalog.terminals.contains(row.identity) && matches([row.displayName, row.detailLabel, row.targetLabel].compactMap { $0 }.joined(separator: " "), kind: row.sessionKind?.rawValue ?? "terminal")
-                            }) { row in sessionRow(row).disabled(readOnly) }
+                            ForEach(ordered(projection.rows.filter { row in
+                                projectFilter.isEmpty && row.identity.executionTargetID == group.id && !catalog.terminals.contains(row.identity) && matches([row.displayName, row.detailLabel, row.targetLabel].compactMap { $0 }.joined(separator: " "), kind: row.sessionKind?.rawValue ?? "terminal")
+                            }, title: \.displayName)) { row in sessionRow(row).disabled(readOnly) }
                             if let message = group.message, group.state != "empty" || !catalog.roots.values.contains(where: { $0.first?.execution_target_id == group.id }) { Text(message).font(.caption).foregroundStyle(.secondary) }
                         }
+                    }
                     }
                     if let codexError { Text(codexError).font(.caption).foregroundStyle(.red) }
                 }
@@ -225,6 +275,47 @@ public struct SessionLibraryView: View {
             if let message = pendingReplacement?.replacementAction?.confirmation?.message { Text(message) }
         }
         .background(SessionEndWindowHost(draft: pendingKill, close: { pendingKill = nil }).frame(width: 0, height: 0))
+    }
+
+    private var projectPaths: [String] {
+        Set(agentSessions.compactMap { $0.metadata?.cwd }).sorted()
+    }
+
+    private func ordered<Row>(_ rows: [Row], title: (Row) -> String, time: (Row) -> Int64? = { _ in nil }) -> [Row] {
+        switch sortMode {
+        case "Name A–Z": rows.sorted { title($0).localizedStandardCompare(title($1)) == .orderedAscending }
+        case "Name Z–A": rows.sorted { title($0).localizedStandardCompare(title($1)) == .orderedDescending }
+        case "Recent activity": rows.sorted { (time($0) ?? Int64.min) > (time($1) ?? Int64.min) }
+        default: rows
+        }
+    }
+
+    @ViewBuilder
+    private func listedSessions(_ catalog: AgentCatalogIndex, tabNumber: Int?) -> some View {
+        let agents = ordered(agentSessions.filter {
+            catalog.visible.contains($0.id) && isInGroup($0.terminals ?? [], number: tabNumber)
+        }, title: \.display_name, time: { $0.metadata?.updated_at })
+        let rows = ordered(projection.rows.filter {
+            projectFilter.isEmpty && (hostFilter.isEmpty || $0.identity.executionTargetID == hostFilter) &&
+                !catalog.terminals.contains($0.identity) &&
+                matches([$0.displayName, $0.detailLabel, $0.targetLabel].compactMap { $0 }.joined(separator: " "),
+                        kind: $0.sessionKind?.rawValue ?? "terminal") &&
+                isInGroup([$0.identity], number: tabNumber)
+        }, title: \.displayName)
+        ForEach(agents) { agent in
+            agentTree(agent, catalog: catalog, visited: [], showLocations: tabNumber == nil, includeChildren: false)
+                .disabled(readOnly)
+        }
+        ForEach(rows) { row in sessionRow(row, showLocations: tabNumber == nil).disabled(readOnly) }
+        if tabNumber == nil && agents.isEmpty && rows.isEmpty {
+            Text("No matching Sessions").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func isInGroup(_ identities: [SessionRowProjectionV1.Identity], number: Int?) -> Bool {
+        guard let number else { return true }
+        let numbers = nativeLayoutView?.sessionTabNumbers(identities) ?? []
+        return number == 0 ? numbers.isEmpty : numbers.contains(number)
     }
 
     @ViewBuilder
@@ -312,7 +403,7 @@ public struct SessionLibraryView: View {
     }
 
     private func sessionRow(
-        _ row: SessionRowProjectionV1
+        _ row: SessionRowProjectionV1, showLocations: Bool = true
     ) -> some View {
         let presentation = SessionAssignmentPresentation.classify(
             executionTargetID: row.identity.executionTargetID,
@@ -325,6 +416,7 @@ public struct SessionLibraryView: View {
         )
         return HStack(spacing: 6) {
             Image(systemName: row.sessionKind?.rawValue == "codex_plane" ? "bubble.left.and.text.bubble.right" : row.sessionKind?.rawValue == "claude_plane" ? "sparkles" : "terminal")
+            if showLocations { SessionLocationBadges(numbers: nativeLayoutView?.sessionTabNumbers([row.identity]) ?? []) }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(row.displayName)
@@ -465,9 +557,12 @@ public struct SessionLibraryView: View {
         return Int.max
     }
 
-    private func agentTree(_ agent: AgentSessionCatalogRowV1, catalog: AgentCatalogIndex, visited: Set<String>) -> AnyView {
+    private func agentTree(
+        _ agent: AgentSessionCatalogRowV1, catalog: AgentCatalogIndex, visited: Set<String>,
+        showLocations: Bool = true, includeChildren: Bool = true
+    ) -> AnyView {
         guard !visited.contains(agent.id) else { return AnyView(EmptyView()) }
-        let children = (catalog.children[agent.id] ?? []).filter { catalog.visible.contains($0.id) && !visited.contains($0.id) }
+        let children = includeChildren ? (catalog.children[agent.id] ?? []).filter { catalog.visible.contains($0.id) && !visited.contains($0.id) } : []
         let expanded = !sessionSearch.isEmpty || (expandedAgents.contains(agent.id) != children.contains { catalog.ranks[$0.id, default: Int.max] != Int.max })
         return AnyView(VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
@@ -486,6 +581,7 @@ public struct SessionLibraryView: View {
                         HStack {
                             if let view = nativeLayoutView, let tab = view.tab(view.selectedTabID), tab.panes.contains(where: { pane in (agent.terminals ?? []).contains { $0.executionTargetID == pane.executionTargetID && $0.tmuxSessionID == pane.tmuxSessionID } }) { Image(systemName: "checkmark") }
                             if selecting, let identity = agent.terminals?.first { Image(systemName: selectedSessions.contains(identity) ? "checkmark.square.fill" : "square") }
+                            if showLocations { SessionLocationBadges(numbers: nativeLayoutView?.sessionTabNumbers(agent.terminals ?? []) ?? []) }
                             Text(agent.display_name).lineLimit(1); Spacer(minLength: 0); if !children.isEmpty { Text("\(children.count)").font(.caption) } }
                         HStack(spacing: 4) {
                             Text("\(agent.metadata?.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Unknown project") · \(agent.status)").lineLimit(1)
@@ -532,7 +628,9 @@ public struct SessionLibraryView: View {
     }
 
     private func matches(_ name: String, kind: String) -> Bool {
-        (sessionFilter == "all" || sessionFilter == kind || kind == sessionFilter + "_plane") && (sessionSearch.isEmpty || name.localizedCaseInsensitiveContains(sessionSearch))
+        (sessionFilter == "all" || sessionFilter == kind || kind == sessionFilter + "_plane"
+            || (sessionFilter == "terminal" && kind == "command"))
+            && (sessionSearch.isEmpty || name.localizedCaseInsensitiveContains(sessionSearch))
     }
 
     private func openAgent(_ agent: AgentSessionCatalogRowV1) {
@@ -649,6 +747,13 @@ public struct SessionShortcutEditorHost: View {
         nonmutating set { shortcuts.sessionEditor = newValue }
     }
     @State private var editorSubmit: SessionCreationSubmit?
+    @State private var attachTarget: AttachTarget?
+
+    private struct AttachTarget {
+        let requestID: UUID
+        let workspaceID: String
+        let tabID: String
+    }
 
     public init(shortcuts: ApplicationShortcutCommandState,
                 projection: ControlCenterProjectionV1, layout: NativeWorkspaceLayoutView?,
@@ -691,6 +796,30 @@ public struct SessionShortcutEditorHost: View {
                         guard let pane=request.bindPane, let view=request.bindView else { return }
                         shortcuts.bindCodexSelection?(pane,view,owner,endpoint,thread,title);editor=nil
                     },
+                    knownSessions: projection.sessions.rows.filter { $0.transportStatus == .online }
+                        .map(SessionEditorInteraction.Candidate.init),
+                    layout: layout, agents: projection.agentSessions,
+                    attach: { identity, completion in
+                        guard let target = attachTarget, target.requestID == request.id,
+                              let layout, layout.workspaceID == target.workspaceID,
+                              layout.tab(target.tabID) != nil else {
+                            completion("The original Tab is unavailable.")
+                            return
+                        }
+                        if layout.tabs.contains(where: { tab in
+                            tab.tabID != target.tabID && tab.panes.contains {
+                                $0.executionTargetID == identity.executionTargetID && $0.tmuxSessionID == identity.tmuxSessionID
+                            }
+                        }) {
+                            completion("This Session already has a Pane in another Tab.")
+                            return
+                        }
+                        submit(.init(controlRevision: projection.controlRevision,
+                            operation: .addSessionAssignments(tabID: target.tabID, sessions: [identity]))) { error in
+                            completion(error)
+                            if error == nil { editor = nil }
+                        }
+                    },
                     cancel: { editor = nil },
                     submit: { operation, completion in
                         let finish: @MainActor (String?, [String]) -> Void = { error, completed in
@@ -701,7 +830,14 @@ public struct SessionShortcutEditorHost: View {
                         if let editorSubmit { editorSubmit(intent, finish) }
                         else { submit(intent) { finish($0, []) } }
                     }).environment(\.stationToolSetupPorts,toolSetup)
-                    .onAppear { if request.bindPane == nil { editorSubmit = prepare() } }
+                    .onAppear {
+                        if request.bindPane == nil {
+                            editorSubmit = prepare()
+                            attachTarget = layout.map {
+                                AttachTarget(requestID: request.id, workspaceID: $0.workspaceID, tabID: $0.selectedTabID)
+                            }
+                        }
+                    }
             })
     }
 
@@ -711,5 +847,35 @@ public struct SessionShortcutEditorHost: View {
         guard let pane = tab.panes.first(where: { $0.paneID == paneID }),
               let target = pane.executionTargetID, let session = pane.tmuxSessionID else { return nil }
         return .init(executionTargetID: target, tmuxSessionID: session)
+    }
+}
+
+extension NativeWorkspaceLayoutView {
+    func sessionTabNumbers(_ identities: [SessionRowProjectionV1.Identity]) -> [Int] {
+        let lookup = Set(identities)
+        guard !lookup.isEmpty else { return [] }
+        return tabs.enumerated().compactMap { index, tab in
+            tab.panes.contains { pane in
+                guard let execution = pane.executionTargetID, let session = pane.tmuxSessionID else { return false }
+                return lookup.contains(.init(executionTargetID: execution, tmuxSessionID: session))
+            } ? index + 1 : nil
+        }
+    }
+}
+
+struct SessionLocationBadges: View {
+    let numbers: [Int]
+
+    var body: some View {
+        if !numbers.isEmpty {
+            HStack(spacing: 3) {
+                ForEach(numbers, id: \.self) { number in
+                    Text("\(number)").font(.caption2.monospacedDigit())
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(StationTheme.shared.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 4))
+                        .accessibilityLabel("Open in Tab \(number)")
+                }
+            }
+        }
     }
 }

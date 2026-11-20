@@ -13,6 +13,8 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     case inspectTools(target:String)
     case prepareTools(target:String, tmux:Bool, codex:Bool, codexService:Bool, claude:Bool = false, delivery:ToolSetupDeliveryV1 = .externalTerminal)
     case setCreationYolo(Bool)
+    case checkEndpoint(target: String, endpoint: String)
+    case ensureLocalCodex(endpoint: String)
     case history(target: String, endpoint: String, cursor: String?, search: String?, archived: Bool, subagents: Bool)
     case historyDetail(target: String, endpoint: String, thread: String)
     case launchContext(target: String, sourceSession: String?)
@@ -39,6 +41,13 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
 
         case let .setCreationYolo(yolo):
             try c.encode("set_creation_yolo", forKey: .type); try c.encode(yolo, forKey: .yolo)
+        case let .checkEndpoint(target, endpoint):
+            try c.encode("check_endpoint", forKey: .type)
+            try c.encode(target, forKey: .target)
+            try c.encode(endpoint, forKey: .endpoint)
+        case let .ensureLocalCodex(endpoint):
+            try c.encode("ensure_local_codex", forKey: .type)
+            try c.encode(endpoint, forKey: .endpoint)
         case let .history(target, endpoint, cursor, search, archived, subagents):
             try c.encode("history", forKey: .type); try c.encode(target, forKey: .target); try c.encode(endpoint, forKey: .endpoint)
             try c.encodeIfPresent(cursor, forKey: .cursor); try c.encodeIfPresent(search, forKey: .search)
@@ -90,6 +99,7 @@ public struct SessionTargetToolsV1:Codable,Equatable,Sendable {
     public let codex_control_enabled:Bool
     public let claude:String?
     public var native_setup:Bool? = nil
+    public var default_local_codex_endpoint:String? = nil
 }
 public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
     case tools([SessionTargetToolsV1])
@@ -99,6 +109,8 @@ public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
     case toolsLaunched(String)
     case toolsPrepared(ToolSetupLaunchV1)
     case creationYolo(Bool)
+    case endpointReady
+    case endpointLoginRequired
     case directory(SessionDirectoryV1)
     case endPreview(SessionEndPreviewV1)
     enum CodingKeys: String, CodingKey { case type, directory, notice, preview, threads, detail, next_cursor, yolo, tools, codex_endpoints, execution_target_id, setup }
@@ -112,6 +124,8 @@ public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
         case "tools_prepared": self = try .toolsPrepared(c.decode(ToolSetupLaunchV1.self,forKey:.setup))
         case "tools_launched": self = try .toolsLaunched(c.decode(String.self,forKey:.execution_target_id))
         case "creation_yolo": self = try .creationYolo(c.decode(Bool.self, forKey: .yolo))
+        case "endpoint_ready": self = .endpointReady
+        case "endpoint_login_required": self = .endpointLoginRequired
         case "directory": self = try .directory(c.decode(SessionDirectoryV1.self, forKey: .directory))
         case "end_preview": self = try .endPreview(c.decode(SessionEndPreviewV1.self, forKey: .preview))
         default: throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "Unsupported Session editor result")

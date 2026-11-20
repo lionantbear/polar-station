@@ -90,6 +90,7 @@ impl SettingsRepository {
         expected_revision: u64,
         mut value: T,
     ) -> Result<T, UpdateError> {
+        value.normalize_legacy();
         value.validate()?;
         self.database
             .runtime()
@@ -193,6 +194,7 @@ impl SettingsRepository {
 trait ControlDocument:
     serde::Serialize + serde::de::DeserializeOwned + Default + Send + 'static
 {
+    fn normalize_legacy(&mut self) {}
     fn validate(&self) -> Result<(), ValidationError>;
     fn revision(&self) -> u64;
     fn set_revision(&mut self, revision: u64);
@@ -214,9 +216,16 @@ impl ControlDocument for polar_dictate::VoiceSettings {
     }
 }
 impl ControlDocument for crate::CodexControlSettingsV1 {
+    fn normalize_legacy(&mut self) {
+        if !self.enabled {
+            self.enabled = true;
+            self.telegram.enabled = false;
+            self.imessage_enabled = false;
+        }
+    }
+
     fn invalidates_codex_bindings(&self, previous: &Self) -> bool {
-        self.enabled != previous.enabled
-            || self.telegram != previous.telegram
+        self.telegram != previous.telegram
             || self.imessage_enabled != previous.imessage_enabled
             || self.imessage_sender != previous.imessage_sender
             || self.host_connections != previous.host_connections
@@ -257,10 +266,11 @@ fn load_control_document<T: ControlDocument>(
     connection: &Connection,
     document: HostDocument,
 ) -> Result<T, RepositoryError> {
-    let value: T = read_document(connection, document)?
+    let mut value: T = read_document(connection, document)?
         .map(|bytes| serde_json::from_slice(&bytes))
         .transpose()?
         .unwrap_or_default();
+    value.normalize_legacy();
     value.validate()?;
     Ok(value)
 }

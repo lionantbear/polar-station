@@ -3,8 +3,8 @@ use super::tool_preparation::{ToolPreparation, PreparationOutcome};
 use polar_station_settings::{CodexControlModeV1, CodexEndpointSettingsV1};
 use polar_station_protocol::{
     AgentProviderV1, AgentStartModeV1, CodexHistoryDetailV1, CodexHistoryThreadV1,
-    ControlCenterIntentV1, SessionEditorRequestV1, SessionEditorResultV1, SessionEndPreviewV1,
-    SessionIdentityV1,
+    ControlCenterIntentV1, SessionDirectoryV1, SessionEditorRequestV1, SessionEditorResultV1, SessionEndPreviewV1,
+    SessionIdentityV1, SessionKindV1,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -75,9 +75,15 @@ pub enum SessionEditorInput {
     ReturnedFromTools,
     SetupStarted { token:u64, error:Option<String> },
     SetupExited { token:u64, exit_code:Option<u32> },
-    StartLocalServer,
-    ServerStarted { token:u64,error:Option<String> },
+    AppServerAction,
+    CheckEndpoint,
     RetryDetail,
+    ToggleDirectoryBrowser,
+    BrowseDirectory { path: String },
+    ChooseDirectory { path: String },
+    RetryDirectoryBrowse,
+    KnownSessions { sessions: Vec<SessionEditorCandidate> },
+    ChooseKnownSession { identity: SessionIdentityV1 },
     Complete {
         token: u64,
         result: Option<SessionEditorResultV1>,
@@ -97,7 +103,6 @@ pub enum SessionEditorEffect {
     LaunchSetup {token:u64,setup:polar_station_protocol::ToolSetupLaunchV1},
     FocusSetup {token:u64,setup_id:String},
     SavePreference { token: u64, request: SessionEditorRequestV1 },
-    StartLocalServer { token:u64,owner_host_id:String,endpoint_id:String },
     Picked { token: u64, owner_host_id: String, endpoint_id: String, thread_id: String, title: String },
     Read {
         token: u64,
@@ -110,6 +115,13 @@ pub enum SessionEditorEffect {
         token: u64,
         operation: ControlCenterIntentV1,
     },
+    Attach { token: u64, identity: SessionIdentityV1 },
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionEditorCandidate {
+    pub identity: SessionIdentityV1,
+    pub display_name: String,
+    pub kind: SessionKindV1,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEditorView {
@@ -120,6 +132,8 @@ pub struct SessionEditorView {
     pub can_start_local_server:bool,
     pub server_starting:bool,
     pub server_start_label:String,
+    pub can_check_endpoint: bool,
+    pub endpoint_checking: bool,
     pub end_preview: Option<SessionEndPreviewV1>,
     pub end_loading: bool,
     pub end_completed: bool,
@@ -131,6 +145,9 @@ pub struct SessionEditorView {
     pub history_loading: bool,
     pub detail_loading: bool,
     pub directory_loading: bool,
+    pub directory_browser: Option<SessionDirectoryBrowserView>,
+    pub known_sessions: Vec<SessionEditorCandidate>,
+    pub known_selection: Option<SessionIdentityV1>,
     pub history_error: Option<String>,
     pub detail_error: Option<String>,
     pub message: Option<String>,
@@ -140,6 +157,20 @@ pub struct SessionEditorView {
     pub submit_label: String,
     pub local_cli_supported: bool,
 }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionDirectoryBrowserView {
+    pub listing: Option<SessionDirectoryV1>,
+    pub loading: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct DirectoryBrowser {
+    path: String,
+    token: Option<u64>,
+    view: SessionDirectoryBrowserView,
+}
+
 #[derive(Debug)]
 struct Read {
     token: u64,
@@ -170,6 +201,10 @@ pub struct SessionEditorEngine {
     history_read: Option<Read>,
     detail_read: Option<Read>,
     directory_read: Option<Read>,
+    directory_browser: Option<DirectoryBrowser>,
+    directory_edited: bool,
+    known_sessions: Vec<SessionEditorCandidate>,
+    known_selection: Option<SessionIdentityV1>,
     yolo_edited: bool,
     desired_yolo: Option<bool>,
     yolo_write: Option<(u64, bool)>,
@@ -179,7 +214,21 @@ pub struct SessionEditorEngine {
     next_token: u64,
     pending: Option<u64>,
     open: bool,
-    server_start:Option<(u64,String)>,}
+    endpoint_check: Option<Read>,
+    endpoint_message: Option<String>,
+    local_codex: LocalCodexPreparation,
+}
+
+#[derive(Debug, Default)]
+enum LocalCodexPreparation {
+    #[default]
+    Idle,
+    Pending(u64),
+    Ready,
+    NeedsLogin,
+    Failed(String),
+}
+
 impl SessionEditorEngine {
     fn token(&mut self) -> u64 {
         self.next_token = self
@@ -198,6 +247,45 @@ impl SessionEditorEngine {
         self.endpoints
             .iter()
             .find(|e| e.id == self.draft.endpoint && e.execution_target_id == self.draft.target)
+    }
+    fn uses_local_codex(&self) -> bool {
+        self.open && self.draft.target == "local" && self.draft.session_type == "codex"
+            && self.draft.rename.is_none() && self.end_target.is_none()
+    }
+    fn local_default(&self) -> Option<&str> {
+        let endpoint = self.endpoint()?;
+        if !self.uses_local_codex() || endpoint.control_mode != CodexControlModeV1::Local {
+            return None;
+        }
+        self.tools.as_ref()?.iter().find(|tool|
+            tool.execution_target_id == "local"
+                && tool.default_local_codex_endpoint.as_deref() == Some(endpoint.id.as_str())
+        ).map(|_| endpoint.id.as_str())
+    }
+    fn local_codex_waiting(&self) -> bool {
+        self.uses_local_codex()
+            && ((self.directory_read.is_some()
+                && self.endpoint().is_none_or(|endpoint| endpoint.control_mode == CodexControlModeV1::Local))
+                || (self.local_default().is_some() && !matches!(self.local_codex, LocalCodexPreparation::Ready)))
+    }
+    fn prepare_local_codex(&mut self) -> Vec<SessionEditorEffect> {
+        let Some(endpoint_id) = self.local_default().map(str::to_owned) else { return vec![]; };
+        if self.directory_read.is_some() || self.pending.is_some() || self.preparation.is_pending()
+            || !matches!(self.local_codex, LocalCodexPreparation::Idle) {
+            return vec![];
+        }
+        let token = self.token();
+        self.local_codex = LocalCodexPreparation::Pending(token);
+        vec![SessionEditorEffect::Read {
+            token,
+            request: SessionEditorRequestV1::EnsureLocalCodex { endpoint_id },
+        }]
+    }
+    fn reset_local_codex(&mut self) -> Option<SessionEditorEffect> {
+        match std::mem::take(&mut self.local_codex) {
+            LocalCodexPreparation::Pending(token) => Some(SessionEditorEffect::Cancel { token }),
+            _ => None,
+        }
     }
     fn local_cli_supported(&self) -> bool {
         self.endpoint()
@@ -253,6 +341,11 @@ impl SessionEditorEngine {
         use polar_station_protocol::SessionToolStateV1::{Missing,Unavailable};
         let codex=cli || matches!(self.draft.session_type.as_str(),"codex"|"codex_terminal");
         if codex && !cli && self.endpoint().is_some_and(|e|e.control_mode==CodexControlModeV1::RemoteHost){return None}
+        if self.uses_local_codex() && !cli
+            && !matches!(self.local_codex, LocalCodexPreparation::NeedsLogin)
+            && (facts.codex != Missing || matches!(self.local_codex, LocalCodexPreparation::Ready)) {
+            return None;
+        }
         let claude=self.draft.session_type=="claude";
         if claude && facts.claude.is_none(){return None}
         let tmux=cli || matches!(self.draft.session_type.as_str(),"shell"|"command"|"codex_terminal"|"claude");
@@ -264,6 +357,24 @@ impl SessionEditorEngine {
     fn operation(&self) -> Option<ControlCenterIntentV1> {
         if self.tools_blocked() { return None; }
         self.requested_operation()
+    }
+    fn known_candidate_kind(&self) -> Option<SessionKindV1> {
+        if !self.open || self.draft.mode != "resume" || self.draft.rename.is_some() || self.end_target.is_some() {
+            return None;
+        }
+        match self.draft.session_type.as_str() {
+            "shell" => Some(SessionKindV1::Terminal),
+            "command" => Some(SessionKindV1::Command),
+            "claude" => Some(SessionKindV1::ClaudePlane),
+            _ => None,
+        }
+    }
+    fn matching_known_sessions(&self) -> impl Iterator<Item = &SessionEditorCandidate> {
+        let kind = self.known_candidate_kind();
+        self.known_sessions.iter().filter(move |session| {
+            kind.as_ref() == Some(&session.kind)
+                && session.identity.execution_target_id == self.draft.target
+        })
     }
     fn requested_operation(&self) -> Option<ControlCenterIntentV1> {
         if self.draft.bind_only { return None; }
@@ -293,6 +404,9 @@ impl SessionEditorEngine {
             });
         }
         let d = &self.draft;
+        if d.mode == "resume" && matches!(d.session_type.as_str(), "shell" | "command") {
+            return None;
+        }
         let optional = |s: &str| (!s.trim().is_empty()).then(|| s.trim().to_owned());
         let op = if let Some(identity) = &d.rename {
             ControlCenterIntentV1::RenameSession {
@@ -376,29 +490,41 @@ impl SessionEditorEngine {
         op.validate().ok().map(|()| op)
     }
     pub fn view(&self) -> SessionEditorView {
-        let resume = matches!(self.draft.session_type.as_str(), "codex" | "claude")
-            && self.draft.mode == "resume";
+        let resume = self.draft.mode == "resume";
+        let known_sessions: Vec<_> = self.matching_known_sessions().cloned().collect();
+        let known_selection = self.known_selection.clone().filter(|identity| {
+            known_sessions.iter().any(|session| &session.identity == identity)
+        });
         let request=self.preparation_request();
         let prepare_label=match &request {
             Some(SessionEditorRequestV1::PrepareTools{execution_target_id,..}) if !self.tools.as_ref().is_some_and(|tools|tools.iter().any(|tool|tool.execution_target_id==*execution_target_id && tool.native_setup))=>Some("Update Host".into()),
             Some(SessionEditorRequestV1::PrepareTools{execution_target_id,codex,codex_service,claude,..})=>Some(
                 if *claude {"Install Claude"}
                 else if *codex && !codex_service {"Set up local CLI"}
-                else if *codex && self.tools.as_ref().and_then(|v|v.iter().find(|t|t.execution_target_id==*execution_target_id)).is_some_and(|t|!t.codex_control_enabled) {"Enable Codex"}
+                else if self.uses_local_codex() && matches!(self.local_codex, LocalCodexPreparation::NeedsLogin) {"Sign in to Codex"}
+                else if *codex && self.tools.as_ref().and_then(|v|v.iter().find(|t|t.execution_target_id==*execution_target_id)).is_some_and(|t|t.codex==polar_station_protocol::SessionToolStateV1::Missing) {"Install Codex"}
                 else if *codex {"Set up Codex"} else {"Install tmux"}.into()),
             _ if self.open && self.directory_read.is_none() && self.draft.session_type=="claude" && self.tools_blocked() && self.tools.as_ref().and_then(|v|v.iter().find(|t|t.execution_target_id==self.draft.target)).is_none_or(|t|t.claude.is_none())=>Some("Update Host".into()),
             _ if self.tools.is_some() && self.tools_blocked()=>Some("Check tools".into()),
             _=>None,
         };
-        let can_prepare=prepare_label.as_deref()!=Some("Update Host") && prepare_label.is_some() && (!self.preparation.is_pending() || self.preparation.focus().is_some()) && self.pending.is_none() && self.server_start.is_none() && self.directory_read.is_none();
+        let server_starting = matches!(self.local_codex, LocalCodexPreparation::Pending(_));
+        let can_prepare=prepare_label.as_deref()!=Some("Update Host") && prepare_label.is_some() && (!self.preparation.is_pending() || self.preparation.focus().is_some()) && self.pending.is_none() && !server_starting && self.directory_read.is_none();
+        let endpoint = self.endpoint().filter(|_| self.open && self.draft.session_type == "codex");
+        let is_default = self.local_default().is_some();
+        let endpoint_action_available = self.pending.is_none() && !server_starting
+            && self.endpoint_check.is_none() && !self.preparation.is_pending();
         SessionEditorView {
             context_preserves_form:self.context_preserves_form,
             prepare_label:if self.preparation.focus().is_some(){Some("Show setup Pane".into())}else if self.preparation.is_pending(){Some("Opening setup Pane…".into())}else{prepare_label.clone()},
             can_prepare,
             endpoints:self.endpoints.clone(),
-            can_start_local_server:self.open&&self.draft.session_type=="codex"&&self.endpoint().is_some_and(|e|e.control_mode==CodexControlModeV1::Local)&&self.server_start.is_none()&&self.pending.is_none(),
-            server_starting:self.server_start.is_some(),
-            server_start_label:(if self.server_start.is_some(){"Starting Codex…"}else{"Start local Codex app server"}).into(),
+            can_start_local_server: is_default && endpoint_action_available
+                && matches!(self.local_codex, LocalCodexPreparation::Failed(_)) && request.is_none(),
+            server_starting,
+            server_start_label:(if server_starting {"Connecting to local Codex…"} else {"Retry Codex connection"}).into(),
+            can_check_endpoint: endpoint.is_some() && !is_default && endpoint_action_available,
+            endpoint_checking: self.endpoint_check.is_some(),
             end_preview: self.end_preview.clone(),
             end_loading: self.end_read.is_some(),
             end_completed: self.end_completed,
@@ -407,22 +533,35 @@ impl SessionEditorEngine {
             selected: self.selected.clone(),
             manual: self.manual,
             detail: self.detail.clone(),
-            history_loading: self.history_read.is_some(),
+            history_loading: self.history_read.is_some() || (self.browsing() && server_starting),
             detail_loading: self.detail_read.is_some(),
             directory_loading: self.directory_read.is_some(),
+            directory_browser: self.directory_browser.as_ref().map(|browser| browser.view.clone()),
+            known_sessions,
+            known_selection: known_selection.clone(),
             history_error: self.history_error.clone(),
             detail_error: self.detail_error.clone(),
-            message: self.yolo_save_error.clone().or_else(|| self.message.clone()).or_else(||(prepare_label.as_deref()==Some("Update Host")).then(||"This Host cannot prepare the required tools in an interactive Shell Pane. Update the Host to continue.".into())).or_else(||(self.directory_read.is_none() && self.tools_blocked()).then(||"Required tools are unavailable on the execution machine. Prepare tools or check its connection.".into())),
+            message: self.yolo_save_error.clone()
+                .or_else(|| match &self.local_codex {
+                    LocalCodexPreparation::Pending(_) => Some("Connecting to local Codex…".into()),
+                    LocalCodexPreparation::Failed(error) if !self.preparation.is_pending() => Some(error.clone()),
+                    LocalCodexPreparation::NeedsLogin if !self.preparation.is_pending() => Some("Sign in to Codex to continue.".into()),
+                    _ => None,
+                })
+                .or_else(|| self.message.clone())
+                .or_else(|| self.endpoint_message.clone())
+                .or_else(||(prepare_label.as_deref()==Some("Update Host")).then(||"This Host cannot prepare the required tools in an interactive Shell Pane. Update the Host to continue.".into()))
+                .or_else(||(self.directory_read.is_none() && self.tools_blocked()).then(||"Required tools are unavailable on the execution machine. Prepare tools or check its connection.".into())),
             can_more: self.browsing()
                 && self.cursor.is_some()
                 && self.history_read.is_none()
                 && self.history_error.is_none(),
             can_submit: self.open
-                && self.server_start.is_none()
+                && !self.local_codex_waiting()
                 && !self.preparation.is_pending()
                 && self.pending.is_none()
                 && (resume || self.directory_read.is_none())
-                && (self.operation().is_some() || self.picked().is_some()),
+                && (known_selection.is_some() || self.operation().is_some() || self.picked().is_some()),
             pending: self.pending.is_some(),
             submit_label: if self.end_target.is_some() {
                 self.end_preview
@@ -456,7 +595,7 @@ impl SessionEditorEngine {
         self.detail_error = None;
     }
     fn history_request(&mut self, more: bool) -> Vec<SessionEditorEffect> {
-        if !self.browsing() || self.history_read.is_some() {
+        if !self.browsing() || self.history_read.is_some() || self.local_codex_waiting() {
             return vec![];
         }
         if self.endpoint().is_none() {
@@ -485,6 +624,7 @@ impl SessionEditorEngine {
     }
     fn detail_request(&mut self) -> Vec<SessionEditorEffect> {
         if !self.browsing()
+            || self.local_codex_waiting()
             || self.draft.original_id.is_empty()
             || self.endpoint().is_none()
             || self.detail_read.is_some()
@@ -524,6 +664,31 @@ impl SessionEditorEngine {
             request: request.clone(),
         });
         vec![SessionEditorEffect::Read { token, request }]
+    }
+    fn can_browse_directory(&self) -> bool {
+        self.open && self.pending.is_none() && self.end_target.is_none()
+            && self.draft.rename.is_none() && self.draft.mode != "resume"
+    }
+    fn close_directory_browser(&mut self) -> Option<SessionEditorEffect> {
+        self.directory_browser.take()?.token.map(|token| SessionEditorEffect::Cancel { token })
+    }
+    fn browse_directory(&mut self, path: String) -> Vec<SessionEditorEffect> {
+        let token = self.token();
+        let Some(browser) = &mut self.directory_browser else { return vec![] };
+        let mut effects = Vec::new();
+        if let Some(token) = browser.token.replace(token) {
+            effects.push(SessionEditorEffect::Cancel { token });
+        }
+        let request = SessionEditorRequestV1::BrowseDirectory {
+            execution_target_id: self.draft.target.clone(),
+            path: path.clone(),
+            endpoint_id: matches!(self.draft.session_type.as_str(), "codex" | "codex_terminal")
+                .then(|| self.draft.endpoint.clone()).filter(|id| !id.is_empty()),
+        };
+        browser.path = path;
+        browser.view = SessionDirectoryBrowserView { loading: true, ..Default::default() };
+        effects.push(SessionEditorEffect::Read { token, request });
+        effects
     }
     fn save_yolo(&mut self) -> Vec<SessionEditorEffect> {
         let Some(yolo) = self.desired_yolo.filter(|_| self.yolo_write.is_none()) else { return vec![]; };
@@ -575,6 +740,7 @@ impl SessionEditorEngine {
                 let mut effects = self.dispatch(SessionEditorInput::Close);
                 self.open = true;
                 self.draft = draft;
+                self.directory_edited = false;
                 self.yolo_edited = self.desired_yolo.is_some();
                 if let Some(yolo) = self.desired_yolo { self.draft.yolo = yolo; }
                 self.endpoints = endpoints;
@@ -589,33 +755,47 @@ impl SessionEditorEngine {
             }
             SessionEditorInput::Close => {
                 self.context_preserves_form=false;self.tools=None;self.preparation=ToolPreparation::default();
-                self.server_start=None;
+                let server_cancel = self.reset_local_codex();
+                self.endpoint_message = None;
                 self.open = false;
                 self.end_target = None;
                 self.end_preview = None;
                 self.end_completed = false;
                 self.reset_history();
                 self.pending = None;
+                self.known_selection = None;
+                let directory_cancel = self.close_directory_browser();
                 [
                     &mut self.history_read,
                     &mut self.detail_read,
                     &mut self.directory_read,
                     &mut self.end_read,
+                    &mut self.endpoint_check,
                 ]
                 .into_iter()
                 .filter_map(Option::take)
                 .map(|r| SessionEditorEffect::Cancel { token: r.token })
+                .chain(directory_cancel)
+                .chain(server_cancel)
                 .collect()
             }
             SessionEditorInput::Edit { draft } if self.pending.is_none() => {
                 let old = self.draft.clone();
                 self.draft = draft;
                 let target_changed = old.target != self.draft.target;
+                if target_changed || old.session_type != self.draft.session_type
+                    || (self.draft.session_type == "claude" && old.original_id != self.draft.original_id)
+                {
+                    self.known_selection = None;
+                }
                 if target_changed {
                     self.context_preserves_form=false;self.tools=None;self.preparation=ToolPreparation::default();
                     self.draft.directory.clear();
+                    self.directory_edited = false;
                     self.draft.open_local_cli = false;
                     self.draft.endpoint.clear();
+                } else if old.directory != self.draft.directory {
+                    self.directory_edited = true;
                 }
                 self.normalize();
                 let scope_changed = old.target != self.draft.target
@@ -626,11 +806,31 @@ impl SessionEditorEngine {
                     || old.archived != self.draft.archived
                     || old.subagents != self.draft.subagents;
                 let mut effects = vec![];
+                if target_changed || old.endpoint != self.draft.endpoint
+                    || old.session_type != self.draft.session_type || old.mode != self.draft.mode
+                {
+                    effects.extend(self.close_directory_browser());
+                }
+                if target_changed || old.endpoint != self.draft.endpoint
+                    || old.session_type != self.draft.session_type {
+                    effects.extend(self.reset_local_codex());
+                    self.endpoint_message = None;
+                    if let Some(read) = self.endpoint_check.take() {
+                        effects.push(SessionEditorEffect::Cancel { token: read.token });
+                    }
+                }
                 if old.yolo != self.draft.yolo && !self.draft.bind_only && self.draft.rename.is_none() {
                     self.yolo_edited = true;
                     self.desired_yolo = Some(self.draft.yolo);
                     effects.extend(self.save_yolo());
                 }
+                if target_changed {
+                    if let Some(r) = self.directory_read.take() {
+                        effects.push(SessionEditorEffect::Cancel { token: r.token });
+                    }
+                    effects.extend(self.directory_request());
+                }
+                effects.extend(self.prepare_local_codex());
                 if scope_changed {
                     self.reset_history();
                     if old.target != self.draft.target || old.endpoint != self.draft.endpoint {
@@ -643,12 +843,6 @@ impl SessionEditorEngine {
                     self.detail_epoch += 1;
                     self.detail = None;
                     effects.extend(self.detail_request());
-                }
-                if target_changed {
-                    if let Some(r) = self.directory_read.take() {
-                        effects.push(SessionEditorEffect::Cancel { token: r.token });
-                    }
-                    effects.extend(self.directory_request());
                 }
                 effects
             }
@@ -735,20 +929,85 @@ impl SessionEditorEngine {
                 self.preparation_outcome(outcome)
             }
             SessionEditorInput::More if self.history_error.is_none() => self.history_request(true),
-            SessionEditorInput::StartLocalServer if self.view().can_start_local_server=>{
-                let endpoint=self.endpoint().unwrap().clone();let token=self.token();
-                self.server_start=Some((token,endpoint.id.clone()));self.message=Some("Starting local Codex app server…".into());
-                vec![SessionEditorEffect::StartLocalServer{token,owner_host_id:endpoint.owner_host_id,endpoint_id:endpoint.id}]
+            SessionEditorInput::AppServerAction => {
+                if self.view().can_start_local_server {
+                    self.local_codex = LocalCodexPreparation::Idle;
+                    self.prepare_local_codex()
+                } else {
+                    self.dispatch(SessionEditorInput::CheckEndpoint)
+                }
             }
-            SessionEditorInput::ServerStarted{token,error} if self.server_start.as_ref().is_some_and(|s|s.0==token)=>{
-                let (_,endpoint)=self.server_start.take().unwrap();
-                if !self.open||self.draft.endpoint!=endpoint{return vec![]}
-                self.message=error.map(|e|format!("Could not start Codex: {e}. Retry when ready."));
-                if self.message.is_none(){self.history_error=None;self.history_request(false)}else{vec![]}
+            SessionEditorInput::CheckEndpoint if self.view().can_check_endpoint => {
+                let endpoint = self.endpoint().expect("selected endpoint");
+                let request = SessionEditorRequestV1::CheckEndpoint {
+                    execution_target_id: endpoint.execution_target_id.clone(),
+                    endpoint_id: endpoint.id.clone(),
+                };
+                let token = self.token();
+                self.endpoint_check = Some(Read { token, epoch: self.epoch, request: request.clone() });
+                self.endpoint_message = Some("Checking app server connection…".into());
+                vec![SessionEditorEffect::Read { token, request }]
             }
             SessionEditorInput::RetryHistory => self.history_request(!self.history.is_empty()),
             SessionEditorInput::RetryDetail => self.detail_request(),
+            SessionEditorInput::KnownSessions { sessions } => {
+                self.known_sessions = sessions;
+                if self.known_selection.as_ref().is_some_and(|identity| {
+                    !self.known_sessions.iter().any(|session| &session.identity == identity)
+                }) {
+                    self.known_selection = None;
+                }
+                vec![]
+            }
+            SessionEditorInput::ChooseKnownSession { identity } if self.pending.is_none() => {
+                if self.matching_known_sessions().any(|session| session.identity == identity) {
+                    self.known_selection = Some(identity);
+                    if self.draft.session_type == "claude" {
+                        self.draft.original_id.clear();
+                    }
+                }
+                vec![]
+            }
+            SessionEditorInput::ToggleDirectoryBrowser if self.can_browse_directory() => {
+                if self.directory_browser.is_some() {
+                    return self.close_directory_browser().into_iter().collect();
+                }
+                self.directory_browser = Some(DirectoryBrowser::default());
+                let path = if self.draft.directory.trim().is_empty() {
+                    "~".into()
+                } else {
+                    self.draft.directory.clone()
+                };
+                self.browse_directory(path)
+            }
+            SessionEditorInput::BrowseDirectory { path }
+                if self.can_browse_directory() && !path.trim().is_empty() =>
+            {
+                self.browse_directory(path)
+            }
+            SessionEditorInput::RetryDirectoryBrowse if self.can_browse_directory() => {
+                let Some(path) = self.directory_browser.as_ref()
+                    .filter(|browser| browser.view.error.is_some())
+                    .map(|browser| browser.path.clone()) else { return vec![] };
+                self.browse_directory(path)
+            }
+            SessionEditorInput::ChooseDirectory { path } if self.can_browse_directory() => {
+                let listing = self.directory_browser.as_ref()
+                    .and_then(|browser| browser.view.listing.as_ref());
+                if listing.is_some_and(|listing| listing.directories.contains(&path)) {
+                    self.draft.directory = path;
+                    self.directory_edited = true;
+                }
+                vec![]
+            }
             SessionEditorInput::Submit if self.view().can_submit => {
+                if let Some(identity) = self.known_selection.clone().filter(|identity| {
+                    self.matching_known_sessions().any(|session| &session.identity == identity)
+                }) {
+                    let token = self.token();
+                    self.pending = Some(token);
+                    return vec![SessionEditorEffect::Attach { token, identity }];
+                }
                 if let Some((owner_host_id, endpoint_id, thread_id, title)) = self.picked() {
                     let token = self.token(); self.pending = Some(token);
                     return vec![SessionEditorEffect::Picked {token, owner_host_id, endpoint_id, thread_id, title}];
@@ -793,6 +1052,7 @@ impl SessionEditorEngine {
                 self.context_preserves_form=true;
                 self.message=message.or_else(||Some("Checking tools on the execution machine…".into()));
                 let mut effects=self.directory_read.take().map(|read|vec![SessionEditorEffect::Cancel{token:read.token}]).unwrap_or_default();
+                effects.extend(self.reset_local_codex());
                 effects.extend(self.directory_request());effects
             }
             PreparationOutcome::Failed(message)=>{self.message=Some(message);vec![]}
@@ -806,6 +1066,41 @@ impl SessionEditorEngine {
         result: Option<SessionEditorResultV1>,
         error: Option<String>,
     ) -> Vec<SessionEditorEffect> {
+        if matches!(self.local_codex, LocalCodexPreparation::Pending(current) if current == token) {
+            self.local_codex = match (result, error) {
+                (Some(SessionEditorResultV1::EndpointReady), None) => LocalCodexPreparation::Ready,
+                (Some(SessionEditorResultV1::EndpointLoginRequired), None) => LocalCodexPreparation::NeedsLogin,
+                (_, error) => LocalCodexPreparation::Failed(error.unwrap_or_else(||
+                    "The Host did not confirm the local Codex connection.".into())),
+            };
+            self.history_error = None;
+            let mut effects = self.history_request(false);
+            effects.extend(self.detail_request());
+            return effects;
+        }
+        if let Some(browser) = self.directory_browser.as_mut().filter(|browser| browser.token == Some(token)) {
+            browser.token = None;
+            browser.view.loading = false;
+            match (result, error) {
+                (Some(SessionEditorResultV1::Directory { directory }), None)
+                    if directory.execution_target_id == self.draft.target =>
+                {
+                    browser.view.listing = Some(directory);
+                }
+                (_, error) => browser.view.error = Some(error.unwrap_or_else(|| {
+                    "This Host did not return the requested directory.".into()
+                })),
+            }
+            return vec![];
+        }
+        if self.endpoint_check.as_ref().is_some_and(|read| read.token == token) {
+            self.endpoint_check = None;
+            self.endpoint_message = Some(match (result, error) {
+                (Some(SessionEditorResultV1::EndpointReady), None) => "App server connected.".into(),
+                (_, error) => error.unwrap_or_else(|| "The Host did not confirm the app server connection.".into()),
+            });
+            return vec![];
+        }
         if self.preparation.matches(token) {
             let outcome=self.preparation.complete(self.open.then_some(self.draft.target.as_str()),result,error);
             return self.preparation_outcome(outcome);
@@ -920,9 +1215,10 @@ impl SessionEditorEngine {
                 {
                     self.tools=tools;
                     let mut effects=if let Some(endpoints)=codex_endpoints {self.dispatch(SessionEditorInput::Endpoints{endpoints})}else{vec![]};
+                    effects.extend(self.prepare_local_codex());
                     if self.message.as_deref()==Some("Checking tools on the execution machine…") {self.message=None;}
                     if !self.yolo_edited { self.draft.yolo = yolo; }
-                    if !self.context_preserves_form && self.draft.directory.is_empty() {
+                    if !self.context_preserves_form && !self.directory_edited && self.draft.directory.is_empty() {
                         self.draft.directory = directory.path.clone();
                         if self.message.is_none() {
                             self.message = notice;

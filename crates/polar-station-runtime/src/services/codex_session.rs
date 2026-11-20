@@ -37,16 +37,14 @@ impl CodexControlService {
     }
 
     pub async fn catalog_endpoints(&self) -> Vec<polar_station_settings::CodexEndpointSettingsV1> {
-        let config = self.config.read().await;
-        if config.enabled { config.endpoints.clone() } else { Vec::new() }
+        self.config.read().await.endpoints.clone()
     }
 
     pub async fn endpoint_states(&self) -> std::collections::BTreeMap<String, String> {
         let config = self.config.read().await.clone();
         let connections = self.endpoints.lock().await;
         config.endpoints.iter().map(|endpoint| {
-            let state = if !config.enabled { "Disabled" }
-                else if connections.get(&endpoint.id).is_some_and(|c| c.client.connected()) { "Connected" }
+            let state = if connections.get(&endpoint.id).is_some_and(|c| c.client.connected()) { "Connected" }
                 else if endpoint.control_mode == CodexControlModeV1::RemoteHost { "Managed by remote Host" }
                 else { "Unavailable · catalog incomplete" };
             (endpoint.id.clone(), state.into())
@@ -203,7 +201,6 @@ impl CodexControlService {
     /// remote-owner settings do not accidentally create an orphan Agent.
     pub async fn preflight_local_cli_plane(&self, target_id: &str, endpoint_id: &str) -> Result<(), ControlCenterErrorV1> {
         let config = self.config.read().await;
-        if !config.enabled { return Err(error("control_disabled", "Enable Codex control before opening a CLI plane.")); }
         let endpoint = config.endpoints.iter().find(|e| e.id == endpoint_id && e.execution_target_id == target_id)
             .ok_or_else(||error("endpoint_changed", "The original Codex endpoint is no longer configured on this Host."))?;
         if endpoint.owner_host_id != self.owner || endpoint.control_mode == CodexControlModeV1::RemoteHost {
@@ -292,6 +289,25 @@ impl CodexControlService {
         match self.end_rpc("desktop-history-detail", &owner, CodexCommandV1::ReadHistoryDetail { endpoint_id:endpoint.into(), thread_id }).await? {
             CodexResultV1::HistoryDetail { detail } => Ok(SessionEditorResultV1::HistoryDetail { detail }),
             _ => Err(error("invalid_history_response","The Host returned no conversation details.")),
+        }
+    }
+
+    pub(super) async fn check_session_endpoint(&self, target: &str, endpoint: &str) -> Result<SessionEditorResultV1, ControlCenterErrorV1> {
+        let owner = self.config.read().await.endpoints.iter()
+            .find(|entry| entry.id == endpoint && entry.execution_target_id == target)
+            .map(|entry| entry.owner_host_id.clone())
+            .ok_or_else(|| error("endpoint_changed", "The app server no longer belongs to this Host."))?;
+        let response = self.dispatch("desktop-endpoint-check", true, CodexRequestEnvelopeV1 {
+            protocol_version: PROTOCOL_VERSION,
+            api: CodexApiV1::CodexV1,
+            request_id: crate::host_identity::random_uuid_v4(),
+            owner_host_id: owner,
+            command: CodexCommandV1::CheckEndpoint { endpoint_id: endpoint.into() },
+        }).await;
+        match response.result {
+            CodexResultV1::EndpointReady => Ok(SessionEditorResultV1::EndpointReady),
+            CodexResultV1::Error { code } => Err(error(&code, format!("Could not connect to app server {endpoint} ({code})."))),
+            _ => Err(error("invalid_endpoint_response", "The Host did not confirm the app server connection.")),
         }
     }
 
@@ -514,7 +530,6 @@ impl CodexControlService {
         let network=self.network.as_ref().ok_or_else(||error("target_unavailable","Target service is unavailable."))?;
         let endpoint={
             let config=self.config.read().await;
-            if !config.enabled {return Err(error("control_disabled","Enable Codex control in Connections before creating a Codex Session."));}
             let candidates=config.endpoints.iter().filter(|e|e.execution_target_id==target_id && endpoint_id.as_ref().is_none_or(|id|id==&e.id)).collect::<Vec<_>>();
             if candidates.len()!=1 {return Err(error("endpoint_required","Select one configured Codex app-server endpoint for this machine."));}
             candidates[0].clone()

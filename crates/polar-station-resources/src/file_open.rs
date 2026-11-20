@@ -103,6 +103,7 @@ pub enum FileOpenEffect {
         can_retry: bool,
         summary: &'static str,
         steps: Vec<FileOpenStep>,
+        copy_details: String,
         edit_text: Option<String>,
         edit_range: Option<TextRange>,
     },
@@ -200,10 +201,12 @@ impl FileOpenFlow {
         failure: FileOpenFailure,
         input: Option<&FileReferenceInput>,
     ) -> FileOpenEffect {
+        let steps = file_open_diagnostics::steps(input, &failure);
         FileOpenEffect::ShowError {
             request_id,
             summary: file_open_diagnostics::summary(&failure),
-            steps: file_open_diagnostics::steps(input, &failure),
+            copy_details: file_open_diagnostics::copy_details(&steps),
+            steps,
             edit_text: input.map(|value| value.text().to_owned()),
             edit_range: input.and_then(file_open_diagnostics::edit_range),
             message: failure.display_message(),

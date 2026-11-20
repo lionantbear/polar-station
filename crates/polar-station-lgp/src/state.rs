@@ -6,6 +6,7 @@ use crate::{record::Assembler,text::Transcript};
 mod navigation;
 mod activity;
 mod composer;
+mod content_send;
 mod idea;
 mod idea_codex;
 mod idea_document;
@@ -13,6 +14,7 @@ pub use idea_document::{IdeaNodeBlock, IdeaSelectedNode};
 pub(crate) mod inquiry;
 pub use inquiry::InquiryAction;
 use idea::{DraftContext, IdeaView};
+use crate::send_history::Outcome;
 use polar_ideacave_presentation::controls::{Action as IdeaAction, Control as IdeaControl, ControlsState};
 
 #[derive(Debug,Clone,PartialEq,Eq,PartialOrd,Ord,Serialize,Deserialize)]
@@ -65,6 +67,7 @@ pub enum Input {
     Close{pane_id:String},
     Draft{window_id:String,text:String},
     Send{window_id:String,created_at_secs:u64},
+    RecoverContentSend{window_id:String,pane_id:String,draft_revision:u64,intent:String},
     Frame{generation:u64,frame:Value},
     Older{pane_id:String},
     Retry{pane_id:String},
@@ -96,6 +99,9 @@ pub enum Effect {
     Request{frame:Value},
     /// Internal domain intent, consumed by polar-station-input before native projection.
     CodexSubmission{intent:String,check:bool},
+    ChatSubmission{intent:String},
+    PersistDrafts,
+    CopySendText{window_id:String,text:String},
     Render{pane_id:String,base_revision:u64,next_revision:u64,operation:u32,text:String},
     NeedsRender,
     ReferenceControls{pane_id:String,revision:u64,items:Value,can_return:bool},
@@ -106,8 +112,8 @@ pub enum Effect {
     Inquiry{window_id:String,pane_id:String,view:Value,focus:bool},
     EnsureTerminalVisible{window_id:String,pane_id:String,token:String,target:Value},
     ReconnectHost,
-    Composer{window_id:String,pane_id:String,scope:Scope,text:String,draft_revision:u64,can_send:bool,pending:bool,status:String,connection:String,can_load_older:bool,can_reconnect:bool,target_title:String,channel_id:String,channel_title:String,thread_title:String},
-    IdeaComposer{window_id:String,pane_id:String,view_id:String,text:String,node_blocks:Vec<IdeaNodeBlock>,selected_node:Option<IdeaSelectedNode>,document_text:String,draft_revision:u64,mode_label:&'static str,placeholder:&'static str,can_send:bool,status:String,selection:String,controls:Vec<IdeaControl>,can_search:bool,binding_id:Option<String>,target_label:String,references:Value,can_open_session:bool,can_check_receipt:bool},
+    Composer{window_id:String,pane_id:String,scope:Scope,text:String,draft_revision:u64,can_send:bool,pending:bool,status:String,connection:String,can_load_older:bool,can_reconnect:bool,target_title:String,channel_id:String,channel_title:String,thread_title:String,send_history:Vec<crate::send_history::Row>},
+    IdeaComposer{window_id:String,pane_id:String,view_id:String,text:String,node_blocks:Vec<IdeaNodeBlock>,selected_node:Option<IdeaSelectedNode>,document_text:String,draft_revision:u64,mode_label:&'static str,placeholder:&'static str,can_send:bool,status:String,selection:String,controls:Vec<IdeaControl>,can_search:bool,binding_id:Option<String>,target_label:String,references:Value,can_open_session:bool,can_check_receipt:bool,send_history:Vec<crate::send_history::Row>},
     IdeaLocateReference{pane_id:String,view_id:String,reference:Value},
     IdeaCommand{pane_id:String,view_id:String,action:IdeaAction,query:String},
     FocusComposer{window_id:String,pane_id:String},
@@ -123,7 +129,7 @@ pub enum Effect {
     Error{message:String},
 }
 #[derive(Default,Clone,Serialize,Deserialize)]
-struct Draft {#[serde(default)] node_blocks:Vec<IdeaNodeBlock>,#[serde(default)] idea_target:Option<idea_codex::Target>,#[serde(default)] idea_submission:Option<idea_codex::Submission>,#[serde(default)] idea_context:Option<idea_codex::Context>,text:String,revision:u64,#[serde(skip)] pending:Option<String>,#[serde(skip)] status:String}
+struct Draft {#[serde(default)] node_blocks:Vec<IdeaNodeBlock>,#[serde(default)] idea_target:Option<idea_codex::Target>,#[serde(default)] idea_submission:Option<idea_codex::Submission>,#[serde(default)] idea_context:Option<idea_codex::Context>,#[serde(default)] chat_submission:Option<content_send::ChatSubmission>,#[serde(default)] send_history:Vec<content_send::Entry>,text:String,revision:u64,#[serde(skip)] pending:Option<String>,#[serde(skip)] status:String}
 struct PendingRender { revision:u64, text:String, window:crate::window::Window }
 struct View {tools:BTreeMap<String,crate::window::Disclosure>,window:String,scope:Scope,display_window:crate::window::Window,scroll_pending:Option<usize>,visible_rows:usize,revision:u64,rendered:String,reading:polar_lgp_reader::ReadingState,dirty:bool,blocked:bool,columns:usize,pending_render:Option<PendingRender>,render_failed:bool,visible:bool,hint:String}
 fn reference_controls(pane:&str,view:&View)->Effect {
@@ -237,8 +243,7 @@ impl Engine {
                     // Local admission failed: no frame was sent. Preserve the
                     // real transport state and every unrelated conversation.
                     if let Purpose::Send{scope,window,..}=pending.purpose {
-                        if let Some(draft)=self.drafts.get_mut(&(window,scope.clone().into())){draft.pending=None;draft.status=format!("Not sent — {reason}");}
-                        self.status(&scope,"send_rejected",&reason.to_string(),&mut effects);
+                        self.chat_delivery_failed(scope,window,Outcome::Failed,&reason.to_string(),&mut effects);
                     }else{self.failed(pending.purpose,&reason.to_string(),&mut effects);}
                 }
             },
@@ -303,20 +308,22 @@ impl Engine {
                 if text.is_empty() && draft.idea_context.as_ref().is_some_and(|c|c.references.is_empty()) {draft.idea_context=None;}
                 if draft.text!=text{draft.text=text;draft.revision=draft.revision.checked_add(1).ok_or("draft version exhausted")?;}
             },
+            Input::RecoverContentSend{window_id,pane_id,draft_revision,intent} =>
+                self.recover_content_send(&window_id,&pane_id,draft_revision,&intent,&mut effects)?,
             Input::Send{window_id,created_at_secs}=>{
                 if self.idea_key(&window_id).is_ok() {self.idea_send(&window_id,&mut effects)?;self.idea_composer_effects(&mut effects);self.flush_requests(&mut effects);return Ok(effects);}
                 if self.composer_scope(&window_id).ok().is_some_and(|(_,scope)|self.inquiries.draft_context(&window_id,&scope).is_some()||self.inquiries.can_send(&window_id,&scope,"").is_some()) {
                     self.inquiry_send(&window_id,&mut effects)?;self.composer_effects(&mut effects);self.inquiry_effects(&mut effects);self.flush_requests(&mut effects);return Ok(effects);
                 }
                 let (_,scope)=self.composer_scope(&window_id)?;
-                let lease=self.threads.get(&scope).filter(|t|t.status=="live"&&t.subscription.is_some()).and_then(|t|t.lease.clone()).filter(|_|self.ready).ok_or("Thread is not connected")?;
-                let draft=self.drafts.get(&(window_id.clone(),scope.clone().into())).cloned().unwrap_or_default();
+                self.threads.get(&scope).filter(|t|t.status=="live"&&t.subscription.is_some()&&t.lease.is_some()&&self.ready).ok_or("Thread is not connected")?;
+                let draft=self.drafts.get_mut(&(window_id,scope.into())).ok_or("Missing draft")?;
                 if draft.pending.is_some()||draft.text.trim().is_empty()||created_at_secs==0{return Err("send is not enabled".into());}
+                draft.revision.checked_add(1).ok_or("draft version exhausted")?;
                 let intent=polar_identity::generation::new_uuid_v7().to_string();
-                let request=self.request(&scope.target_id,json!({"op":"send","expected_node_id":scope.node_id,"lease_id":lease,
-                    "client_intent_id":intent,"created_at_secs":created_at_secs,"text":draft.text}),
-                    Purpose::Send{scope:scope.clone(),window:window_id.clone(),revision:draft.revision,text:draft.text},&mut effects)?;
-                let draft=self.drafts.get_mut(&(window_id,scope.clone().into())).ok_or("missing draft")?;draft.pending=Some(request);draft.status="Sending".into();
+                draft.chat_submission=Some(content_send::ChatSubmission { intent:intent.clone(), revision:draft.revision, created_at_secs, text:draft.text.clone() });
+                draft.pending=Some(intent.clone());draft.status="Sending".into();
+                effects.push(Effect::ChatSubmission { intent });
             },
             Input::Frame{generation,frame}=>{if generation==self.generation&&(self.ready||self.idea_codex.host.is_some()){self.frame(frame,&mut effects)?;}},
             Input::Older{pane_id}=>{self.load_older(&pane_id,&mut effects)?;},
@@ -699,7 +706,11 @@ impl Engine {
                                 for view in self.views.values_mut().filter(|view|&view.scope==scope){view.dirty=true;view.anchor=None;view.jump_pending=true;}
                             }
                         }
-                        self.failed(p.purpose,&error.message,out)
+                        match p.purpose {
+                            Purpose::Send{scope,window,..} if matches!(error.code.as_str(), "invalid_request"|"thread_unavailable"|"target_identity_changed") =>
+                                self.chat_delivery_failed(scope,window,Outcome::Failed,&error.message,out),
+                            purpose => self.failed(purpose,&error.message,out),
+                        }
                     },
                     _=>self.failed(p.purpose,"Polar access was refused or cancelled",out),
                 }
@@ -900,7 +911,11 @@ impl Engine {
             t.renew_at=self.now_ms.saturating_add(v["expires_in_ms"].as_u64().unwrap_or(300_000).min(300_000)*3/4);
         }},
         Purpose::Send{scope,window,revision,text}=>{
-            if let Some(d)=self.drafts.get_mut(&(window,scope.clone().into())){d.pending=None;d.status="Sent".into();if d.revision==revision&&d.text==text{d.text.clear();d.revision=d.revision.checked_add(1).ok_or("draft version exhausted")?;}}
+            if let Some(d)=self.drafts.get_mut(&(window,scope.into())){
+                if d.chat_submission.is_none() && d.text==text {d.clear_sent_document(revision)?;}
+                d.finish_chat_send(Outcome::Sent);d.status="Sent".into();
+                out.push(Effect::PersistDrafts);
+            }
             // Final message content is received from canonical snapshot/events,
             // not synthesized from an ACK or from the text the user typed.
         },
@@ -915,7 +930,7 @@ impl Engine {
             // fallback is discovery only and never redirects a send or a Pane.
             if let Err(error)=self.request("embedded",json!({"op":"describe"}),Purpose::Describe{target:"embedded".into(),context:BrowseContext::default()},out){out.push(Effect::Error{message:error});}
         },
-        Purpose::Send{scope,window,..}=>{if let Some(d)=self.drafts.get_mut(&(window,scope.clone().into())){d.pending=None;d.status=format!("Unconfirmed — {message}");}self.status(&scope,"send_unconfirmed",message,out);},
+        Purpose::Send{scope,window,..}=>self.chat_delivery_failed(scope,window,Outcome::Unknown,message,out),
         Purpose::Bind(scope)=>{
             self.inquiry_revoke(&scope);
             if let Some(t)=self.threads.get_mut(&scope){t.lease=None;t.subscription=None;t.status="unavailable".into();}
@@ -1041,7 +1056,8 @@ impl Engine {
             can_send:self.ready&&bound&&thread.is_some_and(|t|t.status=="live"&&t.subscription.is_some())&&self.inquiries.can_send(window,&v.scope,&d.text).unwrap_or(d.pending.is_none()&&!d.text.trim().is_empty()),pending:d.pending.is_some(),status:thread.filter(|t|t.status!="live").map(|t|if !t.connection_message.is_empty(){t.connection_message.clone()}else{match t.status.as_str(){"binding"=>"Connecting…","loading"=>"Loading conversation…",_=>"Disconnected"}.into()}).unwrap_or_else(||d.status.clone()),connection:connection.into(),
             can_load_older:false,
             can_reconnect:!self.ready||matches!(connection,"offline"|"unavailable"),
-            target_title:self.target_titles.get(&v.scope.target_id).cloned().unwrap_or_else(||v.scope.target_id.clone()),channel_id,channel_title,thread_title};
+            target_title:self.target_titles.get(&v.scope.target_id).cloned().unwrap_or_else(||v.scope.target_id.clone()),channel_id,channel_title,thread_title,
+            send_history: if matches!(draft_key.1,DraftContext::Thread(_)) {d.send_rows()} else {vec![]}};
         let serialized=serde_json::to_string(&effect).unwrap_or_default();if self.composer_cache.get(window)!=Some(&serialized){self.composer_cache.insert(window.clone(),serialized);out.push(effect);}
     }}
 }

@@ -71,7 +71,7 @@ impl ProfileRuntime {
                         let (client, child) = crate::client::start_private(cfg, paths).await?;
                         (client, Some(child))
                     } else {
-                        (crate::client::start_embedded(cfg).await?, None)
+                        (start_profile_app_server(cfg).await?, None)
                     };
                     (client, Some((lock, child)))
                 }
@@ -88,6 +88,24 @@ impl ProfileRuntime {
         );
         Ok(client.shared.lease())
     }
+}
+
+async fn start_profile_app_server(cfg: &CodexAgentConfig) -> anyhow::Result<crate::client::AppServerClient> {
+    let result = crate::client::start_embedded(cfg).await;
+    let shared_address = cfg.profile.as_ref().is_some_and(|profile| profile.profile_id == CodexBackendRegistry::STATION_PROFILE_ID)
+        && std::env::home_dir().and_then(|home| crate::client::polar_control_socket(&home).ok()).as_ref() == cfg.socket_path.as_ref()
+        && cfg.socket_path.is_some();
+    if shared_address && result.as_ref().err().is_some_and(|error| error.chain().any(|cause|
+        cause.downcast_ref::<std::io::Error>().is_some_and(|io| io.kind() == std::io::ErrorKind::AddrInUse)
+    )) {
+        // The existing listener remains the account endpoint. A second Polar
+        // instance continues using its own runtime and profile state.
+        tracing::warn!("The account's Polar Codex socket is already served by another instance");
+        let mut private = cfg.clone();
+        private.socket_path = None;
+        return crate::client::start_embedded(&private).await;
+    }
+    result
 }
 
 async fn lock_profile(paths: &CodexProfilePaths) -> anyhow::Result<std::fs::File> {
@@ -131,6 +149,8 @@ impl std::fmt::Debug for CodexBackendRegistry {
 }
 
 impl CodexBackendRegistry {
+    pub const STATION_PROFILE_ID: &'static str = "system.eve.codex";
+
     pub fn new(root: InstancePathPlan) -> anyhow::Result<Self> {
         Ok(Self {
             root,
@@ -143,9 +163,35 @@ impl CodexBackendRegistry {
         profile_id: &str,
         mut cfg: CodexAgentConfig,
     ) -> anyhow::Result<CodexAgentRunner> {
-        cfg.profile = Some(CodexProfilePaths::resolve(&self.root, profile_id)?);
+        self.configure_profile(profile_id, &mut cfg)?;
         let runtime = self.runtime(profile_id, cfg.codex_mode)?;
         CodexAgentRunner::new_managed(cfg, runtime)
+    }
+
+    fn configure_profile(&self, profile_id: &str, cfg: &mut CodexAgentConfig) -> anyhow::Result<()> {
+        cfg.profile = Some(CodexProfilePaths::resolve(&self.root, profile_id)?);
+        if profile_id == Self::STATION_PROFILE_ID
+            && cfg.backend == crate::CodexRuntimeBackend::InProcess
+            && cfg.codex_mode == crate::CodexMode::Agentic
+            && cfg.socket_path.is_none() {
+            if let Some(home) = std::env::home_dir() {
+                cfg.socket_path = Some(crate::client::polar_control_socket(&home)?);
+            }
+        }
+        Ok(())
+    }
+
+    /// Start the same registered runtime used by Eve's own Threads.
+    pub async fn start_station_app_server(&self, mut cfg: CodexAgentConfig) -> anyhow::Result<()> {
+        if cfg.backend != crate::CodexRuntimeBackend::InProcess || cfg.codex_mode != crate::CodexMode::Agentic {
+            return Ok(());
+        }
+        self.configure_profile(Self::STATION_PROFILE_ID, &mut cfg)?;
+        bootstrap::resolve_native_profile_settings(&mut cfg).await?;
+        crate::codex::validate_codex_mode_config(&cfg)?;
+        let runtime = self.runtime(Self::STATION_PROFILE_ID, cfg.codex_mode)?;
+        runtime.lease(&cfg).await?;
+        Ok(())
     }
 
     /// Reuse the native conversation boundary with separate runtime state and
@@ -213,7 +259,7 @@ impl CodexBackendRegistry {
             );
         }
         let mode = cfg.codex_mode;
-        cfg.profile = Some(CodexProfilePaths::resolve(&self.root, profile_id)?);
+        self.configure_profile(profile_id, &mut cfg)?;
         bootstrap::resolve_native_profile_settings(&mut cfg).await?;
         let runtime = self.runtime(profile_id, mode)?;
         let client = runtime.lease(&cfg).await?;

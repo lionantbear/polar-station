@@ -261,6 +261,11 @@ final class PolarStationLgpWorkspace: NSObject {
                     "action":["kind":"submit", "text":text, "created_at_secs":UInt64(Date().timeIntervalSince1970)]])
                 self?.scheduleDraftSave()
             }
+            panel.onSendHistory = { [weak self] request in
+                var input = request
+                if request["type"] as? String == "recover_content_send" { input["window_id"] = windowID }
+                self?.input(input)
+            }
             panel.onExit = { [weak self, weak panel] in
                 guard let panel, let window=panel.window, let pane=panel.paneID else {return}
                 self?.focusInputSource?(window,pane)
@@ -466,6 +471,10 @@ final class PolarStationLgpWorkspace: NSObject {
     }
     private func consume(_ value: [String: Any]) {
         switch value["type"] as? String {
+        case "copy_send_text":
+            guard let text = value["text"] as? String else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
         case "insert_text":
             guard let lease = value["lease"] as? [String:Any], let window = lease["window"] as? String,
                   let text = value["text"] as? String else { return }

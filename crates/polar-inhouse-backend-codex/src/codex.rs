@@ -410,7 +410,7 @@ pub struct CodexAgentRunner {
     inner: CodexSessionRunner,
 }
 
-fn validate_codex_mode_config(cfg: &CodexAgentConfig) -> anyhow::Result<()> {
+pub(crate) fn validate_codex_mode_config(cfg: &CodexAgentConfig) -> anyhow::Result<()> {
     if !cfg.codex_mode.is_conversation() {
         return Ok(());
     }

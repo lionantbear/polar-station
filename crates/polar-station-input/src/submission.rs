@@ -18,10 +18,24 @@ impl InputEngine {
     ) -> Result<Vec<Effect>, String> {
         let (intents, mut out): (Vec<_>, Vec<_>) = effects
             .into_iter()
-            .partition(|e| matches!(e, Effect::CodexSubmission { .. }));
+            .partition(|e| matches!(e, Effect::CodexSubmission { .. } | Effect::ChatSubmission { .. } | Effect::PersistDrafts));
         for effect in intents {
-            let Effect::CodexSubmission { intent, check } = effect else {
-                unreachable!()
+            let (intent, check) = match effect {
+                Effect::PersistDrafts => {
+                    if let Ok(snapshot) = self.dispatch_content_domain(polar_station_lgp::Input::ExportDrafts) {
+                        out.extend(snapshot);
+                    }
+                    continue;
+                }
+                Effect::ChatSubmission { intent } => {
+                    match self.stage_submission_snapshot(intent.clone()) {
+                        Ok(snapshot) => out.extend(snapshot),
+                        Err(_) => out.extend(self.content.saved_chat_submission(&intent, false)?),
+                    }
+                    continue;
+                }
+                Effect::CodexSubmission { intent, check } => (intent, check),
+                _ => unreachable!(),
             };
             let Some((owner, command)) = self.content.idea_submission(&intent) else {
                 continue;
@@ -94,6 +108,11 @@ impl InputEngine {
         let mut out = Vec::new();
         for intent in intents {
             self.submissions.saving.remove(&intent);
+            if self.content.has_chat_submission(&intent) {
+                let effects = self.content.saved_chat_submission(&intent, success)?;
+                out.extend(self.content_submission_effects(effects)?.into_iter().map(|effect| InputEffect::Content(Box::new(effect))));
+                continue;
+            }
             if !success {
                 out.extend(self.reject_unsent_submission(
                     &intent,
@@ -103,6 +122,7 @@ impl InputEngine {
             }
             let submission =
                 if let Some((owner_host_id, command)) = self.content.idea_submission(&intent) {
+                    out.extend(self.content.saved_idea_submission(&intent)?.into_iter().map(|effect| InputEffect::Content(Box::new(effect))));
                     command.map(|command| Submission::Codex {
                         owner_host_id,
                         command,
@@ -110,6 +130,7 @@ impl InputEngine {
                 } else {
                     self.generic.saved_submission(&intent)
                 };
+            let changed_generic = submission.is_some() && self.generic.has_pending(&intent);
             match submission {
                 Some(Submission::Terminal(input)) => {
                     out.push(self.dispatch_saved_terminal(intent, input))
@@ -123,11 +144,14 @@ impl InputEngine {
                         Ok(effect) => out.push(effect),
                         Err(message) => out.extend(self.reject_unsent_submission(
                             &intent,
-                            format!("Send was not dispatched: {message}. Draft retained."),
+                            format!("Send was not dispatched: {message}. Use Send history to recover it."),
                         )?),
                     }
                 }
                 None => {}
+            }
+            if changed_generic {
+                out.extend(self.generic.active_views().into_iter().map(present));
             }
         }
         Ok(out)
@@ -138,14 +162,8 @@ impl InputEngine {
         message: String,
     ) -> Result<Vec<InputEffect>, String> {
         if self.content.idea_submission(intent).is_some() {
-            self.content
-                .complete_idea_submission(intent, CodexResultV1::Error { code: message }, true)
-                .map(|effects| {
-                    effects
-                        .into_iter()
-                        .map(|e| InputEffect::Content(Box::new(e)))
-                        .collect()
-                })
+            let effects = self.content.complete_idea_submission(intent, CodexResultV1::Error { code: message }, true)?;
+            Ok(self.content_submission_effects(effects)?.into_iter().map(|e| InputEffect::Content(Box::new(e))).collect())
         } else {
             self.generic.reject(intent, message)?;
             Ok(self

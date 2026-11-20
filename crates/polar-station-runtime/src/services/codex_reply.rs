@@ -376,8 +376,7 @@ impl CodexControlService {
         if preparation.is_ok() {
             if let Some(route)=direct_route {
                 let config=self.config.read().await;
-                if !config.enabled { preparation=Err("control_disabled"); }
-                else if !config.endpoints.contains(&route) { preparation=Err("settings_conflict"); }
+                if !config.endpoints.contains(&route) { preparation=Err("settings_conflict"); }
                 else {
                     let binding=self.ledger.binding(&binding_id).map_err(|_|"ledger_unavailable")?;
                     if binding.is_none_or(|b|!b.enabled || b.owner_host_id!=self.owner || b.endpoint_id!=endpoint || b.thread_id!=thread) {

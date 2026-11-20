@@ -41,37 +41,114 @@ impl CodexControlService {
     pub(super) async fn discover_account_endpoints(&self) {
         let Some(network) = &self.network else { return; };
         for descriptor in network.targets.descriptors() {
-            self.discover_account_endpoint(descriptor.id.as_str()).await;
+            let target = descriptor.id.as_str();
+            tokio::join!(self.discover_account_endpoint(target), self.discover_polar_endpoint(target));
         }
     }
-    pub(super) async fn discover_account_endpoint(&self,target_id:&str) {
-        let Some(network)=&self.network else{return};
-            let id = format!("auto-codex-{target_id}");
-            if self.config.read().await.endpoints.iter().any(|e| e.id == id) { return; }
-            let Some(target) = network.targets.get(target_id) else { return; };
-            let Ok(client) = target.managed_client(&network.ssh).await else { return; };
-            let local = matches!(client.target(), polar_tmux_core::TmuxTarget::Local);
-            let home = if local {
-                std::env::var_os("CODEX_HOME").map(std::path::PathBuf::from)
-                    .or_else(|| std::env::var_os("HOME").map(|p| std::path::PathBuf::from(p).join(".codex")))
-            } else {
-                super::target_directory::target_output(client.target(),
-                    "printf '%s' \"${CODEX_HOME:-$HOME/.codex}\"").await.ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok()).map(std::path::PathBuf::from)
-            };
-            let Some(home) = home else { return; };
-            let Ok(socket) = polar_inhouse_backend_codex::client::app_server_control_socket_path(&home) else { return; };
-            let Some(socket) = socket.as_path().to_str() else { return; };
-            let mut config = self.config.write().await;
-            if config.endpoints.iter().any(|e| e.execution_target_id == target_id && e.socket_path == socket) { return; }
-            config.endpoints.push(polar_station_settings::CodexEndpointSettingsV1 {
-                id, execution_target_id: target_id.to_owned(), owner_host_id: self.owner.clone(),
-                control_mode: if local { CodexControlModeV1::Local } else { CodexControlModeV1::SshDirect },
-                socket_path: socket.into(), peer_connection_ref: None, remote_endpoint_id: None, remote_target_id: None,
-            });
-            drop(config);
-            self.publisher.publish(ApplicationStateApiV1::ControlCenterV1);
-            self.publisher.publish(ApplicationStateApiV1::CodexV1);
+    pub(super) async fn discover_account_endpoint(&self, target_id: &str) -> Option<String> {
+        let network = self.network.as_ref()?;
+        let id = format!("auto-codex-{target_id}");
+        if self.config.read().await.endpoints.iter().any(|e| e.id == id
+            && e.owner_host_id == self.owner && e.execution_target_id == target_id) {
+            return Some(id);
+        }
+        let target = network.targets.get(target_id)?;
+        let client = target.managed_client(&network.ssh).await.ok()?;
+        let local = matches!(client.target(), polar_tmux_core::TmuxTarget::Local);
+        let home = if local {
+            polar_inhouse_backend_codex::native_codex_home().ok()?
+        } else {
+            let path = super::target_directory::target_output(client.target(),
+                "if [ -n \"${CODEX_HOME:-}\" ]; then dir=$(CDPATH= cd -P -- \"$CODEX_HOME\" && pwd -P) || exit; printf '%s' \"$dir\"; else printf '%s' \"$HOME/.codex\"; fi",
+            ).await.ok()?;
+            std::path::PathBuf::from(String::from_utf8(path).ok()?)
+        };
+        let socket = polar_inhouse_backend_codex::client::app_server_control_socket_path(&home).ok()?;
+        let mode = if local { CodexControlModeV1::Local } else { CodexControlModeV1::SshDirect };
+        self.register_discovered_endpoint(id, target_id, mode, socket.as_path().to_str()?).await
+    }
+
+    async fn discover_polar_endpoint(&self, target_id: &str) -> Option<String> {
+        use polar_inhouse_backend_codex::client::polar_control_socket;
+        use std::path::{Path, PathBuf};
+        let network = self.network.as_ref()?;
+        let id = format!("auto-polar-{target_id}");
+        if self.config.read().await.endpoints.iter().any(|e| e.id == id
+            && e.owner_host_id == self.owner && e.execution_target_id == target_id) {
+            return Some(id);
+        }
+        let target = network.targets.get(target_id)?;
+        let client = target.managed_client(&network.ssh).await.ok()?;
+        let local = matches!(client.target(), polar_tmux_core::TmuxTarget::Local);
+        let home = if local {
+            std::env::home_dir()?
+        } else {
+            let absolute = polar_control_socket(Path::new("/")).ok()?;
+            let relative = absolute.strip_prefix("/").ok()?.to_str()?;
+            let command = format!("if [ -S \"$HOME\"/{} ]; then printf '%s' \"$HOME\"; fi", polar_ssh::quote_posix(relative));
+            let home = super::target_directory::target_output(client.target(), &command).await.ok()?;
+            PathBuf::from(String::from_utf8(home).ok()?)
+        };
+        let socket = polar_control_socket(&home).ok()?;
+        if local {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+                let endpoint = polar_inhouse_backend_codex::client::verified_local_daemon_socket(&socket).ok()??;
+                let metadata = tokio::fs::symlink_metadata(endpoint.as_path()).await.ok()?;
+                if !metadata.file_type().is_socket() || metadata.permissions().mode() & 0o077 != 0 {
+                    return None;
+                }
+            }
+            #[cfg(not(unix))]
+            return None;
+        }
+        let mode = if local { CodexControlModeV1::Local } else { CodexControlModeV1::SshDirect };
+        self.register_discovered_endpoint(id, target_id, mode, socket.to_str()?).await
+    }
+
+    async fn register_discovered_endpoint(&self, id: String, target_id: &str, mode: CodexControlModeV1, socket: &str) -> Option<String> {
+        let mut config = self.config.write().await;
+        if let Some(existing) = config.endpoints.iter().find(|e| e.execution_target_id == target_id
+            && e.socket_path == socket && e.owner_host_id == self.owner && e.control_mode == mode) {
+            return Some(existing.id.clone());
+        }
+        if config.endpoints.iter().any(|e| e.id == id) { return None; }
+        config.endpoints.push(polar_station_settings::CodexEndpointSettingsV1 {
+            id: id.clone(), execution_target_id: target_id.to_owned(), owner_host_id: self.owner.clone(),
+            control_mode: mode,
+            socket_path: socket.into(), peer_connection_ref: None, remote_endpoint_id: None, remote_target_id: None,
+        });
+        drop(config);
+        self.publisher.publish(ApplicationStateApiV1::ControlCenterV1);
+        self.publisher.publish(ApplicationStateApiV1::CodexV1);
+        Some(id)
+    }
+
+    pub(super) async fn check_default_endpoints(&self, target: &str) {
+        let check = |id: Option<String>| async move {
+            if let Some(id) = id { let _ = self.endpoint(&id).await; }
+        };
+        tokio::join!(
+            async {
+                let account = self.discover_account_endpoint(target).await;
+                if target != crate::target_registry::LOCAL_TARGET_ID {
+                    check(account).await;
+                }
+            },
+            async { check(self.discover_polar_endpoint(target).await).await },
+        );
+    }
+
+    pub(super) async fn local_account_endpoint_id(&self) -> Option<String> {
+        let home = polar_inhouse_backend_codex::native_codex_home().ok()?;
+        let socket = polar_inhouse_backend_codex::client::app_server_control_socket_path(&home).ok()?;
+        self.config.read().await.endpoints.iter().find(|endpoint|
+            endpoint.owner_host_id == self.owner
+                && endpoint.execution_target_id == crate::target_registry::LOCAL_TARGET_ID
+                && endpoint.control_mode == CodexControlModeV1::Local
+                && std::path::Path::new(&endpoint.socket_path) == socket.as_path()
+        ).map(|endpoint| endpoint.id.clone())
     }
 
     // The recovery tick may call this, but a healthy generation performs no RPC.

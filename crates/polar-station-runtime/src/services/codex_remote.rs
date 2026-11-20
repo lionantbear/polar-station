@@ -22,9 +22,6 @@ impl CodexControlService {
         // Freeze the authorized route for this request. Network waits on one
         // owner never occupy the local binding/notification transaction gate.
         let config = self.config.read().await.clone();
-        if !config.enabled {
-            return Err("control_disabled");
-        }
         let routes: Vec<_> = config
             .endpoints
             .iter()
@@ -88,6 +85,7 @@ impl CodexControlService {
             | CodexCommandV1::ReadThread { endpoint_id, .. }
             | CodexCommandV1::ReadHistoryDetail { endpoint_id, .. }
             | CodexCommandV1::ListHistory { endpoint_id, .. }
+            | CodexCommandV1::CheckEndpoint { endpoint_id }
             | CodexCommandV1::ListLoaded { endpoint_id }
             | CodexCommandV1::ReadDirectory { endpoint_id, .. } => {
                 *endpoint_id = route_by_alias(&routes, endpoint_id)?
@@ -109,7 +107,7 @@ impl CodexControlService {
         let peer = self.peer_connection(connection).await?;
         {
             let current=self.config.read().await;
-            if !current.enabled || !current.host_connections.contains(connection)
+            if !current.host_connections.contains(connection)
                 || routes.iter().any(|route|!current.endpoints.contains(route)) {
                 return Err("settings_conflict");
             }

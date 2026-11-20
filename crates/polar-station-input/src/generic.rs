@@ -2,6 +2,19 @@
 use polar_station_session::{SendRequest, SessionReference};
 use polar_station_protocol::{CodexBindingV1, CodexCommandV1};
 use serde::{Deserialize, Serialize};
+
+use polar_station_lgp::send_history::{Outcome, Row as SendHistoryView, MAX_ENTRIES as MAX_SEND_HISTORY};
+const MAX_SEND_HISTORY_BYTES: usize = 1024 * 1024;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SendHistoryEntry {
+    intent: String,
+    text: String,
+    accepted: bool,
+    #[serde(default)]
+    completed_at_ms: u64,
+}
+
 use std::collections::BTreeMap;
 
 // Existing snapshots stored an optional single value at these keys.
@@ -46,6 +59,8 @@ impl Lease {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct Draft {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    history: Vec<SendHistoryEntry>,
     #[serde(default,deserialize_with="one_or_many")]
     refinement:Vec<crate::learning::Refinement>,
     #[serde(default)]
@@ -83,6 +98,7 @@ pub struct GenericView {
     pub can_send: bool,
     pub send_label: &'static str,
     pub can_refresh: bool,
+    pub send_history: Vec<SendHistoryView>,
 }
 
 /// A frozen submission candidate, not permission to perform I/O before saving it.
@@ -95,10 +111,22 @@ pub enum Submission {
     },
 }
 
+impl Submission {
+    fn text(&self) -> Option<&str> {
+        match self {
+            Self::Terminal(request) => Some(&request.text),
+            Self::Codex { command: CodexCommandV1::SubmitThreadText { text, .. }, .. } => Some(text),
+            Self::Codex { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Pending {
     intent: String,
     revision: u64,
+    #[serde(default)]
+    clear_on_save: bool,
     request: Submission,
     #[serde(default,deserialize_with="one_or_many")]
     learning:Vec<crate::learning::LearningSample>,
@@ -207,15 +235,16 @@ impl GenericDrafts {
             },
             text: draft.text.clone(),
             can_refresh: draft.pending.is_some() || matches!(context.destination, Destination::Unavailable(_)),
-            can_send: !matches!(context.destination, Destination::NonInput) && !draft.text.trim().is_empty()
-                && draft.pending.as_ref().is_none_or(|pending| pending.error.is_some()),
+            can_send: !matches!(context.destination, Destination::NonInput)
+                && draft.pending.as_ref().map_or_else(|| !draft.text.trim().is_empty(), |pending| pending.error.is_some()),
+            send_history: draft.send_history(),
             send_label: match &draft.pending {
                 Some(pending) if pending.error.is_some() => "Retry",
                 Some(_) => "Sending…",
                 None => "Send",
             },
             unavailable: if draft.pending.is_some() {
-                Some(draft.pending.as_ref().and_then(|p| p.error.clone()).unwrap_or_else(|| "Sending is pending or unconfirmed; draft retained".into()))
+                Some(draft.pending.as_ref().and_then(|p| p.error.clone()).unwrap_or_else(|| "Send pending. You can continue editing.".into()))
             } else if let Some(error)=&draft.last_send_error {
                 Some(error.clone())
             } else {
@@ -347,6 +376,7 @@ impl GenericDrafts {
         if draft.pending.is_some() {
             return Err("Resolve the previous submission before sending again".into());
         }
+        draft.revision.checked_add(1).ok_or("Draft revision exhausted")?;
         draft.last_send_error=None;
         // No alignment guesses: retain all source text and let the existing
         // conservative learner compare it with the single successfully sent draft.
@@ -369,6 +399,7 @@ impl GenericDrafts {
             learning,
             intent,
             revision: lease.draft_revision,
+            clear_on_save: true,
             request,
             dispatched: false,
             error: None,
@@ -404,14 +435,16 @@ impl GenericDrafts {
 
     /// Called only for a successful save of the snapshot containing this intent.
     pub fn saved_submission(&mut self, intent: &str) -> Option<Submission> {
-        let pending = self
+        let draft = self
             .drafts
             .values_mut()
-            .filter_map(|draft| draft.pending.as_mut())
-            .find(|pending| pending.intent == intent)?;
+            .find(|draft| draft.pending.as_ref().is_some_and(|pending| pending.intent == intent))?;
+        let pending = draft.pending.as_mut()?;
         if pending.dispatched {
             return None;
         }
+        draft.clear_saved_send()?;
+        let pending = draft.pending.as_mut()?;
         pending.dispatched = true;
         Some(pending.request.clone())
     }
@@ -419,7 +452,7 @@ impl GenericDrafts {
     pub(crate) fn submission_error(&mut self, intent: &str, error: String) {
         for draft in self.drafts.values_mut() {
             if let Some(pending) = draft.pending.as_mut().filter(|p| p.intent == intent) {
-                pending.error = Some(format!("Sending result is unconfirmed: {}. Draft retained; refresh sending status before retrying.", error.chars().take(256).collect::<String>()));
+                pending.error = Some(format!("Sending result is unconfirmed: {}. Check the original receipt before retrying.", error.chars().take(256).collect::<String>()));
             }
         }
     }
@@ -443,7 +476,7 @@ impl GenericDrafts {
                     .is_some_and(|pending| pending.intent == intent)
             })
             .ok_or("Unknown submission intent")?;
-        let pending = draft.pending.as_ref().ok_or("Unknown submission intent")?;
+        let pending = draft.pending.take().ok_or("Unknown submission intent")?;
         if accepted {
             for sample in &pending.learning {
                 if !draft.learn_pending.iter().any(|s|s.intent==sample.intent) && draft.learn_pending.len()<64 {
@@ -453,20 +486,64 @@ impl GenericDrafts {
             let consumed=pending.source_count.unwrap_or(usize::from(!pending.learning.is_empty()));
             draft.refinement.drain(..consumed.min(draft.refinement.len()));
         }
-        if accepted && draft.revision == pending.revision {
+        if accepted && !pending.clear_on_save && draft.revision == pending.revision {
             draft.revision = draft
                 .revision
                 .checked_add(1)
                 .ok_or("Draft revision exhausted")?;
             draft.text.clear();
         }
-        draft.pending = None;
+        if pending.dispatched {
+            if let Some(text) = pending.request.text() {
+                draft.history.push(SendHistoryEntry {
+                    intent: pending.intent,
+                    text: text.into(),
+                    accepted,
+                    completed_at_ms: self.now_ms,
+                });
+                while draft.history.len() > 1 && (draft.history.len() > MAX_SEND_HISTORY
+                    || draft.history.iter().map(|entry| entry.text.len()).sum::<usize>() > MAX_SEND_HISTORY_BYTES) {
+                    draft.history.remove(0);
+                }
+            }
+        }
         Ok(())
+    }
+
+    pub(crate) fn recover_send(&mut self, lease: &Lease, intent: &str) -> Result<Option<String>, String> {
+        self.validate(lease)?;
+        let draft = self.drafts.get(&lease.draft_key).ok_or("Input draft missing")?;
+        let entry = draft.history.iter().find(|entry| entry.intent == intent)
+            .ok_or("Send history entry is unavailable")?;
+        let text = entry.text.clone();
+        if entry.accepted || !draft.text.is_empty() {
+            return Ok(Some(text));
+        }
+        self.edit(lease, text)?;
+        Ok(None)
     }
 
     /// Only drafts are persistent. Execution credentials and selection are not restored.
     pub fn snapshot(&self) -> Result<serde_json::Value, String> {
         serde_json::to_value(&self.drafts).map_err(|e| e.to_string())
+    }
+
+    pub(crate) fn trim_send_history(&mut self) -> bool {
+        // Historic text uses spare storage. Keep failed sends ahead of successful
+        // ones, but never let completed history block a subsequent draft save.
+        let oldest = self.drafts.values_mut()
+            .filter_map(|draft| {
+                let (index, entry) = draft.history.iter().enumerate()
+                    .min_by_key(|(_, entry)| (!entry.accepted, entry.completed_at_ms))?;
+                Some(((!entry.accepted, entry.completed_at_ms), index, draft))
+            })
+            .min_by_key(|(priority, _, _)| *priority);
+        if let Some((_, index, draft)) = oldest {
+            draft.history.remove(index);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn restore_drafts(&mut self, value: serde_json::Value) -> Result<(), String> {
@@ -483,6 +560,8 @@ impl GenericDrafts {
                 || draft.refinement.len()>32 || draft.learn_pending.len()>64
                 || draft.refinement.iter().map(|r|r.original.len()+r.refined.len()).sum::<usize>()>65536
                 || draft.last_send_error.as_ref().is_some_and(|e|e.chars().count()>512)
+                || draft.history.len() > MAX_SEND_HISTORY
+                || draft.history.iter().map(|entry| entry.text.len()).sum::<usize>() > MAX_SEND_HISTORY_BYTES
             {
                 return Err("Invalid saved input draft".into());
             }
@@ -490,6 +569,7 @@ impl GenericDrafts {
         // A process may have exited either side of the I/O boundary. Never
         // replay restored submissions, including ones persisted before dispatch.
         for draft in drafts.values_mut() {
+            draft.clear_saved_send().ok_or("Draft revision exhausted")?;
             if let Some(pending) = &mut draft.pending {
                 pending.dispatched = true;
                 pending.error.get_or_insert_with(|| "Previous send is unconfirmed; Retry checks its receipt before continuing".into());
@@ -572,6 +652,32 @@ impl GenericDrafts {
 
     pub fn close_window(&mut self, window: &str) {
         self.contexts.remove(window);
+    }
+}
+
+impl Draft {
+    fn clear_saved_send(&mut self) -> Option<()> {
+        if let Some(pending) = &mut self.pending {
+            if pending.clear_on_save && self.revision == pending.revision {
+                self.revision = self.revision.checked_add(1)?;
+                self.text.clear();
+                self.refinement.clear();
+                self.refinement_revision = None;
+                pending.source_count = Some(0);
+            }
+        }
+        Some(())
+    }
+
+    fn send_history(&self) -> Vec<SendHistoryView> {
+        let pending = self.pending.as_ref().and_then(|entry| entry.request.text().map(|text| {
+            let (status, action) = if entry.error.is_some() { ("Result unknown", "Check receipt") } else { ("Sending", "") };
+            SendHistoryView::new(&entry.intent, text, status, action)
+        }));
+        pending.into_iter().chain(self.history.iter().rev().map(|entry|
+            SendHistoryView::completed(&entry.intent, &entry.text,
+                if entry.accepted { Outcome::Sent } else { Outcome::Failed }, self.text.is_empty())
+        )).collect()
     }
 }
 

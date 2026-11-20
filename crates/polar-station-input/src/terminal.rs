@@ -213,9 +213,9 @@ impl InputEngine {
                     match receipt.state {
                         DeliveryStatus::Delivered => self.generic.resolve(&intent, true)?,
                         DeliveryStatus::FailedBeforeWrite => {
-                            self.generic.reject(&intent,format!("Send failed before write: {}. Draft retained.",receipt.error.as_deref().unwrap_or("target rejected input")))?
+                            self.generic.reject(&intent,format!("Send failed before write: {}. Use Send history to recover it.",receipt.error.as_deref().unwrap_or("target rejected input")))?
                         }
-                        _ if rejected_once => self.generic.reject(&intent,"Input target changed before write; draft retained. Send again to re-resolve the original target.".into())?,
+                        _ if rejected_once => self.generic.reject(&intent,"Input target changed before write. Use Send history to recover the text.".into())?,
                         _ => self.generic.submission_error(&intent, receipt.error.unwrap_or_else(|| "Receipt unavailable".into())),
                     }
                 } else if let Some(error) = error {

@@ -135,6 +135,7 @@ impl Engine {
                 selection: view.state.selection.clone(),
                 controls: view.state.controls(),
                 can_search: view.state.ready,
+                send_history: draft.send_rows(),
             };
             let encoded = serde_json::to_string(&effect).unwrap_or_default();
             if self.composer_cache.get(window) != Some(&encoded) {
@@ -147,14 +148,14 @@ impl Engine {
         let rows = self
             .drafts
             .iter()
-            .filter(|(_, d)| !d.text.is_empty() || !d.node_blocks.is_empty() || d.idea_target.is_some() || d.idea_submission.is_some() || d.idea_context.is_some())
+            .filter(|(_, d)| !d.text.is_empty() || !d.node_blocks.is_empty() || d.idea_target.is_some() || d.idea_submission.is_some() || d.idea_context.is_some() || d.chat_submission.is_some() || !d.send_history.is_empty())
             .map(|((window, context), d)| match context {
                 DraftContext::Thread(scope) => {
-                    json!({"window_id":window,"scope":scope,"text":d.text,"revision":d.revision})
+                    json!({"window_id":window,"scope":scope,"text":d.text,"revision":d.revision,"chat_submission":d.chat_submission,"send_history":d.send_history})
                 }
                 DraftContext::Inquiry{scope,sender,message,node} => json!({"window_id":window,"scope":scope,"inquiry_sender":sender,"inquiry_message":message,"inquiry_node":node,"text":d.text,"revision":d.revision}),
                 DraftContext::Idea(id) => {
-                    json!({"idea_view_id":id,"text":d.text,"revision":d.revision,"idea_target":d.idea_target,"idea_submission":d.idea_submission,"node_blocks":d.node_blocks})
+                    json!({"idea_view_id":id,"text":d.text,"revision":d.revision,"idea_target":d.idea_target,"idea_submission":d.idea_submission,"node_blocks":d.node_blocks,"instruction_context":d.idea_context,"send_history":d.send_history})
                 }
             })
             .collect::<Vec<_>>();
@@ -239,15 +240,42 @@ impl Engine {
                     }
                 }
             }
-            restored.push((
-                key,
-                Draft {
+            let chat_submission: Option<content_send::ChatSubmission> = serde_json::from_value(row["chat_submission"].clone()).map_err(|_|"invalid Chat submission")?;
+            let send_history: Vec<content_send::Entry> = row.get("send_history").map(|v|serde_json::from_value(v.clone())).transpose().map_err(|_|"invalid send history")?.unwrap_or_default();
+            let idea_context = serde_json::from_value(row["instruction_context"].clone()).map_err(|_|"invalid Idea context")?;
+            if send_history.len() > crate::send_history::MAX_ENTRIES || send_history.iter().any(|entry| entry.text.len()>32*1024) {
+                return Err("invalid send history".into());
+            }
+            for entry in &send_history {
+                validate_id(&entry.intent)?;
+                if let Some(target) = &entry.target { target.validate()?; }
+                if let Some(document) = &entry.document {
+                    if !matches!(key.1,DraftContext::Idea(_)) {return Err("invalid send history document".into());}
+                    super::idea_document::validate_document(&document.text,&document.node_blocks)?;
+                }
+            }
+            let mut draft = Draft {
                     idea_target, idea_submission, node_blocks,
+                    idea_context, chat_submission, send_history,
                     text: text.into(),
                     revision: row["revision"].as_u64().unwrap_or(0),
                     ..Draft::default()
-                },
-            ));
+            };
+            if let Some(send) = &draft.chat_submission {
+                validate_id(&send.intent)?;
+                if !matches!(key.1,DraftContext::Thread(_)) || send.text.len()>32*1024 || send.created_at_secs==0 {
+                    return Err("invalid frozen Chat submission".into());
+                }
+                draft.clear_sent_document(send.revision)?;
+                draft.finish_chat_send(Outcome::Unknown);
+            }
+            if let Some(send) = &draft.idea_submission {
+                if let Some(document) = &send.document {
+                    super::idea_document::validate_document(&document.text,&document.node_blocks)?;
+                    draft.clear_sent_document(send.revision)?;
+                }
+            }
+            restored.push((key,draft));
         }
         self.inquiries.dismissed.extend(dismissed);
         for (key, draft) in restored {

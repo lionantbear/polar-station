@@ -1,70 +1,76 @@
-import Foundation
 import PolarTmuxHostClient
 import SwiftUI
 
 struct SessionDirectoryPicker: View {
-    let embedded: Bool
-    let target: String
-    let endpoint: String?
-    let read: SessionEditorReader
+    let state: SessionEditorInteraction.DirectoryBrowser
+    let selectedPath: String
+    let navigate: @MainActor (String) -> Void
     let choose: @MainActor (String) -> Void
-    let cancel: @MainActor () -> Void
-    @State private var path: String
-    @State private var typedPath: String
-    @State private var directory: SessionDirectoryV1?
-    @State private var failure: String?
-    @State private var loading = false
-    @State private var retry = 0
-    init(target: String, endpoint: String?, initialPath: String, embedded: Bool = false, read: @escaping SessionEditorReader,
-         choose: @escaping @MainActor (String) -> Void, cancel: @escaping @MainActor () -> Void) {
-        self.embedded = embedded
-        self.target = target; self.endpoint = endpoint; self.read = read
-        self.choose = choose; self.cancel = cancel
-        _path = State(initialValue: initialPath.isEmpty ? "~" : initialPath)
-        _typedPath = State(initialValue: initialPath)
-    }
+    let retry: @MainActor () -> Void
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Choose Startup Directory").font(.title3.bold())
-            HStack {
-                Button("Home") { path = directory?.home ?? "~" }
-                Button("Up") { if let parent = directory?.parent { path = parent } }.disabled(directory?.parent == nil)
-                TextField("Path", text: $typedPath).onSubmit { path = typedPath; retry += 1 }
-            }
-            if let directory {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 3) {
-                        Button("/") { path = "/" }
-                        ForEach(Array(directory.path.split(separator: "/").enumerated()), id: \.offset) { index, part in
-                            Text("/")
-                            Button(String(part)) { path = "/" + directory.path.split(separator: "/").prefix(index + 1).joined(separator: "/") }
+        VStack(alignment: .leading, spacing: 8) {
+            if let listing = state.listing {
+                HStack {
+                    Button("Home") { navigate(listing.home) }
+                    Button("Up") { if let parent = listing.parent { navigate(parent) } }
+                        .disabled(listing.parent == nil)
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 4) {
+                            Button("/") { navigate("/") }
+                            ForEach(Array(listing.path.split(separator: "/").enumerated()), id: \.offset) { index, part in
+                                Image(systemName: "chevron.right")
+                                    .accessibilityHidden(true)
+                                Button(String(part)) {
+                                    navigate("/" + listing.path.split(separator: "/").prefix(index + 1).joined(separator: "/"))
+                                }
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                }
+                if listing.directories.isEmpty {
+                    Text("No subfolders").foregroundStyle(.secondary)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(listing.directories, id: \.self) { path in
+                                folderRow(path)
+                            }
                         }
-                    }.buttonStyle(.plain)
+                    }.frame(height: 152)
                 }
-                List(directory.directories, id: \.self) { folder in
-                    Button { path = folder } label: { Label((folder as NSString).lastPathComponent, systemImage: "folder") }
-                        .buttonStyle(.plain)
+            } else if state.loading {
+                ProgressView("Reading the selected machine…").controlSize(.small)
+            } else if let error = state.error {
+                HStack {
+                    Text(error).foregroundStyle(.secondary)
+                    Button("Retry", action: retry)
                 }
             }
-            if loading { ProgressView("Reading the selected machine…") }
-            if let failure { Text(failure).foregroundStyle(.red); Button("Retry") { retry += 1 } }
-            HStack {
-                Spacer()
-                if !embedded { Button("Cancel", role: .cancel, action: cancel) }
-                Button("Choose This Directory") { if let directory { choose(directory.path) } }
-                    .disabled(loading || failure != nil || directory == nil)
-            }
-        }.padding(18).frame(width: embedded ? nil : 520, height: embedded ? nil : 420)
-        .task(id: "\(path)|\(retry)") {
-            loading = true; failure = nil
-            do {
-                guard case .directory(let value) = try await read(.browseDirectory(target: target, path: path, endpoint: endpoint)) else {
-                    throw PolarTmuxLocalIPCError.unexpectedFrame("No target directory listing")
-                }
-                guard !Task.isCancelled else { return }
-                directory = value; typedPath = value.path
-            } catch { if !Task.isCancelled { failure = error.localizedDescription } }
-            if !Task.isCancelled { loading = false }
         }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(StationTheme.shared.surface, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func folderRow(_ path: String) -> some View {
+        let name = (path as NSString).lastPathComponent
+        let selected = path == selectedPath
+        return HStack(spacing: 8) {
+            Button { choose(path) } label: {
+                HStack {
+                    Label(name, systemImage: "folder")
+                    Spacer()
+                    if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
+                }.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            Button { navigate(path) } label: { Image(systemName: "chevron.right") }
+                .accessibilityLabel("Browse \(name)")
+        }
+        .padding(6)
+        .background(selected ? StationTheme.shared.accent.opacity(0.14) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5))
     }
 }

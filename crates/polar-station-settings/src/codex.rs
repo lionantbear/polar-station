@@ -73,10 +73,11 @@ pub struct HostConnectionSettingsV1 {
     pub notification_credential_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CodexControlSettingsV1 {
     pub revision: u64,
+    /// Retained for v1 clients and legacy settings. The repository normalizes this to true.
     pub enabled: bool,
     pub endpoints: Vec<CodexEndpointSettingsV1>,
     #[serde(default)]
@@ -84,6 +85,20 @@ pub struct CodexControlSettingsV1 {
     pub telegram: TelegramControlSettingsV1,
     pub imessage_enabled: bool,
     pub imessage_sender: Option<ImessageDestinationV1>,
+}
+
+impl Default for CodexControlSettingsV1 {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            enabled: true,
+            endpoints: Vec::new(),
+            host_connections: Vec::new(),
+            telegram: TelegramControlSettingsV1::default(),
+            imessage_enabled: false,
+            imessage_sender: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

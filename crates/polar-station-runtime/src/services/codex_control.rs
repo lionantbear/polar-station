@@ -266,6 +266,14 @@ impl CodexControlService {
                     settings: self.config.read().await.clone(),
                 })
             }
+            CodexCommandV1::StartLocalServer { endpoint_id } => {
+                return self.start_local_server(endpoint_id, may_configure).await;
+            }
+            CodexCommandV1::CheckEndpoint { endpoint_id } => {
+                tokio::time::timeout(std::time::Duration::from_secs(5), self.endpoint(endpoint_id))
+                    .await.map_err(|_| "codex_handshake_timeout")??;
+                return Ok(CodexResultV1::EndpointReady);
+            }
             CodexCommandV1::ReadThread { endpoint_id, thread_id, .. }
             | CodexCommandV1::ReadHistoryDetail { endpoint_id, thread_id } => {
                 let client = self.endpoint(endpoint_id).await?;
@@ -358,7 +366,6 @@ impl CodexControlService {
         let _operation = tracing::Instrument::instrument(self.operations.lock(),
             tracing::info_span!(target: "polar_station_operation", "codex_admission_wait", component="Codex")).await;
         let result = match command {
-            CodexCommandV1::StartLocalServer{endpoint_id}=>self.start_local_server(&endpoint_id,may_configure).await,
             CodexCommandV1::ConnectImessageSender {
                 expected_revision,
                 ssh_target_id,
@@ -709,7 +716,7 @@ impl CodexControlService {
         self.peers
             .lock()
             .await
-            .retain(|_, peer| saved.enabled && saved.host_connections.contains(&peer.connection));
+            .retain(|_, peer| saved.host_connections.contains(&peer.connection));
         {
             let mut states = self.states.write().await;
             for (id, state) in states.iter_mut() {
@@ -724,12 +731,6 @@ impl CodexControlService {
             old.endpoints.iter().find(|e| &e.id == id)
                 == saved.endpoints.iter().find(|e| &e.id == id)
         });
-        if !saved.enabled {
-            self.endpoints.lock().await.clear();
-            for state in self.states.write().await.values_mut() {
-                mark_disconnected(state, "control_disabled");
-            }
-        }
         self.publisher.publish(ApplicationStateApiV1::CodexV1);
         self.publisher.publish(ApplicationStateApiV1::ControlCenterV1);
         Ok(CodexResultV1::Settings { settings: saved })
@@ -841,7 +842,6 @@ impl CodexControlService {
         // reads configuration from its state mutation. A queued writer makes
         // nested read locks participate in that cycle too (Tokio is fair).
         let config = self.config.read().await.clone();
-        if !config.enabled { return false; }
         let disabled = self.topology.read().await.disabled_monitors.clone();
         let endpoints = self.endpoints.lock().await.iter().map(|(id,c)| (id.clone(),(c.client.connected(), c.generation))).collect::<BTreeMap<_,_>>();
         let inventories = self.inventories.lock().await.clone();
@@ -855,9 +855,6 @@ impl CodexControlService {
     async fn reconnect(&self) {
         // Configuration events must not be lost behind an in-flight mutation.
         let _operation = self.operations.lock().await;
-        if !self.config.read().await.enabled {
-            return;
-        }
         let Ok(topology) = self.settings.load_message_connectors() else {
             return;
         };

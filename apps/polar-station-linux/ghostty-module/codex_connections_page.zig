@@ -17,7 +17,6 @@ pub const Page = struct {
     mode: *gtk.DropDown,
     host: *gtk.DropDown,
     advanced: *gtk.Expander,
-    enabled: *gtk.CheckButton,
     add: *gtk.Button,
     edit: *gtk.Button,
     remove: *gtk.Button,
@@ -43,8 +42,6 @@ pub const Page = struct {
         root.append(detail.as(gtk.Widget));
         const form = gtk.Box.new(.vertical, 8);
         root.append(form.as(gtk.Widget));
-        const enabled = gtk.CheckButton.newWithLabel("Enable Codex control and monitoring");
-        form.append(enabled.as(gtk.Widget));
         var fields: [5]*gtk.Entry = undefined;
         fields[0] = field(form, "Endpoint ID");
         const modes = gtk.StringList.new(null);
@@ -78,7 +75,7 @@ pub const Page = struct {
         footer.append(cancel.as(gtk.Widget));
         const save = gtk.Button.newWithLabel("Save");
         footer.append(save.as(gtk.Widget));
-        self.* = .{ .allocator = a, .context = context, .dispatch = dispatch, .root = root, .footer = footer, .selector = selector, .form = form, .detail = detail, .fields = fields, .mode = mode, .host = host, .advanced = advanced, .enabled = enabled, .add = add, .edit = edit, .remove = remove, .cancel = cancel, .save = save, .machine = machine };
+        self.* = .{ .allocator = a, .context = context, .dispatch = dispatch, .root = root, .footer = footer, .selector = selector, .form = form, .detail = detail, .fields = fields, .mode = mode, .host = host, .advanced = advanced, .add = add, .edit = edit, .remove = remove, .cancel = cancel, .save = save, .machine = machine };
         _ = gtk.Button.signals.clicked.connect(add, *Page, addClicked, self, .{});
         _ = gtk.Button.signals.clicked.connect(edit, *Page, editClicked, self, .{});
         _ = gtk.Button.signals.clicked.connect(remove, *Page, removeClicked, self, .{});
@@ -87,7 +84,6 @@ pub const Page = struct {
         _ = gobject.Object.signals.notify.connect(selector.as(gobject.Object), *Page, selectionChanged, self, .{ .detail = "selected" });
         _ = gobject.Object.signals.notify.connect(mode.as(gobject.Object), *Page, modeChanged, self, .{ .detail = "selected" });
         _ = gobject.Object.signals.notify.connect(host.as(gobject.Object), *Page, modeChanged, self, .{ .detail = "selected" });
-        _ = gtk.CheckButton.signals.toggled.connect(enabled, *Page, toggled, self, .{});
         for (fields) |input| _ = gtk.Editable.signals.changed.connect(input.as(gtk.Editable), *Page, fieldChanged, self, .{});
         self.visibility();
         return self;
@@ -115,7 +111,7 @@ pub const Page = struct {
         self.selected = owned;
         if (self.settings != null) self.rebuild();
     }
-    pub fn update(self: *Page, settings: ?wire.Settings, draft: ?wire.Endpoint, enabled: bool, pending: bool) void {
+    pub fn update(self: *Page, settings: ?wire.Settings, draft: ?wire.Endpoint, pending: bool) void {
         const was_editing = self.editing;
         self.editing = draft != null;
         self.pending = pending;
@@ -140,7 +136,6 @@ pub const Page = struct {
             for ([_][]const u8{ e.id, e.socket_path, e.remote_endpoint_id orelse "", e.remote_target_id orelse "", e.owner_host_id }, 0..) |value, i| self.entry(self.fields[i], value);
             self.fields[0].as(gtk.Editable).setEditable(@intFromBool(e.id.len == 0));
             self.mode.setSelected(if (std.mem.eql(u8, e.control_mode, "remote_host")) 2 else if (std.mem.eql(u8, e.control_mode, "ssh_direct")) 1 else 0);
-            self.enabled.setActive(@intFromBool(enabled));
             const hosts = gtk.StringList.new(null);
             defer hosts.unref();
             hosts.append("Select authorized Station Host");
@@ -229,7 +224,7 @@ pub const Page = struct {
             if (i > 0 and i <= s.value.host_connections.len) peer = s.value.host_connections[i - 1].id;
         }
         const endpoint: wire.Endpoint = .{ .id = get(self.fields[0]), .execution_target_id = self.machine, .control_mode = if (remote) "remote_host" else if (self.mode.getSelected() == 1) "ssh_direct" else "local", .socket_path = get(self.fields[1]), .owner_host_id = get(self.fields[4]), .peer_connection_ref = peer, .remote_endpoint_id = get(self.fields[2]), .remote_target_id = get(self.fields[3]) };
-        self.send(.{ .type = "draft_codex", .endpoint = endpoint, .enabled = self.enabled.getActive() != 0 });
+        self.send(.{ .type = "draft_codex", .endpoint = endpoint });
     }
     fn addClicked(_: *gtk.Button, self: *Page) callconv(.c) void {
         self.send(.{ .type = "edit_codex", .machine = self.machine, .id = @as(?[]const u8, null) });
@@ -248,9 +243,6 @@ pub const Page = struct {
         self.send(.{ .type = "save" });
     }
     fn fieldChanged(_: *gtk.Editable, self: *Page) callconv(.c) void {
-        self.sendDraft();
-    }
-    fn toggled(_: *gtk.CheckButton, self: *Page) callconv(.c) void {
         self.sendDraft();
     }
     fn modeChanged(_: *gobject.Object, _: *gobject.ParamSpec, self: *Page) callconv(.c) void {

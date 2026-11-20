@@ -28,6 +28,7 @@ pub enum SessionDiscoveryStatus {
 pub enum SessionKind {
     #[default]
     Terminal,
+    Command,
     CodexPlane,
     ClaudePlane,
 }
@@ -49,7 +50,7 @@ impl SessionKind {
         match self {
             Self::CodexPlane => Some(format!("codex-{id}")),
             Self::ClaudePlane => Some(format!("claude-{id}")),
-            Self::Terminal => None,
+            Self::Terminal | Self::Command => None,
         }
     }
 
@@ -59,6 +60,7 @@ impl SessionKind {
             | crate::ProcessRestoreSpec::CodexForwardedCli { .. }
             | crate::ProcessRestoreSpec::Codex { .. } => Self::CodexPlane,
             crate::ProcessRestoreSpec::Claude { .. } => Self::ClaudePlane,
+            crate::ProcessRestoreSpec::Command { .. } => Self::Command,
             _ => Self::Terminal,
         }
     }

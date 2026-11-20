@@ -40,6 +40,8 @@ pub(super) struct Submission {
     pub revision: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<CodexCommandV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document: Option<super::content_send::Document>,
 }
 #[derive(Default)]
 pub(super) struct Codex {
@@ -247,6 +249,8 @@ impl Engine {
         }
         let intent = polar_identity::generation::new_uuid_v7().to_string();
         let revision = draft.revision;
+        revision.checked_add(1).ok_or("draft version exhausted")?;
+        let document = Some(draft.document());
         let command = CodexCommandV1::SubmitThreadText {
             endpoint_id: target.endpoint_id.clone(),
             thread_id: target.thread_id.clone(),
@@ -259,6 +263,7 @@ impl Engine {
             intent: intent.clone(),
             revision,
             command: Some(command),
+            document,
         });
         draft.pending = Some(intent.clone());
         out.push(Effect::CodexSubmission { intent, check: false });
@@ -291,37 +296,54 @@ impl Engine {
             Some((submission.target.owner_host_id.clone(), submission.command.clone()))
         })
     }
+    pub fn saved_idea_submission(&mut self, intent: &str) -> Result<Vec<Effect>, String> {
+        if let Some(draft) = self.drafts.values_mut().find(|draft| draft.idea_submission.as_ref().is_some_and(|s| s.intent == intent)) {
+            let submission = draft.idea_submission.as_ref().expect("frozen Idea submission");
+            if submission.document.is_some() { draft.clear_sent_document(submission.revision)?; }
+        }
+        let mut out = Vec::new();
+        self.idea_composer_effects(&mut out);
+        Ok(out)
+    }
     pub fn complete_idea_submission(&mut self, intent: &str, result: CodexResultV1, not_sent: bool) -> Result<Vec<Effect>, String> {
         let Some(draft) = self.drafts.values_mut().find(|d|d.idea_submission.as_ref().is_some_and(|s|s.intent==intent)) else { return Ok(vec![]) };
-        let revision=draft.idea_submission.as_ref().ok_or("Missing submission")?.revision;
+        let submission=draft.idea_submission.as_ref().ok_or("Missing submission")?;
+        let revision=submission.revision;
+        let cleared=draft.revision!=revision;
         draft.pending=None;
+        let mut outcome=None;
         match result {
             CodexResultV1::Receipt { receipt:Some(receipt) } if receipt.intent_id==intent => {
                 draft.status=receipt.label;
                 if matches!(receipt.status,CodexSubmissionStatusV1::Accepted|CodexSubmissionStatusV1::Rejected) {
-                    draft.idea_submission=None;
+                    outcome=Some(if receipt.status==CodexSubmissionStatusV1::Accepted {Outcome::Sent} else {Outcome::Failed});
                 }
-                if receipt.clear_input && receipt.status==CodexSubmissionStatusV1::Accepted && draft.revision==revision {
-                    draft.text.clear();draft.node_blocks.clear();draft.idea_context=None;
-                    draft.revision=draft.revision.checked_add(1).ok_or("draft version exhausted")?;
+                if receipt.clear_input && receipt.status==CodexSubmissionStatusV1::Accepted {
+                    draft.clear_sent_document(revision)?;
                 }
             }
             result=>{
                 let message=if let CodexResultV1::Error { code }=result {code} else {"Unconfirmed response".into()};
                 if not_sent {
-                    draft.idea_submission=None;
-                    draft.status=format!("Not submitted: {message}; input retained");
+                    outcome=Some(Outcome::Failed);
+                    draft.status=format!("Not submitted: {message}");
                 } else {
-                    draft.status=format!("{message}; input retained — Check receipt");
+                    draft.status=format!("{message} — Check receipt");
                 }
             }
         }
-        let mut out=Vec::new();self.idea_composer_effects(&mut out);Ok(out)
+        if let Some(outcome) = outcome {
+            let submission = draft.idea_submission.take().expect("frozen Idea submission");
+            if let Some(CodexCommandV1::SubmitThreadText { text, .. }) = submission.command.filter(|_| !not_sent || cleared) {
+                draft.record_send(super::content_send::Entry { intent: intent.into(), text, outcome, document: submission.document, target: Some(submission.target) });
+            }
+        }
+        let mut out=vec![Effect::PersistDrafts];self.idea_composer_effects(&mut out);Ok(out)
     }
     pub(super) fn disconnect_idea_submissions(&mut self) {
         for draft in self.drafts.values_mut().filter(|d|d.idea_submission.is_some()) {
             draft.pending = None;
-            draft.status = "Connection closed; input retained — Check receipt".into();
+            draft.status = "Connection closed — Check receipt".into();
         }
     }
     pub(super) fn idea_show_session(&mut self, window: &str) -> Result<(), String> {

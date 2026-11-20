@@ -42,6 +42,7 @@ pub(super) async fn inspect(client: &TmuxClient, id: &str, enabled: bool) -> Ses
         tmux,
         codex,
         codex_control_enabled: enabled,
+        default_local_codex_endpoint: None,
         claude: Some(claude),
     }
 }

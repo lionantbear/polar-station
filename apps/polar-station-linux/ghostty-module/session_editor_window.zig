@@ -7,6 +7,7 @@ const gobject = @import("gobject");
 const glib = @import("glib");
 const auxiliary = @import("auxiliary_window.zig");
 const preferences = @import("control_center/width_preferences.zig");
+const directory_browser = @import("session_directory_window.zig");
 
 pub const State = struct {
     prepare_tools:?*gtk.Button=null,
@@ -18,8 +19,8 @@ pub const State = struct {
     detail_time: ?*gtk.Label = null,
     detail_identity: ?*gtk.Label = null,
     detail_retry: ?*gtk.Button = null,
-    new_split: ?*gtk.Paned = null,
     command_view: ?*gtk.TextView = null,
+    known_rows: ?*gtk.Box = null,
     name_row: ?*gtk.Box = null,
     command_row: ?*gtk.Box = null,
     manual_button: ?*gtk.MenuButton = null,
@@ -273,10 +274,18 @@ pub fn create(comptime C: type, self: *C) void {
     const directory_controls = gtk.Box.new(.horizontal, 8);
     directory.as(gtk.Widget).setHexpand(1);
     directory_controls.append(directory.as(gtk.Widget));
-    const browse = button("Browse…");
+    const browse = button("Browse");
     directory_controls.append(browse.as(gtk.Widget));
     const directory_row = field(directory_label, directory_controls.as(gtk.Widget));
     body.append(directory_row.as(gtk.Widget));
+    self.session_directory = directory_browser.Browser.create(
+        self.allocator, self, C.sessionDirectoryNavigate, C.sessionDirectorySelected, C.sessionDirectoryRetry,
+    ) catch null;
+    if (self.session_directory) |browser| body.append(browser.root.as(gtk.Widget));
+    const known_rows = gtk.Box.new(.vertical, 4);
+    known_rows.as(gtk.Widget).setVisible(0);
+    body.append(known_rows.as(gtk.Widget));
+    self.editor.known_rows = known_rows;
     const command = entry("Command");
     const command_label = label("Command");
     const command_view = gtk.TextView.new();
@@ -316,12 +325,8 @@ pub fn create(comptime C: type, self: *C) void {
     body_scroll.setPolicy(.never, .automatic);
     body_scroll.setPropagateNaturalHeight(1);
     body_scroll.setChild(body.as(gtk.Widget));
-    const new_split = gtk.Paned.new(.horizontal);
-    new_split.setPosition(480);
-    new_split.as(gtk.Widget).setVexpand(1);
-    new_split.setEndChild(body_scroll.as(gtk.Widget));
-    self.editor.new_split = new_split;
-    root.append(new_split.as(gtk.Widget));
+    body_scroll.as(gtk.Widget).setVexpand(1);
+    root.append(body_scroll.as(gtk.Widget));
     const error_label = label("");
     error_label.setWrap(1);
     error_label.as(gtk.Widget).addCssClass("error");
@@ -421,7 +426,7 @@ pub fn create(comptime C: type, self: *C) void {
     self.session_create_submit = submit;
     self.session_create_cancel = cancel;
     inline for (.{ .{ new, C.sessionNewModeClicked }, .{ resume_button, C.sessionResumeModeClicked }, .{ manage, C.sessionManageConnectionsClicked }, .{ browse, C.sessionDirectoryBrowseClicked }, .{ more, C.historyMoreClicked }, .{ copy_id, C.historyCopyClicked }, .{ cancel, C.sessionCreateCancelClicked }, .{ submit, C.sessionCreateSubmitClicked }, .{ manual_apply, C.historyManualApply }, .{ manual_cancel, C.historyManualCancel } }) |pair| clicked(C, pair[0], pair[1], self);
-    inline for (.{ name, command, resume_id }) |value| _ = gtk.Editable.signals.changed.connect(value.as(gtk.Editable), *C, C.sessionCreateChanged, self, .{});
+    inline for (.{ name, directory, command, resume_id }) |value| _ = gtk.Editable.signals.changed.connect(value.as(gtk.Editable), *C, C.sessionCreateChanged, self, .{});
     _ = gtk.Editable.signals.changed.connect(manual_draft.as(gtk.Editable), *C, C.historyManualChanged, self, .{});
     inline for (.{ machine, kind, mode }) |value| _ = gobject.Object.signals.notify.connect(value.as(gobject.Object), *C, C.sessionCreateChoiceChanged, self, .{ .detail = "selected" });
     _ = gobject.Object.signals.notify.connect(endpoint.as(gobject.Object), *C, C.sessionCreateEndpointChanged, self, .{ .detail = "selected" });
@@ -503,6 +508,7 @@ pub fn appendThread(self: anytype, thread: anytype) void {
     }
     content.append(selected.as(gtk.Widget));
     _ = gtk.CheckButton.signals.toggled.connect(selected, @TypeOf(self), @TypeOf(self.*).historySelectionChanged, self, .{});
+    self.appendHistoryTabLocations(content, thread.thread_id);
     const title_z = allocator.dupeZ(u8, thread.display_name) catch return;
     defer allocator.free(title_z);
     const title = label(title_z);
@@ -559,7 +565,6 @@ pub fn showHistoryOptions(self: anytype, history: bool) void {
     }
     self.editor.options_menu.?.as(gtk.Widget).setVisible(@intFromBool(history));
     self.session_editor_scroll.?.as(gtk.Widget).setVisible(@intFromBool(!history));
-    self.editor.new_split.?.as(gtk.Widget).setVisible(@intFromBool(!history));
 }
 
 pub fn detailCard(self: anytype, title: [:0]const u8, text: []const u8) void {

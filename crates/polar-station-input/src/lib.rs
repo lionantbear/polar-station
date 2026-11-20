@@ -130,6 +130,17 @@ impl InputEngine {
                         .generic
                         .observe(window_id, pane_id, draft_key, destination)?,
                     GenericInput::EditInput { lease, text } => self.generic.edit(&lease, text)?,
+                    GenericInput::RecoverSend { lease, intent } => {
+                        if self.generic.pending_submission(&lease)?.is_some_and(|(pending, _)| pending == intent) {
+                            return self.refresh_input(lease);
+                        }
+                        if let Some(text) = self.generic.recover_send(&lease, &intent)? {
+                            return Ok(vec![Effect::Generic(GenericEffect::CopySendText { window_id: lease.window, text })]);
+                        }
+                        let mut out = self.generic.view(&lease.window).into_iter().map(terminal::present).collect();
+                        self.append_input_snapshot(&mut out);
+                        return Ok(out);
+                    }
                 };
                 Ok(vec![Effect::Generic(GenericEffect::InputBar { view:Box::new(view) })])
             }
@@ -152,11 +163,19 @@ impl InputEngine {
                 let mut effects = self.content.dispatch(Input::ExportDrafts)?;
                 for effect in &mut effects {
                     if let Effect::Drafts { value } = effect {
-                        *value = serde_json::json!({"schema":"polar.station.input.v1", "snapshot_revision":self.snapshot_revision, "content_drafts":value, "generic_drafts":self.generic.snapshot()?});
-                        if serde_json::to_vec(value).map_err(|e| e.to_string())?.len() > 1024 * 1024
-                        {
-                            return Err("Combined input drafts exceed storage budget".into());
+                        let mut snapshot = serde_json::json!({"schema":"polar.station.input.v1", "snapshot_revision":self.snapshot_revision, "content_drafts":value, "generic_drafts":self.generic.snapshot()?});
+                        while serde_json::to_vec(&snapshot).map_err(|e| e.to_string())?.len() > 1024 * 1024 {
+                            if self.generic.trim_send_history() {
+                                snapshot["generic_drafts"] = self.generic.snapshot()?;
+                            } else if self.content.trim_send_history() {
+                                if let Some(polar_station_lgp::Effect::Drafts { value }) = self.content.dispatch(Input::ExportDrafts)?.pop() {
+                                    snapshot["content_drafts"] = value;
+                                }
+                            } else {
+                                return Err("Combined input drafts exceed storage budget".into());
+                            }
                         }
+                        *value = snapshot;
                     }
                 }
                 Ok(effects)

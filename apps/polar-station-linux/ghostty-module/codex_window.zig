@@ -7,7 +7,7 @@ const glib = @import("glib");
 const Application = @import("../class/application.zig").Application;
 const wire = @import("codex.zig");
 const Key = @import("session_runtime.zig").KeyWire;
-const Phase = enum { ui, settings, bindings, binding, loaded, destinations, mutation, server_start };
+const Phase = enum { ui, settings, bindings, binding, loaded, destinations, mutation };
 const Pending = struct { id: []u8, owner: []u8, phase: Phase };
 const Click = struct { window: *Window, kind: enum { endpoint, thread, binding, action }, index: usize };
 pub const Send = *const fn (?*anyopaque, []const u8) anyerror!void;
@@ -41,8 +41,6 @@ pub const Window = struct {
     sequence: u64 = 0,
     nonce: u64,
     pending: ?Pending = null,
-    start_origin:?struct{controller:u64,token:u64}=null,
-    server_started:?*const fn(?*anyopaque,u64,u64,?[]const u8) void=null,
     dirty: bool = false,
     observation_error: bool = false,
     frames: [6]?std.json.Parsed(wire.Frame) = .{null} ** 6,
@@ -65,16 +63,6 @@ pub const Window = struct {
         if (self.host) |value| self.allocator.free(value);
         if (self.endpoint) |value| self.allocator.free(value);
     }
-    pub fn startLocalServer(self:*Window,owner:[]const u8,endpoint:[]const u8,controller:u64,token:u64) void {
-        if(self.pending!=null or !self.available or !self.supported){if(self.server_started) |notify| notify(self.context,controller,token,"Codex control is busy or unavailable");return;}
-        self.start_origin=.{.controller=controller,.token=token};
-        self.request(owner,.server_start,.{.kind="start_local_server",.endpoint_id=endpoint});
-        if(self.pending==null)self.completeServerStart("Codex start request was not admitted");
-    }
-    fn completeServerStart(self:*Window,message:?[]const u8) void {
-        const origin=self.start_origin orelse return;self.start_origin=null;
-        if(self.server_started) |notify| notify(self.context,origin.controller,origin.token,message);
-    }
     pub fn connected(self: *Window, host: []const u8, supported: bool) void {
         if (self.host) |value| self.allocator.free(value);
         self.host = self.allocator.dupe(u8, host) catch null;
@@ -83,7 +71,6 @@ pub const Window = struct {
         if (self.window != null) self.refresh();
     }
     pub fn disconnected(self: *Window) void {
-        self.completeServerStart("The Host disconnected while starting Codex");
         self.available = false;
         self.clearPending();
         self.cancelConfirmation();
@@ -230,7 +217,6 @@ pub const Window = struct {
     pub fn requestFailed(self: *Window, id: []const u8, message: []const u8) bool {
         const pending = self.pending orelse return false;
         if (!std.mem.eql(u8, pending.id, id)) return false;
-        if(pending.phase==.server_start)self.completeServerStart(message);
         self.clearPending();
         self.observation_error = true;
         if (self.outcome) |label| self.setLabel(label, message);
@@ -278,14 +264,12 @@ pub const Window = struct {
         self.clearPending();
         defer self.sensitivity();
         const r = response.result;
-        if(phase==.server_start){self.completeServerStart(if(std.mem.eql(u8,r.kind,"error")) r.code orelse "Codex start failed" else null);return;}
         if (std.mem.eql(u8, r.kind, "error")) {
             self.showError();
             self.sensitivity();
             return;
         }
         switch (phase) {
-            .server_start=>unreachable,
             .ui => {
                 self.store(0, parsed);
                 retained = true;

@@ -83,6 +83,10 @@ pub const Controller = struct {
 
     sessions_search: *gtk.Entry,
     sessions_type: *gtk.DropDown,
+    sessions_grouping: *gtk.DropDown,
+    sessions_sort: *gtk.DropDown,
+    sessions_host_filter: *gtk.Entry,
+    sessions_project_filter: *gtk.Entry,
     collapsed_session_groups: std.StringHashMapUnmanaged(void) = .{},
     idea_binding_pane: ?[]u8 = null,
     idea_binding_view: ?[]u8 = null,
@@ -197,11 +201,10 @@ pub const Controller = struct {
     ssh_target_syncing: bool = false,
     new_workspace_window: ?*adw.Window = null,
     new_workspace_entry: ?*gtk.Entry = null,
-    session_directory: ?*session_directory_window.Window = null,
+    session_directory: ?*session_directory_window.Browser = null,
     session_create_yolo: ?*gtk.CheckButton = null,
     session_create_local_cli: ?*gtk.CheckButton = null,
     session_create_browse: ?*gtk.Button = null,
-    session_context_pending: bool = false,
     active_tab_drag_index: usize = 0,
     sidebar_selecting: bool = false,
     sidebar_selection: std.ArrayListUnmanaged(control.SessionIdentity) = .empty,
@@ -224,7 +227,6 @@ pub const Controller = struct {
     session_appserver_field: ?*gtk.Box = null,
     session_history_search: ?*gtk.Entry = null,
     session_history_more: ?*gtk.Button = null,
-    creation_generation: u64 = 0,
     end_engine: editor_interaction.Engine = .{},
     end_submission: u64 = 0,
     session_create_configuring: bool = false,
@@ -492,8 +494,45 @@ pub const Controller = struct {
         const session_types = gtk.StringList.new(null);
         for ([_][:0]const u8{ "All types", "Codex", "Claude", "Terminal" }) |kind_name| session_types.append(kind_name);
         const sessions_type = gtk.DropDown.new(session_types.as(@import("gio").ListModel), null);
-        sessions_panel.append(sessions_search.as(gtk.Widget));
-        sessions_panel.append(sessions_type.as(gtk.Widget));
+        const session_groups = gtk.StringList.new(null);
+        defer session_groups.unref();
+        for ([_][:0]const u8{ "By Host", "By Tab", "No grouping" }) |name| session_groups.append(name);
+        const sessions_grouping = gtk.DropDown.new(session_groups.as(@import("gio").ListModel), null);
+        const session_sort = gtk.StringList.new(null);
+        defer session_sort.unref();
+        for ([_][:0]const u8{ "Default order", "Name A–Z", "Name Z–A", "Recent activity" }) |name| session_sort.append(name);
+        const sessions_sort = gtk.DropDown.new(session_sort.as(@import("gio").ListModel), null);
+        const presentation = gtk.Box.new(.horizontal, 6);
+        presentation.append(sessions_grouping.as(gtk.Widget));
+        presentation.append(sessions_sort.as(gtk.Widget));
+        const search_row = gtk.Box.new(.horizontal, 5);
+        sessions_search.as(gtk.Widget).setHexpand(1);
+        search_row.append(sessions_search.as(gtk.Widget));
+        const filter = gtk.MenuButton.new();
+        filter.setLabel("Filter");
+        const filters = menuBox();
+        const sessions_host_filter = gtk.Entry.new();
+        sessions_host_filter.setPlaceholderText("Host");
+        const sessions_project_filter = gtk.Entry.new();
+        sessions_project_filter.setPlaceholderText("Project");
+        filters.append(sessions_type.as(gtk.Widget));
+        filters.append(sessions_host_filter.as(gtk.Widget));
+        filters.append(sessions_project_filter.as(gtk.Widget));
+        const clear_filters = gtk.Button.newWithLabel("Clear filters");
+        connect(clear_filters, Controller, clearSessionFilters, self);
+        filters.append(clear_filters.as(gtk.Widget));
+        const filter_popover = gtk.Popover.new();
+        filter_popover.setChild(filters.as(gtk.Widget));
+        filter.setPopover(filter_popover);
+        search_row.append(filter.as(gtk.Widget));
+        sessions_panel.append(search_row.as(gtk.Widget));
+        inline for (.{ sessions_host_filter, sessions_project_filter }) |field| {
+            _ = gtk.Editable.signals.changed.connect(field.as(gtk.Editable), *Controller, sessionsFilterChanged, self, .{});
+        }
+        sessions_panel.append(presentation.as(gtk.Widget));
+        for ([_]*gtk.DropDown{ sessions_grouping, sessions_sort }) |dropdown| {
+            _ = gobject.Object.signals.notify.connect(dropdown.as(gobject.Object), *Controller, sessionsTypeChanged, self, .{ .detail = "selected" });
+        }
         sessions_panel.append(sessions_scroller.as(gtk.Widget));
         sessions_panel.as(gtk.Widget).addCssClass("sidebar");
 
@@ -707,6 +746,10 @@ pub const Controller = struct {
             .sessions_hint = sessions_subtitle,
             .sessions_search = sessions_search,
             .sessions_type = sessions_type,
+            .sessions_grouping = sessions_grouping,
+            .sessions_sort = sessions_sort,
+            .sessions_host_filter = sessions_host_filter,
+            .sessions_project_filter = sessions_project_filter,
             .sessions_refresh_button = sessions_refresh,
             .sessions_close_button = sessions_close,
             .sidebar_add = add_sessions,
@@ -851,7 +894,7 @@ pub const Controller = struct {
                 } else return false;
                 self.presentSessionCreateEditor(.codex_agent, if (target.source) |source| source.execution_target_id else projection.sessions.local_execution_target_id);
                 if (self.session_create_mode) |mode| mode.setSelected(1);
-                if (self.session_history_rows) |rows| _ = rows.as(gtk.Widget).grabFocus();
+                if (self.session_history_search) |search| _ = search.as(gtk.Widget).grabFocus();
             },
             .new_shell, .new_codex => {
                 const target = if (self.native_executor) |executor| executor.quickCreateTarget(self.host_window) catch {
@@ -1596,21 +1639,31 @@ pub const Controller = struct {
             .getVadjustment()
             .getValue();
         self.clearSessionRows();
-        for (projection.session_groups) |group| {
-            const key = std.fmt.allocPrint(self.allocator, "host:{s}", .{group.id}) catch continue;
-            defer self.allocator.free(key);
-            const expanded = std.mem.span(self.sessions_search.as(gtk.Editable).getText()).len != 0 or !self.collapsed_session_groups.contains(key);
-            self.catalogHeading(key, group.title, expanded, null);
-            if (!expanded) continue;
-            self.appendAgentCatalog(projection, group.id);
-            self.appendTargetSessionRows(projection, group.id);
-            if (group.message) |message| {
-                var has_agents = false;
-                for (projection.agent_sessions) |agent| if (std.mem.eql(u8, agent.execution_target_id, group.id)) { has_agents = true; break; };
-                if (!std.mem.eql(u8, group.state, "empty") or !has_agents) {
-                    const notice = ownedLabel(self.allocator, message, "caption") catch continue;
-                    notice.setWrap(1);
-                    self.sessions_list.append(notice.as(gtk.Widget));
+        if (self.sessions_grouping.getSelected() == 1) {
+            self.appendSessionsByTab(projection);
+        } else if (self.sessions_grouping.getSelected() == 2) {
+            self.appendAgentCatalog(projection, .all);
+            self.appendTargetSessionRows(projection, .all);
+            if (self.sessions_list.as(gtk.Widget).getFirstChild() == null)
+                self.sessions_list.append(gtk.Label.new("No matching Sessions").as(gtk.Widget));
+        } else {
+            for (projection.session_groups) |group| {
+                if (!self.matchesSessionHost(group.id, group.title)) continue;
+                const key = std.fmt.allocPrint(self.allocator, "host:{s}", .{group.id}) catch continue;
+                defer self.allocator.free(key);
+                const expanded = std.mem.span(self.sessions_search.as(gtk.Editable).getText()).len != 0 or !self.collapsed_session_groups.contains(key);
+                self.catalogHeading(key, group.title, expanded, null);
+                if (!expanded) continue;
+                self.appendAgentCatalog(projection, .{ .host = group.id });
+                self.appendTargetSessionRows(projection, .{ .host = group.id });
+                if (group.message) |message| {
+                    var has_agents = false;
+                    for (projection.agent_sessions) |agent| if (std.mem.eql(u8, agent.execution_target_id, group.id)) { has_agents = true; break; };
+                    if (!std.mem.eql(u8, group.state, "empty") or !has_agents) {
+                        const notice = ownedLabel(self.allocator, message, "caption") catch continue;
+                        notice.setWrap(1);
+                        self.sessions_list.append(notice.as(gtk.Widget));
+                    }
                 }
             }
         }
@@ -1628,6 +1681,53 @@ pub const Controller = struct {
                 self.sessions_list.as(gtk.Widget).getFirstChild() != null,
             },
         );
+    }
+
+    const SessionGroup = union(enum) { host: []const u8, tab: []const u8, other, all };
+
+    fn matchesSessionGroup(self: *Controller, group: SessionGroup, target: []const u8, identities: []const control.SessionIdentity) bool {
+        switch (group) {
+            .host => |host| return std.mem.eql(u8, target, host),
+            .all => return true,
+            .tab, .other => {},
+        }
+        const executor = self.native_executor orelse return group == .other;
+        const snapshot = executor.nativeWorkspaceSnapshot() orelse return group == .other;
+        for (snapshot.tabs) |tab| {
+            if (group == .tab and !std.mem.eql(u8, tab.id, group.tab)) continue;
+            for (identities) |identity| {
+                if (tab.sessionPane(identity.execution_target_id, identity.tmux_session_id) != null) return group == .tab;
+            }
+        }
+        return group == .other;
+    }
+
+    fn matchesSessionHost(self: *Controller, host_id: []const u8, label_text: []const u8) bool {
+        const text = std.mem.trim(u8, std.mem.span(self.sessions_host_filter.as(gtk.Editable).getText()), " ");
+        return text.len == 0 or std.ascii.indexOfIgnoreCase(host_id, text) != null or std.ascii.indexOfIgnoreCase(label_text, text) != null;
+    }
+
+    fn matchesSessionProject(self: *Controller, project: ?[]const u8) bool {
+        const text = std.mem.trim(u8, std.mem.span(self.sessions_project_filter.as(gtk.Editable).getText()), " ");
+        return text.len == 0 or std.ascii.indexOfIgnoreCase(project orelse "", text) != null;
+    }
+
+    fn appendSessionsByTab(self: *Controller, projection: *const control.Projection) void {
+        if (self.native_executor) |executor| if (executor.nativeWorkspaceSnapshot()) |snapshot| {
+            for (snapshot.tabs, 1..) |tab, index| {
+                const title = std.fmt.allocPrint(self.allocator, "{d} {s}{s}", .{
+                    index, tab.title, if (std.mem.eql(u8, tab.id, snapshot.selected_tab_id)) " · Current" else "",
+                }) catch continue;
+                defer self.allocator.free(title);
+                const heading = ownedLabel(self.allocator, title, "heading") catch continue;
+                self.sessions_list.append(heading.as(gtk.Widget));
+                self.appendAgentCatalog(projection, .{ .tab = tab.id });
+                self.appendTargetSessionRows(projection, .{ .tab = tab.id });
+            }
+        };
+        self.sessions_list.append(gtk.Label.new("Other sessions").as(gtk.Widget));
+        self.appendAgentCatalog(projection, .other);
+        self.appendTargetSessionRows(projection, .other);
     }
 
     fn agentWorkspaceRank(self: *Controller, agent: control.AgentSession) usize {
@@ -1667,7 +1767,7 @@ pub const Controller = struct {
         self.sessions_list.append(row.as(gtk.Widget));
     }
 
-    fn appendAgentCatalog(self: *Controller, projection: *const control.Projection, target_id: []const u8) void {
+    fn appendAgentCatalog(self: *Controller, projection: *const control.Projection, scope: SessionGroup) void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
         const alloc = arena.allocator();
@@ -1688,10 +1788,37 @@ pub const Controller = struct {
         if (parsed.value.len != agents.len) return;
         for (parsed.value, 0..) |row, i| views[i] = .{
             .root = row.root, .parent = row.parent, .key = std.fmt.allocPrint(alloc, "agent:{s}", .{row.key}) catch return,
-            .group = row.group, .matches = row.matches, .rank = row.rank orelse std.math.maxInt(usize),
+            .group = row.group, .matches = row.matches and self.matchesAgentFilters(agents[i], projection.session_groups),
+            .rank = row.rank orelse std.math.maxInt(usize),
         };
         const order = alloc.alloc(usize, agents.len) catch return;
         for (order, 0..) |*value, i| value.* = i;
+        const sort = self.sessions_sort.getSelected();
+        const AgentOrder = struct {
+            agents: []const control.AgentSession,
+            sort: u32,
+            fn earlier(context: @This(), lhs: usize, rhs: usize) bool {
+                const l = context.agents[lhs];
+                const r = context.agents[rhs];
+                if (context.sort == 3) {
+                    const lt = if (l.metadata) |m| m.updated_at orelse std.math.minInt(i64) else std.math.minInt(i64);
+                    const rt = if (r.metadata) |m| m.updated_at orelse std.math.minInt(i64) else std.math.minInt(i64);
+                    return if (lt != rt) lt > rt else lhs < rhs;
+                }
+                return if (context.sort == 1) std.ascii.lessThanIgnoreCase(l.display_name, r.display_name)
+                    else std.ascii.lessThanIgnoreCase(r.display_name, l.display_name);
+            }
+        };
+        if (sort != 0) std.mem.sort(usize, order, AgentOrder{ .agents = agents, .sort = sort }, AgentOrder.earlier);
+        if (scope != .host) {
+            for (order) |i| {
+                const agent = agents[i];
+                if (!views[i].matches or !self.matchesSessionGroup(scope, agent.execution_target_id, agent.terminals)) continue;
+                self.appendAgentRow(agent, 0, views[i].key, 0, false, scope == .all);
+            }
+            return;
+        }
+        const target_id = scope.host;
         var groups = std.StringHashMap(void).init(alloc);
         for (views) |*view| {
             view.group = views[view.root].group;
@@ -1733,6 +1860,18 @@ pub const Controller = struct {
         }
     }
 
+    fn matchesAgentFilters(self: *Controller, agent: control.AgentSession, groups: []const control.SessionTargetGroup) bool {
+        var title: []const u8 = "";
+        for (groups) |group| {
+            if (std.mem.eql(u8, agent.execution_target_id, group.id)) {
+                title = group.title;
+                break;
+            }
+        }
+        const project = if (agent.metadata) |metadata| metadata.cwd else null;
+        return self.matchesSessionHost(agent.execution_target_id, title) and self.matchesSessionProject(project);
+    }
+
     fn appendAgentTree(self: *Controller, agents: []const control.AgentSession, views: []const AgentCatalogView, order: []const usize, i: usize, searching: bool, depth: usize) void {
         if (depth >= agents.len) return;
         var children: usize = 0;
@@ -1744,13 +1883,13 @@ pub const Controller = struct {
             }
         }
         const opened = searching or (referenced_child != self.collapsed_session_groups.contains(views[i].key));
-        self.appendAgentRow(agents[i], depth, views[i].key, children, opened);
+        self.appendAgentRow(agents[i], depth, views[i].key, children, opened, true);
         if (opened) for (order) |j| {
             if (views[j].parent == i and views[j].matches) self.appendAgentTree(agents, views, order, j, searching, depth + 1);
         };
     }
 
-    fn appendAgentRow(self: *Controller, agent: control.AgentSession, depth: usize, key: []const u8, children: usize, opened: bool) void {
+    fn appendAgentRow(self: *Controller, agent: control.AgentSession, depth: usize, key: []const u8, children: usize, opened: bool, show_locations: bool) void {
         const metadata = agent.metadata orelse control.CodexThreadMetadata{};
         const button = gtk.Button.new();
         const data = std.json.Stringify.valueAlloc(self.allocator, agent, .{}) catch return;
@@ -1770,7 +1909,10 @@ pub const Controller = struct {
         const row_label = ownedLabel(self.allocator, text, "body") catch return;
         row_label.setEllipsize(.end);
         row_label.setWrap(0);
-        button.setChild(row_label.as(gtk.Widget));
+        const title_row = gtk.Box.new(.horizontal, 5);
+        if (show_locations) self.appendTabLocations(title_row, agent.terminals);
+        title_row.append(row_label.as(gtk.Widget));
+        button.setChild(title_row.as(gtk.Widget));
         const tooltip = std.fmt.allocPrintSentinel(self.allocator, "{s}\n{s}\n{s}\n{s}\n{s}", .{ agent.display_name, metadata.cwd orelse "", metadata.preview orelse "", metadata.agent_role orelse "", agent.thread_id }, 0) catch return;
         defer self.allocator.free(tooltip);
         button.as(gtk.Widget).setTooltipText(tooltip);
@@ -1948,6 +2090,11 @@ pub const Controller = struct {
     fn sessionsFilterChanged(_: *gtk.Editable, self: *Controller) callconv(.c) void {
         self.refreshSessionFilters();
     }
+    fn clearSessionFilters(_: *gtk.Button, self: *Controller) callconv(.c) void {
+        self.sessions_host_filter.as(gtk.Editable).setText("");
+        self.sessions_project_filter.as(gtk.Editable).setText("");
+        self.sessions_type.setSelected(0);
+    }
     fn sessionsTypeChanged(_: *gobject.Object, _: *gobject.ParamSpec, self: *Controller) callconv(.c) void {
         self.refreshSessionFilters();
     }
@@ -1974,7 +2121,10 @@ pub const Controller = struct {
             3 => "terminal",
             else => null,
         };
-        if (wanted) |value| if (!std.mem.eql(u8, kind, value) and !(std.mem.startsWith(u8, kind, value) and std.mem.endsWith(u8, kind, "_plane"))) return false;
+        if (wanted) |value| {
+            const terminal_command = selected == 3 and std.mem.eql(u8, kind, "command");
+            if (!terminal_command and !std.mem.eql(u8, kind, value) and !(std.mem.startsWith(u8, kind, value) and std.mem.endsWith(u8, kind, "_plane"))) return false;
+        }
         const query = std.mem.trim(u8, std.mem.span(self.sessions_search.as(gtk.Editable).getText()), " ");
         return query.len == 0 or std.ascii.indexOfIgnoreCase(name, query) != null;
     }
@@ -2021,12 +2171,23 @@ pub const Controller = struct {
         if (agent.loaded) sessionCreateSubmitClicked(self.session_create_submit.?, self);
     }
 
-    fn appendTargetSessionRows(self: *Controller, projection: *const control.Projection, target_id: []const u8) void {
-        sessions: for (projection.sessions.rows) |session| {
+    fn appendTargetSessionRows(self: *Controller, projection: *const control.Projection, scope: SessionGroup) void {
+        const sort = self.sessions_sort.getSelected();
+        const sorted = if (sort == 1 or sort == 2) self.allocator.dupe(control.SessionRow, projection.sessions.rows) catch return else null;
+        defer if (sorted) |rows| self.allocator.free(rows);
+        if (sorted) |rows| std.mem.sort(control.SessionRow, rows, sort, struct {
+            fn earlier(order: u32, lhs: control.SessionRow, rhs: control.SessionRow) bool {
+                return if (order == 1) std.ascii.lessThanIgnoreCase(lhs.display_name, rhs.display_name)
+                    else std.ascii.lessThanIgnoreCase(rhs.display_name, lhs.display_name);
+            }
+        }.earlier);
+        const session_rows: []const control.SessionRow = if (sorted) |rows| rows else projection.sessions.rows;
+        sessions: for (session_rows) |session| {
+            if (!self.matchesSessionHost(session.identity.execution_target_id, session.target_label) or !self.matchesSessionProject(null)) continue;
             for (projection.agent_sessions) |agent| for (agent.terminals) |identity| {
                 if (std.mem.eql(u8, identity.execution_target_id, session.identity.execution_target_id) and std.mem.eql(u8, identity.tmux_session_id, session.identity.tmux_session_id)) continue :sessions;
             };
-            if (!std.mem.eql(u8, session.identity.execution_target_id, target_id)) continue;
+            if (!self.matchesSessionGroup(scope, session.identity.execution_target_id, &.{session.identity})) continue;
             const searchable = std.fmt.allocPrint(self.allocator, "{s} {s} {s}", .{ session.display_name, session.detail_label orelse "", session.target_label }) catch continue;
             defer self.allocator.free(searchable);
             if (!self.sessionMatchesFilter(searchable, session.session_kind)) continue;
@@ -2098,6 +2259,7 @@ pub const Controller = struct {
                 session_copy.append(detail.as(gtk.Widget));
             }
             content.append(terminal_icon.as(gtk.Widget));
+            if (scope == .host or scope == .all) self.appendTabLocations(content, &.{session.identity});
             content.append(session_copy.as(gtk.Widget));
             button.setChild(content.as(gtk.Widget));
             button.as(gtk.Widget).addCssClass("flat");
@@ -3287,7 +3449,8 @@ pub const Controller = struct {
         self.session_create_window.?.as(gtk.Window).present();
         self.refreshEditorEndpoints(projection);
         self.requestCreationDirectory();
-        _ = self.session_create_name.?.as(gtk.Widget).grabFocus();
+        const focus = if (bind_pane != null) self.session_history_search else self.session_create_directory;
+        if (focus) |entry| _ = entry.as(gtk.Widget).grabFocus();
     }
 
     fn presentNewWorkspaceEditor(self: *Controller) void {
@@ -5179,10 +5342,8 @@ pub const Controller = struct {
     ) callconv(.c) void {
         if (self.session_create_pending) return;
         self.closeSharedEditor();
-        self.creation_generation += 1;
         session_editor_window.saveSize(self);
         self.session_create_window.?.as(gtk.Widget).setVisible(0);
-        if (self.session_directory) |window| window.native.as(gtk.Widget).setVisible(0);
     }
 
     pub fn sessionCreateSubmitClicked(
@@ -5241,6 +5402,7 @@ pub const Controller = struct {
 
     fn setSessionCreateEditing(self: *Controller, enabled: bool) void {
         if (self.session_create_browse) |button| button.as(gtk.Widget).setSensitive(@intFromBool(enabled));
+        if (self.session_editor_scroll) |scroll| scroll.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         if (self.session_create_yolo) |yolo_toggle| yolo_toggle.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         if (self.session_create_endpoint) |picker| picker.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         if (self.session_create_machine) |picker| picker.as(gtk.Widget).setSensitive(@intFromBool(enabled));
@@ -5252,63 +5414,31 @@ pub const Controller = struct {
         inline for (.{ "session_create_name", "session_create_directory", "session_create_command", "session_create_resume_id" }) |field| {
             if (@field(self, field)) |entry| entry.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         }
-        if (self.editor.new_split) |split| split.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         if (self.editor.command_view) |view| view.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         if (self.session_create_cancel) |button| button.as(gtk.Widget).setSensitive(@intFromBool(enabled));
         if (self.session_create_auto_restart) |restart_toggle| restart_toggle.as(gtk.Widget).setSensitive(@intFromBool(enabled));
     }
 
     const EditorMeta = struct { kind: []const u8, generation: u64 };
-    const EditorReply = struct {
-        type: []const u8,
-        response: struct { result: struct { result: struct {
-            type: []const u8,
-            directory: ?session_directory_window.Directory = null,
-            notice: ?[]const u8 = null,
-            preview: ?struct { session: ?control.SessionIdentity = null, confirmation: control.Confirmation } = null,
-        } } },
-    };
-
     pub fn sessionEditorResult(self: *Controller, meta_json: []const u8, payload: []const u8) void {
         const meta = std.json.parseFromSlice(EditorMeta, self.allocator, meta_json, .{}) catch return;
         defer meta.deinit();
-        if (std.mem.eql(u8, meta.value.kind, "shared_editor") or std.mem.eql(u8, meta.value.kind, "shared_end")) {
-            const raw = std.json.parseFromSlice(std.json.Value, self.allocator, payload, .{}) catch return;
-            defer raw.deinit();
-            const response = raw.value.object.get("response") orelse return;
-            const result = response.object.get("result") orelse return;
-            const input = .{ .type = "complete", .token = meta.value.generation, .result = result.object.get("result") orelse std.json.Value.null, .@"error" = @as(?[]const u8, null) };
-            if (std.mem.eql(u8, meta.value.kind, "shared_end")) self.endInput(input) else self.editorInput(input);
-            return;
-        }
-        if (meta.value.generation != self.creation_generation) return;
-        const parsed = std.json.parseFromSlice(EditorReply, self.allocator, payload, .{ .ignore_unknown_fields = true }) catch {
+        const raw = std.json.parseFromSlice(std.json.Value, self.allocator, payload, .{}) catch {
             self.sessionEditorFailure(meta_json, "The Host returned an invalid editor response.");
             return;
         };
-        defer parsed.deinit();
-        const result = parsed.value.response.result.result;
-        if (result.directory) |directory| {
-            if (self.session_directory) |window| window.apply(directory) catch {};
-        }
+        defer raw.deinit();
+        const response = raw.value.object.get("response") orelse return;
+        const result = response.object.get("result") orelse return;
+        const input = .{ .type = "complete", .token = meta.value.generation, .result = result.object.get("result") orelse std.json.Value.null, .@"error" = @as(?[]const u8, null) };
+        if (std.mem.eql(u8, meta.value.kind, "shared_end")) self.endInput(input) else self.editorInput(input);
     }
 
     pub fn sessionEditorFailure(self: *Controller, meta_json: []const u8, message: []const u8) void {
         const meta = std.json.parseFromSlice(EditorMeta, self.allocator, meta_json, .{}) catch return;
         defer meta.deinit();
-        if (std.mem.eql(u8, meta.value.kind, "shared_editor") or std.mem.eql(u8, meta.value.kind, "shared_end")) {
-            const input = .{ .type = "complete", .token = meta.value.generation, .result = @as(?u8, null), .@"error" = message };
-            if (std.mem.eql(u8, meta.value.kind, "shared_end")) self.endInput(input) else self.editorInput(input);
-            return;
-        }
-        if (meta.value.generation != self.creation_generation) return;
-        if (std.mem.eql(u8, meta.value.kind, "browse_directory")) {
-            if (self.session_directory) |window| window.failed(message);
-        } else {
-            self.session_context_pending = false;
-            sessionCreateChanged(self.session_create_name.?.as(gtk.Editable), self);
-            if (self.session_create_error) |label_widget| setLabel(self.allocator, label_widget, message) catch {};
-        }
+        const input = .{ .type = "complete", .token = meta.value.generation, .result = @as(?u8, null), .@"error" = message };
+        if (std.mem.eql(u8, meta.value.kind, "shared_end")) self.endInput(input) else self.editorInput(input);
     }
 
     pub fn sessionNewModeClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
@@ -5331,7 +5461,7 @@ pub const Controller = struct {
     pub fn editorBecameActive(_: *gobject.Object,_:*gobject.ParamSpec,self:*Controller) callconv(.c) void {
         if(self.session_create_window) |w| if(w.as(gtk.Window).isActive()!=0) self.editorInput(.{.type="returned_from_tools"});
     }
-    pub fn startLocalCodexClicked(_: *gtk.Button,self:*Controller) callconv(.c) void {self.editorInput(.{.type="start_local_server"});}
+    pub fn startLocalCodexClicked(_: *gtk.Button,self:*Controller) callconv(.c) void {self.editorInput(.{.type="app_server_action"});}
     pub fn historyMoreClicked(_: *gtk.Button, self: *Controller) callconv(.c) void { self.editorInput(.{ .type = "retry_history" }); }
     pub fn historyDetailRetryClicked(_: *gtk.Button, self: *Controller) callconv(.c) void { self.editorInput(.{ .type = "retry_detail" }); }
     pub fn historyCopyClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
@@ -5365,6 +5495,39 @@ pub const Controller = struct {
             };
         }
         return false;
+    }
+
+    fn appendTabLocations(self: *Controller, box: *gtk.Box, identities: []const control.SessionIdentity) void {
+        const executor = self.native_executor orelse return;
+        const snapshot = executor.nativeWorkspaceSnapshot() orelse return;
+        for (snapshot.tabs, 1..) |tab, number| {
+            for (identities) |identity| {
+                if (tab.sessionPane(identity.execution_target_id, identity.tmux_session_id) == null) continue;
+                const text = std.fmt.allocPrint(self.allocator, "{d}", .{number}) catch return;
+                defer self.allocator.free(text);
+                const badge = ownedLabel(self.allocator, text, "caption") catch return;
+                badge.as(gtk.Widget).addCssClass("pill");
+                badge.as(gtk.Widget).addCssClass("accent");
+                badge.as(gtk.Widget).setValign(.center);
+                box.append(badge.as(gtk.Widget));
+                break;
+            }
+        }
+    }
+
+    pub fn appendHistoryTabLocations(self: *Controller, box: *gtk.Box, thread: []const u8) void {
+        const projection = self.model.projection() orelse return;
+        const target = self.session_create_target_id orelse return;
+        const endpoint = self.selectedCreateEndpoint() orelse return;
+        for (projection.agent_sessions) |agent| {
+            if (std.mem.eql(u8, agent.thread_id, thread) and
+                std.mem.eql(u8, agent.execution_target_id, target) and
+                std.mem.eql(u8, agent.endpoint_id, endpoint))
+            {
+                self.appendTabLocations(box, agent.terminals);
+                return;
+            }
+        }
     }
     pub fn historySelectionChanged(selection_toggle: *gtk.CheckButton, self: *Controller) callconv(.c) void {
         if (self.editor_applying) return;
@@ -5425,6 +5588,21 @@ pub const Controller = struct {
         } else {
             self.editorInput(.{ .type = "edit", .draft = draft });
         }
+        if (std.mem.eql(u8, draft.mode, "resume") and !std.mem.eql(u8, draft.session_type, "codex")) {
+            if (self.model.projection()) |projection| {
+                var candidates: std.ArrayList(editor_interaction.Candidate) = .empty;
+                defer candidates.deinit(self.allocator);
+                for (projection.sessions.rows) |row| {
+                    if (row.transport_status != .online) continue;
+                    candidates.append(self.allocator, .{
+                        .identity = row.identity,
+                        .display_name = row.display_name,
+                        .kind = row.session_kind,
+                    }) catch return;
+                }
+                self.editorInput(.{ .type = "known_sessions", .sessions = candidates.items });
+            }
+        }
     }
     pub fn editorInput(self: *Controller, input: anytype) void {
         var output = self.editor_engine.dispatch(self.allocator, input) catch return;
@@ -5437,8 +5615,6 @@ pub const Controller = struct {
             } else if(std.mem.eql(u8,effect.type,"focus_setup")) {
                 if(self.session_create_window) |window| window.as(gtk.Widget).setVisible(0);
                 @import("main.zig").focusToolSetup(self.controller_id,effect.setup_id orelse continue);
-            } else if(std.mem.eql(u8,effect.type,"start_local_server")) {
-                self.dispatch(.{.start_local_codex=.{.endpoint_id=effect.endpoint_id orelse continue,.owner_host_id=effect.owner_host_id orelse continue,.token=effect.token}});
             } else if ((std.mem.eql(u8, effect.type, "read") or std.mem.eql(u8, effect.type, "save_preference"))) {
                 self.dispatch(.{ .session_editor = .{ .generation = effect.token, .request = effect.request orelse continue, .shared = true } });
             } else if (std.mem.eql(u8, effect.type, "cancel")) {
@@ -5446,6 +5622,18 @@ pub const Controller = struct {
             } else if (std.mem.eql(u8,effect.type,"picked")) {
                 if(self.idea_binding_callback) |callback| callback(self.idea_binding_context,self.idea_binding_pane orelse continue,self.idea_binding_view orelse continue,effect.owner_host_id orelse continue,effect.endpoint_id orelse continue,effect.thread_id orelse continue,effect.title orelse "");
                 self.editor_submission=effect.token;self.sessionCreateAccepted();
+            } else if (std.mem.eql(u8, effect.type, "attach")) {
+                self.editor_submission = effect.token;
+                if (effect.identity) |identity| {
+                    self.attachKnownSession(identity) catch |err| {
+                        self.sessionCreateRejected(if (err == error.SessionAlreadyOpen)
+                            "This Session already has a Pane in another Tab."
+                        else
+                            "The original Tab is unavailable or full.");
+                        continue;
+                    };
+                    self.sessionCreateAccepted();
+                } else self.sessionCreateRejected("No Session was selected.");
             } else if (std.mem.eql(u8, effect.type, "submit")) {
                 self.editor_submission = effect.token;
                 const operation = effect.operation orelse continue;
@@ -5460,16 +5648,60 @@ pub const Controller = struct {
             }
         }
     }
+
+    fn attachKnownSession(self: *Controller, identity: control.SessionIdentity) !void {
+        const executor = self.native_executor orelse return error.NativeWorkspaceUnavailable;
+        const workspace_id = self.session_create_workspace_id orelse return error.NativeWorkspaceUnavailable;
+        const tab_id = self.session_create_tab_id orelse return error.UnknownTab;
+        const snapshot = executor.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        const tab = snapshot.tab(tab_id) orelse return error.UnknownTab;
+        if (!std.mem.eql(u8, workspace_id, snapshot.workspace_id)) return error.WorkspaceChanged;
+        if (tab.sessionPane(identity.execution_target_id, identity.tmux_session_id) != null) return;
+        const catalog = executor.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable;
+        if (catalog.hasOpenSession(identity.execution_target_id, identity.tmux_session_id)) return error.SessionAlreadyOpen;
+        try executor.appendSessions(workspace_id, tab_id, &.{identity});
+    }
+
+    fn renderKnownSessions(self: *Controller, view: editor_interaction.View) void {
+        const rows = self.editor.known_rows orelse return;
+        const visible = std.mem.eql(u8, view.draft.mode, "resume") and !std.mem.eql(u8, view.draft.session_type, "codex");
+        rows.as(gtk.Widget).setVisible(@intFromBool(visible));
+        if (!visible) return;
+        while (rows.as(gtk.Widget).getFirstChild()) |child| rows.remove(child);
+        if (view.known_sessions.len == 0) {
+            const empty = gtk.Label.new("No existing Sessions on this Host");
+            rows.append(empty.as(gtk.Widget));
+        }
+        for (view.known_sessions) |candidate| {
+            const title = self.allocator.dupeZ(u8, candidate.display_name) catch return;
+            defer self.allocator.free(title);
+            const button = gtk.Button.newWithLabel(title);
+            const content = gtk.Box.new(.horizontal, 5);
+            self.appendTabLocations(content, &.{candidate.identity});
+            content.append(gtk.Label.new(title).as(gtk.Widget));
+            button.setChild(content.as(gtk.Widget));
+            setWidgetName(self.allocator, button.as(gtk.Widget), candidate.identity.tmux_session_id) catch return;
+            if (view.known_selection) |identity| {
+                if (std.mem.eql(u8, identity.tmux_session_id, candidate.identity.tmux_session_id)) button.as(gtk.Widget).addCssClass("suggested-action");
+            }
+            connect(button, Controller, knownSessionClicked, self);
+            rows.append(button.as(gtk.Widget));
+        }
+    }
+
+    fn knownSessionClicked(button: *gtk.Button, self: *Controller) callconv(.c) void {
+        const target = self.session_create_target_id orelse return;
+        self.editorInput(.{ .type = "choose_known_session", .identity = control.SessionIdentity{
+            .execution_target_id = target,
+            .tmux_session_id = std.mem.span(button.as(gtk.Widget).getName()),
+        } });
+    }
     pub fn presentEditorAfterSetup(self:*Controller) void {
         if(self.editor_open) if(self.session_create_window) |window| window.as(gtk.Window).present();
     }
     fn renderEditorView(self: *Controller, view: editor_interaction.View) void {
-        const directory_ready = !view.context_preserves_form and self.session_context_pending and !view.directory_loading and view.draft.directory.len > 0;
         self.editor_applying = true;
-        defer {
-            self.editor_applying = false;
-            if (directory_ready and self.editor_open) sessionDirectoryBrowseClicked(self.session_create_browse.?, self);
-        }
+        defer self.editor_applying = false;
         const d = view.draft;
         if(self.editor.prepare_tools) |button| {
             button.as(gtk.Widget).setVisible(@intFromBool(view.prepare_label!=null));
@@ -5489,9 +5721,13 @@ pub const Controller = struct {
         }
 
         if(self.editor.start_server) |button| {
-            button.as(gtk.Widget).setVisible(@intFromBool(view.can_start_local_server or view.server_starting));
-            button.as(gtk.Widget).setSensitive(@intFromBool(view.can_start_local_server));
-            const title=self.allocator.dupeZ(u8,view.server_start_label) catch return;defer self.allocator.free(title);button.as(gtk.Widget).setTooltipText(title);
+            const start = view.can_start_local_server or view.server_starting;
+            button.as(gtk.Widget).setVisible(@intFromBool(start or view.can_check_endpoint or view.endpoint_checking));
+            button.as(gtk.Widget).setSensitive(@intFromBool(view.can_start_local_server or view.can_check_endpoint));
+            button.setIconName(if (start) "system-shutdown-symbolic" else "network-transmit-receive-symbolic");
+            const title = self.allocator.dupeZ(u8, if (start) view.server_start_label else "Check connection") catch return;
+            defer self.allocator.free(title);
+            button.as(gtk.Widget).setTooltipText(title);
         }
         // Only projected field values are copied into native widgets.
         inline for (.{ .{ "session_create_name", "name" }, .{ "session_create_directory", "directory" }, .{ "session_create_resume_id", "original_id" } }) |pair| {
@@ -5509,8 +5745,9 @@ pub const Controller = struct {
         }
         self.session_create_yolo.?.setActive(@intFromBool(d.yolo));
         self.session_create_local_cli.?.setActive(@intFromBool(d.open_local_cli));
-        self.session_context_pending = view.directory_loading;
         self.session_create_pending = view.pending;
+        if (self.session_directory) |browser| browser.render(view.directory_browser, d.directory) catch {};
+        self.renderKnownSessions(view);
         self.setSessionCreateEditing(!view.pending);
         self.session_create_local_cli.?.as(gtk.Widget).setSensitive(@intFromBool(view.local_cli_supported and !view.pending and !d.bind_only));
         self.session_create_type.?.as(gtk.Widget).setSensitive(@intFromBool(!view.pending and !d.bind_only));
@@ -5584,37 +5821,31 @@ pub const Controller = struct {
     fn requestCreationDirectory(self: *Controller) void { self.syncSharedEditor(); }
 
     pub fn sessionDirectoryBrowseClicked(_: *gtk.Button, self: *Controller) callconv(.c) void {
-        if (self.session_create_pending) return;
-        if (self.session_directory == null) self.session_directory = session_directory_window.Window.create(self.allocator, self.app, self.session_create_window.?.as(gtk.Window), self, sessionDirectoryNavigate, sessionDirectorySelected) catch return;
-        const path = std.mem.span(self.session_create_directory.?.as(gtk.Editable).getText());
-        if (self.editor.new_split) |split| self.session_directory.?.embed(split);
-        self.session_directory.?.loading();
-        sessionDirectoryNavigate(self, if (path.len == 0) "~" else path);
+        if (self.session_directory == null or self.session_create_pending) return;
+        self.syncSharedEditor();
+        self.editorInput(.{ .type = "toggle_directory_browser" });
     }
-    fn sessionDirectoryNavigate(data: ?*anyopaque, path: []const u8) void {
-        const self: *Controller = @ptrCast(@alignCast(data orelse return));
-        const target = self.session_create_target_id orelse return;
-        self.session_context_pending = false;
-        if (self.session_directory) |window| window.beginRead();
-        self.creation_generation += 1;
-        self.dispatch(.{ .session_editor = .{ .generation = self.creation_generation, .request = .{
-            .type = "browse_directory",
-            .execution_target_id = target,
-            .path = path,
-            .endpoint_id = if (self.session_create_kind == .codex) self.selectedCreateEndpoint() else null,
-        } } });
+
+    pub fn sessionDirectoryNavigate(data: *anyopaque, path: []const u8) void {
+        const self: *Controller = @ptrCast(@alignCast(data));
+        self.editorInput(.{ .type = "browse_directory", .path = path });
     }
-    fn sessionDirectorySelected(data: ?*anyopaque, path: []const u8) void {
-        const self: *Controller = @ptrCast(@alignCast(data orelse return));
-        if (!self.session_create_pending) setEntryText(self.allocator, self.session_create_directory.?, path) catch {};
+
+    pub fn sessionDirectorySelected(data: *anyopaque, path: []const u8) void {
+        const self: *Controller = @ptrCast(@alignCast(data));
+        self.editorInput(.{ .type = "choose_directory", .path = path });
     }
+
+    pub fn sessionDirectoryRetry(data: *anyopaque) void {
+        const self: *Controller = @ptrCast(@alignCast(data));
+        self.editorInput(.{ .type = "retry_directory_browse" });
+    }
+
     pub fn sessionCreateEndpointChanged(_: *gobject.Object, _: *gobject.ParamSpec, self: *Controller) callconv(.c) void {
         if (self.editor_applying or self.session_create_configuring) return;
         self.requestSessionHistory(true);
-        if (!self.session_context_pending) self.creation_generation += 1;
         sessionCreateChanged(self.session_create_name.?.as(gtk.Editable), self);
         if (self.model.projection()) |projection| self.refreshEditorEndpoints(projection);
-        if (self.session_directory) |window| window.native.as(gtk.Widget).setVisible(0);
     }
 
     pub fn sessionCreateLocalCLIChanged(_: *gtk.CheckButton, self: *Controller) callconv(.c) void {
@@ -5640,7 +5871,7 @@ pub const Controller = struct {
         const is_command = self.session_create_type.?.getSelected() == 1;
         const selected_type = self.session_create_type.?.getSelected();
         const is_codex = selected_type == 2 or selected_type == 4;
-        const is_agent = selected_type == 2 or selected_type == 3;
+        const is_claude = selected_type == 3;
         self.session_create_kind = switch (selected_type) {
             1 => .local_command,
             2 => .codex_agent,
@@ -5648,28 +5879,30 @@ pub const Controller = struct {
             4 => .codex,
             else => .local_shell,
         };
-        self.session_create_mode_bar.?.as(gtk.Widget).setVisible(@intFromBool(is_agent));
+        self.session_create_mode_bar.?.as(gtk.Widget).setVisible(@intFromBool(self.idea_binding_pane == null));
         self.session_appserver_field.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
         self.session_create_appserver_label.?.as(gtk.Widget).setVisible(0);
         self.session_create_appserver_row.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
         self.session_create_advanced.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
         self.session_endpoint_status.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
-        const is_resume = is_agent and self.session_create_mode.?.getSelected() == 1;
+        const is_resume = self.session_create_mode.?.getSelected() == 1;
+        const show_name = !is_resume or is_claude;
         self.session_editor_body.?.as(gtk.Widget).setMarginTop(if (is_resume and is_codex) 0 else 16);
         self.session_editor_body.?.as(gtk.Widget).setMarginBottom(if (is_resume and is_codex) 4 else 16);
-        self.editor.name_row.?.as(gtk.Widget).setVisible(@intFromBool(!(is_resume and is_codex)));
-        self.editor.command_row.?.as(gtk.Widget).setVisible(@intFromBool(is_command));
-        self.session_create_name.?.as(gtk.Widget).setVisible(@intFromBool(!(is_resume and is_codex)));
-        self.session_create_name_label.?.as(gtk.Widget).setVisible(@intFromBool(!(is_resume and is_codex)));
-        self.session_create_directory_row.?.as(gtk.Widget).setVisible(@intFromBool(!(is_resume and is_codex)));
-        self.session_create_directory_label.?.as(gtk.Widget).setVisible(@intFromBool(!(is_resume and is_codex)));
+        self.editor.name_row.?.as(gtk.Widget).setVisible(@intFromBool(show_name));
+        self.editor.command_row.?.as(gtk.Widget).setVisible(@intFromBool(is_command and !is_resume));
+        self.session_create_name.?.as(gtk.Widget).setVisible(@intFromBool(show_name));
+        self.session_create_name_label.?.as(gtk.Widget).setVisible(@intFromBool(show_name));
+        self.session_create_directory_row.?.as(gtk.Widget).setVisible(@intFromBool(!is_resume or is_claude));
+        self.session_create_browse.?.as(gtk.Widget).setVisible(@intFromBool(!is_resume and self.session_directory != null));
+        self.session_create_directory_label.?.as(gtk.Widget).setVisible(@intFromBool(!is_resume or is_claude));
         self.session_create_new_button.?.as(gtk.Widget).removeCssClass("accent");
         self.session_create_resume_button.?.as(gtk.Widget).removeCssClass("accent");
         (if (is_resume) self.session_create_resume_button.? else self.session_create_new_button.?).as(gtk.Widget).addCssClass("accent");
         self.session_create_submit.?.setLabel(if (is_resume) "Add 1 to Tab" else "New & Open");
         self.session_history_box.?.as(gtk.Widget).setVisible(@intFromBool(is_resume and is_codex));
         self.session_editor_scroll.?.as(gtk.Widget).setVexpand(@intFromBool(!(is_resume and is_codex)));
-        self.session_manual_id.?.as(gtk.Widget).setVisible(@intFromBool(is_resume and !is_codex));
+        self.session_manual_id.?.as(gtk.Widget).setVisible(@intFromBool(is_resume and is_claude));
         self.editor.manual_button.?.as(gtk.Widget).setVisible(@intFromBool(is_resume and is_codex));
         session_editor_window.showHistoryOptions(self, is_resume and is_codex);
         session_editor_window.resize(self, is_resume and is_codex, self.session_create_advanced.?.getExpanded() != 0);
@@ -5693,12 +5926,11 @@ pub const Controller = struct {
         self.session_create_yolo.?.as(gtk.Widget).setVisible(@intFromBool(is_codex));
         self.session_create_local_cli.?.as(gtk.Widget).setVisible(@intFromBool(selected_type == 2));
         if (changed and !self.session_create_configuring) {
-            if (self.session_directory) |window| window.native.as(gtk.Widget).setVisible(0);
             self.requestCreationDirectory();
         }
-        self.session_create_command.?.as(gtk.Widget).setVisible(@intFromBool(is_command));
-        self.session_create_command_label.?.as(gtk.Widget).setVisible(@intFromBool(is_command));
-        self.session_create_auto_restart.?.as(gtk.Widget).setVisible(@intFromBool(is_command));
+        self.session_create_command.?.as(gtk.Widget).setVisible(@intFromBool(is_command and !is_resume));
+        self.session_create_command_label.?.as(gtk.Widget).setVisible(@intFromBool(is_command and !is_resume));
+        self.session_create_auto_restart.?.as(gtk.Widget).setVisible(@intFromBool(is_command and !is_resume));
         if (self.native_executor) |executor| if (executor.nativeWorkspaceSnapshot()) |snapshot| {
             for (snapshot.tabs) |tab| {
                 if (!std.mem.eql(u8, tab.id, self.session_create_tab_id orelse "")) continue;

@@ -1170,6 +1170,7 @@ pub struct SessionRowProjectionV1 {
 pub enum SessionKindV1 {
     #[default]
     Terminal,
+    Command,
     CodexPlane,
     ClaudePlane,
 }

@@ -56,6 +56,10 @@ pub enum GenericInput {
         lease: Lease,
         text: String,
     },
+    RecoverSend {
+        lease: Lease,
+        intent: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -68,6 +72,7 @@ pub enum Effect {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GenericEffect {
+    CopySendText { window_id: String, text: String },
     LearnRefine { sample:crate::learning::LearningSample },
     InsertText {
         lease: Lease,

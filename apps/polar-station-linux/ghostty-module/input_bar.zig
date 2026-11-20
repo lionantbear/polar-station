@@ -174,6 +174,9 @@ pub const InputBar = struct {
     inquiry_text:*gtk.TextView,
     editor_scroll: *gtk.ScrolledWindow,
     send_button: *gtk.Button,
+    send_history: *gtk.MenuButton,
+    send_history_popover: *gtk.Popover,
+    send_history_projection: ?[]u8 = null,
     older: *gtk.Button,
     retry: *gtk.Button,
     quote: *gtk.Button,
@@ -363,6 +366,20 @@ pub const InputBar = struct {
         primary_slot.as(gtk.Widget).setHexpand(0);
         send.as(gtk.Widget).setHexpand(1);
         primary_slot.append(send.as(gtk.Widget));
+        const send_history = gtk.MenuButton.new();
+        send_history.setIconName("pan-down-symbolic");
+        send_history.as(gtk.Widget).setVisible(0);
+        send_history.as(gtk.Widget).setTooltipText("Send history");
+        var history_properties = [_]gtk.AccessibleProperty{.label};
+        var history_values = [_]gobject.Value{std.mem.zeroes(gobject.Value)};
+        gtk.AccessibleProperty.initValue(.label, &history_values[0]);
+        defer history_values[0].unset();
+        history_values[0].setString("Send history");
+        send_history.as(gtk.Accessible).updatePropertyValue(1, &history_properties, &history_values);
+        const send_history_popover = gtk.Popover.new();
+        send_history_popover.setPosition(.top);
+        send_history.setPopover(send_history_popover);
+        primary_slot.append(send_history.as(gtk.Widget));
         trailing.append(primary_slot.as(gtk.Widget));
         tools_box.append(mode.as(gtk.Widget));
         for ([_]*gtk.Widget{ toggle.as(gtk.Widget), idea_menu.as(gtk.Widget), idea_attach.as(gtk.Widget), target.as(gtk.Widget), status_button.as(gtk.Widget), more.as(gtk.Widget), dictate_button.as(gtk.Widget), dictate_menu.as(gtk.Widget), send.as(gtk.Widget), mode.as(gtk.Widget), retry.as(gtk.Widget), quote.as(gtk.Widget) }) |widget| widget.setValign(.end);
@@ -371,7 +388,7 @@ pub const InputBar = struct {
         // for an empty editor. Keep the scrollbar and six-line growth limit.
         css.loadFromString(".station-input-bar { background-color: @window_bg_color; } .station-chat-target { outline: 2px solid @accent_color; outline-offset: -2px; } .station-chat-editor { background-color: @view_bg_color; border: 1px solid alpha(@theme_fg_color,0.2); border-radius: 4px; } .station-chat-editor textview { background-color: transparent; } .station-chat-editor scrollbar.vertical slider { min-height: 16px; }");
         gtk.StyleContext.addProviderForDisplay(host.as(gtk.Widget).getDisplay(), css.as(gtk.StyleProvider), gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 5);
-        self.* = .{ .inquiry_text=inquiry_text, .chat_tools=chat_tools, .refine_button=refine, .dictate_button=dictate_button, .dictate_menu=dictate_menu, .dictate_history=dictate_history, .idea_document=document, .idea_refs=idea_refs,.idea_attach=idea_attach,.inquiry_entry=inquiry_entry,.inquiry_popover=inquiry_popover,.owner = owner, .id = owned_id, .host = host, .container = outer, .body = body, .idea_row = idea_row,.idea_menu=idea_menu,.idea_files=idea_files, .idea_configuration=idea_configuration, .idea_configuration_menu=idea_configuration_menu,.idea_search_button=idea_search_button,.editor_overlay=overlay, .idea_search = idea_search, .idea_more = idea_more, .idea_overflow = idea_overflow, .idea_view_scroll = idea_view_scroll, .idea_theme = idea_theme, .idea_themes = idea_themes, .more = more, .toggle = toggle, .target = target, .status = status, .status_button = status_button, .mode_button = mode, .tools = tools, .hint = hint, .text = text, .editor_scroll = scroll, .send_button = send, .older = older, .retry = retry, .quote = quote, .modified = modified, .css = css };
+        self.* = .{ .inquiry_text=inquiry_text, .chat_tools=chat_tools, .refine_button=refine, .dictate_button=dictate_button, .dictate_menu=dictate_menu, .dictate_history=dictate_history, .idea_document=document, .idea_refs=idea_refs,.idea_attach=idea_attach,.inquiry_entry=inquiry_entry,.inquiry_popover=inquiry_popover,.owner = owner, .id = owned_id, .host = host, .container = outer, .body = body, .idea_row = idea_row,.idea_menu=idea_menu,.idea_files=idea_files, .idea_configuration=idea_configuration, .idea_configuration_menu=idea_configuration_menu,.idea_search_button=idea_search_button,.editor_overlay=overlay, .idea_search = idea_search, .idea_more = idea_more, .idea_overflow = idea_overflow, .idea_view_scroll = idea_view_scroll, .idea_theme = idea_theme, .idea_themes = idea_themes, .more = more, .toggle = toggle, .target = target, .status = status, .status_button = status_button, .mode_button = mode, .tools = tools, .hint = hint, .text = text, .editor_scroll = scroll, .send_button = send, .send_history = send_history, .send_history_popover = send_history_popover, .older = older, .retry = retry, .quote = quote, .modified = modified, .css = css };
         // Keep all tree actions inside the one Idea menu.
         idea_files.append(idea_search_button.as(gtk.Widget));
         idea_files.append(idea_refs.as(gtk.Widget));
@@ -484,6 +501,7 @@ pub const InputBar = struct {
         self.clearTerminalWait();
         if(self.inquiry_focus_source!=0)_ = glib.Source.remove(self.inquiry_focus_source);
         if(self.inquiry_signature) |signature| self.owner.allocator.free(signature);
+        if (self.send_history_projection) |projection| self.owner.allocator.free(projection);
         self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_popover.as(gtk.Widget).unparent();
         self.inquiry_buttons.deinit(self.owner.allocator);
         if(self.inquiry_data) |*data| data.deinit();
@@ -526,7 +544,69 @@ pub const InputBar = struct {
         self.expanded=true;
         self.body.as(gtk.Widget).setVisible(1);
     }
+    fn updateSendHistory(self: *InputBar, history: ?Value) void {
+        if (history == null) {
+            self.send_history.popdown();
+            self.send_history.as(gtk.Widget).setVisible(0);
+            return;
+        }
+        const rows: []const Value = if (history) |value| if (value == .array) value.array.items else &.{} else &.{};
+        self.send_history.as(gtk.Widget).setVisible(1);
+        self.send_history.as(gtk.Widget).setSensitive(@intFromBool(rows.len != 0));
+        const projection = std.json.Stringify.valueAlloc(self.owner.allocator, rows, .{}) catch return;
+        if (self.send_history_projection) |previous| {
+            if (std.mem.eql(u8, previous, projection)) {
+                self.owner.allocator.free(projection);
+                return;
+            }
+            self.owner.allocator.free(previous);
+        }
+        self.send_history_projection = projection;
+        const list = gtk.Box.new(.vertical, 2);
+        for (rows) |row| {
+            const intent = string(row, "intent") orelse continue;
+            const action = string(row, "action") orelse continue;
+            const status = string(row, "status") orelse continue;
+            const preview = string(row, "preview") orelse "";
+            const title = std.fmt.allocPrintSentinel(self.owner.allocator, "{s}{s}{s} · {s}",
+                .{ action, if (action.len > 0) " · " else "", status, preview }, 0) catch continue;
+            defer self.owner.allocator.free(title);
+            const name = self.owner.allocator.dupeZ(u8, intent) catch continue;
+            defer self.owner.allocator.free(name);
+            const button = gtk.Button.newWithLabel(title);
+            button.as(gtk.Widget).setName(name);
+            button.as(gtk.Widget).setSensitive(@intFromBool(action.len > 0));
+            _ = gtk.Button.signals.clicked.connect(button, *InputBar, historyClicked, self, .{});
+            list.append(button.as(gtk.Widget));
+        }
+        const scroll = gtk.ScrolledWindow.new();
+        scroll.setMaxContentHeight(300);
+        scroll.setPropagateNaturalHeight(1);
+        scroll.setPropagateNaturalWidth(1);
+        scroll.setChild(list.as(gtk.Widget));
+        self.send_history_popover.setChild(scroll.as(gtk.Widget));
+    }
+
+    fn historyClicked(button: *gtk.Button, self: *InputBar) callconv(.c) void {
+        const metadata = if (self.metadata) |data| data.value else return;
+        const intent = std.mem.span(button.as(gtk.Widget).getName());
+        if (field(metadata, "generic_lease")) |lease| {
+            self.owner.input(.{ .type = "recover_send", .lease = lease, .intent = intent });
+        } else {
+            self.owner.input(.{ .type = "recover_content_send", .window_id = self.id,
+                .pane_id = string(metadata, "pane_id") orelse return,
+                .draft_revision = number(metadata, "draft_revision"), .intent = intent });
+        }
+        self.send_history.popdown();
+    }
+
+    pub fn copySendText(self: *InputBar, value: []const u8) void {
+        const text = self.owner.allocator.dupeZ(u8, value) catch return;
+        defer self.owner.allocator.free(text);
+        self.container.as(gtk.Widget).getClipboard().setText(text);
+    }
     pub fn update(self: *InputBar, effect: Value) void {
+        self.updateSendHistory(field(effect, "send_history"));
         self.retry.setLabel("Reconnect");
         self.quote.as(gtk.Widget).setVisible(if (field(effect,"generic_lease") != null) 1 else 0);
         self.target.as(gtk.Widget).setSensitive(1);
@@ -643,6 +723,8 @@ pub const InputBar = struct {
         return 0;
     }
     pub fn clearSelection(self: *InputBar) void {
+        self.send_history.popdown();
+        self.send_history.as(gtk.Widget).setVisible(0);
         if (self.focus_source!=0) {_ = glib.Source.remove(self.focus_source);self.focus_source=0;}
         self.inquiry_held=null;self.inquiry_deferred=false;self.inquiry_focus_pending=false;
         self.restoreInquiryEditor();self.inquiry_popover.popdown();self.inquiry_entry.as(gtk.Widget).setVisible(0);self.inquiry_active=false;self.dictate_history.bindInput(self.text);self.text.setEditable(1);

@@ -118,14 +118,11 @@ fn connects(previous: &Row<'_>, next: &Row<'_>, flavor: PathFlavor) -> bool {
             return false;
         }
     }
-    if completes_parenthesized_reference(left, right, flavor) {
-        return true;
-    }
     // Ordinary multiword prose is a paragraph boundary. A filename can have
     // spaces, so a path-shaped trailing word remains part of the same chain.
     let last_word = right.split_whitespace().next_back().unwrap_or(right);
     if right.split_whitespace().count() > 1 && !last_word.contains(['/', '\\', '.']) {
-        return false;
+        return completes_parenthesized_reference(left, right, flavor);
     }
     true
 }
@@ -162,7 +159,9 @@ fn completes_parenthesized_reference(left: &str, right: &str, flavor: PathFlavor
         }
         _ => None,
     });
-    let Some(closing) = closing.filter(|index| *index > 0) else { return false };
+    let Some(closing) = closing.filter(|index| *index > 0) else {
+        return false;
+    };
     let joined = format!("{prefix}{}", &right[..closing]);
     crate::file_matcher::reference_at(&joined, 0, flavor)
         .is_some_and(|found| found.range.end == joined.len())

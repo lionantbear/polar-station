@@ -295,6 +295,7 @@ public struct SessionRowProjectionV1:
     /// Non-terminal agent identities are listed separately; these are only CLI planes.
     public enum SessionKind: String, Codable, Equatable, Sendable {
         case terminal
+        case command
         case codexPlane = "codex_plane"
         case claudePlane = "claude_plane"
     }

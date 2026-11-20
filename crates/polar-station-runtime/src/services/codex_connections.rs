@@ -18,11 +18,12 @@ use tokio::sync::Mutex;
 pub(super) enum ConnectionKey {
     Endpoint(String),
     Peer(String),
+    LocalDaemonStart,
 }
 #[derive(Default)]
 pub(super) struct ConnectionAttempts(Mutex<BTreeMap<ConnectionKey, Weak<Mutex<()>>>>);
 impl ConnectionAttempts {
-    async fn gate(&self, key: ConnectionKey) -> Arc<Mutex<()>> {
+    pub(super) async fn gate(&self, key: ConnectionKey) -> Arc<Mutex<()>> {
         let mut attempts = self.0.lock().await;
         attempts.retain(|_, weak| weak.strong_count() > 0);
         if let Some(gate) = attempts.get(&key).and_then(Weak::upgrade) {
@@ -41,9 +42,6 @@ impl CodexControlService {
             .await;
         let _attempt = gate.lock().await;
         let config = self.config.read().await;
-        if !config.enabled {
-            return Err("control_disabled");
-        }
         let endpoint = config
             .endpoints
             .iter()
@@ -91,7 +89,7 @@ impl CodexControlService {
         // A settings change may finish while SSH or handshake is in flight.
         // Keep this read guard through publication, never through network I/O.
         let config = self.config.read().await;
-        if !config.enabled || !config.endpoints.contains(&endpoint) {
+        if !config.endpoints.contains(&endpoint) {
             return Err("settings_conflict");
         }
         self.endpoints.lock().await.insert(
@@ -102,6 +100,8 @@ impl CodexControlService {
                 client: client.clone(),
             },
         );
+        drop(config);
+        self.publisher.publish(polar_station_protocol::ApplicationStateApiV1::ControlCenterV1);
         Ok(client)
     }
 
@@ -136,7 +136,7 @@ impl CodexControlService {
             .await?,
         );
         let config = self.config.read().await;
-        if !config.enabled || !config.host_connections.contains(connection) {
+        if !config.host_connections.contains(connection) {
             return Err("settings_conflict");
         }
         self.peers.lock().await.insert(

@@ -664,7 +664,7 @@ pub fn project_session_library(context: &SessionLibraryContext) -> SessionLibrar
                         let provider = match super::SessionKind::from_terminal_name(&session.display_name).map_or(session.session_kind, |(kind, _)| kind) {
                             crate::SessionKind::CodexPlane => Some("Codex"),
                             crate::SessionKind::ClaudePlane => Some("Claude"),
-                            crate::SessionKind::Terminal => None,
+                            crate::SessionKind::Terminal | crate::SessionKind::Command => None,
                         };
                         match (provider, session.attached_clients) {
                             (Some(kind), 0) => Some(kind.into()),

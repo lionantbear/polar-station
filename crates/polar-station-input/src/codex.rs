@@ -362,9 +362,9 @@ impl InputEngine {
                     // A rejected receipt query says nothing about an earlier
                     // send. Only a failed save/construction or Host receipt can
                     // release the immutable domain intent.
-                    let mut out=self.content.complete_idea_submission(&intent,result,false)?
+                    let effects=self.content.complete_idea_submission(&intent,result,false)?;
+                    let out=self.content_submission_effects(effects)?
                         .into_iter().map(|e|Effect::Content(Box::new(e))).collect();
-                    self.append_input_snapshot(&mut out);
                     return Ok(out);
                 }
                 if let CodexResultV1::Receipt {
@@ -379,7 +379,7 @@ impl InputEngine {
                             self.generic.resolve(&intent, receipt.clear_input)?
                         }
                         CodexSubmissionStatusV1::Rejected => {
-                            self.generic.reject(&intent,format!("Send failed: {}. Draft retained.",receipt.error_code.as_deref().unwrap_or(&receipt.label)))?
+                            self.generic.reject(&intent,format!("Send failed: {}. Use Send history to recover it.",receipt.error_code.as_deref().unwrap_or(&receipt.label)))?
                         }
                         _ => self.generic.submission_error(&intent,"Host has not confirmed the original send; Retry checks its status before continuing".into()),
                     }

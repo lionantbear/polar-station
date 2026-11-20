@@ -34,7 +34,8 @@ if [ "$2" = 1 ]; then
   command -v curl >/dev/null 2>&1 || install_package curl
   station_installer=$(mktemp); trap 'rm -f "$station_installer"' EXIT HUP INT TERM
   curl --fail --show-error --location --proto '=https' --tlsv1.2 https://chatgpt.com/codex/install.sh -o "$station_installer"
-  /bin/sh "$station_installer"; rm -f "$station_installer"; trap - EXIT HUP INT TERM
+  CODEX_NON_INTERACTIVE=1 /bin/sh "$station_installer"
+  rm -f "$station_installer"; trap - EXIT HUP INT TERM
  fi
  resolve_codex || { echo 'Installed Codex is unavailable.' >&2; exit 1; }
  "$station_codex" --version

@@ -2014,7 +2014,7 @@ const AppliedRenderState = struct {
         }
 
         for (snapshot.tabs) |tab| try self.ensureTab(tab, lifecycle);
-        try self.moveRetainedPaneSurface(snapshot, lifecycle);
+        try self.moveRetainedPaneSurfaces(snapshot, lifecycle);
         for (snapshot.tabs) |tab| {
             var bindings_changed = false;
             for (tab.panes) |pane| {
@@ -2043,105 +2043,143 @@ const AppliedRenderState = struct {
         try self.verify();
     }
 
-    /// A runtime intent moves at most one Pane between Tabs. Linux can detach
-    /// that Pane's existing Surface from the source tree and install the same
-    /// pointer in the destination tree; terminal content is rebound only when
-    /// the target or tmux Session also changed.
-    fn moveRetainedPaneSurface(
+    const RetainedMove = struct {
+        index: usize,
+        target_tab_id: []const u8,
+        desired: renderpkg.Pane,
+    };
+
+    const DetachingTab = struct {
+        source: *TabBinding,
+        desired: ?*const renderpkg.Tab,
+        retained_tree: ?Surface.Tree = null,
+    };
+
+    /// Transfer the existing Surface objects and their content channels.
+    /// Detach every source before installing any destination so the trees
+    /// can exchange Surfaces without giving a widget two parents.
+    fn moveRetainedPaneSurfaces(
         self: *AppliedRenderState,
         snapshot: renderpkg.Snapshot,
         lifecycle: *content_lifecycle.Lifecycle,
     ) !void {
-        var moved_index: ?usize = null;
-        var target_tab_id: []const u8 = undefined;
-        var desired_pane: renderpkg.Pane = undefined;
+        const scratch = self.arena.child_allocator;
+        var moves: std.ArrayList(RetainedMove) = .empty;
+        defer moves.deinit(scratch);
         for (snapshot.tabs) |tab| {
-            _ = try desiredNativeLayout(tab);
             for (tab.panes) |pane| {
                 const index = self.findActivePaneIndex(pane.id) orelse continue;
-                if (std.mem.eql(u8, self.panes.items[index].tab_id, tab.id)) {
-                    continue;
-                }
-                if (moved_index != null) return error.BatchRuntimeMutation;
-                moved_index = index;
-                target_tab_id = tab.id;
-                desired_pane = pane;
+                if (std.mem.eql(u8, self.panes.items[index].tab_id, tab.id)) continue;
+                try moves.append(scratch, .{
+                    .index = index,
+                    .target_tab_id = tab.id,
+                    .desired = pane,
+                });
             }
         }
-        const index = moved_index orelse return;
-        const source_tab_id = self.panes.items[index].tab_id;
-        const source_desired = snapshot.tab(source_tab_id);
-        const target_desired = snapshot.tab(target_tab_id) orelse
-            return error.UnknownTab;
-        try self.preflightMoveLayout(
-            source_tab_id,
-            source_desired,
-            self.panes.items[index].pane_id,
-        );
-        try self.preflightMoveLayout(
-            target_tab_id,
-            target_desired,
-            self.panes.items[index].pane_id,
-        );
-        _ = self.findTab(target_tab_id) orelse return error.UnknownTab;
-        const mutation = native_surface_transition.planContentMutation(
-            source_tab_id,
-            self.panes.items[index].attach_fingerprint,
-            target_tab_id,
-            desired_pane.attach_fingerprint,
-        );
-        if (mutation == .move_and_rebind) {
-            // A semantic identity switch must retire the old physical surface;
-            // ordinary same-identity cross-tab moves retain it below.
-            if (!self.panes.items[index].isTerminal() or desired_pane.content != null)
-                return error.ContentIdentityRequiresNewSurface;
-            try self.rebindPaneContent(
-                &self.panes.items[index],
-                desired_pane,
-                lifecycle,
+        if (moves.items.len == 0) return;
+
+        var sources: std.ArrayList(DetachingTab) = .empty;
+        defer {
+            for (sources.items) |*source| {
+                if (source.retained_tree) |*tree| tree.deinit();
+            }
+            sources.deinit(scratch);
+        }
+        for (self.tabs.items) |*tab| {
+            if (!tab.active) continue;
+            var departing: [9][]const u8 = undefined;
+            var count: usize = 0;
+            for (moves.items) |move| {
+                const pane = &self.panes.items[move.index];
+                if (pane.tab != tab.tab) continue;
+                if (count == departing.len) return error.InvalidLayout;
+                departing[count] = pane.pane_id;
+                count += 1;
+            }
+            if (count == 0) continue;
+            const desired = snapshot.tab(tab.tab_id);
+            try self.preflightMoveLayout(tab.tab_id, desired, moves.items);
+            const current = tab.layout orelse return error.InvalidLayout;
+            const retained = try native_surface_transition.layoutAfterDetach(current, departing[0..count]);
+            const source = try sources.addOne(scratch);
+            source.* = .{ .source = tab, .desired = desired };
+            if (desired != null) {
+                if (retained) |layout| source.retained_tree = try self.buildTree(layout);
+            }
+        }
+
+        var rebind: ?RetainedMove = null;
+        for (moves.items) |*move| {
+            const pane = &self.panes.items[move.index];
+            const target = snapshot.tab(move.target_tab_id) orelse return error.UnknownTab;
+            try self.preflightMoveLayout(target.id, target, moves.items);
+            move.target_tab_id = (self.findTab(target.id) orelse return error.UnknownTab).tab_id;
+            if (native_surface_transition.planContentMutation(
+                pane.tab_id,
+                pane.attach_fingerprint,
+                target.id,
+                move.desired.attach_fingerprint,
+            ) == .move_and_rebind) {
+                if (moves.items.len != 1 or !pane.isTerminal() or !move.desired.isTerminal()) {
+                    return error.ContentIdentityRequiresNewSurface;
+                }
+                rebind = move.*;
+            }
+        }
+        if (rebind) |move| {
+            try self.rebindPaneContent(&self.panes.items[move.index], move.desired, lifecycle);
+        }
+
+        // Ghostty closes a Tab when its split tree becomes empty. Reuse the
+        // normal empty-Tab placeholder if all its Surfaces are departing.
+        for (sources.items) |*source| {
+            if (source.retained_tree == null and source.desired != null) {
+                const placeholder = try self.ensurePlaceholder(source.source.tab_id);
+                source.retained_tree = try Surface.Tree.init(scratch, placeholder);
+            }
+        }
+        for (sources.items) |*source| {
+            source.source.tab.getSplitTree().setTree(
+                if (source.retained_tree) |*tree| tree else null,
             );
         }
-
-        if (source_desired) |desired_source| {
-            try self.applyLayout(source_tab_id, desired_source.*);
-        } else {
-            const source = self.findTab(source_tab_id) orelse
-                return error.UnknownTab;
-            source.tab.getSplitTree().setTree(null);
-            source.layout = null;
-            for (self.panes.items) |*pane| {
-                if (pane.tab == source.tab) pane.active = false;
-            }
+        for (moves.items) |move| {
+            const target = self.findTab(move.target_tab_id).?;
+            self.panes.items[move.index].tab_id = target.tab_id;
+            self.panes.items[move.index].tab = target.tab;
         }
 
-        const target = self.findTab(target_tab_id) orelse return error.UnknownTab;
-        self.panes.items[index].tab_id = try self.arena.allocator().dupe(
-            u8,
-            target_tab_id,
-        );
-        self.panes.items[index].tab = target.tab;
-        self.panes.items[index].active = true;
-        // Complete the physical move before ensurePane checks destination
-        // membership. The retained Surface is temporarily in neither tree.
-        try self.applyLayout(target_tab_id, target_desired.*);
+        for (sources.items) |source| {
+            if (source.desired) |tab| {
+                try self.applyLayout(tab.id, tab.*);
+            } else {
+                source.source.layout = null;
+                for (self.panes.items) |*pane| {
+                    if (pane.tab == source.source.tab) pane.active = false;
+                }
+            }
+        }
+        for (moves.items) |move| {
+            const tab = snapshot.tab(move.target_tab_id).?;
+            if (!self.physicalTreeMatches(tab.*)) try self.applyLayout(tab.id, tab.*);
+        }
     }
 
     fn preflightMoveLayout(
         self: *AppliedRenderState,
         tab_id: []const u8,
         desired: ?*const renderpkg.Tab,
-        moved_pane_id: []const u8,
+        moves: []const RetainedMove,
     ) !void {
         const tab = desired orelse return;
         const layout = try desiredNativeLayout(tab.*) orelse return;
         for (layout.visualPaneIds()) |pane_id| {
-            const pane = self.findPaneIncludingInactive(pane_id) orelse
-                return error.UnknownPane;
-            if (!std.mem.eql(u8, pane.tab_id, tab_id) and
-                !std.mem.eql(u8, pane_id, moved_pane_id))
-            {
-                return error.InvalidLayout;
-            }
+            const pane = self.findPaneIncludingInactive(pane_id) orelse return error.UnknownPane;
+            const planned_tab = for (moves) |move| {
+                if (std.mem.eql(u8, move.desired.id, pane_id)) break move.target_tab_id;
+            } else pane.tab_id;
+            if (!std.mem.eql(u8, planned_tab, tab_id)) return error.InvalidLayout;
         }
     }
 

@@ -115,6 +115,29 @@ pub fn planCrossTabMove(
     return .{ .pane_id = pane_id };
 }
 
+pub fn layoutAfterDetach(
+    current: native_layout.Layout,
+    departing: []const []const u8,
+) !?native_layout.Layout {
+    try validateSet(departing);
+    for (departing) |pane_id| {
+        if (!contains(current.visualPaneIds(), pane_id)) return error.InvalidCrossTabMove;
+    }
+    var retained: [9][]const u8 = undefined;
+    var count: usize = 0;
+    for (current.visualPaneIds()) |pane_id| {
+        if (contains(departing, pane_id)) continue;
+        retained[count] = pane_id;
+        count += 1;
+    }
+    if (count == 0) return null;
+    return try native_layout.layout(
+        retained[0..count],
+        current.mode,
+        if (current.mode == .focus) retained[0] else null,
+    );
+}
+
 fn validateSet(pane_ids: []const []const u8) !void {
     if (pane_ids.len > 9) return error.UnsupportedPaneCount;
     for (pane_ids, 0..) |pane_id, index| {
@@ -133,6 +156,8 @@ fn contains(pane_ids: []const []const u8, wanted: []const u8) bool {
     }
     return false;
 }
+
+
 
 
 

@@ -15,6 +15,8 @@ use polar_tmux_core::{TmuxClient, TmuxSessionBinding};
 use super::SessionLifecycle;
 use crate::services::{settings_service::SettingsSessionAccess, terminal_source};
 
+const STARTUP_GIT_PROBE: &str = include_str!("startup_git_probe.sh");
+
 #[derive(Default)]
 struct StatusContext<'a> {
     workspace: Option<&'a str>,
@@ -28,10 +30,7 @@ pub(super) async fn read_startup_git(
 ) -> Option<SessionStartupGit> {
     let directory = polar_ssh::quote_posix(directory?);
     let script = format!(
-        "unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
-         root=$(git -C {directory} rev-parse --show-toplevel) || exit 1
-         branch=$(git -C {directory} symbolic-ref --quiet --short HEAD) || branch=
-         printf '%s\\000%s' \"$root\" \"$branch\"",
+        "set -- {directory} /usr/bin/git /usr/bin/xcode-select\n{STARTUP_GIT_PROBE}",
     );
     let output = tokio::time::timeout(
         Duration::from_secs(1),
@@ -301,7 +300,8 @@ async fn collect_facts(
         .map(|(kind, _)| kind)
         .or_else(|| launch.map(|value| SessionKind::from_restore_spec(&value.process)))
         .unwrap_or(SessionKind::Terminal);
-    let needs_window_title = kind != SessionKind::Terminal
+    let is_terminal = matches!(kind, SessionKind::Terminal | SessionKind::Command);
+    let needs_window_title = !is_terminal
         && context.title.is_none()
         && selected.0.contains(&Field::SessionName);
     let saved_git = launch.and_then(|launch| launch.startup_git.as_ref());
@@ -351,7 +351,7 @@ async fn collect_facts(
     let original_id = convention
         .map(|(_, id)| id)
         .or_else(|| launch.and_then(|value| value.process.original_agent_id()));
-    let display_name = if kind == SessionKind::Terminal {
+    let display_name = if is_terminal {
         Some(name)
     } else {
         [context.title, Some(startup.explicit_window_name.as_str())]
@@ -366,8 +366,8 @@ async fn collect_facts(
             })
     };
     let (session_type, program) = match kind {
-        SessionKind::Terminal => (
-            "Shell",
+        SessionKind::Terminal | SessionKind::Command => (
+            if kind == SessionKind::Command { "Command" } else { "Shell" },
             startup
                 .command
                 .split_whitespace()

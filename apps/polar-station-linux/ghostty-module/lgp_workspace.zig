@@ -521,7 +521,10 @@ pub const Workspace = struct {
     }
     fn consume(self: *Workspace, effect: Value) void {
         const kind = string(effect, "type") orelse return;
-        if (std.mem.eql(u8, kind, "insert_text")) {
+        if (std.mem.eql(u8, kind, "copy_send_text")) {
+            const composer = self.composers.get(string(effect, "window_id") orelse return) orelse return;
+            composer.copySendText(string(effect, "text") orelse return);
+        } else if (std.mem.eql(u8, kind, "insert_text")) {
             const lease=field(effect,"lease") orelse return;
             const composer=self.composers.get(string(lease,"window") orelse return) orelse return;
             composer.insertQuotedText(lease,string(effect,"text") orelse return);

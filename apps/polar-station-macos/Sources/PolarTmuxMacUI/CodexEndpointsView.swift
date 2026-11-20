@@ -12,7 +12,6 @@ public struct CodexEndpointsView: View {
     let initialEndpoint: String?
     let embedded: Bool
     let onEditingChanged: @MainActor (Bool) -> Void
-    @State private var draftEnabled = false
     @State private var settings = CodexControlSettingsV1()
     @State private var draft = CodexEndpointSettingsV1()
     @State private var owner = ""
@@ -38,7 +37,6 @@ public struct CodexEndpointsView: View {
                 }.disabled(editing || busy)
                 if editing {
                 Form {
-                    Toggle("Enable Codex control and monitoring", isOn: $draftEnabled)
                     TextField("Endpoint ID", text: $draft.id).disabled(existing)
                     Picker("Machine", selection: $draft.execution_target_id) {
                         Text("Local").tag("local")
@@ -99,8 +97,7 @@ public struct CodexEndpointsView: View {
         }.padding(machineID == nil ? 20 : 0).frame(minWidth: machineID == nil ? 710 : 0)
         .task { await load() }
         .onChange(of: editing) { onEditingChanged($0) }
-        .onChange(of: draft) { _ in if editing { interaction.draftCodex(draft, enabled: draftEnabled) } }
-        .onChange(of: draftEnabled) { _ in if editing { interaction.draftCodex(draft, enabled: draftEnabled) } }
+        .onChange(of: draft) { _ in if editing { interaction.draftCodex(draft) } }
         .onChange(of: interaction.state?.editing) { value in
             editing = value == true && interaction.state?.codex_draft != nil
             if !editing { refreshSelection() }
@@ -135,7 +132,6 @@ public struct CodexEndpointsView: View {
             settings = value; owner = response.ownerHostID; interaction.codexSnapshot(value, owner: owner); loaded = true
             if let retained = interaction.state?.codex_draft {
                 draft = retained
-                draftEnabled = interaction.state?.codex_enabled ?? false
                 existing = value.endpoints.contains { $0.id == retained.id }
                 editing = true
                 onEditingChanged(true)
@@ -145,7 +141,7 @@ public struct CodexEndpointsView: View {
     private func begin(id: String?) {
         interaction.beginCodex(machine: machineID ?? draft.execution_target_id, id: id)
         guard let value = interaction.state?.codex_draft else { return }
-        draft = value; draftEnabled = interaction.state?.codex_enabled ?? false
+        draft = value
         existing = id != nil; editing = true; error = nil
     }
     private func refreshSelection() {
@@ -154,7 +150,7 @@ public struct CodexEndpointsView: View {
     }
     private func save() {
         guard !busy, loaded else { return }
-        interaction.draftCodex(draft, enabled: draftEnabled)
+        interaction.draftCodex(draft)
         consume(interaction.action("save"))
     }
 }

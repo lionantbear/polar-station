@@ -13,7 +13,6 @@ import CPolarStationDesktopClient
         public var draft: ConnectionChangeV1?
         public var codex_settings: CodexControlSettingsV1?
         public var codex_draft: CodexEndpointSettingsV1?
-        public var codex_enabled: Bool
         public var pending: Bool
         public var confirm_discard: Bool
         public var message: String?
@@ -70,9 +69,9 @@ import CPolarStationDesktopClient
     public func beginCodex(machine: String, id: String?) {
         _ = dispatch(["type":"edit_codex", "machine":machine, "id":id as Any? ?? NSNull()])
     }
-    public func draftCodex(_ endpoint: CodexEndpointSettingsV1, enabled: Bool) {
+    public func draftCodex(_ endpoint: CodexEndpointSettingsV1) {
         guard let bytes = try? JSONEncoder().encode(endpoint), let value = try? JSONSerialization.jsonObject(with: bytes) else { return }
-        _ = dispatch(["type":"draft_codex", "endpoint":value, "enabled":enabled])
+        _ = dispatch(["type":"draft_codex", "endpoint":value])
     }
     public func exportHosts(_ ids: [String]) -> [Effect] { dispatch(["type":"export_hosts", "target_ids":ids]) }
     public func importHosts(_ bundle: HostExportBundleV1) -> [Effect] { send("import_hosts",value:bundle,key:"bundle") }

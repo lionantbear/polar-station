@@ -1,6 +1,7 @@
 //! App-server entry points shared by Inhouse Polar and Station.
 pub use codex_app_server_client::{
-    app_server_control_socket_path, AppServerClient, AppServerEvent, AppServerRequestHandle,
+    app_server_control_socket_path, verified_local_daemon_socket, AppServerClient, AppServerEvent,
+    AppServerRequestHandle,
 };
 pub use codex_app_server_protocol::{ClientRequest, ServerNotification, ServerRequest};
 
@@ -105,6 +106,17 @@ pub async fn start_embedded(config: &CodexAgentConfig) -> anyhow::Result<AppServ
     let client = start_in_process_client(config).await?;
     Ok(AppServerClient::InProcess(client))
 }
+
+/// The public local control address of Polar's embedded Codex app-server.
+/// The upstream listener creates and protects the one parent directory.
+pub fn polar_control_socket(home: &Path) -> std::io::Result<std::path::PathBuf> {
+    if !home.is_absolute() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "account home must be absolute"));
+    }
+    Ok(home.join(".polar-app-server/app-server-control.sock"))
+}
+
+
 
 pub async fn connect_unix(
     path: &Path,
