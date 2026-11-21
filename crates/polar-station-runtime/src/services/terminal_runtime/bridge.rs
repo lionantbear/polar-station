@@ -25,6 +25,7 @@ pub struct TerminalServices {
 
 type AttachAttempt = Pin<Box<dyn Future<Output = Result<TerminalAttachment>> + Send>>;
 struct AttachmentRuntime {
+    lifetimes: TerminalLifetimes,
     control: TerminalControl,
     input_activity: TerminalInputActivity,
     retry: TerminalRetry,
@@ -36,9 +37,10 @@ struct AttachmentRuntime {
     last_probe_unix_ms: Option<u64>,
     presentation_tick: tokio::time::Instant,
 }
-impl Default for AttachmentRuntime {
-    fn default() -> Self {
+impl AttachmentRuntime {
+    fn new(lifetimes: TerminalLifetimes) -> Self {
         Self {
+            lifetimes,
             control: TerminalControl::default(),
             input_activity: TerminalInputActivity::default(),
             retry: TerminalRetry::default(),
@@ -51,8 +53,7 @@ impl Default for AttachmentRuntime {
             presentation_tick: tokio::time::Instant::now() + Duration::from_secs(1),
         }
     }
-}
-impl AttachmentRuntime {
+
     fn start(&mut self, services: &TerminalServices, consumer: &TerminalConsumerState) {
         if consumer.binding().is_none() || self.pending_attach.is_some() {
             return;
@@ -65,7 +66,11 @@ impl AttachmentRuntime {
                 .unwrap_or_default()
                 .as_millis() as u64,
         );
-        self.pending_attach = Some(Box::pin(start_terminal_attach(services, consumer)));
+        self.pending_attach = Some(Box::pin(start_terminal_attach(
+            services,
+            consumer,
+            self.lifetimes.clone(),
+        )));
     }
     fn session_unavailable(
         &mut self,
@@ -129,15 +134,15 @@ impl AttachmentRuntime {
         self.retry.reset();
         Ok(())
     }
-    fn retire_backend(&mut self) {
+    fn retire_backend(
+        &mut self,
+    ) -> Option<tokio::sync::oneshot::Receiver<Result<super::lifetime::Cleanup>>> {
         self.control.invalidate();
-        if let Some(backend) = self.backend.take() {
-            backend.stop();
-        }
+        self.backend.take().map(BackendPty::stop)
     }
     fn cancel(&mut self) {
         self.pending_attach = None;
-        self.retire_backend();
+        drop(self.retire_backend());
         self.redraw_deadline = None;
         self.attaching_transport = None;
     }
@@ -169,7 +174,9 @@ pub async fn serve_bridge(
         .context("terminal Consumer registration is stale")?;
     tracing::info!(target: "polar_station_operation", component="Host", event="bridge_registered",
         consumer_id=consumer_id.as_str(), generation=consumer_generation, content_generation=consumer.status().content_generation);
-    let mut runtime = AttachmentRuntime::default();
+    let mut runtime = AttachmentRuntime::new(
+        state.terminal_consumers.lifetimes.for_bridge(registration.current.clone()),
+    );
     runtime.control.trace_consumer_id = consumer_id.clone();
     let mut selection = registration.selected.clone();
     let result: Result<()> = async {
@@ -447,7 +454,11 @@ pub async fn serve_bridge(
                         )
                         .await?;
                     }
-                    TerminalBridgeFrameV1::Retire => break Ok(()),
+                    TerminalBridgeFrameV1::Retire => {
+                        runtime.cancel();
+                        runtime.lifetimes.wait_for_bridge_cleanup().await?;
+                        break Ok(());
+                    }
                     TerminalBridgeFrameV1::Output(_) | TerminalBridgeFrameV1::Status(_) | TerminalBridgeFrameV1::ControlStatus(_) => {
                         break Err(anyhow::anyhow!(
                             "terminal Consumer sent a Host-only terminal frame"
@@ -575,7 +586,7 @@ pub async fn serve_bridge(
                             && runtime.pending_attach.is_none()
                             && (runtime.backend.is_none() || consumer.requires_transport_reconcile(latest.as_ref()))
                         {
-                            runtime.retire_backend();
+                            drop(runtime.retire_backend());
                             let _ = consumer.transport_lost(None)?;
                             runtime.start(&state, &consumer);
                             local_ipc::write_terminal_bridge_frame(
@@ -603,6 +614,7 @@ pub async fn serve_bridge(
 fn start_terminal_attach(
     state: &TerminalServices,
     consumer: &TerminalConsumerState,
+    lifetimes: TerminalLifetimes,
 ) -> impl std::future::Future<Output = Result<TerminalAttachment>> + Send + 'static {
     let consumer = consumer.clone();
     let targets = state.targets.clone();
@@ -613,7 +625,7 @@ fn start_terminal_attach(
         targets,
         ssh,
         lifecycle,
-        state.terminal_consumers.lifetimes.clone(),
+        lifetimes,
     );
     async move {
         tokio::time::timeout(Duration::from_secs(15), attempt)

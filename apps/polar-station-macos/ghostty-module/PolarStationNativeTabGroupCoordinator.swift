@@ -257,6 +257,7 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
     func reconcileTabs(
         _ tabs: [PolarStationNativeTab],
         retireAbsent: Bool,
+        beforeInstalling: (() -> Void)? = nil,
         install: (
             _ tab: PolarStationNativeTab,
             _ controller: TerminalController,
@@ -293,6 +294,7 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
 
         tabTreeMutationDepth += 1
         defer { tabTreeMutationDepth -= 1 }
+        beforeInstalling?()
 
         // Switching Workspace replaces its Tab identities, not its native Window.
         // Retain the current backing controller so AppKit cannot retire the whole
@@ -420,6 +422,8 @@ final class PolarStationNativeTabGroupCoordinator: NSObject {
         }
         schedulePresentationReconcile()
     }
+
+    var pendingNativeTabID: String? { selectionIngressState.pendingNativeSelection?.tabID }
 
     /// Converts a real AppKit Tab choice into one ordered native intent before
     /// attach-time presentation reconciliation can classify it as drift.

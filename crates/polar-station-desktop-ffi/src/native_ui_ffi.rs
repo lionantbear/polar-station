@@ -56,9 +56,16 @@ pub unsafe extern "C" fn polar_station_file_input_valid(bytes: *const u8, len: u
 /// `bytes` has `len` readable bytes. Free output with desktop_string_free.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn polar_station_file_capture(bytes: *const u8, len: usize) -> *mut c_char {
+    const SIDE_BYTES: usize = 2048;
     if bytes.is_null() || len == 0 || len > 65536 { return std::ptr::null_mut(); }
     std::panic::catch_unwind(|| {
         let input = serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) }).ok()?;
+        let polar_station_resources::FileReferenceInput::TerminalHit { text, hit, .. } = &input else {
+            return None;
+        };
+        if *hit > SIDE_BYTES || text.len().checked_sub(*hit)? > SIDE_BYTES {
+            return None;
+        }
         let result = polar_station_resources::recognize_file_capture(input, polar_station_resources::PathFlavor::Posix).ok()?;
         CString::new(serde_json::to_vec(&result).ok()?).ok().map(CString::into_raw)
     }).ok().flatten().unwrap_or(std::ptr::null_mut())
@@ -511,6 +518,29 @@ pub unsafe extern "C" fn polar_station_workspace_lifecycle(
         .and_then(|s| CString::new(s).ok())
         .map(CString::into_raw)
         .unwrap_or(std::ptr::null_mut())
+}
+
+/// Evaluates addition to one native Tab.
+/// # Safety
+/// `bytes` points to `len` readable bytes. Free the result with desktop_string_free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn polar_station_plan_pane_placement(
+    bytes: *const u8,
+    len: usize,
+) -> *mut c_char {
+    use polar_station_workspace::pane_placement::{plan_pane_placement, PanePlacementInput};
+    std::panic::catch_unwind(|| {
+        if bytes.is_null() || len == 0 || len > 1024 * 1024 {
+            return None;
+        }
+        let input: PanePlacementInput =
+            serde_json::from_slice(unsafe { std::slice::from_raw_parts(bytes, len) }).ok()?;
+        let result = serde_json::to_vec(&plan_pane_placement(input)).ok()?;
+        CString::new(result).ok().map(CString::into_raw)
+    })
+    .ok()
+    .flatten()
+    .unwrap_or(std::ptr::null_mut())
 }
 
 /// Projects Settings metadata without owning the native Workspace catalog.

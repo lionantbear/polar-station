@@ -28,6 +28,7 @@ pub const Candidate = struct {
     kind: []const u8,
 };
 pub const View = struct {
+    diagnostics_section: ?[]const u8 = null,
     context_preserves_form:bool=false,prepare_label:?[]const u8=null,can_prepare:bool=false,endpoints:[]const control.CodexEndpoint=&.{},
     can_start_local_server:bool=false,server_starting:bool=false,server_start_label:[]const u8="Start local Codex app server",
     can_check_endpoint: bool = false, endpoint_checking: bool = false,

@@ -26,6 +26,16 @@ pub struct ObservedTmuxSessionV1 {
     pub created_unix_seconds: i64,
 }
 
+/// Live attachment identity scoped to one selected Host. A changed transport
+/// alone does not change this identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalBindingIdentityV1 {
+    pub execution_target: crate::ExecutionTarget,
+    pub target_revision: u64,
+    pub session: ObservedTmuxSessionV1,
+}
+
 impl ObservedTmuxSessionV1 {
     pub fn validate(&self) -> Result<(), ProtocolValidationError> {
         if self.server_generation.len() != 64

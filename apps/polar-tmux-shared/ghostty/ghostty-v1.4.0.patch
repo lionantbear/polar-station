@@ -484,6 +484,17 @@ diff --git a/src/Surface.zig b/src/Surface.zig
              (self.mouse.mods.shift and !self.mouseShiftCapture(false))))
      {
          // If we were previously over a link, we always update. We do this so that if the text
+@@ -6338,6 +6462,10 @@
+             vec,
+         ), .unlocked);
+     };
++
++    if (comptime @import("build_options").polar_tmux) {
++        _ = self.rt_app.performAction(.{ .surface = self }, .station_paste_committed, {}) catch false;
++    }
+ }
+
+ /// Send a Kitty clipboard-protocol paste event when mode 5522 is enabled.
 diff --git a/src/renderer/link.zig b/src/renderer/link.zig
 --- a/src/renderer/link.zig
 +++ b/src/renderer/link.zig
@@ -723,3 +734,97 @@ diff --git a/src/terminal/render.zig b/src/terminal/render.zig
      }
  
      /// Complete a prior `beginUpdate` call by performing any deferred
+diff --git a/src/apprt/action.zig b/src/apprt/action.zig
+--- a/src/apprt/action.zig
++++ b/src/apprt/action.zig
+@@ -363,6 +363,7 @@
+     /// and apprts may ignore it, for example if the surface is in a
+     /// split or the window is fullscreen.
+     resize_window: ResizeWindow,
++    station_paste_committed,
+
+     /// Sync with: ghostty_action_tag_e
+     pub const Key = enum(c_int) {
+@@ -436,6 +437,7 @@
+         copy_title_to_clipboard,
+         move_tab_to_new_window,
+         resize_window,
++        station_paste_committed,
+
+         test "ghostty.h Action.Key" {
+             try lib.checkGhosttyHEnum(Key, "GHOSTTY_ACTION_");
+diff --git a/include/ghostty.h b/include/ghostty.h
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -1016,6 +1016,7 @@
+   GHOSTTY_ACTION_COPY_TITLE_TO_CLIPBOARD,
+   GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW,
+   GHOSTTY_ACTION_RESIZE_WINDOW,
++  GHOSTTY_ACTION_STATION_PASTE_COMMITTED,
+ } ghostty_action_tag_e;
+
+ typedef union {
+diff --git a/src/global.zig b/src/global.zig
+--- a/src/global.zig
++++ b/src/global.zig
+@@ -2,6 +2,7 @@
+ const builtin = @import("builtin");
+ const build_config = @import("build_config.zig");
+ const build_options = @import("build_options");
++const own_process_environ = build_options.polar_tmux and builtin.target.os.tag != .windows;
+ const cli = @import("cli.zig");
+ const internal_os = @import("os/main.zig");
+ const fontconfig = @import("fontconfig");
+@@ -120,6 +121,11 @@
+         .environ = self.environ,
+     });
+
++    if (comptime own_process_environ) {
++        self.environ_storage = .init(self.alloc);
++        try replaceEnviron(self, self.environ);
++    }
++
+     // Discover and save the temporary directory path
+     self.tmp_dir_path = try allocTmpDir(self.alloc, self.environ);
+
+@@ -242,6 +248,7 @@
+
+     // Release our I/O instance
+     self.io_impl.deinit();
++    if (self.environ_storage) |*storage| storage.deinit();
+
+     if (self.gpa) |*value| {
+         // We want to ensure that we deinit the GPA because this is
+@@ -315,10 +322,22 @@
+                 while (std.c.environ[len]) |_| : (len += 1) {}
+                 break :env_len len;
+             } :null] } };
+-            state.?.environ = new_environ;
+-            state.?.io_impl.environ = .{ .process_environ = new_environ };
++            replaceEnviron(&state.?, new_environ) catch |err| {
++                std.log.warn("could not refresh the process environment snapshot: {}", .{err});
++            };
+         },
+     }
++}
++
++fn replaceEnviron(self: *GlobalState, environ_value: std.process.Environ) !void {
++    // Third-party frameworks can reallocate libc's array or its strings.
++    // Preserve prior snapshots until the I/O workers stop using them.
++    const snapshot: std.process.Environ = if (comptime own_process_environ)
++        .{ .block = try environ_value.createPosixBlock(self.environ_storage.?.allocator(), .{}) }
++    else
++        environ_value;
++    self.environ = snapshot;
++    self.io_impl.environ = .{ .process_environ = snapshot };
+ }
+
+ /// Helper to return either the state's args, or one from testing.
+@@ -381,6 +400,7 @@
+     gpa: ?GPA,
+     alloc: std.mem.Allocator,
+     environ: std.process.Environ,
++    environ_storage: ?std.heap.ArenaAllocator = null,
+     args: std.process.Args,
+     tmp_dir_path: ?[]const u8,
+     action: ?cli.ghostty.Action,

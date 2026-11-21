@@ -106,8 +106,24 @@ pub fn planDrop(
         _ = target.pane(anchor) orelse return error.UnknownPane;
         if (std.mem.eql(u8, anchor, drop.pane_id)) return null;
     } else if (drop.placement != .append) return error.UnknownPane;
-    if (from_index != to_index and target.panes.len >= 9) return error.TabFull;
+    var merge = false;
+    if (from_index != to_index) {
+        if (pane.isTerminal()) {
+            var placement = try @import("workspace_lifecycle.zig").planPanePlacement(allocator, target, &.{.{
+                .execution_target_id = pane.execution_target_id,
+                .tmux_session_id = pane.tmux_session_id,
+            }}, 0, 0);
+            defer placement.deinit();
+            if (placement.value.full) return error.TabFull;
+            merge = placement.value.existing.len != 0;
+        } else {
+            var placement = try @import("workspace_lifecycle.zig").planPanePlacement(allocator, target, &.{}, 0, 1);
+            defer placement.deinit();
+            if (placement.value.full) return error.TabFull;
+        }
+    }
 
+    if (merge) return try mergeDrop(allocator, current, source.id, target.id, drop.pane_id);
     const tabs = try allocator.dupe(rendering.Tab, current.tabs);
     if (from_index != to_index) {
         const remaining = try withoutPane(allocator, source.panes, drop.pane_id);
@@ -132,9 +148,21 @@ pub fn planDrop(
         sameIDs(try paneIDs(allocator, target.panes), try paneIDs(allocator, panes)) and
         sameIDs(try visualIDs(allocator, target), visual)) return null;
     tabs[to_index] = try withPaneOrder(allocator, target, panes, visual);
+    return try finishDrop(allocator, current, tabs, drop.to_tab_id);
+}
+
+pub fn mergeDrop(allocator: std.mem.Allocator, current: rendering.Snapshot, source_id: []const u8, target_id: []const u8, pane_id: []const u8) !rendering.Snapshot {
+    const index = tabIndex(current.tabs, source_id) orelse return error.UnknownTab;
+    const source = current.tabs[index];
+    const tabs = try allocator.dupe(rendering.Tab, current.tabs);
+    tabs[index] = try withPaneOrder(allocator, source, try withoutPane(allocator, source.panes, pane_id), try visualWithoutPane(allocator, source, pane_id));
+    return finishDrop(allocator, current, tabs, target_id);
+}
+
+fn finishDrop(allocator: std.mem.Allocator, current: rendering.Snapshot, tabs: []rendering.Tab, tab_id: []const u8) !rendering.Snapshot {
     var result = current;
     result.tabs = tabs;
-    result.selected_tab_id = drop.to_tab_id;
+    result.selected_tab_id = tab_id;
     result.workspace_revision = std.math.add(u64, current.workspace_revision, 1) catch
         return error.InvalidWorkspaceRevision;
     result.snapshot_fingerprint = try std.fmt.allocPrint(

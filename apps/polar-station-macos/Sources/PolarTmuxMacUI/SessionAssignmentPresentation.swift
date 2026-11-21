@@ -29,11 +29,6 @@ public enum SessionAssignmentPresentation: Equatable, Sendable {
             )
         }
 
-        if let owner = nativeView.tabs.first(where: { tab in
-            tab.panes.contains { $0.executionTargetID == executionTargetID && $0.tmuxSessionID == tmuxSessionID }
-        }) {
-            return .assignedElsewhere(tabID: owner.tabID)
-        }
         let identity = SessionRowProjectionV1.Identity(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)
         if let tabID = nativeView.otherOpenSessionTabs[identity] {
             return .assignedElsewhere(tabID: tabID)

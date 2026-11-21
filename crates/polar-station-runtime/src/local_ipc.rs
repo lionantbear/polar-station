@@ -11,15 +11,12 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use polar_station_protocol::{
-    decode_terminal_bridge_frame_v1, encode_terminal_bridge_frame_v1, TerminalBridgeFrameV1,
-};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    net::{UnixListener, UnixStream},
-};
+use tokio::net::{UnixListener, UnixStream};
 
-pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
+pub use polar_local_access_runtime::codec::MAX_FRAME_BYTES;
+pub use polar_station_client::terminal_bridge::{
+    read_terminal_bridge_frame, verify_server_socket, write_terminal_bridge_frame,
+};
 
 pub struct UserFileLock {
     _file: File,
@@ -149,75 +146,8 @@ pub fn verify_peer(stream: &UnixStream) -> Result<()> {
     Ok(())
 }
 
-pub fn verify_server_socket(path: &Path) -> Result<()> {
-    let metadata = std::fs::symlink_metadata(path)
-        .with_context(|| format!("failed to inspect local IPC socket {}", path.display()))?;
-    if !metadata.file_type().is_socket() || metadata.uid() != effective_uid() {
-        bail!(
-            "local IPC server must be a Unix socket owned by the current user: {}",
-            path.display()
-        );
-    }
-    if metadata.permissions().mode() & 0o077 != 0 {
-        bail!(
-            "local IPC server permissions are not private: {}",
-            path.display()
-        );
-    }
-    Ok(())
-}
-
 pub use polar_local_access_runtime::codec::{read_json_frame, write_json_frame};
 
-
-pub async fn read_terminal_bridge_frame<R>(reader: &mut R) -> Result<Option<TerminalBridgeFrameV1>>
-where
-    R: AsyncRead + Unpin,
-{
-    let mut header = [0_u8; 5];
-    match reader.read_exact(&mut header).await {
-        Ok(_) => {}
-        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(error) => return Err(error).context("failed to read terminal bridge frame header"),
-    }
-    let length = u32::from_be_bytes(
-        header[1..]
-            .try_into()
-            .expect("terminal bridge header has a four-byte length"),
-    ) as usize;
-    if length > MAX_FRAME_BYTES {
-        bail!("terminal bridge frame length exceeds {MAX_FRAME_BYTES}");
-    }
-    let mut encoded = Vec::with_capacity(header.len() + length);
-    encoded.extend_from_slice(&header);
-    encoded.resize(header.len() + length, 0);
-    reader
-        .read_exact(&mut encoded[header.len()..])
-        .await
-        .context("failed to read terminal bridge frame payload")?;
-    decode_terminal_bridge_frame_v1(&encoded)
-        .context("invalid terminal bridge frame")
-        .map(Some)
-}
-
-pub async fn write_terminal_bridge_frame<W>(
-    writer: &mut W,
-    frame: &TerminalBridgeFrameV1,
-) -> Result<()>
-where
-    W: AsyncWrite + Unpin,
-{
-    let encoded =
-        encode_terminal_bridge_frame_v1(frame).context("invalid terminal bridge frame")?;
-    writer
-        .write_all(&encoded)
-        .await
-        .context("failed to write terminal bridge frame")?;
-    writer
-        .flush()
-        .await
-        .context("failed to flush terminal bridge frame")
-}
 
 fn require_owned_directory(path: &Path) -> Result<()> {
     let metadata = std::fs::symlink_metadata(path)

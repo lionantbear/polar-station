@@ -9,9 +9,28 @@ impl ControlCenterService {
     ) -> Result<SessionEditorResultV1, ControlCenterErrorV1> {
         match request {
             SessionEditorRequestV1::InspectTools { execution_target_id } => {
-                Ok(SessionEditorResultV1::Tools { tools:self.editor_tool_facts(&execution_target_id).await })
+                Ok(SessionEditorResultV1::Tools { tools:self.editor_tool_facts(&execution_target_id, true).await })
             }
-            SessionEditorRequestV1::PrepareTools {execution_target_id,tmux,codex,codex_service,claude,delivery} => {
+            SessionEditorRequestV1::ProbeSshDestination { destination } => {
+                if !matches!(polar_ssh::check_setup_destination(&destination).await, Ok(true)) {
+                    return Err(control_error("ssh_unavailable", "SSH did not connect. Verify the host key and sign in from an SSH terminal, then retry."));
+                }
+                Ok(SessionEditorResultV1::SshDestinationVerified { machine: MachineConnectionV1 {
+                    id: crate::host_identity::random_uuid_v4(),
+                    display_name: destination.clone(),
+                    destination,
+                    route_profile: None,
+                } })
+            }
+            SessionEditorRequestV1::PrepareSshLogin { destination } => {
+                let command = polar_ssh::setup_login_command(&destination)
+                    .map_err(|_| control_error("ssh_destination_invalid", "Enter an SSH host or alias."))?;
+                let setup = super::super::target_tools::prepare(
+                    &polar_tmux_core::TmuxTarget::Local, "local", &destination, &command,
+                ).map_err(|_| control_error("ssh_login_prepare_failed", "Cannot open the SSH login Pane."))?;
+                Ok(SessionEditorResultV1::ToolsPrepared { setup })
+            }
+            SessionEditorRequestV1::PrepareTools {execution_target_id,tmux,codex,codex_service,claude,claude_login,delivery} => {
                 #[cfg(feature="codex-control")]
                 if codex_service && self.codex.get().is_none(){return Err(control_error("codex_unavailable","Codex control is unavailable."))}
                 let target=self.targets.get(&execution_target_id).ok_or_else(||control_error("target_missing","Selected machine is unavailable."))?;
@@ -22,14 +41,17 @@ impl ControlCenterService {
                 if codex {return Err(control_error("codex_unsupported","This Host does not support Codex."))}
                 if let Some(lease)=&lease {self.ssh_connections.validate(lease).await.map_err(|_|control_error("ssh_changed","SSH connection changed; retry."))?;}
                 if delivery==polar_station_protocol::ToolSetupDeliveryV1::NativePane {
-                    let script=super::super::target_tools::prepared_script(&transport,tmux,codex,codex_service,claude).await
+                    let script=super::super::target_tools::prepared_script(&transport,tmux,codex,codex_service,claude,claude_login).await
                         .map_err(|e|control_error("tools_prepare_failed",format!("Cannot prepare tools: {e}")))?;
                     if let Some(lease)=&lease {self.ssh_connections.validate(lease).await.map_err(|_|control_error("ssh_changed","SSH connection changed; retry."))?;}
-                    let setup=super::super::target_tools::prepare(&transport,&execution_target_id,&target.descriptor().display_name,&script)
+                    let mut setup=super::super::target_tools::prepare(&transport,&execution_target_id,&target.descriptor().display_name,&script)
                         .map_err(|e|control_error("tools_prepare_failed",format!("Cannot prepare setup Pane: {e}")))?;
+                    if claude_login {
+                        setup.title = format!("Claude sign-in · {}", target.descriptor().display_name);
+                    }
                     return Ok(SessionEditorResultV1::ToolsPrepared{setup});
                 }
-                super::super::target_tools::launch(&transport,tmux,codex,codex_service,claude).await.map_err(|e|control_error("tools_terminal_failed",format!("Cannot open setup terminal: {e}")))?;
+                super::super::target_tools::launch(&transport,tmux,codex,codex_service,claude,claude_login).await.map_err(|e|control_error("tools_terminal_failed",format!("Cannot open setup terminal: {e}")))?;
                 Ok(SessionEditorResultV1::ToolsLaunched{execution_target_id})
             }
 
@@ -169,7 +191,7 @@ impl ControlCenterService {
                 };
                 Ok::<_,ControlCenterErrorV1>((directory,notice))
                 };
-                let (directory,tools)=tokio::join!(directory_future,self.editor_tool_facts(&execution_target_id));
+                let (directory,tools)=tokio::join!(directory_future,self.editor_tool_facts(&execution_target_id, false));
                 let (directory,notice)=directory?;
                 let yolo = self.connection_dependencies.get()
                     .ok_or_else(|| control_error("settings_unavailable", "Desktop settings are unavailable."))?.settings
@@ -200,7 +222,7 @@ impl ControlCenterService {
         }
     }
 
-    async fn editor_tool_facts(&self, id: &str) -> Vec<polar_station_protocol::SessionTargetToolsV1> {
+    async fn editor_tool_facts(&self, id: &str, diagnostic: bool) -> Vec<polar_station_protocol::SessionTargetToolsV1> {
         #[cfg(feature = "codex-control")]
         let enabled = self.codex.get().is_some();
         #[cfg(not(feature = "codex-control"))]
@@ -208,9 +230,13 @@ impl ControlCenterService {
         let discover = async {
             #[cfg(feature = "codex-control")]
             if let Some(codex) = self.codex.get() {
+                if diagnostic {
+                    return codex.default_endpoint_ready(id).await;
+                }
                 let _ = tokio::time::timeout(std::time::Duration::from_secs(2),
                     codex.check_default_endpoints(id)).await;
             }
+            None::<bool>
         };
         let inspect=|id:String| async move {
             let result=tokio::time::timeout(std::time::Duration::from_secs(3),async {
@@ -218,11 +244,11 @@ impl ControlCenterService {
                 let lease=target.resource_ssh_lease(&self.ssh_connections).await.ok()?;
                 let transport=if let Some(lease)=&lease{polar_tmux_core::TmuxTarget::from(lease.endpoint())}else{target.configured_target().clone()};
                 let client=target.configured_client().clone().with_target(transport);
-                let facts=super::super::target_tools::inspect(&client,&id,enabled).await;
+                let facts=super::super::target_tools::inspect(&client,&id,enabled,diagnostic).await;
                 if let Some(lease)=&lease{self.ssh_connections.validate(lease).await.ok()?;}
                 Some(facts)
             }).await.ok().flatten();
-            result.unwrap_or(polar_station_protocol::SessionTargetToolsV1{native_setup:true,execution_target_id:id,tmux:polar_station_protocol::SessionToolStateV1::Unavailable,codex:polar_station_protocol::SessionToolStateV1::Unavailable,codex_control_enabled:enabled,default_local_codex_endpoint:None,claude:Some(polar_station_protocol::SessionToolStateV1::Unavailable)})
+            result.unwrap_or(polar_station_protocol::SessionTargetToolsV1{native_setup:true,execution_target_id:id,tmux:polar_station_protocol::SessionToolStateV1::Unavailable,codex:polar_station_protocol::SessionToolStateV1::Unavailable,codex_control_enabled:enabled,default_local_codex_endpoint:None,claude:Some(polar_station_protocol::SessionToolStateV1::Unavailable), setup_checks: None})
         };
         let inspect_required = async {
             let local = crate::target_registry::LOCAL_TARGET_ID;
@@ -234,13 +260,26 @@ impl ControlCenterService {
             }
         };
         #[allow(unused_mut)]
-        let (_, mut facts) = tokio::join!(discover, inspect_required);
+        let aliases = async {
+            if diagnostic && id == crate::target_registry::LOCAL_TARGET_ID {
+                polar_ssh::configured_aliases().await
+            } else {
+                Vec::new()
+            }
+        };
+        let (server_ready, mut facts, ssh_aliases) = tokio::join!(discover, inspect_required, aliases);
         #[cfg(feature = "codex-control")]
         if let Some(codex) = self.codex.get() {
             if let Some(local) = facts.iter_mut().find(|target|
                 target.execution_target_id == crate::target_registry::LOCAL_TARGET_ID) {
                 local.default_local_codex_endpoint = codex.local_account_endpoint_id().await;
             }
+        }
+        if let Some(checks) = facts.iter_mut().find(|tool| tool.execution_target_id == id)
+            .and_then(|tool| tool.setup_checks.as_mut())
+        {
+            checks.codex_server_ready = server_ready;
+            checks.ssh_aliases = ssh_aliases;
         }
         facts
     }

@@ -9,6 +9,10 @@ mod command;
 pub use command::*;
 #[cfg(feature = "runtime")]
 pub use manager::*;
+#[cfg(feature = "runtime")]
+mod setup;
+#[cfg(feature = "runtime")]
+pub use setup::{check_setup_destination, configured_aliases, setup_login_command};
 use serde::{Deserialize, Serialize};
 
 /// Identity of one verified transport generation, independent of any consumer.

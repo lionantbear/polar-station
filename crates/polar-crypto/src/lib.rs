@@ -11,3 +11,5 @@ pub use session::{derive_session_key, SessionKey, SessionKeypair};
 
 pub mod private;
 pub use private::{BindingOpenRequest, BindingOpener, PrivateOperationError, SecretBytes};
+
+pub mod window;

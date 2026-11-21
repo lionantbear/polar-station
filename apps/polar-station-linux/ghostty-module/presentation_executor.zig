@@ -15,7 +15,6 @@ const Application = @import("../class/application.zig").Application;
 const Surface = @import("../class/surface.zig").Surface;
 const Tab = @import("../class/tab.zig").Tab;
 const Window = @import("../class/window.zig").Window;
-const configpkg = @import("../../../config.zig");
 const controller_model = @import("control_center/model.zig");
 const control_intent = @import("control_center/intent.zig");
 const protocol = @import("protocol.zig");
@@ -102,14 +101,21 @@ pub const Executor = struct {
     pending_lifecycle: ?PendingLifecycle = null,
     reservations: [9]?PaneReservation = @splat(null),
 
+    pub fn sessionPaneReservations(self: *const Executor, tab_id: []const u8, excluding: []const u8) usize {
+        var count: usize = 0;
+        for (self.reservations) |item| if (item) |entry| {
+            if (std.mem.eql(u8, entry.tab_id, tab_id) and !std.mem.eql(u8, entry.id, excluding))
+                count += entry.count;
+        };
+        return count;
+    }
+
     pub fn reserveSessionPanes(self: *Executor, id: []const u8, tab_id: []const u8, count: usize) !void {
         const snapshot = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
         const tab = snapshot.tab(tab_id) orelse return error.TabNotFound;
-        var reserved: usize = 0;
-        for (self.reservations) |item| if (item) |entry| {
-            if (std.mem.eql(u8, entry.tab_id, tab_id) and !std.mem.eql(u8, entry.id, id)) reserved += entry.count;
-        };
-        if (tab.panes.len + reserved + count > 9) return error.TabFull;
+        var placement = try @import("workspace_lifecycle.zig").planPanePlacement(self.allocator, tab.*, &.{}, self.sessionPaneReservations(tab_id, id), count);
+        defer placement.deinit();
+        if (placement.value.full) return error.TabFull;
         self.releaseSessionPanes(id);
         for (&self.reservations) |*slot| if (slot.* == null) {
             const owned_id = try self.allocator.dupe(u8, id);
@@ -675,13 +681,7 @@ pub const Executor = struct {
             const selection = action.use_existing_session;
             const workspace = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
             if (!std.mem.eql(u8, workspace.workspace_id, selection.workspace_id)) return error.WorkspaceChanged;
-            var old = false;
-            var existing = false;
-            for (workspace.tabs) |tab| for (tab.panes) |pane| {
-                if (std.mem.eql(u8, pane.execution_target_id, selection.execution_target_id) and std.mem.eql(u8, pane.tmux_session_id, selection.tmux_session_id)) old = true;
-                if (std.mem.eql(u8, pane.execution_target_id, selection.replacement.execution_target_id) and std.mem.eql(u8, pane.tmux_session_id, selection.replacement.tmux_session_id)) existing = true;
-            };
-            if (old and existing) return error.AlreadyAssignedInWorkspace;
+            const old = workspace.sessionPane(selection.execution_target_id, selection.tmux_session_id) != null;
             if (!old) return true;
         }
         try self.workspace.begin();
@@ -734,9 +734,6 @@ pub const Executor = struct {
             return error.SourcePaneUnavailable;
         };
         if (!std.mem.eql(u8,tab_id,self.nativeSelectedTabId() orelse return error.SourceTabUnavailable)) return error.SourceTabUnavailable;
-        if (before.sessionPane(execution, session)) |existing| {
-            if (self.nativePaneIdForSessionInTab(tab_id, execution, session) == null) return existing.id;
-        }
         var arena = std.heap.ArenaAllocator.init(self.allocator); defer arena.deinit();
         var candidate = try workspace_state.State.planAddSessions(arena.allocator(),before,tab_id,&.{.{.execution_target_id=execution,.tmux_session_id=session}});
         if ((candidate.tab(tab_id) orelse return error.SourceTabUnavailable).display_mode == .focus) {
@@ -773,7 +770,9 @@ pub const Executor = struct {
         const catalog = self.nativeWorkspaceCatalog() orelse return error.NativeWorkspaceUnavailable;
         var additions: std.ArrayListUnmanaged(controller_model.SessionIdentity) = .empty;
         for (sessions) |session| {
-            if (!catalog.hasOpenSession(session.execution_target_id, session.tmux_session_id)) {
+            if (before.sessionPane(session.execution_target_id, session.tmux_session_id) != null or
+                !catalog.hasOpenSession(session.execution_target_id, session.tmux_session_id))
+            {
                 try additions.append(arena.allocator(), session);
             }
         }
@@ -792,11 +791,16 @@ pub const Executor = struct {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
         const candidate = try pane_interaction.planDrop(arena.allocator(), current, drop) orelse return false;
+        const source = current.tab(drop.from_tab_id).?.pane(drop.pane_id).?;
+        const target = candidate.tab(drop.to_tab_id).?;
+        const survivor = if (target.pane(drop.pane_id)) |moved| moved else
+            target.sessionPane(source.execution_target_id, source.tmux_session_id) orelse return error.UnknownPane;
+        const focus_id = try arena.allocator().dupe(u8, survivor.id);
         try self.workspace.begin();
         defer self.workspace.end();
         var previous_catalog = try self.commitNativeWorkspace(candidate, .force);
         defer if (previous_catalog) |*previous| previous.deinit();
-        try self.focusTerminal(candidate, drop.pane_id);
+        try self.focusTerminal(candidate, focus_id);
         return true;
     }
 
@@ -822,7 +826,6 @@ pub const Executor = struct {
         const snapshot = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
         const tab_id = current.activeNativeTabId() orelse return error.UnknownTab;
         const tab = snapshot.tab(tab_id) orelse return error.UnknownTab;
-        if (tab.panes.len >= 9) return error.TabFull;
         const pane_id = if (tab.display_mode == .focus) tab.focused_pane_id else self.nativeSelectedPaneId(tab.id);
         const pane = if (pane_id) |id| tab.pane(id) else null;
         return .{ .workspace_id = snapshot.workspace_id, .tab_id = tab.id, .source = if (pane) |p| if (p.content == null and p.execution_target_id.len > 0 and p.tmux_session_id.len > 0) .{ .execution_target_id = p.execution_target_id, .tmux_session_id = p.tmux_session_id } else null else null };
@@ -1081,6 +1084,7 @@ pub const Executor = struct {
         var changed=false;
         for(tabs) |*tab| {
             const binding=current.findTab(tab.id) orelse continue;
+            if (binding.layout == null or binding.layout.?.pane_count != tab.panes.len) continue;
             const tree=binding.tab.getSurfaceTree() orelse continue;
             if(tree.nodes.len<=1 or tree.nodes.len>17)continue;
             var values:std.ArrayListUnmanaged(f32)=.empty;
@@ -1114,7 +1118,7 @@ pub const Executor = struct {
     }
 
     pub fn adoptNativeTabSelection(self: *Executor) !bool {
-        if (self.workspace.committing) return false;
+        if (self.workspace.committing or self.applying_physical_snapshot) return false;
         const current = if (self.current) |*value| value else return false;
         const selected = current.activeNativeTabId() orelse return false;
         const before = self.nativeWorkspaceSnapshot() orelse return false;
@@ -1128,15 +1132,19 @@ pub const Executor = struct {
         const candidate = try self.workspace.planAction(arena.allocator(), .{ .select_tab = .{ .tab_id = selected } }, selected);
         var previous = try self.rememberNativeWorkspace(candidate);
         defer if (previous) |*old| old.deinit();
+        const saved = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
+        if (hasSharedTerminal(saved)) {
+            try self.applySnapshot(saved, .force);
+            try self.focusTerminal(saved, null);
+        }
         @import("ipc_client.zig").trace(51, self.workspace.snapshot().?.selected_tab_id, self.workspace.mutation_revision);
         return true;
     }
 
-    fn applyWorkspaceAction(self: *Executor, requested: control_intent.Action) !bool {
+    fn applyWorkspaceAction(self: *Executor, action: control_intent.Action) !bool {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
         const before = self.nativeWorkspaceSnapshot() orelse return error.NativeWorkspaceUnavailable;
-        const action = try workspace_state.State.resolveSessionAssignment(before, requested);
         const observed = if (self.current) |*current| current.activeNativeTabId() else null;
         const candidate = try self.workspace.planAction(arena.allocator(), action, observed);
         if(@import("main.zig").settingsPromptRemoved(self.managed_window,candidate) or self.setupRemoved(candidate)) {
@@ -1173,7 +1181,12 @@ pub const Executor = struct {
                 break :blk value.pane_id;
             },
             .activate_pane => |value| value.pane_id,
-            .move_pane => |value| value.pane_id,
+            .move_pane => |value| blk: {
+                if (tab.pane(value.pane_id) != null) break :blk value.pane_id;
+                const source = before.pane(value.pane_id) orelse break :blk null;
+                const existing = tab.sessionPane(source.pane.execution_target_id, source.pane.tmux_session_id) orelse break :blk null;
+                break :blk existing.id;
+            },
             .toggle_session_assignment => |value| if (value.focus_new and std.mem.eql(u8, value.tab_id orelse "", tab.id)) value.pane_id else null,
             .toggle_display_mode => |value| blk: {
                 if (!std.mem.eql(u8, value.tab_id, tab.id)) return;
@@ -1467,7 +1480,9 @@ pub const Executor = struct {
             }
         }
         const catalog = self.nativeWorkspaceCatalog() orelse return .no_managed_tab;
-        if (catalog.hasOpenSession(execution_target_id, tmux_session_id)) {
+        if (workspace.sessionPane(execution_target_id, tmux_session_id) == null and
+            catalog.hasOpenSession(execution_target_id, tmux_session_id))
+        {
             return .{ .assigned_elsewhere = .{ .tab_id = selected_tab.id } };
         }
         if (selected_tab.panes.len >= 9) {
@@ -1520,10 +1535,13 @@ pub const Executor = struct {
 
     fn applySnapshot(
         self: *Executor,
-        snapshot: renderpkg.Snapshot,
+        logical_snapshot: renderpkg.Snapshot,
         selection_policy: SelectionPolicy,
     ) !void {
         if (self.backend_suspended) return;
+        var projection_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer projection_arena.deinit();
+        const snapshot = try self.physicalSnapshot(projection_arena.allocator(), logical_snapshot, selection_policy);
         self.applying_physical_snapshot = true;
         defer self.applying_physical_snapshot = false;
         @import("ipc_client.zig").trace(15, "", snapshot.workspace_revision);
@@ -1564,6 +1582,23 @@ pub const Executor = struct {
         created.present();
         self.current = created;
         self.retryContentRetirements();
+    }
+
+    fn physicalSnapshot(self: *const Executor, allocator: std.mem.Allocator, snapshot: renderpkg.Snapshot, policy: SelectionPolicy) !renderpkg.Snapshot {
+        if (!hasSharedTerminal(snapshot)) return snapshot;
+        var selected = snapshot.selected_tab_id;
+        var resident: std.ArrayList([]const u8) = .empty;
+        if (self.current) |current| {
+            if (std.mem.eql(u8, current.workspace_id, snapshot.workspace_id)) {
+                if (policy == .preserve_native) if (current.activeNativeTabId()) |native| {
+                    if (snapshot.tab(native) != null) selected = native;
+                };
+                for (current.panes.items) |pane| {
+                    if (pane.active and pane.isTerminal()) try resident.append(allocator, pane.pane_id);
+                }
+            }
+        }
+        return (try renderpkg.singleWindowProjection(allocator, snapshot, selected, resident.items)) orelse snapshot;
     }
 
     /// Called for explicit native Pane/Tab navigation, never for arbitrary
@@ -2049,6 +2084,7 @@ const AppliedRenderState = struct {
         index: usize,
         target_tab_id: []const u8,
         desired: renderpkg.Pane,
+        pane_id: []const u8,
     };
 
     const DetachingTab = struct {
@@ -2070,12 +2106,14 @@ const AppliedRenderState = struct {
         defer moves.deinit(scratch);
         for (snapshot.tabs) |tab| {
             for (tab.panes) |pane| {
-                const index = self.findActivePaneIndex(pane.id) orelse continue;
-                if (std.mem.eql(u8, self.panes.items[index].tab_id, tab.id)) continue;
+                const index = self.transferCandidate(snapshot, pane) orelse continue;
+                const resident = &self.panes.items[index];
+                if (std.mem.eql(u8, resident.tab_id, tab.id) and std.mem.eql(u8, resident.pane_id, pane.id)) continue;
                 try moves.append(scratch, .{
                     .index = index,
                     .target_tab_id = tab.id,
                     .desired = pane,
+                    .pane_id = if (std.mem.eql(u8, resident.pane_id, pane.id)) resident.pane_id else try self.arena.allocator().dupe(u8, pane.id),
                 });
             }
         }
@@ -2148,13 +2186,14 @@ const AppliedRenderState = struct {
         }
         for (moves.items) |move| {
             const target = self.findTab(move.target_tab_id).?;
+            self.panes.items[move.index].pane_id = move.pane_id;
             self.panes.items[move.index].tab_id = target.tab_id;
             self.panes.items[move.index].tab = target.tab;
         }
 
         for (sources.items) |source| {
             if (source.desired) |tab| {
-                try self.applyLayout(tab.id, tab.*);
+                try self.applyRetainedLayout(tab.*);
             } else {
                 source.source.layout = null;
                 for (self.panes.items) |*pane| {
@@ -2164,8 +2203,39 @@ const AppliedRenderState = struct {
         }
         for (moves.items) |move| {
             const tab = snapshot.tab(move.target_tab_id).?;
-            if (!self.physicalTreeMatches(tab.*)) try self.applyLayout(tab.id, tab.*);
+            if (!self.physicalTreeMatches(tab.*)) try self.applyRetainedLayout(tab.*);
         }
+    }
+
+    fn transferCandidate(self: *AppliedRenderState, snapshot: renderpkg.Snapshot, desired: renderpkg.Pane) ?usize {
+        if (self.findActivePaneIndex(desired.id)) |index| return index;
+        if (!desired.isTerminal() or !std.mem.eql(u8, self.workspace_id, snapshot.workspace_id)) return null;
+        for (snapshot.tabs) |tab| for (tab.panes) |pane| {
+            if (!std.mem.eql(u8, pane.id, desired.id) and renderpkg.sameTerminal(pane, desired)) return null;
+        };
+        for (self.panes.items, 0..) |pane, index| {
+            if (!pane.active or !pane.isTerminal() or snapshot.pane(pane.pane_id) != null) continue;
+            const terminal = pane.content_state.terminal;
+            if (std.mem.eql(u8, terminal.execution_target_id, desired.execution_target_id) and
+                std.mem.eql(u8, terminal.tmux_session_id, desired.tmux_session_id) and
+                std.mem.eql(u8, pane.attach_fingerprint, desired.attach_fingerprint)) return index;
+        }
+        return null;
+    }
+
+    fn applyRetainedLayout(self: *AppliedRenderState, tab: renderpkg.Tab) !void {
+        var retained: [9]renderpkg.Pane = undefined;
+        var count: usize = 0;
+        for (tab.panes) |pane| {
+            if (self.findPaneIncludingInactive(pane.id) == null) continue;
+            retained[count] = pane;
+            count += 1;
+        }
+        if (count == tab.panes.len) return self.applyLayout(tab.id, tab);
+        var arena = std.heap.ArenaAllocator.init(self.arena.child_allocator);
+        defer arena.deinit();
+        const staged = try renderpkg.tabWithPhysicalPanes(arena.allocator(), tab, retained[0..count]);
+        try self.applyLayout(tab.id, staged);
     }
 
     fn preflightMoveLayout(
@@ -2177,10 +2247,9 @@ const AppliedRenderState = struct {
         const tab = desired orelse return;
         const layout = try desiredNativeLayout(tab.*) orelse return;
         for (layout.visualPaneIds()) |pane_id| {
-            const pane = self.findPaneIncludingInactive(pane_id) orelse return error.UnknownPane;
             const planned_tab = for (moves) |move| {
                 if (std.mem.eql(u8, move.desired.id, pane_id)) break move.target_tab_id;
-            } else pane.tab_id;
+            } else if (self.findPaneIncludingInactive(pane_id)) |pane| pane.tab_id else continue;
             if (!std.mem.eql(u8, planned_tab, tab_id)) return error.InvalidLayout;
         }
     }
@@ -2300,18 +2369,15 @@ const AppliedRenderState = struct {
         else
             null;
         errdefer if (display) |value| value.destroy() catch {};
-        var content_launch: ?ContentHostLaunch = if (first_pane) |pane|
-            if (pane.isTerminal()) try self.contentHostLaunch(pane.*, lifecycle) else null
+        const content_launch: ?TerminalLaunch = if (first_pane) |pane|
+            if (pane.isTerminal()) try self.terminalLaunch(pane.*, lifecycle) else null
         else
             null;
         if (content_launch) |launch| @import("ipc_client.zig").trace(17, launch.channel_id, launch.channel_generation);
         const title = try self.arena.allocator().dupeSentinel(u8, desired.title, 0);
         self.window.newTabForWindow(null, .{
             .station_surface = if(setup) |value| value.surface else if (display) |value| value.surface else null,
-            .command = if (content_launch) |*launch|
-                launch.command.command()
-            else
-                null,
+            .station_terminal_config = if (content_launch) |launch| launch.terminal_config else null,
             .title = title,
         });
         const tab_view = self.window.getTabView();
@@ -2404,14 +2470,14 @@ const AppliedRenderState = struct {
         tab_id: []const u8,
         desired: renderpkg.Pane,
         surface: *Surface,
-        content_launch: ContentHostLaunch,
+        content_launch: TerminalLaunch,
         lifecycle: *content_lifecycle.Lifecycle,
     ) !void {
         if (self.findPane(desired.id)) |existing| existing.active = false;
         const tab = self.findTab(tab_id) orelse return error.UnknownTab;
         _ = surface.ref();
         errdefer surface.unref();
-        const focus_listener = try terminal_focus.Focus.create(self.arena.allocator(), lifecycle, surface, content_launch.control_socket, content_launch.channel_id, content_launch.channel_generation);
+        const focus_listener = try terminal_focus.Focus.create(self.arena.allocator(), lifecycle, surface, "", content_launch.channel_id, content_launch.channel_generation);
         errdefer focus_listener.detach();
         try self.panes.append(self.arena.allocator(), .{
             .pane_id = try self.arena.allocator().dupe(u8, desired.id),
@@ -2442,7 +2508,7 @@ const AppliedRenderState = struct {
                 .content_channel_id = content_launch.channel_id,
                 .content_channel_generation = content_launch.channel_generation,
                 .content_revision = 1,
-                .content_control_socket = content_launch.control_socket,
+                .content_control_socket = "",
 
                 .focus_listener = focus_listener,
             } },
@@ -2606,7 +2672,7 @@ const AppliedRenderState = struct {
             return;
         }
         const tab = self.findTab(tab_id) orelse return error.UnknownTab;
-        var content_launch = try self.contentHostLaunch(desired, lifecycle);
+        const content_launch = try self.terminalLaunch(desired, lifecycle);
         @import("ipc_client.zig").trace(17, content_launch.channel_id, content_launch.channel_generation);
         defer @import("ipc_client.zig").trace(18, content_launch.channel_id, content_launch.channel_generation);
         const anchor = tab.tab.getActiveSurface();
@@ -2618,7 +2684,9 @@ const AppliedRenderState = struct {
         try tab.tab.getSplitTree().newSplit(
             .right,
             anchor,
-            .{ .command = content_launch.command.command() },
+            .{
+                .station_terminal_config = content_launch.terminal_config,
+            },
         );
         const surface = findAddedSurface(tab.tab, prior_surfaces) orelse
             return error.SurfaceCreationFailed;
@@ -2678,67 +2746,27 @@ const AppliedRenderState = struct {
         self.hooks.created(id, self.workspace_id, self.window, saved_content, display);
     }
 
-    fn contentHostLaunch(
+    fn terminalLaunch(
         self: *AppliedRenderState,
         desired: renderpkg.Pane,
         lifecycle: *content_lifecycle.Lifecycle,
-    ) !ContentHostLaunch {
+    ) !TerminalLaunch {
         if (desired.content != null) return error.NotTerminalPane;
         const allocator = self.arena.allocator();
-        const runtime_dir = try global.environ().getAlloc(
-            allocator,
-            "XDG_RUNTIME_DIR",
-        );
-        const channel = try lifecycle.allocateChannel(allocator, runtime_dir);
-        const host_socket = if(self.hooks.host_socket)|get|try allocator.dupe(u8,get(self.hooks.context)) else if (global.environ().getAlloc(
-            allocator,
-            "POLAR_TMUX_IPC_SOCKET",
-        )) |path|
-            path
-        else |error_value| switch (error_value) {
-            error.EnvironmentVariableMissing => try std.fs.path.join(
-                allocator,
-                &.{ runtime_dir, "polar-tmux", "host.sock" },
-            ),
-            else => return error_value,
-        };
-        const executable = if (global.environ().getAlloc(
-            allocator,
-            "POLAR_TMUX_EXECUTABLE",
-        )) |path|
-            path
-        else |error_value| switch (error_value) {
-            error.EnvironmentVariableMissing => "polar-tmux",
-            else => return error_value,
-        };
-        const source_json = if (desired.source) |source| try std.json.Stringify.valueAlloc(allocator, source, .{}) else null;
-        const base_args = [_][]const u8{
-            "pane-host",
-            "--channel-id",
-            channel.channel_id,
-            "--channel-generation",
-            "1",
-            "--control-socket",
-            channel.control_socket,
-            "--host-socket",
-            host_socket,
-            "--initial-execution-target",
-            desired.execution_target_id,
-            "--initial-session",
-            desired.tmux_session_id,
-        };
-        var args: std.ArrayList([]const u8) = .empty;
-        try args.appendSlice(allocator, &base_args);
-        if (source_json) |bytes| try args.appendSlice(allocator, &.{ "--initial-source", bytes });
+        const channel = try lifecycle.allocateChannel(allocator);
+        const json = try std.json.Stringify.valueAlloc(allocator, .{
+            .binding = .{
+                .execution_target = desired.execution_target_id,
+                .tmux_session_id = desired.tmux_session_id,
+                .source = desired.source,
+            },
+            .size = .{ .columns = @as(u16, 80), .rows = @as(u16, 24) },
+            .channel = .{ .id = channel.channel_id, .generation = channel.channel_generation },
+        }, .{});
         return .{
+            .terminal_config = try allocator.dupeSentinel(u8, json, 0),
             .channel_id = channel.channel_id,
             .channel_generation = channel.channel_generation,
-            .control_socket = channel.control_socket,
-            .command = try DirectCommand.init(
-                allocator,
-                executable,
-                args.items,
-            ),
         };
     }
 
@@ -3387,30 +3415,10 @@ const AppliedRenderState = struct {
     }
 };
 
-const ContentHostLaunch = struct {
+const TerminalLaunch = struct {
     channel_id: []const u8,
     channel_generation: u64,
-    control_socket: []const u8,
-    command: DirectCommand,
-};
-
-const DirectCommand = struct {
-    argv: []const [:0]const u8,
-
-    fn init(
-        allocator: std.mem.Allocator,
-        program: []const u8,
-        args: []const []const u8,
-    ) !DirectCommand {
-        const argv = try allocator.alloc([:0]const u8, args.len + 1);
-        argv[0] = try allocator.dupeSentinel(u8, program, 0);
-        for (args, 0..) |arg, index| argv[index + 1] = try allocator.dupeSentinel(u8, arg, 0);
-        return .{ .argv = argv };
-    }
-
-    fn command(self: *const DirectCommand) configpkg.Command {
-        return .{ .direct = self.argv };
-    }
+    terminal_config: [:0]const u8,
 };
 
 fn physicalId(allocator: std.mem.Allocator, prefix: []const u8, ptr: anytype) ![]u8 {
@@ -3420,6 +3428,13 @@ fn physicalId(allocator: std.mem.Allocator, prefix: []const u8, ptr: anytype) ![
 fn ratioValue(ratio: native_layout.Ratio) f32 {
     return @as(f32, @floatFromInt(ratio.numerator)) /
         @as(f32, @floatFromInt(ratio.denominator));
+}
+
+fn hasSharedTerminal(snapshot: renderpkg.Snapshot) bool {
+    for (snapshot.tabs) |tab| for (tab.panes) |pane| {
+        if (renderpkg.canShareTerminal(snapshot, pane)) return true;
+    };
+    return false;
 }
 
 fn desiredNativeLayout(tab: renderpkg.Tab) !?native_layout.Layout {

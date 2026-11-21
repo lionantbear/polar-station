@@ -12,7 +12,7 @@ import subprocess
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 PLATFORMS = ('linux', 'macos')
-SHARED_MODULES = ('StationDisplay.zig', 'StationRenderWakeup.zig')
+SHARED_MODULES = ('StationDisplay.zig', 'StationRenderWakeup.zig', 'StationTerminal.zig')
 
 
 def overlay_directory(platform):
@@ -59,6 +59,10 @@ def install(source, platform, *, tests=False):
         subprocess.run([*command, *paths], env=environment, check=True)
 
     apply(patches)
+    apply([HERE / 'station-terminal.patch'])
+    apply([platform_dir / 'station-terminal.patch'])
+    apply([HERE / 'station-terminal-view.patch'])
+    apply([HERE / 'station-terminal-mailbox.patch'])
     if tests:
         apply(test_patches)
     for path in destinations:

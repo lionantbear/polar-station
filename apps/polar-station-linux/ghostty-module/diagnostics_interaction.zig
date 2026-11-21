@@ -2,7 +2,16 @@
 const std = @import("std");
 const intent = @import("control_center/intent.zig");
 const c = @import("polar_station_c");
-pub const Effect = struct { setup:?@import("tool_setup_surface.zig").Launch=null, setup_id:?[]const u8=null, type: []const u8, token: u64 = 0, request: ?intent.EditorRequest = null, action: ?std.json.Value = null };
+pub const Effect = struct {
+    setup: ?@import("tool_setup_surface.zig").Launch = null,
+    setup_id: ?[]const u8 = null,
+    type: []const u8,
+    token: u64 = 0,
+    request: ?intent.EditorRequest = null,
+    action: ?std.json.Value = null,
+    expected_revision: ?[]const u8 = null,
+    machine: ?@import("control_center/model.zig").MachineConnection = null,
+};
 pub const Output = struct { projection: std.json.Value, busy: bool, message: ?[]const u8 = null, effects: []const Effect };
 pub const Engine = struct {
     handle: ?*c.DiagnosticsHandle = null,

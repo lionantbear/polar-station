@@ -127,6 +127,7 @@ pub struct SessionEditorCandidate {
 pub struct SessionEditorView {
     pub context_preserves_form:bool,
     pub prepare_label:Option<String>,
+    pub diagnostics_section: Option<String>,
     pub can_prepare:bool,
     pub endpoints:Vec<CodexEndpointSettingsV1>,
     pub can_start_local_server:bool,
@@ -352,7 +353,7 @@ impl SessionEditorEngine {
         if (tmux && facts.tmux==Unavailable)||(codex && facts.codex==Unavailable)||(claude && facts.claude==Some(Unavailable)){return None}
         let tmux=tmux && facts.tmux==Missing;
         let claude=claude && facts.claude==Some(Missing);
-        (tmux||codex||claude).then(||SessionEditorRequestV1::PrepareTools{execution_target_id:target.into(),tmux,codex,codex_service:codex && !cli,claude,delivery:polar_station_protocol::ToolSetupDeliveryV1::NativePane})
+        (tmux||codex||claude).then(||SessionEditorRequestV1::PrepareTools{execution_target_id:target.into(),tmux,codex,codex_service:codex && !cli,claude,claude_login:false,delivery:polar_station_protocol::ToolSetupDeliveryV1::NativePane})
     }
     fn operation(&self) -> Option<ControlCenterIntentV1> {
         if self.tools_blocked() { return None; }
@@ -496,6 +497,16 @@ impl SessionEditorEngine {
             known_sessions.iter().any(|session| &session.identity == identity)
         });
         let request=self.preparation_request();
+        let diagnostics_section = if self.preparation.is_pending() {
+            None
+        } else {
+            match &request {
+                Some(SessionEditorRequestV1::PrepareTools { tmux: true, .. }) => Some("tmux"),
+                Some(SessionEditorRequestV1::PrepareTools { claude: true, .. }) => Some("claude"),
+                Some(SessionEditorRequestV1::PrepareTools { codex: true, .. }) => Some("codex"),
+                _ => None,
+            }
+        };
         let prepare_label=match &request {
             Some(SessionEditorRequestV1::PrepareTools{execution_target_id,..}) if !self.tools.as_ref().is_some_and(|tools|tools.iter().any(|tool|tool.execution_target_id==*execution_target_id && tool.native_setup))=>Some("Update Host".into()),
             Some(SessionEditorRequestV1::PrepareTools{execution_target_id,codex,codex_service,claude,..})=>Some(
@@ -517,6 +528,7 @@ impl SessionEditorEngine {
         SessionEditorView {
             context_preserves_form:self.context_preserves_form,
             prepare_label:if self.preparation.focus().is_some(){Some("Show setup Pane".into())}else if self.preparation.is_pending(){Some("Opening setup Pane…".into())}else{prepare_label.clone()},
+            diagnostics_section: diagnostics_section.map(str::to_owned),
             can_prepare,
             endpoints:self.endpoints.clone(),
             can_start_local_server: is_default && endpoint_action_available

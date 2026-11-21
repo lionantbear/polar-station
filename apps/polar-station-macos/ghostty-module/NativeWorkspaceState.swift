@@ -406,21 +406,28 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         switch mutation {
         case let .replaceLostSession(selection):
             guard id == selection.workspaceID else { throw PolarStationNativeWorkspaceError.workspaceChanged }
-            let all = tabs.flatMap(\.panes)
-            let old = all.filter { $0.executionTargetID == selection.identity.executionTargetID && $0.tmuxSessionID == selection.identity.tmuxSessionID }
-            let existing = all.contains { $0.executionTargetID == selection.replacement.executionTargetID && $0.tmuxSessionID == selection.replacement.tmuxSessionID }
-            guard old.isEmpty || !existing else { throw PolarStationNativeWorkspaceError.replacementAlreadyAssigned }
-            if old.isEmpty { return }
+            var changed = false
+            let replacement = SessionRowProjectionV1.Identity(
+                executionTargetID: selection.replacement.executionTargetID,
+                tmuxSessionID: selection.replacement.tmuxSessionID)
             for tab in tabs.indices {
-                for pane in tabs[tab].panes.indices where tabs[tab].panes[pane].executionTargetID == selection.identity.executionTargetID && tabs[tab].panes[pane].tmuxSessionID == selection.identity.tmuxSessionID {
-                    tabs[tab].panes[pane] = .init(
-                        id: tabs[tab].panes[pane].id,
-                        executionTargetID: selection.replacement.executionTargetID,
-                        tmuxSessionID: selection.replacement.tmuxSessionID,
-                        transportStatus: .recovering
-                    )
+                guard let pane = tabs[tab].panes.firstIndex(where: { $0.runtimeSessionIdentity == selection.identity })
+                else { continue }
+                let existing = try panePlacement([replacement], in: tabs[tab]).existing.first
+                let paneID = tabs[tab].panes[pane].id
+                if existing == paneID { continue }
+                if existing != nil {
+                    tabs[tab].panes.remove(at: pane)
+                    repairSelectionAfterRemoval(removedPaneID: paneID, tabIndex: tab, removedIndex: pane)
+                } else {
+                    tabs[tab].panes[pane] = .init(id: paneID,
+                        executionTargetID: replacement.executionTargetID,
+                        tmuxSessionID: replacement.tmuxSessionID,
+                        transportStatus: .recovering)
                 }
+                changed = true
             }
+            if !changed { return }
         case let .renameWorkspace(nextName):
             guard !nextName.trimmingCharacters(
                 in: .whitespacesAndNewlines
@@ -509,12 +516,21 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
                   let paneIndex = tabs[sourceIndex].panes.firstIndex(
                       where: { $0.id == paneID }
                   ),
-                  tabs[targetIndex].panes.count < 9,
                   (0 ... tabs[targetIndex].panes.count).contains(toIndex)
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
             if tabs[sourceIndex].panes[paneIndex].content?.kind == .ideaTree,
                tabs[targetIndex].panes.contains(where: { $0.content?.kind == .ideaTree }) {
                 throw PolarStationNativeWorkspaceError.invalidBinding
+            }
+            let incoming = tabs[sourceIndex].panes[paneIndex]
+            let existing: String?
+            if let session = incoming.runtimeSessionIdentity {
+                let placement = try panePlacement([session], in: tabs[targetIndex])
+                guard !placement.full else { throw PolarStationNativeWorkspaceError.invalidBinding }
+                existing = placement.existing.first
+            } else {
+                guard try !panePlacement([], in: tabs[targetIndex], unbound: 1).full else { throw PolarStationNativeWorkspaceError.invalidBinding }
+                existing = nil
             }
             let pane = tabs[sourceIndex].panes.remove(at: paneIndex)
             repairSelectionAfterRemoval(
@@ -524,6 +540,11 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
             )
             tabs[sourceIndex].visualPaneIDs.removeAll { $0 == paneID }
             if tabs[sourceIndex].mode == .focus { tabs[sourceIndex].mainPaneID = tabs[sourceIndex].visualPaneIDs.first }
+            if let existing {
+                selectedTabID = toTabID
+                selectedPaneID = existing
+                break
+            }
             tabs[targetIndex].panes.insert(pane, at: toIndex)
             tabs[targetIndex].visualPaneIDs.insert(paneID, at: toIndex)
             selectedTabID = toTabID
@@ -616,8 +637,9 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
                 if tabs[index].mode == .focus { tabs[index].mainPaneID = existing.id }
                 break
             }
-            guard paneLocation(paneID) == nil, tabs[index].panes.count < 9
+            guard paneLocation(paneID) == nil, try !panePlacement([], in: tabs[index], unbound: 1).full
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            if content.kind == .toolSetup { tabs[index].mode = .focus }
             tabs[index].panes.append(PolarStationNativePane(id: paneID,
                 executionTargetID: nil, tmuxSessionID: nil, content: content))
             selectedTabID = tabID; selectedPaneID = paneID
@@ -634,13 +656,14 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         case let .addSessions(tabID, sessions):
             guard let index = tabIndex(tabID) else { throw PolarStationNativeWorkspaceError.invalidBinding }
             let tab = tabs[index]
-            let additions = sessionAdditions(sessions)
-            guard tab.panes.count + additions.count <= 9 else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            let placement = try panePlacement(sessions, in: tab)
+            guard !placement.full else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            let additions = placement.additions
             guard !additions.isEmpty else { return }
             let previousFocus = selectedPaneID
-            for (index, session) in additions.enumerated() {
-                try apply(.toggleSessionAssignment(tabID: tabID, executionTargetID: session.executionTargetID,
-                    tmuxSessionID: session.tmuxSessionID, paneID: UUID().uuidString.lowercased(), focusCreated: tab.panes.isEmpty && index == 0))
+            for session in additions {
+                let paneID = UUID().uuidString.lowercased()
+                try appendSession(session, to: index, paneID: paneID, focusCreated: tabs[index].panes.isEmpty)
             }
             if selectedTabID == tabID { selectedPaneID = tab.panes.isEmpty ? tabs[index].panes.first?.id : previousFocus }
         case let .toggleSessionAssignment(
@@ -652,11 +675,9 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         ):
             guard let tab = tabIndex(tabID)
             else { throw PolarStationNativeWorkspaceError.invalidStructure }
-            if let existing = tabs[tab].panes.firstIndex(where: {
-                $0.executionTargetID == executionTargetID
-                    && $0.tmuxSessionID == tmuxSessionID
-            }) {
-                let removed = tabs[tab].panes[existing].id
+            let placement = try panePlacement([.init(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)], in: tabs[tab])
+            if let removed = placement.existing.first,
+               let existing = tabs[tab].panes.firstIndex(where: { $0.id == removed }) {
                 tabs[tab].panes.remove(at: existing)
                 repairSelectionAfterRemoval(
                     removedPaneID: removed,
@@ -664,39 +685,29 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
                     removedIndex: existing
                 )
             } else {
-                let key = RuntimeSessionKey(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)
-                if let existing = tabs.lazy.flatMap(\.panes).first(where: { $0.runtimeSessionKey == key }) {
-                    try apply(.activatePane(existing.id))
-                    return
-                }
-                guard !paneID.isEmpty,
-                      tabs[tab].panes.count < 9,
-                      paneLocation(paneID) == nil
-                else { throw PolarStationNativeWorkspaceError.invalidBinding }
-                let pane = PolarStationNativePane(
-                    id: paneID,
-                    executionTargetID: executionTargetID,
-                    tmuxSessionID: tmuxSessionID,
-                    transportStatus: .recovering
-                )
-                tabs[tab].panes.append(pane)
-                if selectedTabID == tabID {
-                    selectedPaneID = paneID
-                }
-                if focusCreated && tabs[tab].mode == .focus {
-                    tabs[tab].mainPaneID = paneID
-                }
-                if tabs[tab].mode == .focus,
-                   tabs[tab].mainPaneID == nil
-                {
-                    tabs[tab].mainPaneID = paneID
-                }
+                guard !placement.full else { throw PolarStationNativeWorkspaceError.invalidBinding }
+                try appendSession(.init(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID),
+                                  to: tab, paneID: paneID, focusCreated: focusCreated)
             }
         }
         normalizeVisualBindings()
         revision &+= 1
         if revision == 0 { revision = 1 }
         try validateNativeLayout()
+    }
+
+    private mutating func appendSession(_ session: SessionRowProjectionV1.Identity, to tab: Int,
+                                        paneID: String, focusCreated: Bool) throws {
+        guard !paneID.isEmpty, paneLocation(paneID) == nil
+        else { throw PolarStationNativeWorkspaceError.invalidBinding }
+        let existing = tabs.lazy.flatMap(\.panes).first { $0.runtimeSessionIdentity == session }
+        tabs[tab].panes.append(.init(id: paneID, executionTargetID: session.executionTargetID,
+            tmuxSessionID: session.tmuxSessionID, source: existing?.source,
+            transportStatus: existing?.transportStatus ?? .recovering))
+        if selectedTabID == tabs[tab].id { selectedPaneID = paneID }
+        if tabs[tab].mode == .focus && (focusCreated || tabs[tab].mainPaneID == nil) {
+            tabs[tab].mainPaneID = paneID
+        }
     }
 
     var terminalFocusPaneID: String? {
@@ -715,11 +726,70 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         return tabs.lazy.flatMap(\.panes).first { $0.runtimeSessionKey == key }?.id
     }
 
-    func sessionAdditions(_ sessions: [SessionRowProjectionV1.Identity]) -> [SessionRowProjectionV1.Identity] {
-        var seen = Set(tabs.flatMap(\.panes).compactMap(\.runtimeSessionKey))
-        return sessions.filter {
-            seen.insert(.init(executionTargetID: $0.executionTargetID, tmuxSessionID: $0.tmuxSessionID)).inserted
+    func panePlacement(_ sessions: [SessionRowProjectionV1.Identity], in tab: PolarStationNativeTab, reserved: Int = 0, unbound: Int = 0) throws -> PanePlacementDecision {
+        try planPanePlacement(panes: tab.panes.map { .init(id: $0.id, session: $0.runtimeSessionIdentity) },
+                              sessions: sessions, reserved: reserved, unbound: unbound)
+    }
+
+    private struct TerminalPlacement {
+        let tabID: String
+        let pane: PolarStationNativePane
+    }
+
+    /// One group has exactly one compatible placement per Tab. Saved layouts
+    /// with legacy duplicates in a single Tab keep their existing bindings.
+    private var sharedTerminalPlacements: [[TerminalPlacement]] {
+        var bySession: [RuntimeSessionKey: [TerminalPlacement]] = [:]
+        for tab in tabs {
+            for pane in tab.panes {
+                guard let key = pane.runtimeSessionKey else { continue }
+                bySession[key, default: []].append(.init(tabID: tab.id, pane: pane))
+            }
         }
+        return bySession.values.flatMap { placements -> [[TerminalPlacement]] in
+            var bySource: [[TerminalPlacement]] = []
+            for placement in placements {
+                if let group = bySource.firstIndex(where: { $0.first?.pane.source == placement.pane.source }) {
+                    bySource[group].append(placement)
+                } else {
+                    bySource.append([placement])
+                }
+            }
+            return bySource.filter { $0.count > 1 && Set($0.map(\.tabID)).count == $0.count }
+        }
+    }
+
+    var secondaryTerminalPlacementIDs: Set<String> {
+        Set(sharedTerminalPlacements.flatMap { $0.dropFirst().map(\.pane.id) })
+    }
+
+    func singleWindowTerminalPresentation(
+        residentPaneIDs: Set<String>, selectedTabID: String? = nil
+    ) -> Self {
+        var presentation = self
+        if let selectedTabID, tabs.contains(where: { $0.id == selectedTabID }) {
+            if selectedTabID != self.selectedTabID { presentation.selectedPaneID = nil }
+            presentation.selectedTabID = selectedTabID
+        }
+        var hidden = Set<String>()
+        for placements in sharedTerminalPlacements {
+            let owner = placements.first { $0.tabID == presentation.selectedTabID }
+                ?? placements.first { residentPaneIDs.contains($0.pane.id) }
+                ?? placements[0]
+            hidden.formUnion(placements.lazy.map(\.pane.id).filter { $0 != owner.pane.id })
+        }
+        for index in presentation.tabs.indices {
+            var tab = presentation.tabs[index]
+            guard tab.panes.contains(where: { hidden.contains($0.id) }) else { continue }
+            tab.panes.removeAll { hidden.contains($0.id) }
+            tab.visualPaneIDs.removeAll { hidden.contains($0) }
+            tab.splitRatios = nil
+            if let main = tab.mainPaneID, hidden.contains(main) {
+                tab.mainPaneID = tab.visualPaneIDs.first
+            }
+            presentation.tabs[index] = tab
+        }
+        return presentation
     }
 
     private var selectedTab: PolarStationNativeTab? {
@@ -831,6 +901,30 @@ struct PolarStationNativeWorkspace: Codable, Equatable, Sendable {
         return selectedTab.mode == .focus && selectedTab.panes.count > 1
     }
 
+    @discardableResult
+    mutating func normalizeSessionPanes() throws -> Bool {
+        var removals: [String] = []
+        for tab in tabs {
+            let selected = tab.id == selectedTabID ? selectedPaneID : nil
+            let ordered = [selected, tab.mainPaneID].compactMap { id in
+                tab.panes.first { $0.id == id }
+            } + tab.panes
+            var kept: [PolarStationNativePane] = []
+            for pane in ordered {
+                guard let key = pane.runtimeSessionKey else { continue }
+                if let existing = kept.first(where: { $0.runtimeSessionKey == key && $0.source == pane.source }) {
+                    if existing.id != pane.id { removals.append(pane.id) }
+                } else {
+                    kept.append(pane)
+                }
+            }
+        }
+        var seen = Set<String>()
+        for id in removals where seen.insert(id).inserted { try apply(.removePane(id)) }
+        if !removals.isEmpty { structureFingerprint = structureSnapshot().structureFingerprint }
+        return !removals.isEmpty
+    }
+
     func validateNativeLayout() throws {
         guard !id.isEmpty,
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -879,6 +973,11 @@ private struct RuntimeSessionKey: Hashable {
 }
 
 private extension PolarStationNativePane {
+    var runtimeSessionIdentity: SessionRowProjectionV1.Identity? {
+        guard let key = runtimeSessionKey else { return nil }
+        return .init(executionTargetID: key.executionTargetID, tmuxSessionID: key.tmuxSessionID)
+    }
+
     var runtimeSessionKey: RuntimeSessionKey? {
         guard content == nil, let executionTargetID, let tmuxSessionID else { return nil }
         return .init(executionTargetID: executionTargetID, tmuxSessionID: tmuxSessionID)
@@ -942,9 +1041,10 @@ struct PolarStationNativeWorkspaceCatalog: Codable, Equatable, Sendable {
     private func openSessionCounts() -> [RuntimeSessionKey: Int] {
         var counts: [RuntimeSessionKey: Int] = [:]
         for workspace in openWorkspaces {
+            let aliases = workspace.secondaryTerminalPlacementIDs
             for tab in workspace.tabs {
                 for pane in tab.panes {
-                    guard let identity = pane.runtimeSessionKey else { continue }
+                    guard !aliases.contains(pane.id), let identity = pane.runtimeSessionKey else { continue }
                     counts[identity, default: 0] += 1
                 }
             }
@@ -1188,7 +1288,18 @@ struct PolarStationNativeWorkspacePersistence {
            let first = catalog.workspaces.first(where: { !(catalog.archivedWorkspaceIDs ?? []).contains($0.id) }) {
             catalog.selectedWorkspaceID = first.id
         }
-        if migrateSettings {try catalog.retireLegacySettings()}
+        if migrateSettings {
+            try catalog.retireLegacySettings()
+            var repaired = false
+            for index in catalog.workspaces.indices {
+                if try catalog.workspaces[index].normalizeSessionPanes() { repaired = true }
+            }
+            if repaired {
+                guard catalog.revision < UInt64.max else { throw PolarStationNativeWorkspaceError.invalidStructure }
+                catalog.revision += 1
+                catalog.settingsMigrationPerformed = true
+            }
+        }
         try catalog.validate()
         return catalog
     }

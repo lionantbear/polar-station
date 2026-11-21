@@ -11,6 +11,7 @@ mod error;
 mod ids;
 mod layout;
 mod model;
+pub mod pane_placement;
 mod projection;
 mod reference_index;
 mod runtime;

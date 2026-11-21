@@ -10,11 +10,9 @@ const std = @import("std");
 pub const Channel = struct {
     channel_id: []u8,
     channel_generation: u64,
-    control_socket: []u8,
 
     pub fn deinit(self: *Channel, allocator: std.mem.Allocator) void {
         allocator.free(self.channel_id);
-        allocator.free(self.control_socket);
         self.* = undefined;
     }
 };
@@ -125,7 +123,6 @@ pub const Lifecycle = struct {
     pub fn allocateChannel(
         self: *Lifecycle,
         allocator: std.mem.Allocator,
-        runtime_dir: []const u8,
     ) !Channel {
         const sequence = takeSequence(&self.next_channel_sequence);
         const channel_id = try std.fmt.allocPrint(
@@ -133,20 +130,9 @@ pub const Lifecycle = struct {
             "linux-surface-{d}-{x}-{d}",
             .{ self.process_id, self.run_nonce, sequence },
         );
-        errdefer allocator.free(channel_id);
-        const socket_name = try std.fmt.allocPrint(
-            allocator,
-            "pane-{d}-{x}-{d}.sock",
-            .{ self.process_id, self.run_nonce, sequence },
-        );
-        defer allocator.free(socket_name);
         return .{
             .channel_id = channel_id,
             .channel_generation = 1,
-            .control_socket = try std.fs.path.join(
-                allocator,
-                &.{ runtime_dir, "polar-tmux", socket_name },
-            ),
         };
     }
 

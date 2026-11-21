@@ -23,7 +23,9 @@ pub const Action = union(enum) {
     open_workspace_font,
     open_connections,
     open_resources,
-    open_diagnostics,
+    open_voice_input,
+    open_voice_account,
+    open_voice_test,
     open_codex,
     open_connectors,
     voice_changed,
@@ -128,17 +130,21 @@ pub const Panel = struct {
         self.theme_list.deinit(self.allocator);
         self.* = undefined;
     }
-    pub fn setupWidget(self: *Panel) ?*gtk.Widget {
+    pub fn voicePanel(self: *Panel) ?*voice_settings.Panel {
         self.ensureContent();
-        return if (self.voice) |panel| panel.setup.as(gtk.Widget) else null;
+        return self.voice;
     }
     fn voiceObserved(context: ?*anyopaque) void {
         const self: *Panel = @ptrCast(@alignCast(context orelse return));
         self.action_fn(self.action_context, .voice_observed);
     }
-    fn openDiagnostics(context: ?*anyopaque) void {
+    fn openDiagnostics(context: ?*anyopaque, destination: voice_settings.SetupSection) void {
         const self: *Panel = @ptrCast(@alignCast(context orelse return));
-        self.action_fn(self.action_context, .open_diagnostics);
+        self.action_fn(self.action_context, switch (destination) {
+            .input => .open_voice_input,
+            .account => .open_voice_account,
+            .trial => .open_voice_test,
+        });
     }
     pub fn embed(self:*Panel, projection:?*const settings.Projection, page:[:0]const u8) ?auxiliary.ContentLease {
         self.ensureContent();

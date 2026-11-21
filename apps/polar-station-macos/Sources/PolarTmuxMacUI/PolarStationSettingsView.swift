@@ -17,7 +17,7 @@ import AppKit
     private let embedded: Bool
     private let initialPage: String?
     public let voicePlatform: VoicePlatformRequest?
-    public let openSetup: (@MainActor () -> Void)?
+    public let openSetup: (@MainActor (String) -> Void)?
     public let promptEditor:AnyView?
     private let voiceFormBuffer:VoiceFormBuffer
     public let editLease:SettingsEditInteraction?
@@ -83,7 +83,7 @@ import AppKit
         saveMessages: @escaping (ImessageSenderSettingsV1, String) -> Void = { _, _ in },
         voicePlatform: VoicePlatformRequest? = nil,
         initialVoicePage: Bool = false,
-        openSetup: (@MainActor () -> Void)? = nil,
+        openSetup: (@MainActor (String) -> Void)? = nil,
         embedded: Bool = false,
         initialPage: String? = nil,
         promptEditor:AnyView?=nil,

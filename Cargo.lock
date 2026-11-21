@@ -10544,6 +10544,7 @@ dependencies = [
  "chacha20poly1305",
  "hkdf 0.12.4",
  "polar-identity",
+ "polar-wire",
  "rand_core 0.6.4",
  "sha2 0.10.9",
  "thiserror 2.0.18",
@@ -10915,6 +10916,7 @@ name = "polar-ssh"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "glob",
  "libc",
  "polar-local-access-runtime",
  "serde",
@@ -11179,6 +11181,7 @@ dependencies = [
  "async-trait",
  "polar-inquiry-graph-model",
  "polar-station-inbox",
+ "polar-tmux-types",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -11405,6 +11408,21 @@ dependencies = [
  "webm",
  "webrtc",
  "zeroize",
+]
+
+[[package]]
+name = "polar-wire"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "hex",
+ "pem",
+ "polar-transport",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -13437,6 +13455,16 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde_bytes"
+version = "0.11.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5d440709e79d88e51ac01c4b72fc6cb7314017bb7da9eeff678aa94c10e3ea8"
+dependencies = [
+ "serde",
+ "serde_core",
 ]
 
 [[package]]

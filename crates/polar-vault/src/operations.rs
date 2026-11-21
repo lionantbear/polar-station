@@ -11,22 +11,29 @@ use crate::{
 type CipherRow = (String, Vec<u8>, Vec<u8>);
 
 const STATE_PREFIX: &str = "POLAR_STATE_V1\n";
+pub(crate) fn bound_state(scope: &str, name: &str, value: &str) -> Result<String> {
+    Ok(format!("{STATE_PREFIX}{}", serde_json::to_string(&(scope, name, value))?))
+}
 fn protected_state_scope(scope: &str) -> bool {
-    matches!(
-        scope,
-        "local_chat_authority_v1"
-            | "peer_authorization_v1"
-            | "transport_material_updates_v1"
-            | "access_plane_trust"
-            | "access_bind_requests"
-            | "realm_enrollment"
-            | "realm_member_trust"
-            | "realm_enrollment_token_use"
-            | "bootstrap_invitation"
-            | "reception_admission_grant"
-            | "management_request_v1"
-            | "bootstrap_invitation_metadata"
-    )
+    scope.starts_with("hosted_access_plane_trust/")
+        || scope.starts_with("hosted_trust_migration/")
+        || scope.starts_with("hosted_generation_decisions/")
+        || scope.starts_with("hosted_generation_approval/")
+        || matches!(
+            scope,
+            "local_chat_authority_v1"
+                | "peer_authorization_v1"
+                | "transport_material_updates_v1"
+                | "access_plane_trust"
+                | "access_bind_requests"
+                | "realm_enrollment"
+                | "realm_member_trust"
+                | "realm_enrollment_token_use"
+                | "bootstrap_invitation"
+                | "reception_admission_grant"
+                | "management_request_v1"
+                | "bootstrap_invitation_metadata"
+        )
 }
 pub(crate) fn decode_material(scope: &str, name: &str, plain: Vec<u8>) -> Result<String> {
     let value = String::from_utf8(plain)
@@ -49,6 +56,12 @@ pub(crate) fn decode_material(scope: &str, name: &str, plain: Vec<u8>) -> Result
         );
         Ok(value)
     }
+}
+
+pub struct MaterialChange {
+    pub scope: String,
+    pub name: String,
+    pub sealed: Option<(Vec<u8>, Vec<u8>)>,
 }
 
 /// Driver-free vault persistence contract. The domain vault owns key material
@@ -184,6 +197,10 @@ pub trait VaultStore: Send + Sync {
         nonce: Vec<u8>,
         ciphertext: Vec<u8>,
     ) -> Result<()>;
+    /// Apply already sealed values and deletions as a single durable unit.
+    async fn commit_materials(&self, _changes: Vec<MaterialChange>) -> Result<()> {
+        anyhow::bail!("atomic material updates unavailable in this Vault store")
+    }
     async fn insert_secret_material(
         &self,
         _scope: String,
@@ -417,10 +434,7 @@ impl PolarVault {
         };
         let bound;
         let plain = if protected_state_scope(scope) {
-            bound = format!(
-                "{STATE_PREFIX}{}",
-                serde_json::to_string(&(scope, name, secret))?
-            );
+            bound = bound_state(scope, name, secret)?;
             bound.as_bytes()
         } else {
             secret.as_bytes()
@@ -446,8 +460,57 @@ impl PolarVault {
             state
                 .records
                 .insert((scope.into(), name.into()), secret.into());
-            state.versions.insert((scope.into(),name.into()), version.expect("version computed for public state"));
+            state.versions.insert(
+                (scope.into(), name.into()),
+                version.expect("version computed for public state"),
+            );
             state.revision += 1;
+        }
+        Ok(())
+    }
+    /// Commit a group of provider-owned materials. The caller owns its domain cache.
+    pub async fn commit_provider_materials(
+        &self,
+        values: Vec<(String, String, Option<String>)>,
+    ) -> Result<()> {
+        let _writer = self.material_write.lock().await;
+        let index = self.material_names().await?;
+        let mut changes = Vec::with_capacity(values.len());
+        for (scope, name, value) in &values {
+            anyhow::ensure!(
+                scope.starts_with("hosted_access_plane_trust/")
+                    || scope.starts_with("hosted_trust_migration/")
+                    || scope.starts_with("hosted_generation_decisions/")
+                    || (scope.starts_with("hosted_generation_approval/") && value.is_none()),
+                "not a hosted provider decision scope"
+            );
+            let sealed = if let Some(value) = value {
+                anyhow::ensure!(
+                    protected_state_scope(scope),
+                    "provider state must bind its scope and name"
+                );
+                let bound = bound_state(scope, name, value)?;
+                let (nonce, bytes) = self.cipher.seal(bound.as_bytes()).await?;
+                Some((nonce.to_vec(), bytes))
+            } else {
+                None
+            };
+            changes.push(MaterialChange {
+                scope: scope.clone(),
+                name: name.clone(),
+                sealed,
+            });
+        }
+        self.store.commit_materials(changes).await?;
+        let mut keys = index
+            .write()
+            .map_err(|_| anyhow::anyhow!("material index poisoned"))?;
+        for (scope, name, value) in values {
+            if value.is_some() {
+                keys.insert((scope, name));
+            } else {
+                keys.remove(&(scope, name));
+            }
         }
         Ok(())
     }
@@ -598,6 +661,28 @@ impl PolarVault {
             })
             .await
     }
+    /// Count names in one scope without retrieving ciphertext or decrypting values.
+    pub async fn material_counts_in_scope(
+        &self,
+        scope: &str,
+        name_prefix: &str,
+    ) -> Result<(usize, usize)> {
+        let names = self
+            .material_names()
+            .await?
+            .read()
+            .map_err(|_| anyhow::anyhow!("material index poisoned"))?;
+        let mut total = 0;
+        let mut matching = 0;
+        for (stored_scope, name) in names.iter() {
+            if stored_scope == scope {
+                total += 1;
+                matching += usize::from(name.starts_with(name_prefix));
+            }
+        }
+        Ok((total, matching))
+    }
+
     /// Presence is public metadata. Actual consumers still authenticate keys.
     pub async fn secret_material_present(&self, scope: &str, name: &str) -> Result<bool> {
         Ok(self

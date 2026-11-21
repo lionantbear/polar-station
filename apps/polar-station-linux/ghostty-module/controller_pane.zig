@@ -217,6 +217,7 @@ pub const Controller = struct {
     editor: session_editor_window.State = .{},
     editor_engine: editor_interaction.Engine = .{},
     editor_open: bool = false,
+    editor_behind_diagnostics: bool = false,
     editor_applying: bool = false,
     editor_submission: u64 = 0,
     editor_history_json: ?[]u8 = null,
@@ -890,7 +891,7 @@ pub const Controller = struct {
                     }
                 }
                 const target = if (self.native_executor) |executor| executor.quickCreateTarget(self.host_window) catch {
-                    self.model.setLocalError("The current Tab is unavailable or full.");
+                    self.model.setLocalError("The current Tab is unavailable.");
                     self.render();
                     return true;
                 } else return false;
@@ -900,7 +901,7 @@ pub const Controller = struct {
             },
             .new_shell, .new_codex => {
                 const target = if (self.native_executor) |executor| executor.quickCreateTarget(self.host_window) catch {
-                    self.model.setLocalError("The current Tab is unavailable or full.");
+                    self.model.setLocalError("The current Tab is unavailable.");
                     return true;
                 } else return false;
                 self.presentSessionCreateEditor(if (action == .new_codex) .codex_agent else .local_shell, if (target.source) |source| source.execution_target_id else projection.sessions.local_execution_target_id);
@@ -4902,9 +4903,12 @@ pub const Controller = struct {
                 return true;
             },
             .assigned_here => |target| {
-                const pane_id = context.controller.allocator.dupe(u8, target.pane_id) catch return false;
-                defer context.controller.allocator.free(pane_id);
-                context.controller.dispatch(.{ .remove_pane = .{ .pane_id = pane_id } });
+                const controller = context.controller;
+                const allocator = controller.allocator;
+                const pane_id = allocator.dupe(u8, target.pane_id) catch return false;
+                defer allocator.free(pane_id);
+                // Dispatch rebuilds the Sessions list and may free context.
+                controller.dispatch(.{ .remove_pane = .{ .pane_id = pane_id } });
                 return true;
             },
             .assigned_elsewhere => {
@@ -5454,7 +5458,18 @@ pub const Controller = struct {
         self.requestSessionHistory(true);
     }
     pub fn historySearchChanged(_: *gtk.Editable, self: *Controller) callconv(.c) void { self.syncSharedEditor(); }
-    pub fn prepareToolsClicked(_: *gtk.Button,self:*Controller) callconv(.c) void {self.editorInput(.{.type="prepare_tools"});}
+    pub fn prepareToolsClicked(button: *gtk.Button,self:*Controller) callconv(.c) void {
+        const section = std.mem.span(button.as(gtk.Widget).getName());
+        for ([_][]const u8{"tmux", "codex", "claude"}) |id| {
+            if (!std.mem.eql(u8, section, id)) continue;
+            const target = self.session_create_target_id orelse "local";
+            self.editor_behind_diagnostics = true;
+            if (self.session_create_window) |window| window.as(gtk.Widget).setVisible(0);
+            self.openSettings(.{ .page = "setup", .remote = !std.mem.eql(u8, target, "local"), .target = target, .section = id });
+            return;
+        }
+        self.editorInput(.{.type="prepare_tools"});
+    }
     pub fn editorBecameActive(_: *gobject.Object,_:*gobject.ParamSpec,self:*Controller) callconv(.c) void {
         if(self.session_create_window) |w| if(w.as(gtk.Window).isActive()!=0) self.editorInput(.{.type="returned_from_tools"});
     }
@@ -5703,7 +5718,10 @@ pub const Controller = struct {
         if(self.editor.prepare_tools) |button| {
             button.as(gtk.Widget).setVisible(@intFromBool(view.prepare_label!=null));
             button.as(gtk.Widget).setSensitive(@intFromBool(view.can_prepare));
-            const caption=self.allocator.dupeSentinel(u8,view.prepare_label orelse "Prepare tools", 0) catch return;defer self.allocator.free(caption);button.setLabel(caption);
+            const caption=self.allocator.dupeSentinel(u8,if(view.diagnostics_section != null) "Setup & Diagnostics" else view.prepare_label orelse "Prepare tools", 0) catch return;defer self.allocator.free(caption);button.setLabel(caption);
+            const section = self.allocator.dupeSentinel(u8, view.diagnostics_section orelse "", 0) catch return;
+            defer self.allocator.free(section);
+            button.as(gtk.Widget).setName(section);
         }
         const next_endpoints=std.json.Stringify.valueAlloc(self.allocator,view.endpoints,.{}) catch return;defer self.allocator.free(next_endpoints);
         const old_endpoints=if(self.session_create_endpoints) |old| std.json.Stringify.valueAlloc(self.allocator,old.value,.{}) catch return else self.allocator.dupe(u8,"[]") catch return;defer self.allocator.free(old_endpoints);

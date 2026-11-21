@@ -111,18 +111,26 @@ impl CodexEndpoint {
         &self.local_socket_path
     }
 
+    pub async fn request(&self, method: &'static str, params: Value) -> Result<Value, RpcFailure> {
+        self.request_with_timeout(method, params, Duration::from_secs(10)).await
+    }
+
+    pub async fn request_session_open(&self, method: &'static str, params: Value) -> Result<Value, RpcFailure> {
+        self.request_with_timeout(method, params, Duration::from_secs(15)).await
+    }
+
     #[tracing::instrument(
         target = "polar_station_operation",
         name = "codex_upstream_request",
         skip_all,
         fields(component = "Codex", method)
     )]
-    pub async fn request(&self, method: &'static str, params: Value) -> Result<Value, RpcFailure> {
+    async fn request_with_timeout(&self, method: &'static str, params: Value, timeout: Duration) -> Result<Value, RpcFailure> {
         if !self.connected() {
             return Err(RpcFailure::Unavailable);
         }
         self.handle
-            .request(method, params, Duration::from_secs(10))
+            .request(method, params, timeout)
             .await
     }
 }

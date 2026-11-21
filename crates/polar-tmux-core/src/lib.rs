@@ -3,7 +3,6 @@
 //! The public API follows tmux's own object model. `TmuxTarget` only describes
 //! where the tmux command is executed: locally, over SSH, or inside WSL.
 
-mod content_channel;
 pub use polar_tmux_types::terminal_feedback;
 mod control_connection;
 mod control_mode;
@@ -29,7 +28,7 @@ use polar_tmux_types::{
 use tokio::{process::Command, sync::Mutex as AsyncMutex};
 use tracing::{debug, Instrument};
 
-pub use content_channel::{
+pub use polar_tmux_types::{
     ContentChannel, ContentChannelAction, ContentChannelError, ContentChannelPhase,
     PendingContentTransition,
 };

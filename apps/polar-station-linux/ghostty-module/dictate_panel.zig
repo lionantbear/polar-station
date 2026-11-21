@@ -12,6 +12,7 @@ const a=std.heap.c_allocator;
 const CairoContext = @typeInfo(@typeInfo(gtk.DrawingAreaDrawFunc).pointer.child).@"fn".param_types[1].?;
 const Item=struct{kind:[:0]const u8,key:[:0]const u8,label:[:0]const u8};
 const items=[_]Item{
+    .{.kind="stop",.key="can_stop",.label="stop_label"},
     .{.kind="copy",.key="can_copy",.label="copy_label"},
     .{.kind="edit",.key="can_edit",.label="edit_label"},
     .{.kind="insert_original",.key="",.label=""},
@@ -77,7 +78,8 @@ pub const Panel=struct{
             button.as(gtk.Widget).addCssClass("flat");
             button.as(gobject.Object).setData("dictate-action",@constCast(item.kind.ptr));
             _=gtk.Button.signals.clicked.connect(button,*Panel,clicked,self,.{});
-            if(std.mem.eql(u8,item.kind,"retry_saved") or std.mem.eql(u8,item.kind,"view_history") or std.mem.eql(u8,item.kind,"edit"))failure_row.append(button.as(gtk.Widget))
+            if (std.mem.eql(u8,item.kind,"stop")) row.append(button.as(gtk.Widget))
+            else if(std.mem.eql(u8,item.kind,"retry_saved") or std.mem.eql(u8,item.kind,"view_history") or std.mem.eql(u8,item.kind,"edit"))failure_row.append(button.as(gtk.Widget))
             else if(direct(item.kind)) {
                 const icon=gtk.Image.newFromIconName(if(std.mem.eql(u8,item.kind,"copy")) "edit-copy-symbolic" else if(std.mem.startsWith(u8,item.kind,"send")) "mail-send-symbolic" else "go-bottom-symbolic");icon.setPixelSize(18);
                 const overlay=gtk.Overlay.new();overlay.setChild(icon.as(gtk.Widget));
@@ -277,6 +279,7 @@ pub const Panel=struct{
         self.scroll.as(gtk.Widget).setVisible(@intFromBool(text.len>0 or self.editing));
         for(items,0..) |item,i| {
             if(direct(item.kind)) {
+                self.buttons[i].as(gtk.Widget).setVisible(0);
                 const projected=dictate.field(panel,"actions");if(global.environ().getPosix("POLAR_STATION_DEBUG_PREVIEW")!=null)std.log.info("preview action metadata kind={s} array={} count={d}",.{item.kind,projected==.array,if(projected==.array)projected.array.items.len else @as(usize,0)});if(projected!=.array)continue;
                 for(projected.array.items) |action| if(std.mem.eql(u8,dictate.string(action,"id"),item.kind)) {
                     const label=a.dupeSentinel(u8,dictate.string(action,"label"), 0) catch continue;defer a.free(label);

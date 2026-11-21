@@ -27,7 +27,8 @@ pub struct PolarVault {
 mod authorization;
 mod local_chat;
 mod public_state;
-pub use public_state::AuthenticatedPublicStateVersion;
+pub mod custody;
+pub use public_state::{AuthenticatedPublicStateVersion, SealedAccessRelation};
 pub type AuthenticatedPublicStateSnapshot = (u64, Vec<(String, String, String)>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapabilitySecurityState {
@@ -86,7 +87,7 @@ mod operations;
 pub mod policy;
 mod secrets;
 pub use credential_bundle::{CredentialBundle, CredentialBundleResolver, CredentialBundleStore};
-pub use operations::VaultStore;
+pub use operations::{MaterialChange, VaultStore};
 pub use secrets::{
     CaMaterialOpener, CredentialResolver, DeviceSecretInfo, DeviceSecretMutation, IdentityMaterialOpener, SecretId,
     SecretImportMetadata, SecretInput, SecretKind, SecretLease, SecretMetadata, SecretPage,

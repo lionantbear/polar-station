@@ -1,0 +1,142 @@
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -60,4 +60,5 @@
+ 
+     fn stop(self: *TerminalIO) void {
++        if (self.io.backend == .station) self.io.backend.station.stop();
+         self.thread.stop.notify() catch |err|
+             log.err("error notifying IO thread to stop, may stall err={}", .{err});
+@@ -692,5 +693,14 @@
+     // be scoped here to be valid.
+     {
+-        var io_backend: termio.Backend = if (station_display)
++        const station_terminal = if (comptime @hasDecl(apprt.runtime.Surface, "stationTerminalConfig"))
++            rt_surface.stationTerminalConfig()
++        else
++            null;
++        var io_backend: termio.Backend = if (station_terminal) |station_config| station: {
++            var env = rt_surface.defaultTermioEnv() catch
++                global.environMap() catch std.process.Environ.Map.init(alloc);
++            defer env.deinit();
++            break :station .{ .station = try .init(alloc, station_config, config, &env) };
++        } else if (station_display)
+             .{ .display = .init() }
+         else backend: {
+@@ -1023,5 +1023,5 @@
+     switch (self.io.backend) {
+         .display => return false,
+-        .exec => {},
++        .exec, .station => {},
+     }
+     // If the surface is in read-only mode, always require confirmation
+@@ -1418,5 +1418,5 @@
+     const command = try std.mem.join(alloc, " ", switch (self.io.backend) {
+         .exec => |*exec| exec.subprocess.args,
+-        .display => &.{},
++        .display, .station => &.{},
+     });
+     const runtime_str = try alloc.print("{d} ms", .{info.runtime_ms});
+--- a/src/termio/backend.zig
++++ b/src/termio/backend.zig
+@@ -12,5 +12,5 @@
+ 
+ /// The kinds of backends.
+-pub const Kind = enum { exec, display };
++pub const Kind = enum { exec, display, station };
+ 
+ /// Configuration for the various backend types.
+@@ -19,4 +19,5 @@
+     exec: termio.Exec.Config,
+     display: void,
++    station: void,
+ };
+ 
+@@ -26,8 +27,10 @@
+     exec: termio.Exec,
+     display: @import("StationDisplay.zig").State,
++    station: @import("StationTerminal.zig"),
+ 
+     pub fn deinit(self: *Backend) void {
+         switch (self.*) {
+             .exec => |*exec| exec.deinit(),
++            .station => |*value| value.deinit(),
+             .display => {},
+         }
+@@ -37,4 +40,5 @@
+         switch (self.*) {
+             .exec => |*exec| exec.initTerminal(t),
++            .station => {},
+             .display => {
+                 t.modes.set(.cursor_visible, false);
+@@ -53,4 +57,8 @@
+             .exec => |*exec| try exec.threadEnter(alloc, io, td),
+             .display => td.backend = .{ .display = {} },
++            .station => |*value| {
++                td.backend = .{ .station = {} };
++                try value.threadEnter(io);
++            },
+         }
+     }
+@@ -59,4 +67,5 @@
+         switch (self.*) {
+             .exec => |*exec| exec.threadExit(td),
++            .station => |*value| value.stop(),
+             .display => {},
+         }
+@@ -70,4 +79,5 @@
+         switch (self.*) {
+             .exec => |*exec| try exec.focusGained(td, focused),
++            .station => |*value| value.focus(focused),
+             .display => {},
+         }
+@@ -81,4 +91,5 @@
+         switch (self.*) {
+             .exec => |*exec| try exec.resize(grid_size, screen_size),
++            .station => |*value| value.resize(grid_size, screen_size),
+             .display => {},
+         }
+@@ -94,4 +105,5 @@
+         switch (self.*) {
+             .exec => |*exec| try exec.queueWrite(alloc, td, data, linefeed),
++            .station => |*value| value.write(data, linefeed),
+             // Native widgets own input; a display never echoes terminal input.
+             .display => {},
+@@ -107,4 +119,5 @@
+     ) !void {
+         switch (self.*) {
++            .station => {},
+             .exec => |*exec| try exec.childExitedAbnormally(
+                 gpa,
+@@ -121,4 +134,5 @@
+     /// is not available on a particular platform.
+     pub fn getProcessInfo(self: *Backend, comptime info: ProcessInfo) ?ProcessInfo.Type(info) {
+         return switch (self.*) {
++            .station => null,
+             .exec => |*exec| exec.getProcessInfo(info),
+@@ -131,8 +145,10 @@
+     exec: termio.Exec.ThreadData,
+     display: void,
++    station: void,
+ 
+     pub fn deinit(self: *ThreadData, alloc: Allocator) void {
+         switch (self.*) {
+             .exec => |*exec| exec.deinit(alloc),
++            .station => {},
+             .display => {},
+         }
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -331,5 +331,5 @@
+ 
+     const thread_enter_state = switch (backend) {
+-        .display => null, // Never load shell initial-input files for an LGP display.
++        .display, .station => null, // These backends have their own input.
+         .exec => try ThreadEnterState.create(alloc, opts.full_config),
+     };
+@@ -729,5 +729,5 @@
+     const display = @import("StationDisplay.zig");
+     switch (self.backend) {
+-        .exec => return error.NotDisplaySurface,
++        .exec, .station => return error.NotDisplaySurface,
+         .display => |state| try state.checkOwner(),
+     }

@@ -1,0 +1,274 @@
+--- a/src/App.zig
++++ b/src/App.zig
+@@ -137,6 +137,10 @@
+     // Clean up all our surfaces
+     for (self.surfaces.items) |surface| surface.deinit();
+     self.surfaces.deinit(self.alloc);
++    while (self.mailbox.pop(global.io())) |message| switch (message) {
++        .station_terminal_message => |event| event.message.discard(),
++        else => {},
++    };
+ 
+     // Clean up our font group cache
+     // We should have zero items in the grid set at this point because
+@@ -291,6 +295,7 @@
+             .new_window => |msg| try self.newWindow(rt_app, msg),
+             .close => |surface| self.closeSurface(surface),
+             .surface_message => |msg| try self.surfaceMessage(msg.surface, msg.message),
++            .station_terminal_message => |msg| try self.stationTerminalMessage(msg.terminal_id, msg.message),
+ 
+             // If we're quitting, then we set the quit flag and stop
+             // draining the mailbox immediately. This lets us defer
+@@ -531,6 +536,30 @@
+     // Not a problem.
+ }
+ 
++/// Resolve a live presentation on the app thread. Queued events cannot
++/// dereference an earlier Surface after it is replaced or destroyed.
++fn stationTerminalMessage(self: *App, terminal_id: u64, msg: apprt.surface.Message) !void {
++    if (self.focusedSurface()) |view| {
++        if (view.io.station_terminal_id == terminal_id and view.visible and view.focused) {
++            return view.handleMessage(msg);
++        }
++    }
++    if (msg.requiresStationFocus()) {
++        msg.discard();
++        return;
++    }
++
++    var resident: ?*Surface = null;
++    for (self.surfaces.items) |surface| {
++        const view = surface.core();
++        if (view.io.station_terminal_id != terminal_id) continue;
++        if (view.visible) return view.handleMessage(msg);
++        if (resident == null) resident = view;
++    }
++    if (resident) |view| return view.handleMessage(msg);
++    msg.discard();
++}
++
+ fn hasSurface(self: *const App, surface: *const Surface) bool {
+     for (self.surfaces.items) |v| {
+         if (v.core() == surface) return true;
+@@ -563,6 +592,11 @@
+ 
+     /// Quit
+     quit: void,
++
++    station_terminal_message: struct {
++        terminal_id: u64,
++        message: apprt.surface.Message,
++    },
+ 
+     /// A message for a specific surface.
+     surface_message: struct {
+--- a/src/apprt/surface.zig
++++ b/src/apprt/surface.zig
+@@ -160,6 +160,26 @@
+     /// Renderer pushed a new frame, redraw this surface.
+     redraw,
+ 
++    /// Requests that may read or mutate the user's clipboard belong only
++    /// to the active visible view of a direct Station terminal.
++    pub fn requiresStationFocus(self: Message) bool {
++        return switch (self) {
++            .clipboard_read, .clipboard_write, .kitty_clipboard_read, .kitty_clipboard_write => true,
++            else => false,
++        };
++    }
++
++    /// Dispose of an undeliverable message produced by the terminal parser.
++    pub fn discard(self: Message) void {
++        switch (self) {
++            .pwd_change => |req| req.deinit(),
++            .clipboard_write => |write| write.req.deinit(),
++            .kitty_clipboard_read => |read| read.destroy(),
++            .kitty_clipboard_write => |write| write.destroy(),
++            else => {},
++        }
++    }
++
+     pub const ReportTitleStyle = enum {
+         csi_21_t,
+ 
+@@ -187,6 +207,15 @@
+ pub const Mailbox = struct {
+     surface: *Surface,
+     app: App.Mailbox,
++
++    /// Consumes a parser event. Never block the parser waiting for a
++    /// UI mailbox that the main thread cannot drain during view shutdown.
++    pub fn pushStationTerminal(self: Mailbox, id: u64, msg: Message) void {
++        if (self.app.push(.{ .station_terminal_message = .{
++            .terminal_id = id,
++            .message = msg,
++        } }, .{ .instant = {} }) == 0) msg.discard();
++    }
+ 
+     /// Send a message to the surface.
+     pub fn push(
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -757,6 +757,7 @@
+             .backend = io_backend,
+             .mailbox = io_mailbox,
+             .renderer_state = self.renderer_state.terminalState(),
++            .station_terminal_id = if (station_terminal != null) self.id else null,
+             .renderer_wakeup = render_thread.wakeup,
+             .renderer_mailbox = render_thread.mailbox,
+             .surface_mailbox = .{ .surface = self, .app = app_mailbox },
+@@ -3480,7 +3481,7 @@
+     if (self.io.backend != .station) return;
+     const wake = &self.renderer_thread.wakeup;
+     if (visible) {
+-        try self.io.station_render_wakeup.attach(self.alloc, wake);
++        try self.io.station_render_wakeup.attach(self.alloc, wake, self.renderer_thread.mailbox);
+     } else {
+         self.io.station_render_wakeup.detach(wake);
+     }
+--- a/src/termio/Options.zig
++++ b/src/termio/Options.zig
+@@ -39,3 +39,5 @@
+ 
+ /// The mailbox for sending the surface messages.
+ surface_mailbox: apprt.surface.Mailbox,
++
++station_terminal_id: ?u64 = null,
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -56,6 +56,7 @@
+ 
+ /// The mailbox for communicating with the surface.
+ surface_mailbox: apprt.surface.Mailbox,
++station_terminal_id: ?u64 = null,
+ 
+ /// The cached size info
+ size: renderer.Size,
+@@ -319,7 +320,7 @@
+         .surface_mailbox = opts.surface_mailbox,
+         .renderer_state = opts.renderer_state,
+         .renderer_wakeup = opts.renderer_wakeup,
+-        .station_output = backend == .station,
++        .station_terminal_id = opts.station_terminal_id,
+         .renderer_mailbox = opts.renderer_mailbox,
+         .size = &self.size,
+         .terminal = &self.terminal,
+@@ -343,6 +344,7 @@
+         .renderer_wakeup = opts.renderer_wakeup,
+         .renderer_mailbox = opts.renderer_mailbox,
+         .surface_mailbox = opts.surface_mailbox,
++        .station_terminal_id = opts.station_terminal_id,
+         .size = opts.size,
+         .backend = backend,
+         .mailbox = opts.mailbox,
+@@ -569,8 +571,11 @@
+         }
+     }
+ 
+-    // Mail the renderer so that it can update the GPU and re-render
+-    _ = self.renderer_mailbox.push(global.io(), .{ .resize = size }, .{ .forever = {} });
++    // Direct Station views already publish their own pixel and padding
++    // geometry in Surface.resize. The terminal only publishes its grid.
++    if (self.station_terminal_id == null) {
++        _ = self.renderer_mailbox.push(global.io(), .{ .resize = size }, .{ .forever = {} });
++    }
+     self.wakeRenderer() catch {};
+ }
+ 
+@@ -789,9 +794,9 @@
+     // non-blink state so it is rendered if visible. If we're under
+     // HEAVY read load, we don't want to send a ton of these so we
+     // use a timer under the covers
+-    const now = std.Io.Timestamp.now(global.io(), .awake);
+     cursor_reset: {
+-        if (self.backend == .station and !self.station_render_wakeup.hasVisible()) break :cursor_reset;
++        if (self.station_terminal_id != null and !self.station_render_wakeup.hasVisible()) break :cursor_reset;
++        const now = std.Io.Timestamp.now(global.io(), .awake);
+         if (self.last_cursor_reset) |last| {
+             if (last.durationTo(now).toMilliseconds() <= 500) {
+                 break :cursor_reset;
+@@ -799,9 +804,13 @@
+         }
+ 
+         self.last_cursor_reset = now;
+-        _ = self.renderer_mailbox.push(global.io(), .{
+-            .reset_cursor_blink = {},
+-        }, .{ .instant = {} });
++        if (self.station_terminal_id != null) {
++            self.station_render_wakeup.resetCursor();
++        } else {
++            _ = self.renderer_mailbox.push(global.io(), .{
++                .reset_cursor_blink = {},
++            }, .{ .instant = {} });
++        }
+     }
+ 
+     // If we have an inspector, we enter SLOW MODE because we need to
+--- a/src/termio/stream_handler.zig
++++ b/src/termio/stream_handler.zig
+@@ -42,7 +42,7 @@
+     renderer_wakeup: xev.Async,
+ 
+     /// Station publishes a parsed batch to its visible renderer subscribers.
+-    station_output: bool = false,
++    station_terminal_id: ?u64 = null,
+ 
+     /// The response to use for ENQ requests. The memory is owned by
+     /// whoever owns StreamHandler.
+@@ -118,7 +118,7 @@
+     /// isn't guaranteed to happen immediately but it will happen as soon as
+     /// practical.
+     pub inline fn queueRender(self: *StreamHandler) !void {
+-        if (!self.station_output) try self.renderer_wakeup.notify();
++        if (self.station_terminal_id == null) try self.renderer_wakeup.notify();
+     }
+ 
+     /// Change the configuration for this handler.
+@@ -142,6 +142,10 @@
+         self: *StreamHandler,
+         msg: apprt.surface.Message,
+     ) void {
++        if (self.station_terminal_id) |id| {
++            self.surface_mailbox.pushStationTerminal(id, msg);
++            return;
++        }
+         // See messageWriter which has similar logic and explains why
+         // we may have to do this.
+         if (self.surface_mailbox.push(msg, .{ .instant = {} }) == 0) {
+--- a/src/termio/Thread.zig
++++ b/src/termio/Thread.zig
+@@ -246,10 +246,12 @@
+     }
+ 
+     // Setup our crash metadata
+-    crash.sentry.thread_state = .{
+-        .type = .io,
+-        .surface = io.surface_mailbox.surface,
+-    };
++    if (io.station_terminal_id == null) {
++        crash.sentry.thread_state = .{
++            .type = .io,
++            .surface = io.surface_mailbox.surface,
++        };
++    }
+     defer crash.sentry.thread_state = null;
+ 
+     // Get the mailbox. This must be an SPSC mailbox for threading.
+@@ -535,11 +537,12 @@
+     const cb = cb_ orelse return .disarm;
+     const self = cb.self;
+ 
+-    // Send the tick to the main surface
+-    _ = cb.io.surface_mailbox.push(
+-        .{ .selection_scroll_tick = self.scroll_active },
+-        .{ .instant = {} },
+-    );
++    const tick: @import("../apprt.zig").surface.Message = .{ .selection_scroll_tick = self.scroll_active };
++    if (cb.io.station_terminal_id) |id| {
++        cb.io.surface_mailbox.pushStationTerminal(id, tick);
++    } else {
++        _ = cb.io.surface_mailbox.push(tick, .{ .instant = {} });
++    }
+ 
+     if (self.scroll_active) self.scroll.run(
+         &self.loop,

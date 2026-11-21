@@ -5,6 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+polar-wire.workspace = true
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 zeroize = "1"
@@ -14,3 +15,4 @@ polar-identity = { workspace = true }
 rand_core = { workspace = true }
 sha2 = { workspace = true }
 x25519-dalek = { workspace = true }
+

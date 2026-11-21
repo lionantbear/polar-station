@@ -75,6 +75,13 @@ pub const SetupSurface = struct {
 fn from(surface: *Surface) ?*SetupSurface {
     return @ptrCast(@alignCast(surface.as(gobject.Object).getData(key) orelse return null));
 }
+pub fn pasteCommitted(surface: *Surface) void {
+    const setup = from(surface) orelse return;
+    if (setup.finished) return;
+    const root = surface.as(gtk.Widget).getRoot() orelse return;
+    const window = gobject.ext.cast(@import("../class/window.zig").Window, root) orelse return;
+    window.showSetupPasteReceipt();
+}
 pub fn childExited(surface: *Surface, code: u32) void {
     const self = from(surface) orelse return;
     if (self.finished) return;

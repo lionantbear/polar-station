@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWrite;
 use tokio::sync::{mpsc, watch, Notify};
 
+use crate::desktop_terminal::{ContentPort, DesktopTerminal, DesktopTerminalChannel, DesktopTerminalConfig, TerminalLaunch, TerminalTask};
+
 pub mod backend;
 mod preferences;
 mod requests;
@@ -336,6 +338,8 @@ type Wake = Arc<dyn Fn() + Send + Sync + 'static>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContentRequest {
+    /// An empty path explicitly selects the in-process content channel. No
+    /// socket lookup or fallback is performed for that route.
     pub socket_path: PathBuf,
     pub request: PaneContentRequestV1,
 }
@@ -357,6 +361,11 @@ enum DesktopWorkerRequest {
     Session(crate::station_input_client::DesktopSessionRequest, PathBuf),
     Content(DesktopContentRequest),
     NativeState(DesktopNativeStateRequest),
+    Terminal {
+        task: Box<TerminalTask>,
+        port: Option<(DesktopTerminalChannel, ContentPort)>,
+        host_socket: Option<PathBuf>,
+    },
 }
 
 pub struct DesktopClient {
@@ -573,9 +582,6 @@ impl DesktopClient {
             .request
             .validate()
             .context("invalid content request")?;
-        if request.socket_path.as_os_str().is_empty() {
-            bail!("content socket path must not be empty");
-        }
         self.content
             .as_ref()
             .context("desktop client is not started")?
@@ -590,6 +596,27 @@ impl DesktopClient {
         self.content.as_ref().context("desktop client is not started")?
             .try_send(DesktopWorkerRequest::Session(request,backend.endpoint.socket_path.clone()))
             .map_err(|_|anyhow::anyhow!("desktop worker is busy"))
+    }
+
+    pub fn open_terminal(
+        &self,
+        config: DesktopTerminalConfig,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> Result<DesktopTerminal> {
+        let backend = self.backend.lock().unwrap_or_else(|value| value.into_inner());
+        anyhow::ensure!(
+            !backend.switching && !backend.transitioning,
+            "Selected Host is changing"
+        );
+        let host_socket = backend.initialized.then(|| backend.endpoint.socket_path.clone());
+        let TerminalLaunch { terminal, task, port } =
+            TerminalTask::prepare(config, Arc::new(wake))?;
+        self.content
+            .as_ref()
+            .context("desktop client is not started")?
+            .try_send(DesktopWorkerRequest::Terminal { task: Box::new(task), port, host_socket })
+            .map_err(|_| anyhow::anyhow!("desktop worker is busy"))?;
+        Ok(terminal)
     }
 
     pub fn try_native_state(&self, request: DesktopNativeStateRequest) -> Result<()> {
@@ -679,6 +706,30 @@ enum ContentWorkerResult {
     Session(DesktopClientEvent),
 }
 
+#[derive(Default)]
+struct DirectContentPorts {
+    ports: Mutex<std::collections::BTreeMap<DesktopTerminalChannel, ContentPort>>,
+    registered: Notify,
+}
+
+impl DirectContentPorts {
+    async fn wait_for(&self, request: &PaneContentRequestV1) -> ContentPort {
+        let key = DesktopTerminalChannel {
+            id: request.channel_id.clone(),
+            generation: request.channel_generation,
+        };
+        loop {
+            let registered = self.registered.notified();
+            tokio::pin!(registered);
+            registered.as_mut().enable();
+            if let Some(port) = self.ports.lock().unwrap_or_else(|error| error.into_inner()).get(&key).cloned() {
+                return port;
+            }
+            registered.await;
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_content_worker(
     mut incoming: mpsc::Receiver<DesktopWorkerRequest>,
@@ -693,6 +744,8 @@ async fn run_content_worker(
 ) {
     use std::collections::BTreeMap;
     let mut jobs = tokio::task::JoinSet::new();
+    let mut terminals = tokio::task::JoinSet::new();
+    let direct = Arc::new(DirectContentPorts::default());
     let mut directory_notifications = crate::local_ipc::socket_readiness::DirectoryNotifications::default();
     let mut persistence = tokio::task::JoinSet::new();
     let mut pending_native = std::collections::VecDeque::new();
@@ -729,6 +782,21 @@ async fn run_content_worker(
                         continue;
                     },
                     DesktopWorkerRequest::Content(job) => job,
+                    DesktopWorkerRequest::Terminal { task, port, host_socket } => {
+                        let key = if let Some((key, port)) = port {
+                            let mut ports = direct.ports.lock().unwrap_or_else(|error| error.into_inner());
+                            if ports.contains_key(&key) { continue; }
+                            ports.insert(key.clone(), port);
+                            direct.registered.notify_waiters();
+                            Some(key)
+                        } else { None };
+                        // Cold surfaces can enqueue before preferences finish
+                        // loading. The worker starts with the persisted Host.
+                        let host_socket = host_socket.unwrap_or_else(|| backend.lock()
+                            .unwrap_or_else(|error| error.into_inner()).endpoint.socket_path.clone());
+                        terminals.spawn(async move { task.run(host_socket).await; key });
+                        continue;
+                    },
                     DesktopWorkerRequest::Session(job,host_socket) => {
                         if jobs.len() >= 64 {
                             state.lock().unwrap_or_else(|v|v.into_inner()).content_events.push_back(DesktopClientEvent::SessionCompleted {
@@ -783,9 +851,21 @@ async fn run_content_worker(
                 let watch_state = state.clone();
                 let watch_wake = wake.clone();
                 let watch_drained = drained.clone();
-                let readiness = if lane == 1 { directory_notifications.subscribe(&job.socket_path).ok() } else { None };
+                let direct_route = job.socket_path.as_os_str().is_empty();
+                let readiness = if lane == 1 && !direct_route { directory_notifications.subscribe(&job.socket_path).ok() } else { None };
+                let direct = Arc::clone(&direct);
                 let handle = jobs.spawn(async move {
-                    let response = if lane == 1 { observe_content_recovery(&job, watch_state, watch_wake, watch_drained, readiness).await } else { exchange_content(&job).await };
+                    let response = if direct_route {
+                        if lane == 1 {
+                            observe_direct_content(&job.request, &direct, &watch_state, &watch_wake, &watch_drained).await
+                        } else {
+                            exchange_direct_content(&job.request, &direct).await
+                        }
+                    } else if lane == 1 {
+                        observe_content_recovery(&job, watch_state, watch_wake, watch_drained, readiness).await
+                    } else {
+                        exchange_content(&job).await
+                    };
                     ContentWorkerResult::Content {key:return_key, revision, response}
                 });
                 current.insert(key, (revision, handle, receipt));
@@ -797,6 +877,8 @@ async fn run_content_worker(
                             && current.keys().all(|key|key.2==1) && persistence.is_empty() && pending_native.is_empty();
                         let event=backend::finish(request,result,&backend,&state,&retry,idle);
                         if matches!(event,DesktopClientEvent::BackendCompleted {switched:true,..}) {
+                            terminals.abort_all();
+                            direct.ports.lock().unwrap_or_else(|error| error.into_inner()).clear();
                             for (_,handle,_) in current.values() {handle.abort();}
                             current.clear();
                             state.lock().unwrap_or_else(|v|v.into_inner()).content_events.retain(|e|!matches!(e,DesktopClientEvent::ContentCompleted {..}));
@@ -827,8 +909,14 @@ async fn run_content_worker(
                 if let Some(job) = pending_native.pop_front() { persistence.spawn_blocking(move || native_state_io(job)); }
             }
             _ = drained.notified(), if !room => {},
+            result = terminals.join_next(), if !terminals.is_empty() => {
+                if let Some(Ok(Some(key))) = result {
+                    direct.ports.lock().unwrap_or_else(|error| error.into_inner()).remove(&key);
+                }
+            },
         }
     }
+    drop(terminals);
     // Drain every already-admitted snapshot on shutdown in admission order.
     // Each accepted transaction retains its completion. Content jobs are cancelled rather than touching Sessions.
     while let Ok(request) = incoming.try_recv() {
@@ -889,6 +977,40 @@ async fn publish_recovery_event(
             }
         }
         notified.await;
+    }
+}
+
+async fn observe_direct_content(
+    request: &PaneContentRequestV1,
+    direct: &DirectContentPorts,
+    state: &Arc<Mutex<DesktopClientStateMachine>>,
+    wake: &Wake,
+    drained: &Notify,
+) -> PaneContentResponseV1 {
+    use crate::terminal_content::recovery_response;
+    let mut view = direct.wait_for(request).await.recovery;
+    loop {
+        let projection = view.borrow_and_update().clone();
+        publish_recovery_event(recovery_response(request, projection), state, wake, drained).await;
+        if view.changed().await.is_err() {
+            return recovery_response(request, view.borrow().clone());
+        }
+    }
+}
+
+async fn exchange_direct_content(
+    request: &PaneContentRequestV1,
+    direct: &DirectContentPorts,
+) -> PaneContentResponseV1 {
+    match tokio::time::timeout(IO_TIMEOUT, async {
+        direct.wait_for(request).await.exchange(request.clone()).await
+    }).await {
+        Ok(Ok(response)) => response,
+        _ => crate::terminal_content::ResponseIdentity::from(request).rejected(
+            "content_outcome_unknown",
+            "The direct terminal operation could not be confirmed. Check the current binding before retrying.",
+            true,
+        ),
     }
 }
 

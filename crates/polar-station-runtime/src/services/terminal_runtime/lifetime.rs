@@ -4,9 +4,10 @@
 use super::BackendPtyEvent;
 use anyhow::{Context, Result};
 use portable_pty::{ChildKiller, MasterPty};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::time::{Duration, Instant};
-use tokio::sync::{oneshot, watch};
+use tokio::sync::{oneshot, watch, Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio::task::JoinHandle;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -18,17 +19,34 @@ pub(super) struct Counts {
     closing: bool,
 }
 
+type ConsumerGates = Arc<Mutex<HashMap<String, Arc<AsyncMutex<bool>>>>>;
+
 #[derive(Clone)]
-pub struct TerminalLifetimes(watch::Sender<Counts>);
+pub struct TerminalLifetimes {
+    counts: watch::Sender<Counts>,
+    consumers: ConsumerGates,
+    bridge: Option<BridgeLifetimes>,
+}
+
+#[derive(Clone)]
+struct BridgeLifetimes {
+    counts: watch::Sender<Counts>,
+    current: Arc<AtomicBool>,
+}
+
 impl Default for TerminalLifetimes {
     fn default() -> Self {
-        Self(watch::channel(Counts::default()).0)
+        Self {
+            counts: watch::channel(Counts::default()).0,
+            consumers: Arc::default(),
+            bridge: None,
+        }
     }
 }
 impl TerminalLifetimes {
     pub(super) fn acquire(&self) -> Result<Ticket> {
         let mut admitted = false;
-        self.0.send_modify(|counts| {
+        self.counts.send_modify(|counts| {
             if !counts.closing {
                 counts.live += 1;
                 counts.started += 1;
@@ -36,27 +54,85 @@ impl TerminalLifetimes {
             }
         });
         anyhow::ensure!(admitted, "Host terminal scope is stopping");
+        if let Some(bridge) = &self.bridge {
+            bridge.counts.send_modify(|counts| {
+                counts.live += 1;
+                counts.started += 1;
+            });
+        }
         tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_owner_registered",
-            live=self.0.borrow().live, count=1);
+            live=self.counts.borrow().live, count=1);
         Ok(Ticket {
             scope: self.clone(),
             finished: false,
             child_started: false,
+            consumer: None,
         })
     }
 
+    pub(super) async fn acquire_for(&self, consumer_id: &str) -> Result<Ticket> {
+        let permit = self.consumer_permit(consumer_id).await?;
+        self.ensure_current()?;
+        let mut ticket = self.acquire()?;
+        ticket.consumer = Some(permit);
+        Ok(ticket)
+    }
+
+    pub(super) fn for_bridge(&self, current: Arc<AtomicBool>) -> Self {
+        Self {
+            bridge: Some(BridgeLifetimes {
+                counts: watch::channel(Counts::default()).0,
+                current,
+            }),
+            ..self.clone()
+        }
+    }
+
+    pub(super) async fn wait_for_bridge_cleanup(&self) -> Result<()> {
+        let bridge = self.bridge.as_ref().context("terminal bridge lifetime missing")?;
+        let counts = *bridge.counts.subscribe().wait_for(|counts| counts.live == 0).await?;
+        anyhow::ensure!(counts.failed == 0, "terminal bridge cleanup failed");
+        Ok(())
+    }
+
+    fn ensure_current(&self) -> Result<()> {
+        anyhow::ensure!(
+            self.bridge.as_ref().is_none_or(|bridge| bridge.current.load(Ordering::Acquire)),
+            "terminal Consumer generation was superseded",
+        );
+        Ok(())
+    }
+
+    async fn consumer_permit(&self, consumer_id: &str) -> Result<ConsumerPermit> {
+        let gate = self.consumers.lock().unwrap().entry(consumer_id.to_owned()).or_default().clone();
+        // Hold the map entry even if the waiting attach is cancelled. Its
+        // guard moves with the Ticket into the blocking child owner.
+        let mut permit = ConsumerPermit {
+            scope: self.clone(),
+            consumer_id: consumer_id.to_owned(),
+            gate,
+            guard: None,
+            failed: false,
+        };
+        let guard = permit.gate.clone().lock_owned().await;
+        permit.failed = *guard;
+        permit.guard = Some(guard);
+        anyhow::ensure!(!permit.failed, "previous terminal Consumer cleanup failed");
+        Ok(permit)
+    }
+
     pub fn close(&self) {
-        self.0.send_modify(|counts| counts.closing = true);
+        self.counts.send_modify(|counts| counts.closing = true);
     }
 
     pub async fn drain(&self, deadline: Duration) -> Result<()> {
         self.close();
         let start = Instant::now();
-        let mut receiver = self.0.subscribe();
+        let mut receiver = self.counts.subscribe();
         let drained = tokio::time::timeout(deadline, receiver.wait_for(|counts| counts.live == 0))
             .await
             .is_ok();
-        let counts = *self.0.borrow();
+        let counts = *self.counts.borrow();
         let success = drained && counts.live == 0 && counts.failed == 0;
         tracing::info!(target: "polar_station_operation", component="Host",
             event=if success { "terminal_owners_drained" } else { "terminal_owners_drain_failed" },
@@ -74,12 +150,36 @@ impl TerminalLifetimes {
     }
 }
 
+struct ConsumerPermit {
+    scope: TerminalLifetimes,
+    consumer_id: String,
+    gate: Arc<AsyncMutex<bool>>,
+    guard: Option<OwnedMutexGuard<bool>>,
+    failed: bool,
+}
+
+impl Drop for ConsumerPermit {
+    fn drop(&mut self) {
+        // Lock map before releasing the guard so a new waiter cannot acquire
+        // a second gate while this entry is being removed.
+        let mut consumers = self.scope.consumers.lock().unwrap();
+        drop(self.guard.take());
+        if !self.failed && Arc::strong_count(&self.gate) == 2 {
+            consumers.remove(&self.consumer_id);
+        }
+    }
+}
+
 pub(super) struct Ticket {
     scope: TerminalLifetimes,
     finished: bool,
     child_started: bool,
+    consumer: Option<ConsumerPermit>,
 }
 impl Ticket {
+    pub(super) fn ensure_current(&self) -> Result<()> {
+        self.scope.ensure_current()
+    }
     pub(super) fn child_started(&mut self) {
         self.child_started = true;
     }
@@ -87,14 +187,22 @@ impl Ticket {
         self.release(success);
     }
     fn release(&mut self, success: bool) {
-        self.scope.0.send_modify(|counts| {
+        if let Some(permit) = self.consumer.as_mut() {
+            permit.failed = !success;
+            **permit.guard.as_mut().expect("live cleanup permit") = !success;
+        }
+        let finish = |counts: &mut Counts| {
             counts.live -= 1;
             if success {
                 counts.completed += 1;
             } else {
                 counts.failed += 1;
             }
-        });
+        };
+        self.scope.counts.send_modify(finish);
+        if let Some(bridge) = &self.scope.bridge {
+            bridge.counts.send_modify(finish);
+        }
         self.finished = true;
     }
 }

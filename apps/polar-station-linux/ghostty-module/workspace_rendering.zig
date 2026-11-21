@@ -136,6 +136,95 @@ pub const Snapshot = struct {
     }
 };
 
+pub fn sameTerminal(left: Pane, right: Pane) bool {
+    return left.isTerminal() and right.isTerminal() and
+        std.mem.eql(u8, left.execution_target_id, right.execution_target_id) and
+        std.mem.eql(u8, left.tmux_session_id, right.tmux_session_id) and
+        std.mem.eql(u8, left.attach_fingerprint, right.attach_fingerprint);
+}
+
+/// Imported legacy layouts may contain two independently running Panes in a
+/// single Tab. Keep those bindings as they are until the user removes them.
+pub fn canShareTerminal(snapshot: Snapshot, pane: Pane) bool {
+    if (!pane.isTerminal()) return false;
+    var placements: usize = 0;
+    for (snapshot.tabs) |tab| {
+        var in_tab: usize = 0;
+        for (tab.panes) |other| {
+            if (sameTerminal(pane, other)) in_tab += 1;
+        }
+        if (in_tab > 1) return false;
+        placements += in_tab;
+    }
+    return placements > 1;
+}
+
+/// Within one native window, only the selected Tab is displayed. Preserve the
+/// logical Snapshot and mount one physical view per shared terminal. If the
+/// selected Tab has no placement, leave the renderer in a background Tab.
+pub fn singleWindowProjection(
+    allocator: std.mem.Allocator,
+    snapshot: Snapshot,
+    selected_tab_id: []const u8,
+    resident_ids: []const []const u8,
+) !?Snapshot {
+    const selected = snapshot.tab(selected_tab_id) orelse return error.UnknownTab;
+    var projected: ?[]Tab = null;
+    for (snapshot.tabs, 0..) |tab, index| {
+        var kept: [9]Pane = undefined;
+        if (tab.panes.len > kept.len) return error.InvalidLayout;
+        var count: usize = 0;
+        for (tab.panes) |pane| {
+            if (canShareTerminal(snapshot, pane)) {
+                const mounted = mountedPane(snapshot, selected.*, pane, resident_ids);
+                if (!std.mem.eql(u8, pane.id, mounted)) continue;
+            }
+            kept[count] = pane;
+            count += 1;
+        }
+        if (count == tab.panes.len) continue;
+        if (projected == null) projected = try allocator.dupe(Tab, snapshot.tabs);
+        projected.?[index] = try tabWithPhysicalPanes(allocator, tab, kept[0..count]);
+    }
+    var result = snapshot;
+    result.tabs = projected orelse return null;
+    result.selected_tab_id = selected_tab_id;
+    return result;
+}
+
+fn mountedPane(snapshot: Snapshot, selected: Tab, pane: Pane, resident_ids: []const []const u8) []const u8 {
+    for (selected.panes) |other| if (sameTerminal(pane, other)) return other.id;
+    for (resident_ids) |id| {
+        const entry = snapshot.pane(id) orelse continue;
+        if (sameTerminal(pane, entry.pane.*)) return id;
+    }
+    for (snapshot.tabs) |tab| for (tab.panes) |other| {
+        if (sameTerminal(pane, other)) return other.id;
+    };
+    unreachable;
+}
+
+pub fn tabWithPhysicalPanes(allocator: std.mem.Allocator, tab: Tab, panes: []const Pane) !Tab {
+    var result = tab;
+    result.panes = try allocator.dupe(Pane, panes);
+    result.split_ratios = &.{};
+    const order = try allocator.alloc([]const u8, panes.len);
+    var count: usize = 0;
+    for (tab.visual_pane_ids) |id| {
+        if (result.pane(id) == null) continue;
+        order[count] = id;
+        count += 1;
+    }
+    result.visual_pane_ids = if (count == panes.len) order else &.{};
+    if (result.focused_pane_id) |id| {
+        if (result.pane(id) == null) result.focused_pane_id = null;
+    }
+    if (result.display_mode == .focus and result.focused_pane_id == null and panes.len > 0) {
+        result.focused_pane_id = if (count > 0) order[0] else panes[0].id;
+    }
+    return result;
+}
+
 pub const RenderRequest = struct {
     arena: std.heap.ArenaAllocator,
     transaction_id: []const u8,

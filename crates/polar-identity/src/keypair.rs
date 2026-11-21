@@ -90,6 +90,15 @@ impl IdentityKeypair {
         self.descriptor.binding_public_key
     }
 
+    /// Domain-separated sender ephemeral for a single directed window.
+    pub fn directed_window_ephemeral(&self, scope_salt: &[u8; 32]) -> StaticSecret {
+        let mut key = zeroize::Zeroizing::new([0u8; 32]);
+        Hkdf::<Sha256>::new(Some(scope_salt), self.signing_key.as_bytes())
+            .expand(b"PWES0001", key.as_mut())
+            .expect("valid HKDF output length");
+        StaticSecret::from(*key)
+    }
+
     pub fn binding_secret_bytes(&self) -> [u8; 32] {
         let hk = Hkdf::<Sha256>::new(None, self.signing_key.as_bytes());
         let mut key_bytes = [0u8; 32];

@@ -12,6 +12,7 @@ struct SessionCreationContext {
     let complete: ([SessionRowProjectionV1.Identity]) -> Void
     let release: () -> Void
     var contains: (SessionRowProjectionV1.Identity) -> Bool = { _ in false }
+    var focusExisting: (SessionRowProjectionV1.Identity) -> Void = { _ in }
 }
 
 /// Thin application state for the native Control Center renderer.
@@ -27,6 +28,10 @@ final class ControlCenterStore: ObservableObject {
         let captured = prepareSessionCreation?()
         creationRequestIDs.removeAll()
         return { [weak self] intent, completion in
+            guard let captured else {
+                completion("The Tab that opened Add Session is unavailable.", [])
+                return
+            }
             var completed: [String] = []
             self?.submitHostIntent(intent.operation, completion: { error in completion(error, completed) },
                 preparedCreation: captured, completedThreads: { completed.append(contentsOf: $0) })
@@ -924,7 +929,8 @@ final class ControlCenterStore: ObservableObject {
         _ operation: ControlCenterIntentOperationV1,
         completion: (@MainActor (String?) -> Void)? = nil,
         preparedCreation: SessionCreationContext? = nil,
-        completedThreads: (@MainActor ([String]) -> Void)? = nil
+        completedThreads: (@MainActor ([String]) -> Void)? = nil,
+        resumeChecked: Bool = false
     ) {
         if case .closeAuxiliary = operation {
             guard let projection else { return }
@@ -958,25 +964,72 @@ final class ControlCenterStore: ObservableObject {
         case .createSession, .createCodexSession, .createAgentSession: createdSession = preparedCreation ?? prepareSessionCreation?()
         default: createdSession = nil
         }
+        var knownResumeSessions: [SessionRowProjectionV1.Identity] = []
+        var knownResumeThreads: [String] = []
         if let createdSession {
-            if case let .createAgentSession(target, provider, mode, name, directory, endpoint, selectedID, yolo, localCLI, ids) = hostIntent,
-               provider == "codex", mode == "resume" {
-                let chosen = ids.isEmpty ? selectedID.map { [$0] } ?? [] : ids
-                let remaining = chosen.filter { id in
-                    !(projection?.agentSessions ?? []).contains { agent in
-                        agent.execution_target_id == target && agent.endpoint_id == endpoint && agent.thread_id == id
-                            && (agent.terminals ?? []).contains(where: createdSession.contains)
+            var count = 1
+            if case let .createAgentSession(target, provider, mode, name, directory, endpoint, selectedID, yolo, localCLI, ids) = hostIntent {
+                count = max(1, ids.count)
+                if mode == "resume", !localCLI {
+                    let chosen = ids.isEmpty ? selectedID.map { [$0] } ?? [] : ids
+                    var seen = Set<String>()
+                    let remaining = chosen.filter { id in
+                        guard seen.insert(id).inserted else { return false }
+                        let terminal: SessionRowProjectionV1.Identity?
+                        if provider == "codex" {
+                            terminal = self.projection?.agentSessions.first(where: {
+                                $0.execution_target_id == target && $0.endpoint_id == endpoint
+                                && $0.thread_id == id && $0.terminals?.count == 1
+                            })?.terminals?.first
+                        } else if provider == "claude" {
+                            terminal = self.projection?.sessions.rows.first(where: {
+                                $0.identity.executionTargetID == target && $0.originalAgentID == id
+                                && $0.sessionKind == .claudePlane && $0.transportStatus == .online
+                            })?.identity
+                        } else {
+                            terminal = nil
+                        }
+                        guard let terminal else { return true }
+                        knownResumeThreads.append(id)
+                        if !knownResumeSessions.contains(terminal) { knownResumeSessions.append(terminal) }
+                        return false
                     }
-                }
-                completedThreads?(chosen.filter { !remaining.contains($0) })
-                if remaining.isEmpty { completion?(nil); return }
-                hostIntent = .createAgentSession(executionTargetID: target, provider: provider, mode: mode, name: name,
-                    workingDirectory: directory, endpointID: endpoint, sessionID: remaining[0], yolo: yolo,
-                    openLocalCLI: localCLI, sessionIDs: remaining)
-            }
-            let count: Int
-            if case let .createAgentSession(_, _, _, _, _, _, _, _, _, ids) = hostIntent { count = max(1, ids.count) } else { count = 1 }
-            if let error = createdSession.validate(count) { completion?(error); return }
+                    if !remaining.isEmpty && !resumeChecked {
+                        Task {
+                            do {
+                                try await ensureBackendSession()
+                                let response = try await backendSession.requestControlCenter(
+                                    ControlCenterRequestEnvelopeV1(requestID: requestID(), frontendSessionID: frontendSessionID,
+                                        expectedControlRevision: nil, command: .getProjection))
+                                try accept(projection(from: response))
+                                submitHostIntent(operation, completion: completion, preparedCreation: createdSession,
+                                    completedThreads: completedThreads, resumeChecked: true)
+                            } catch {
+                                completion?(error.localizedDescription)
+                            }
+                        }
+                        return
+                    }
+                    count = remaining.count + knownResumeSessions.filter { !createdSession.contains($0) }.count
+                    if let error = createdSession.validate(count) { completion?(error); return }
+                    if let first = remaining.first {
+                        hostIntent = .createAgentSession(executionTargetID: target, provider: provider, mode: mode, name: name,
+                            workingDirectory: directory, endpointID: endpoint, sessionID: first, yolo: yolo,
+                            openLocalCLI: localCLI, sessionIDs: remaining)
+                    } else if !knownResumeSessions.isEmpty {
+                        let additions = knownResumeSessions.filter { !createdSession.contains($0) }
+                        if additions.isEmpty {
+                            createdSession.release()
+                            if chosen.count == 1, let terminal = knownResumeSessions.first { createdSession.focusExisting(terminal) }
+                        } else {
+                            createdSession.complete(additions)
+                        }
+                        completedThreads?(knownResumeThreads)
+                        completion?(nil)
+                        return
+                    }
+                } else if let error = createdSession.validate(count) { completion?(error); return }
+            } else if let error = createdSession.validate(count) { completion?(error); return }
         }
         loadError = nil
         sessionCreationRecovery = nil
@@ -1015,10 +1068,13 @@ final class ControlCenterStore: ObservableObject {
                     let acceptedProjection = try projection(from: response)
                     if let creationKey { creationRequestIDs.removeValue(forKey: creationKey) }
                     accept(acceptedProjection)
-                    if case let .sessionCreated(_, session) = response.result { createdSession?.complete([session]) }
+                    if case let .sessionCreated(_, session) = response.result {
+                        createdSession?.complete(knownResumeSessions + [session])
+                        completedThreads?(knownResumeThreads)
+                    }
                     if case let .sessionBatchCreated(_, items) = response.result {
-                        createdSession?.complete(items.compactMap(\.session))
-                        completedThreads?(items.filter { $0.session != nil }.map(\.thread_id))
+                        createdSession?.complete(knownResumeSessions + items.compactMap(\.session))
+                        completedThreads?(knownResumeThreads + items.filter { $0.session != nil }.map(\.thread_id))
                         let failures = items.compactMap { item in item.error.map { "\(item.thread_id): \($0.message)" } }
                         if !failures.isEmpty { completion?(failures.joined(separator: "\n")); return }
                     }

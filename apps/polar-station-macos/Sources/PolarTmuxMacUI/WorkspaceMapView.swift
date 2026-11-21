@@ -636,8 +636,7 @@ public struct WorkspaceMapView: View {
                   }),
                   source.panes.contains(where: {
                       $0.id == payload.paneID
-                  }),
-                  payload.sourceTabID == tab.id || tab.panes.count < 9
+                  })
             else { return false }
             return true
         }
@@ -978,7 +977,6 @@ public struct WorkspaceMapView: View {
                     visualFrame: geometry.frame(in: .global),
                     canAccept: { payload in
                         payload.mapID == mapID && payload.paneID != pane.id
-                            && (payload.sourceTabID == tab.id || tab.panes.count < 9)
                             && renderedTabs.first(where: { $0.id == payload.sourceTabID })?.panes.contains(where: { $0.id == payload.paneID }) == true
                     },
                     onDrop: { payload, after in

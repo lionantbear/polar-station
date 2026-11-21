@@ -139,3 +139,73 @@ impl PolarVault {
             .collect()
     }
 }
+
+/// Encrypted Access Plane relation transported during an explicitly authorized
+/// custody migration. Other scopes and secrets have no representation here.
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SealedAccessRelation {
+    pub name: String,
+    pub nonce: [u8; 12],
+    pub ciphertext: Vec<u8>,
+}
+
+impl SealedAccessRelation {
+    pub async fn seal(cipher: &dyn crate::VaultCipher, name: String, value: &str) -> Result<Self> {
+        let bound = crate::operations::bound_state("access_plane_trust", &name, value)?;
+        let (nonce, ciphertext) = cipher.seal(bound.as_bytes()).await?;
+        Ok(Self { name, nonce, ciphertext })
+    }
+    pub async fn read_from(store: &dyn crate::VaultStore) -> Result<Vec<Self>> {
+        store
+            .named_secret_material("access_plane_trust".into())
+            .await?
+            .into_iter()
+            .map(|(name, nonce, ciphertext)| {
+                Ok(Self {
+                    name,
+                    nonce: nonce
+                        .try_into()
+                        .map_err(|_| anyhow!("invalid source nonce"))?,
+                    ciphertext,
+                })
+            })
+            .collect()
+    }
+    /// Authenticate scope, name and value together, including the source versions.
+    pub async fn open_batch(
+        cipher: &dyn crate::VaultCipher,
+        rows: &[Self],
+    ) -> Result<Vec<AuthenticatedPublicStateVersion>> {
+        let sealed = rows
+            .iter()
+            .map(|row| VaultCiphertext {
+                nonce: &row.nonce,
+                ciphertext: &row.ciphertext,
+            })
+            .collect::<Vec<_>>();
+        let values = cipher.open_batch(&sealed).await?;
+        anyhow::ensure!(
+            values.len() == rows.len(),
+            "source Vault returned an incomplete batch"
+        );
+        let mut result = rows
+            .iter()
+            .zip(values)
+            .map(|(row, value)| {
+                Ok(AuthenticatedPublicStateVersion {
+                    scope: "access_plane_trust".into(),
+                    name: row.name.clone(),
+                    value: decode_material("access_plane_trust", &row.name, value)?,
+                    revision: material_version(&row.nonce, &row.ciphertext),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        result.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+        anyhow::ensure!(
+            result.windows(2).all(|p| p[0].name != p[1].name),
+            "duplicate source relation"
+        );
+        Ok(result)
+    }
+}

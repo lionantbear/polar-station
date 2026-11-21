@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fmt,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
 };
@@ -23,6 +23,7 @@ struct ActiveTerminalConsumer {
     revoke: oneshot::Sender<()>,
     selected: watch::Sender<bool>,
     control_epoch: Arc<AtomicU64>,
+    current: Arc<AtomicBool>,
     native_instance: Option<String>,
     native_sequence: u64,
 }
@@ -31,6 +32,7 @@ struct ActiveTerminalConsumer {
 pub struct TerminalConsumerRegistration {
     revoked: oneshot::Receiver<()>,
     pub(super) selected: watch::Receiver<bool>,
+    pub(super) current: Arc<AtomicBool>,
 }
 
 impl TerminalConsumerRegistration {
@@ -71,6 +73,7 @@ impl TerminalConsumerRegistry {
         }
         let (native_instance, native_sequence) = if let Some(previous) = active.remove(consumer_id)
         {
+            previous.current.store(false, Ordering::Release);
             previous.control_epoch.fetch_add(1, Ordering::AcqRel);
             let _ = previous.revoke.send(());
             (previous.native_instance, previous.native_sequence)
@@ -79,6 +82,7 @@ impl TerminalConsumerRegistry {
         };
         let (revoke, revoked) = oneshot::channel();
         let (selected, selection) = watch::channel(false);
+        let current = Arc::new(AtomicBool::new(true));
         active.insert(
             consumer_id.to_owned(),
             ActiveTerminalConsumer {
@@ -87,6 +91,7 @@ impl TerminalConsumerRegistry {
                 revoke,
                 selected,
                 control_epoch: Arc::new(AtomicU64::new(1)),
+                current: current.clone(),
                 native_instance,
                 native_sequence,
             },
@@ -94,6 +99,7 @@ impl TerminalConsumerRegistry {
         Ok(TerminalConsumerRegistration {
             revoked,
             selected: selection,
+            current,
         })
     }
 
@@ -191,6 +197,7 @@ impl TerminalConsumerRegistry {
             .is_some_and(|entry| entry.generation == generation)
         {
             let removed = active.remove(consumer_id).expect("current consumer exists");
+            removed.current.store(false, Ordering::Release);
             removed.control_epoch.fetch_add(1, Ordering::AcqRel);
             if let Some(instance) = removed.native_instance {
                 if !active

@@ -1,0 +1,302 @@
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -799,6 +799,8 @@
+     self.renderer_thr.setName(global.io(), "renderer") catch {};
+ 
+     errdefer self.stopRenderer();
++    try self.setStationRendererVisible(self.visible);
++    errdefer self.setStationRendererVisible(false) catch unreachable;
+     try terminal_io.start();
+     errdefer terminal_io.stop();
+ 
+@@ -872,6 +874,7 @@
+ pub fn deinit(self: *Surface) void {
+     if (self.search) |*s| s.deinit();
+ 
++    self.setStationRendererVisible(false) catch unreachable;
+     // Termio can still post to the renderer's mailbox while shutting down.
+     self.terminal_io.stop();
+     self.stopRenderer();
+@@ -3469,6 +3472,16 @@
+     try self.completeClipboardPaste(text, true);
+ }
+ 
++fn setStationRendererVisible(self: *Surface, visible: bool) !void {
++    if (self.io.backend != .station) return;
++    const wake = &self.renderer_thread.wakeup;
++    if (visible) {
++        try self.io.station_render_wakeup.attach(self.alloc, wake);
++    } else {
++        self.io.station_render_wakeup.detach(wake);
++    }
++}
++
+ /// Callback for when the surface is fully visible or not, regardless
+ /// of focus state. This is used to pause rendering when the surface
+ /// is not visible, and also re-render when it becomes visible again.
+@@ -3498,6 +3511,7 @@
+         .visible = visible,
+     }, .{ .forever = {} });
+ 
++    try self.setStationRendererVisible(visible);
+     try self.queueRender();
+ }
+ 
+--- a/src/termio/Termio.zig
++++ b/src/termio/Termio.zig
+@@ -319,6 +319,7 @@
+         .surface_mailbox = opts.surface_mailbox,
+         .renderer_state = opts.renderer_state,
+         .renderer_wakeup = opts.renderer_wakeup,
++        .station_output = backend == .station,
+         .renderer_mailbox = opts.renderer_mailbox,
+         .size = &self.size,
+         .terminal = &self.terminal,
+@@ -570,8 +571,7 @@
+ 
+     // Mail the renderer so that it can update the GPU and re-render
+     _ = self.renderer_mailbox.push(global.io(), .{ .resize = size }, .{ .forever = {} });
+-    self.renderer_wakeup.notify() catch {};
+-    self.station_render_wakeup.notify();
++    self.wakeRenderer() catch {};
+ }
+ 
+ /// Make a size report.
+@@ -609,8 +609,7 @@
+     self.renderer_state.mutex.lockUncancelable(global.io());
+     defer self.renderer_state.mutex.unlock(global.io());
+     self.terminal.modes.set(.synchronized_output, false);
+-    self.renderer_wakeup.notify() catch {};
+-    self.station_render_wakeup.notify();
++    self.wakeRenderer() catch {};
+ }
+ 
+ /// Clear the screen.
+@@ -687,10 +686,9 @@
+         self.renderer_state.mutex.lockUncancelable(global.io());
+         defer self.renderer_state.mutex.unlock(global.io());
+         self.terminal.screens.active.scroll(.{ .delta_prompt = delta });
+-        self.station_render_wakeup.notify();
+-    }
+-
+-    try self.renderer_wakeup.notify();
++    }
++
++    try self.wakeRenderer();
+ }
+ 
+ /// Called when focus is gained or lost (when focus events are enabled)
+@@ -778,9 +776,13 @@
++pub fn wakeRenderer(self: *Termio) !void {
++    if (self.backend != .station) try self.renderer_wakeup.notify();
++    self.station_render_wakeup.notify();
++}
++
+ /// Process output from readdata but the lock is already held.
+ fn processOutputLocked(self: *Termio, buf: []const u8) void {
+-    // Schedule a render. We can call this first because we have the lock.
++    // Station publishes only to subscribed renderers after the parser has
++    // applied this batch. Legacy backends keep their original early wake.
+     self.terminal_stream.handler.queueRender() catch unreachable;
+-
+-    // Notify the other visible views after parsing the shared terminal state.
+     defer self.station_render_wakeup.notify();
+ 
+     // Whenever a character is typed, we ensure the cursor is in the
+@@ -789,6 +791,7 @@
+     // use a timer under the covers
+     const now = std.Io.Timestamp.now(global.io(), .awake);
+     cursor_reset: {
++        if (self.backend == .station and !self.station_render_wakeup.hasVisible()) break :cursor_reset;
+         if (self.last_cursor_reset) |last| {
+             if (last.durationTo(now).toMilliseconds() <= 500) {
+                 break :cursor_reset;
+--- a/src/termio/stream_handler.zig
++++ b/src/termio/stream_handler.zig
+@@ -41,6 +41,9 @@
+     /// a repaint should happen.
+     renderer_wakeup: xev.Async,
+ 
++    /// Station publishes a parsed batch to its visible renderer subscribers.
++    station_output: bool = false,
++
+     /// The response to use for ENQ requests. The memory is owned by
+     /// whoever owns StreamHandler.
+     enquiry_response: []const u8,
+@@ -115,7 +118,7 @@
+     /// isn't guaranteed to happen immediately but it will happen as soon as
+     /// practical.
+     pub inline fn queueRender(self: *StreamHandler) !void {
+-        try self.renderer_wakeup.notify();
++        if (!self.station_output) try self.renderer_wakeup.notify();
+     }
+ 
+     /// Change the configuration for this handler.
+--- a/src/termio/Thread.zig
++++ b/src/termio/Thread.zig
+@@ -372,7 +372,7 @@
+     // Trigger a redraw after we've drained so we don't waste cyces
+     // messaging a redraw.
+     if (redraw) {
+-        try io.renderer_wakeup.notify();
++        try io.wakeRenderer();
+     }
+ }
+ 
+--- a/src/renderer/State.zig
++++ b/src/renderer/State.zig
+@@ -16,6 +16,10 @@
+ /// state (i.e. the terminal, devmode, etc. values).
+ mutex: *std.Io.Mutex,
+ 
++/// Direct terminals keep parser state and handoff counters outside the view.
++/// Mouse state and preedit remain local to the renderer.
++station_terminal_state: ?*State = null,
++
+ /// The terminal data.
+ terminal: *terminalpkg.Terminal,
+ 
+@@ -61,5 +65,9 @@
+ const handoff_timeout_ns = 1 * std.time.ns_per_ms;
+ 
++pub fn terminalState(self: *State) *State {
++    return self.station_terminal_state orelse self;
++}
++
+ /// Acquire `mutex` while signaling demand for it. Use this instead of
+ /// locking the mutex directly on threads that must not be starved by
+ /// a hot lock/unlock loop (the renderer's frame snapshot). Must be
+@@ -73,9 +81,10 @@
+ /// exactly such a loop, so without this signal the renderer can
+ /// starve for as long as the output lasts.
+ pub fn lockDemand(self: *State, io: std.Io) void {
+-    _ = self.demand.fetchAdd(1, .monotonic);
++    const terminal_state = self.terminalState();
++    _ = terminal_state.demand.fetchAdd(1, .monotonic);
+     self.mutex.lockUncancelable(io);
+-    const prev = self.demand.fetchSub(1, .monotonic);
++    const prev = terminal_state.demand.fetchSub(1, .monotonic);
+     assert(prev > 0);
+ }
+ 
+@@ -83,8 +92,9 @@
+ /// parked in `yieldToDemand` that the demanding waiter had its turn.
+ pub fn unlockDemand(self: *State, io: std.Io) void {
+     self.mutex.unlock(io);
+-    _ = self.handoff_gen.fetchAdd(1, .monotonic);
+-    io.futexWake(u32, &self.handoff_gen.raw, 1);
++    const terminal_state = self.terminalState();
++    _ = terminal_state.handoff_gen.fetchAdd(1, .monotonic);
++    io.futexWake(u32, &terminal_state.handoff_gen.raw, 1);
+ }
+ 
+ /// Called by hot lock/unlock loops between critical sections, with
+@@ -97,16 +107,17 @@
+ /// itself orders the protected data, and the timeout bounds any
+ /// staleness.
+ pub fn yieldToDemand(self: *State, io: std.Io) void {
+-    if (self.demand.load(.monotonic) == 0) return;
++    const terminal_state = self.terminalState();
++    if (terminal_state.demand.load(.monotonic) == 0) return;
+ 
+     // Snapshot the generation before rechecking demand: if the waiter
+     // acquires and releases between our check and the wait below, the
+     // generation no longer matches and timedWait returns immediately.
+-    const gen = self.handoff_gen.load(.monotonic);
+-    if (self.demand.load(.monotonic) == 0) return;
++    const gen = terminal_state.handoff_gen.load(.monotonic);
++    if (terminal_state.demand.load(.monotonic) == 0) return;
+     io.futexWaitTimeout(
+         u32,
+-        &self.handoff_gen.raw,
++        &terminal_state.handoff_gen.raw,
+         gen,
+         .{ .duration = .{ .raw = .fromNanoseconds(handoff_timeout_ns), .clock = .awake } },
+     ) catch {};
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -45,6 +45,8 @@
+ const Renderer = rendererpkg.Renderer;
+ 
+ const TerminalIO = struct {
++    mutex: std.Io.Mutex = .init,
++    parser_state: rendererpkg.State,
+     io: termio.Termio,
+     thread: termio.Thread,
+     runner: std.Thread = undefined,
+@@ -612,11 +614,6 @@
+     var view_initialized = false;
+     errdefer if (view_initialized) self.renderer.deinit() else renderer_impl.deinit();
+ 
+-    // The mutex used to protect our renderer state.
+-    const mutex = try alloc.create(std.Io.Mutex);
+-    mutex.* = .init;
+-    errdefer alloc.destroy(mutex);
+-
+     // Create the renderer thread
+     var render_thread = try rendererpkg.Thread.init(
+         alloc,
+@@ -629,7 +626,11 @@
+ 
+     const terminal_io = try alloc.create(TerminalIO);
+     errdefer alloc.destroy(terminal_io);
+-    terminal_io.* = .{ .io = undefined, .thread = try termio.Thread.init(alloc) };
++    terminal_io.* = .{
++        .io = undefined,
++        .thread = try termio.Thread.init(alloc),
++        .parser_state = .{ .mutex = &terminal_io.mutex, .terminal = &terminal_io.io.terminal },
++    };
+     errdefer terminal_io.thread.deinit();
+ 
+     self.* = .{
+@@ -655,7 +656,7 @@
+         .renderer = renderer_impl,
+         .renderer_thread = render_thread,
+         .renderer_state = .{
+-            .mutex = mutex,
++            .mutex = &terminal_io.mutex,
+             .terminal = &terminal_io.io.terminal,
+         },
+         .renderer_thr = undefined,
+@@ -696,6 +697,7 @@
+             rt_surface.stationTerminalConfig()
+         else
+             null;
++        if (station_terminal != null) self.renderer_state.station_terminal_state = &terminal_io.parser_state;
+         var io_backend: termio.Backend = if (station_terminal) |station_config| station: {
+             var env = rt_surface.defaultTermioEnv() catch
+                 global.environMap() catch std.process.Environ.Map.init(alloc);
+@@ -754,7 +756,7 @@
+             .config = io_config,
+             .backend = io_backend,
+             .mailbox = io_mailbox,
+-            .renderer_state = &self.renderer_state,
++            .renderer_state = self.renderer_state.terminalState(),
+             .renderer_wakeup = render_thread.wakeup,
+             .renderer_mailbox = render_thread.mailbox,
+             .surface_mailbox = .{ .surface = self, .app = app_mailbox },
+@@ -898,7 +900,6 @@
+ 
+     // Clean up our render state
+     if (self.renderer_state.preedit) |p| self.alloc.free(p.codepoints);
+-    self.alloc.destroy(self.renderer_state.mutex);
+     self.config.deinit();
+ 
+     log.info("surface closed id={x}", .{self.id});
+@@ -974,6 +975,7 @@
+         defer self.renderer_state.mutex.unlock(global.io());
+         assert(self.renderer_state.inspector == null);
+         self.renderer_state.inspector = self.inspector;
++        self.renderer_state.terminalState().inspector = self.inspector;
+     }
+ 
+     // Notify our components we have an inspector active
+@@ -1004,6 +1006,8 @@
+         defer self.renderer_state.mutex.unlock(global.io());
+         assert(self.renderer_state.inspector != null);
+         self.renderer_state.inspector = null;
++        const parser = self.renderer_state.terminalState();
++        if (parser.inspector == insp) parser.inspector = null;
+     }
+ 
+     // Notify our components we have deactivated inspector

@@ -84,7 +84,7 @@ pub const Focus = struct {
         const core = self.surface.core() orelse return;
         core.renderer_state.mutex.lockUncancelable(global.io());
         defer core.renderer_state.mutex.unlock(global.io());
-        core.renderer_state.polar_native_focus_control = enabled;
+        core.renderer_state.terminalState().polar_native_focus_control = enabled;
     }
 
     fn startObservation(self: *Focus) !void {

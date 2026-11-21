@@ -11,7 +11,7 @@ public struct VoiceSettingsView: View {
     @State private var client = VoiceClient()
     private let platform: VoicePlatformRequest?
     private let setupSection: String?
-    private let openSetup: (@MainActor () -> Void)?
+    private let openSetup: (@MainActor (String) -> Void)?
     private let promptEditor:AnyView?
     @State private var section = "Overview"
     @State private var status: [String: Any] = [:]
@@ -53,7 +53,7 @@ public struct VoiceSettingsView: View {
     @State private var playbackStart = 0.0
     @State private var deleteID: String?
     private let pages = ["Overview", "Shortcut", "Text cleanup", "History and storage"]
-    public init(platform: VoicePlatformRequest? = nil, setupSection: String? = nil, openSetup: (@MainActor () -> Void)? = nil, promptEditor:AnyView?=nil,formBuffer:VoiceFormBuffer?=nil) {
+    public init(platform: VoicePlatformRequest? = nil, setupSection: String? = nil, openSetup: (@MainActor (String) -> Void)? = nil, promptEditor:AnyView?=nil,formBuffer:VoiceFormBuffer?=nil) {
         let formBuffer=formBuffer ?? VoiceFormBuffer()
         self.formBuffer=formBuffer
         self._cleanup=Binding(get:{formBuffer.cleanup},set:{formBuffer.edits.edited(.voice);formBuffer.cleanup=$0})
@@ -66,7 +66,7 @@ public struct VoiceSettingsView: View {
         self._testText=Binding(get:{formBuffer.testText},set:{formBuffer.testText=$0})
         self.platform = platform; self.setupSection = setupSection; self.openSetup = openSetup
         self.promptEditor=promptEditor
-        let pages = ["account":"Account", "microphone":"Microphone", "storage":"History and storage", "service":"Diagnostics", "external_input":"Diagnostics"]
+        let pages = ["account":"Account", "microphone":"Microphone", "service":"Diagnostics", "external_input":"Diagnostics"]
         self._section = State(initialValue: setupSection.flatMap { pages[$0] } ?? "Overview")
     }
     public var body: some View {
@@ -124,7 +124,13 @@ public struct VoiceSettingsView: View {
             Text("Tap to keep recording, or hold and release to stop. Press again to stop. Use the Dictate button for recordings up to 10 minutes.")
             Text("Audio is saved every second on this computer. Failed or interrupted recordings stay available for recovery.")
             Text(status["signed_in"] as? Bool == true ? "Account connected · run the voice test to verify transcription" : "Sign in to enable transcription")
-            HStack { Button("Account and microphone setup…") { openSetup?() }; Button("Test Voice…") { openSetup?() }; Button("Saved recordings") { section = "History and storage" } }
+            if let openSetup {
+                Button("Audio input…") { openSetup("voice_input_device") }
+                Button("Account…") { openSetup("voice_account") }
+                Button("Test Voice…") { openSetup("voice_trial") }
+                Button("External input permissions…") { openSetup("voice_external_input") }
+            }
+            Button("Saved recordings") { section = "History and storage" }
         }
     }
     private var account: some View {

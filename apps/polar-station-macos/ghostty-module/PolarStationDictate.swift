@@ -13,6 +13,13 @@ final class StationDictateTarget {
     private(set) var value: [String: Any]
     enum Delivery: String { case applied, unchanged, unknown, no_target }
     var sourceApplied: (([String:Any])->Void)?
+    var setupProgress: ((String, String?) -> Void)?
+    private var setupPhase: String?
+    func reportSetupProgress(_ phase: String, error: String?) {
+        guard let setupProgress, phase != setupPhase else { return }
+        setupPhase = phase
+        setupProgress(phase, error)
+    }
     var submit: ((String)->Bool)?
     func submitInserted(_ text:String)->Bool {submit?(text) ?? false}
     private let deliver:(String,@escaping (Delivery)->Void)->Void
@@ -206,11 +213,14 @@ final class PolarStationDictate {
         captured = [target.value["identity"] as? String ?? "": target]
         input(["type":"refine_context", "context_id":contextID, "project":project as Any? ?? NSNull(), "operation_id":id, "target":target.value, "text":text])
     }
-    func toggle(targets: [StationDictateTarget], reference: String = "") {
+    func toggle(targets: [StationDictateTarget], reference: String = "", setupTrial: Bool = false) {
         if presentation["action"] as? String == "retry_open" { input(["type":"retry_open"]); return }
         guard ready else { return }
-        if presentation["action"] as? String == "stop" { finish(); return }
-        guard enabled else { return }
+        if presentation["action"] as? String == "stop" {
+            if !setupTrial { finish() }
+            return
+        }
+        guard enabled, !setupTrial || presentation["action"] as? String == "start" else { return }
         let id = UUID().uuidString
         submittedID = id
         recordingStart = nil // A new press cannot inherit the previous capture clock.
@@ -218,7 +228,7 @@ final class PolarStationDictate {
             (target.value["identity"] as? String).map { ($0, target) }
         })
         cancelled.removeAll()
-        input(["type":"start_context", "conversation_context":(collectsContext ? currentConversation?() : nil) as Any? ?? NSNull(), "project":currentProject?() as Any? ?? NSNull(), "operation_id":id, "targets":targets.map(\.value), "reference":reference])
+        input(["type":"start_context", "conversation_context":(!setupTrial && collectsContext ? currentConversation?() : nil) as Any? ?? NSNull(), "project":(setupTrial ? nil : currentProject?()) as Any? ?? NSNull(), "operation_id":id, "targets":targets.map(\.value), "reference":reference])
     }
     // Physical edges are latched before the asynchronous Rust transition.
     // This is an input handle, not a second recording lifecycle.
@@ -399,6 +409,9 @@ final class PolarStationDictate {
             polar_station_dictate_speech_cancel(worker.speech, $0.baseAddress, $0.count)
         }
     }
+    func stopSetupTrial() {
+        if captured.values.contains(where: { $0.value["kind"] as? String == "setup_trial" }) { finish() }
+    }
     private func finish() {
         guard let id = captureID else { return }
         let duration = recordingStart.map { min(600_000, Int((ProcessInfo.processInfo.systemUptime - $0) * 1000)) } ?? 0
@@ -424,6 +437,15 @@ final class PolarStationDictate {
         error = result["ok"] as? Bool == true ? nil : result["error"] as? String
         if error != nil { submittedID = nil }
         view = result
+        if let entries = result["entries"] as? [[String: Any]] {
+            for entry in entries {
+                guard let target = entry["target"] as? [String: Any],
+                      target["kind"] as? String == "setup_trial",
+                      let identity = target["identity"] as? String,
+                      let phase = entry["phase"] as? String else { continue }
+                captured[identity]?.reportSetupProgress(phase, error:entry["error"] as? String)
+            }
+        }
         if let id = submittedID, let entry = (result["entries"] as? [[String: Any]])?.first(where: { $0["operation_id"] as? String == id }) {
             let phase = entry["phase"] as? String ?? ""
             if ["delivered", "copied", "unknown", "review", "pending", "cancelled", "failed"].contains(phase)
@@ -477,7 +499,7 @@ final class PolarStationDictate {
             guard voiceSettingsLoaded else { reloadVoiceSettings(); input(["type":"failed", "operation_id":id,"error":"Voice settings are not ready. Open Settings → Voice and retry."]); return }
             guard !cancelled.contains(id) else { return }
             captureID = id; recordingStart = nil
-            let begin: [String: Any] = ["op":"capture_begin", "id":id, "context":effect["context"] ?? NSNull(), "project":effect["project"] ?? NSNull(), "reference":effect["reference"] ?? ""]
+            let begin: [String: Any] = ["op":"capture_begin", "id":id, "context":effect["context"] ?? NSNull(), "project":effect["project"] ?? NSNull(), "reference":effect["reference"] ?? "", "is_test":effect["is_test"] ?? false]
             guard let beginData = try? JSONSerialization.data(withJSONObject: begin),
                   let beginResult = worker.service(beginData),
                   let started = try? JSONSerialization.jsonObject(with: beginResult) as? [String: Any],
@@ -687,12 +709,13 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         failureNotice.isHidden = true
         actions.orientation = .horizontal;actions.spacing=6
         failureActions.orientation = .horizontal;failureActions.spacing=12;failureActions.isHidden=true
-        for (kind,title) in [("copy","Copy"),("edit","Edit"),("insert_original","Insert"),("insert_refined","Refine and Insert"),("send_original","Insert and Send"),("send_refined","Refine and Send"),("retry_saved","Retry"),("view_history","History"),("hide_panel","Cancel and close")] {
+        for (kind,title) in [("stop","Stop"),("copy","Copy"),("edit","Edit"),("insert_original","Insert"),("insert_refined","Refine and Insert"),("send_original","Insert and Send"),("send_refined","Refine and Send"),("retry_saved","Retry"),("view_history","History"),("hide_panel","Cancel and close")] {
             let button=NSButton(title:title,target:self,action:#selector(clicked(_:)))
             button.identifier=NSUserInterfaceItemIdentifier(kind);button.refusesFirstResponder=true
             button.isBordered=false;button.contentTintColor = .white
             controls[kind]=button
-            if ["retry_saved","view_history","edit"].contains(kind) {failureActions.addArrangedSubview(button)}
+            if kind == "stop" { actions.addArrangedSubview(button) }
+            else if ["retry_saved","view_history","edit"].contains(kind) {failureActions.addArrangedSubview(button)}
             else if ["copy","insert_original","insert_refined","send_original","send_refined"].contains(kind) {
                 let symbols=["copy":"square.on.square","insert_original":"tray.and.arrow.down","insert_refined":"tray.and.arrow.down","send_original":"paperplane","send_refined":"paperplane"]
                 let base=NSImage(systemSymbolName:symbols[kind]!,accessibilityDescription:nil)
@@ -815,6 +838,10 @@ private final class StationDictateRecordingPanel: NSPanel, NSTextViewDelegate {
         for (kind,key,label) in [("view_history","can_history","history_label"),("edit","can_edit","edit_label"),("retry_saved","can_retry","retry_label")] {
             controls[kind]?.isHidden=panel[key] as? Bool != true
             controls[kind]?.title=panel[label] as? String ?? ""
+        }
+        controls["stop"]?.isHidden = panel["can_stop"] as? Bool != true
+        for kind in ["copy", "insert_original", "insert_refined", "send_original", "send_refined"] {
+            controls[kind]?.isHidden = true
         }
         for item in panel["actions"] as? [[String:Any]] ?? [] {
             guard let kind=item["id"] as? String,let button=controls[kind] else{continue}

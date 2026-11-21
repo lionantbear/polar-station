@@ -11,7 +11,9 @@ public struct ToolSetupLaunchV1:Codable,Equatable,Sendable {
 }
 public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     case inspectTools(target:String)
-    case prepareTools(target:String, tmux:Bool, codex:Bool, codexService:Bool, claude:Bool = false, delivery:ToolSetupDeliveryV1 = .externalTerminal)
+    case probeSshDestination(String)
+    case prepareSshLogin(String)
+    case prepareTools(target:String, tmux:Bool, codex:Bool, codexService:Bool, claude:Bool = false, claudeLogin:Bool = false, delivery:ToolSetupDeliveryV1 = .externalTerminal)
     case setCreationYolo(Bool)
     case checkEndpoint(target: String, endpoint: String)
     case ensureLocalCodex(endpoint: String)
@@ -22,7 +24,7 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     case previewEnd(SessionRowProjectionV1.Identity)
     case previewEndAgent(target: String, owner: String, endpoint: String, thread: String)
     enum CodingKeys: String, CodingKey {
-        case type, path, cursor, threads, detail, yolo, tmux, codex, codex_service, claude, delivery
+        case type, destination, path, cursor, threads, detail, yolo, tmux, codex, codex_service, claude, claude_login, delivery
         case search = "search_term", archived, subagents = "include_subagents"
         case owner = "owner_host_id", thread = "thread_id"
         case target = "execution_target_id", source = "source_session_id"
@@ -31,12 +33,19 @@ public enum SessionEditorRequestV1: Encodable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .prepareSshLogin(let destination):
+            try c.encode("prepare_ssh_login", forKey: .type)
+            try c.encode(destination, forKey: .destination)
+        case .probeSshDestination(let destination):
+            try c.encode("probe_ssh_destination", forKey: .type)
+            try c.encode(destination, forKey: .destination)
         case let .inspectTools(target):
             try c.encode("inspect_tools", forKey:.type); try c.encode(target,forKey:.target)
-        case let .prepareTools(target, tmux, codex, service, claude, delivery):
+        case let .prepareTools(target, tmux, codex, service, claude, claudeLogin, delivery):
             try c.encode("prepare_tools", forKey:.type);try c.encode(target,forKey:.target)
             try c.encode(tmux,forKey:.tmux);try c.encode(codex,forKey:.codex);try c.encode(service,forKey:.codex_service)
             if claude { try c.encode(true, forKey:.claude) }
+            if claudeLogin { try c.encode(true, forKey:.claude_login) }
             if delivery == .nativePane {try c.encode(delivery,forKey:.delivery)}
 
         case let .setCreationYolo(yolo):
@@ -92,17 +101,26 @@ public struct SessionEndPreviewV1: Codable, Equatable, Sendable {
         case targetLabel = "target_label", attachedClients = "attached_clients"
     }
 }
+public struct SessionSetupChecksV1: Codable, Equatable, Sendable {
+    public let codex_auth: String?
+    public let codex_server_ready: Bool?
+    public let claude_auth: String?
+    public let ssh_aliases: [String]?
+    public let tmux_archive_bytes: Int?
+}
 public struct SessionTargetToolsV1:Codable,Equatable,Sendable {
     public let execution_target_id:String
     public let tmux:String
     public let codex:String
     public let codex_control_enabled:Bool
     public let claude:String?
+    public var setup_checks: SessionSetupChecksV1? = nil
     public var native_setup:Bool? = nil
     public var default_local_codex_endpoint:String? = nil
 }
 public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
     case tools([SessionTargetToolsV1])
+    case sshDestinationVerified(MachineConnectionV1)
     case history([CodexHistoryThreadV1], String?)
     case historyDetail(CodexHistoryDetailV1)
     case launchContext(SessionDirectoryV1, String?, Bool, [SessionTargetToolsV1]?, [CodexEndpointSettingsV1]?)
@@ -113,10 +131,11 @@ public enum SessionEditorResultV1: Decodable, Equatable, Sendable {
     case endpointLoginRequired
     case directory(SessionDirectoryV1)
     case endPreview(SessionEndPreviewV1)
-    enum CodingKeys: String, CodingKey { case type, directory, notice, preview, threads, detail, next_cursor, yolo, tools, codex_endpoints, execution_target_id, setup }
+    enum CodingKeys: String, CodingKey { case type, machine, directory, notice, preview, threads, detail, next_cursor, yolo, tools, codex_endpoints, execution_target_id, setup }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         switch try c.decode(String.self, forKey: .type) {
+        case "ssh_destination_verified": self = try .sshDestinationVerified(c.decode(MachineConnectionV1.self, forKey: .machine))
         case "tools": self = try .tools(c.decode([SessionTargetToolsV1].self, forKey:.tools))
         case "history": self = try .history(c.decode([CodexHistoryThreadV1].self, forKey: .threads), c.decodeIfPresent(String.self, forKey: .next_cursor))
         case "history_detail": self = try .historyDetail(c.decode(CodexHistoryDetailV1.self, forKey: .detail))

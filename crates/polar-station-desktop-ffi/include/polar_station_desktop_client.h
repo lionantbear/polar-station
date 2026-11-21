@@ -58,6 +58,24 @@ char *polar_station_lgp_client_dispatch(LgpClientHandle *, const uint8_t *, size
 void polar_station_lgp_client_free(LgpClientHandle *);
 typedef void (*PolarStationDesktopWakeFn)(void *context);
 
+/* Dequeue bytes until read returns zero. The wake callback signals the native
+ * event loop and cannot reenter this API. Calls on each handle are serialized.
+ * Closing the handle also ends callbacks and releases the tmux attachment. */
+typedef struct DesktopTerminalHandle DesktopTerminalHandle;
+DesktopTerminalHandle *polar_station_desktop_terminal_open(
+    DesktopClientHandle *client, const char *config_json,
+    PolarStationDesktopWakeFn wake, void *context);
+DesktopTerminalHandle *polar_station_desktop_terminal_open_selected(
+    const char *config_json, const char *terminal_type, const char *locale,
+    PolarStationDesktopWakeFn wake, void *context);
+size_t polar_station_desktop_terminal_read(DesktopTerminalHandle *, uint8_t *, size_t);
+bool polar_station_desktop_terminal_write(const DesktopTerminalHandle *, const uint8_t *, size_t);
+bool polar_station_desktop_terminal_viewport(
+    const DesktopTerminalHandle *, uint16_t columns, uint16_t rows,
+    uint16_t pixel_width, uint16_t pixel_height, bool focused);
+char *polar_station_desktop_terminal_status(const DesktopTerminalHandle *);
+void polar_station_desktop_terminal_close(DesktopTerminalHandle *);
+
 /* All strings have static lifetime; callers must not free or modify them. */
 typedef struct PolarStationRecoveryView {
     bool can_submit;
@@ -203,6 +221,7 @@ char *polar_station_diagnostics_dispatch(DiagnosticsHandle *handle, const uint8_
 void polar_station_diagnostics_free(DiagnosticsHandle *handle);
 char *polar_station_diagnostics_project(const uint8_t *bytes, size_t len);
 char *polar_station_workspace_lifecycle(const uint8_t *bytes, size_t len);
+char *polar_station_plan_pane_placement(const uint8_t *bytes, size_t len);
 char *polar_station_workspace_manager_view(const uint8_t *bytes, size_t len);
 char *polar_station_workspace_transfer(const uint8_t *bytes, size_t len);
 void polar_station_desktop_string_free(char *value);

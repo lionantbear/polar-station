@@ -8,6 +8,7 @@ import PolarTmuxHostClient
     let view:Ghostty.SurfaceView
     let content:StationPaneContentV1
     private var exited:(@MainActor (UInt32?)->Void)?
+    private var pasteNotice: NSTextField?
     var running:Bool {exited != nil}
     init(app:ghostty_app_t,setup:ToolSetupLaunchV1,fontSize:UInt8,exited:@escaping @MainActor (UInt32?)->Void) throws {
         var config=Ghostty.SurfaceConfiguration()
@@ -21,11 +22,29 @@ import PolarTmuxHostClient
         view.setTitle(setup.title)
         guard view.surface != nil else {throw PolarStationNativeExecutorError.workspaceUnavailable}
         NotificationCenter.default.addObserver(self,selector:#selector(childExited(_:)),name:.init("PolarStationChildExited"),object:view)
+        NotificationCenter.default.addObserver(self,selector:#selector(pasteCommitted),name:.init("PolarStationPasteCommitted"),object:view)
+    }
+    @objc private func pasteCommitted() {
+        guard running else { return }
+        pasteNotice?.removeFromSuperview()
+        let notice = NSTextField(labelWithString: "Pasted into terminal")
+        notice.font = .systemFont(ofSize: 13, weight: .semibold)
+        notice.backgroundColor = .windowBackgroundColor
+        notice.drawsBackground = true
+        notice.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(notice)
+        NSLayoutConstraint.activate([
+            notice.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            notice.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
+        ])
+        pasteNotice = notice
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak notice] in notice?.removeFromSuperview() }
     }
     @objc private func childExited(_ event:Notification) {
         finish((event.userInfo?["exit_code"] as? NSNumber)?.uint32Value)
     }
     private func finish(_ code:UInt32?) {
+        pasteNotice?.removeFromSuperview()
         let callback=exited;exited=nil;callback?(code)
     }
     func confirmClose() async -> Bool {

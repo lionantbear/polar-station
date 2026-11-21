@@ -120,8 +120,9 @@
             let visualPaneIDs: [String]
             let mode: PolarStationNativeDisplayMode
             let mainPaneID: String?
+            let processlessPlaceholder: Bool
 
-            init(tab: PolarStationNativeTab) {
+            init(tab: PolarStationNativeTab, processlessPlaceholder: Bool) {
                 paneIDs = tab.panes.map(\.id)
                 bindings = tab.panes.map {
                     WorkspaceStructurePaneV1(id: $0.id, executionTargetID: $0.executionTargetID,
@@ -130,6 +131,7 @@
                 visualPaneIDs = tab.visualPaneIDs
                 mode = tab.mode
                 mainPaneID = tab.mainPaneID
+                self.processlessPlaceholder = processlessPlaceholder
             }
         }
 
@@ -162,7 +164,9 @@
                 return [split.ratio]+ratios(split.left)+ratios(split.right)
             }
             for tab in workspace.tabs {
-                guard let controller=tabGroupCoordinator.controller(for:tab.id) else {continue}
+                guard let controller=tabGroupCoordinator.controller(for:tab.id),
+                      installedTabStructures[tab.id]?.paneIDs == tab.panes.map(\.id)
+                else { continue }
                 let actual=ratios(controller.surfaceTree.root)
                 if !actual.isEmpty, actual.allSatisfy({$0.isFinite && $0>0 && $0<1}), actual != tab.splitRatios {values[tab.id]=actual}
             }
@@ -318,6 +322,7 @@
             return coordinator
         }()
         private var installedTabStructures: [String: InstalledTabStructure] = [:]
+        private var installedWorkspaceID: String?
         private let ownedPersistence: PolarStationNativeWorkspacePersistence?
         private var persistence: PolarStationNativeWorkspacePersistence? { (catalogOwner ?? self).ownedPersistence }
         private let ownedPersistenceQueue = DispatchQueue(label: "com.polarealm.PolarStation.native-state", qos: .utility)
@@ -484,8 +489,11 @@
         private func physicalPresentationMatches(
             _ candidate: PolarStationNativeWorkspace
         ) -> Bool {
-            !candidate.tabs.isEmpty && candidate.tabs.allSatisfy { tab in
-                installedTabStructures[tab.id] == InstalledTabStructure(tab: tab)
+            let presentation = terminalPresentation(for: candidate)
+            return !presentation.tabs.isEmpty && presentation.tabs.allSatisfy { tab in
+                installedTabStructures[tab.id] == InstalledTabStructure(
+                    tab: tab, processlessPlaceholder: needsProcesslessPlaceholder(for: tab, in: candidate)
+                )
                     && tabGroupCoordinator.controller(for: tab.id)?.window != nil
             }
         }
@@ -522,6 +530,7 @@
             workspace = restoreSelection ? catalog?.selectedWorkspace : nil
             pendingWorkspace = workspace
             installedTabStructures.removeAll()
+            installedWorkspaceID = nil
             tabGroupCoordinator.reset()
             surfaceCoordinator.reset()
         }
@@ -646,7 +655,12 @@
         func reserveSessionPanes(id: String, workspaceID: String, tabID: String, count: Int) -> String? {
             guard let current = workspace, current.id == workspaceID, let tab = current.tabs.first(where: { $0.id == tabID }) else { return "The Tab that opened Add Session no longer exists." }
             let reserved = reservedSessionPanes.filter { $0.key != id && $0.value.tabID == tabID }.values.reduce(0) { $0 + $1.count }
-            guard tab.panes.count + reserved + count <= 9 else { return "This Tab has insufficient room (maximum nine Panes)." }
+            guard let placement = try? current.panePlacement([], in: tab, reserved: reserved, unbound: count),
+                  !placement.full else { return "This Tab has insufficient room (maximum nine Panes)." }
+            if count == 0 {
+                releaseSessionPanes(id: id)
+                return nil
+            }
             reservedSessionPanes[id] = (tabID, count)
             return nil
         }
@@ -722,17 +736,11 @@
                   let session = target["tmux_session_id"] as? String else {
                 throw NSError(domain:"PolarStation.SessionView",code:1,userInfo:[NSLocalizedDescriptionKey:"The originating tab or target is unavailable. Task not sent."])
             }
-            if let existing = candidate.sessionPaneID(execution: execution, session: session),
-               !tab.panes.contains(where: { $0.id == existing }) {
-                try await surfaceCoordinator.waitForTerminalView(
-                    paneID: existing, binding: .init(executionTargetID: execution, tmuxSessionID: session))
-                return
-            }
             let responder = window.firstResponder
             var changed = false
-            if !tab.panes.contains(where: { $0.executionTargetID == execution && $0.tmuxSessionID == session }) {
-                guard tab.panes.count < 9 else { throw NSError(domain:"PolarStation.SessionView",code:2,userInfo:[NSLocalizedDescriptionKey:"This tab is full. Task not sent."]) }
-                try candidate.apply(.addSessions(tabID:tab.id,sessions:[.init(executionTargetID:execution,tmuxSessionID:session)])); changed = true
+            let placement = try candidate.panePlacement([.init(executionTargetID: execution, tmuxSessionID: session)], in: tab)
+            if !placement.additions.isEmpty {
+                try candidate.apply(.addSessions(tabID:tab.id,sessions:placement.additions)); changed = true
             }
             if tab.mode == .focus { try candidate.apply(.toggleMode(tab.id)); changed = true }
             if changed {
@@ -760,8 +768,9 @@
                   let tab = candidate.tabs.first(where: { $0.id == tabID })
             else { throw PolarStationNativeWorkspaceError.invalidBinding }
             let otherTabs = candidateCatalog.sessionTabsOutside(workspaceID)
-            let additions = candidate.sessionAdditions(sessions.filter { otherTabs[$0] == nil })
-            guard tab.panes.count + additions.count <= 9 else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            let placement = try candidate.panePlacement(sessions.filter { otherTabs[$0] == nil }, in: tab)
+            guard !placement.full else { throw PolarStationNativeWorkspaceError.invalidBinding }
+            let additions = placement.additions
             guard !additions.isEmpty else { return }
             try candidate.apply(.addSessions(tabID: tabID, sessions: additions))
             try validateReservedPanes(candidate, excluding: reservationID)
@@ -1109,7 +1118,8 @@
                 guard let index=candidate.workspaces.firstIndex(where:{$0.id==updated.id}),candidate.revision<UInt64.max,candidate.workspaces[index].revision<UInt64.max else {throw PolarStationNativeWorkspaceError.invalidStructure}
                 updated.revision=candidate.workspaces[index].revision+1;candidate.workspaces[index]=updated;candidate.revision += 1;try candidate.validate()
             case "import_commit":
-                let imported=try JSONDecoder().decode(PolarStationNativeWorkspace.self,from:Data(name.utf8))
+                var imported=try JSONDecoder().decode(PolarStationNativeWorkspace.self,from:Data(name.utf8))
+                try imported.normalizeSessionPanes()
                 guard !candidate.workspaces.contains(where:{$0.id==imported.id}),candidate.revision<UInt64.max else {throw PolarStationNativeWorkspaceError.invalidStructure}
                 candidate.workspaces.append(imported);candidate.revision += 1;try candidate.validate()
             case "archive":
@@ -1167,6 +1177,7 @@
                 await surfaceCoordinator.retireAbsentPaneContent(from: previous, to: empty)
             }
             installedTabStructures.removeAll()
+            installedWorkspaceID = nil
             showWorkspaceChooser()
         }
 
@@ -1747,23 +1758,62 @@
             surfaceCoordinator.selectRestoredInput(paneID: paneID, window: window)
         }
 
+        private func terminalPresentation(for workspace: PolarStationNativeWorkspace) -> PolarStationNativeWorkspace {
+            workspace.singleWindowTerminalPresentation(
+                residentPaneIDs: installedWorkspaceID == workspace.id ? surfaceCoordinator.residentTerminalPaneIDs : [],
+                selectedTabID: tabGroupCoordinator.pendingNativeTabID
+            )
+        }
+
+        private func needsProcesslessPlaceholder(for tab: PolarStationNativeTab, in workspace: PolarStationNativeWorkspace) -> Bool {
+            return tab.panes.isEmpty && workspace.tabs.first(where: { $0.id == tab.id })?.panes.isEmpty == false
+        }
+
+        private func detachTerminalTransfers(
+            _ transfers: [PolarStationPaneSurfaceCoordinator.TerminalTransfer], fontSize: UInt8
+        ) {
+            guard !transfers.isEmpty else { return }
+            for controller in tabGroupCoordinator.allControllers {
+                let departing = transfers.filter { transfer in
+                    controller.surfaceTree.contains { $0 === transfer.surface }
+                }
+                guard !departing.isEmpty, let tabID = tabGroupCoordinator.tabID(for: controller) else { continue }
+                var tree = controller.surfaceTree
+                for transfer in departing {
+                    tree = tree.removing(.leaf(view: transfer.surface))
+                }
+                // A fully empty Ghostty tree closes its native Tab.
+                if tree.isEmpty {
+                    let placeholder = surfaceCoordinator.placeholder(
+                        for: tabID, controller: controller, fontSize: fontSize, processless: true
+                    )
+                    tree = .init(view: placeholder)
+                }
+                replaceManagedSurfaceTree(tree, in: controller)
+            }
+            for transfer in transfers { transfer.surface.removeFromSuperview() }
+            surfaceCoordinator.commitTerminalTransfers(transfers)
+        }
+
         private func applyPhysical(
-            _ workspace: PolarStationNativeWorkspace,
+            _ logicalWorkspace: PolarStationNativeWorkspace,
             retireAbsent: Bool = true,
             focusIfActive: Bool,
             preservePendingFocus: Bool = false
         ) -> Bool {
             guard initialControllerIsAttached else {
-                pendingWorkspace = workspace
+                pendingWorkspace = logicalWorkspace
                 return false
             }
 
+            let workspace = terminalPresentation(for: logicalWorkspace)
+            let transfers = installedWorkspaceID == workspace.id ? surfaceCoordinator.terminalTransfers(to: workspace) : []
             // Freeze the desired selection before AppKit creates or reorders any
             // backing windows. Synchronous didBecomeKey notifications caused by
             // our own physical mutation must not become reverse user intents.
             tabGroupCoordinator.requestSelection(
-                tabID: workspace.selectedTabID,
-                paneID: workspace.terminalFocusPaneID,
+                tabID: logicalWorkspace.selectedTabID,
+                paneID: logicalWorkspace.terminalFocusPaneID,
                 focusIfActive: focusIfActive,
                 preservePendingFocus: preservePendingFocus
             )
@@ -1771,15 +1821,17 @@
             var installedAll = true
             let controllers = tabGroupCoordinator.reconcileTabs(
                 workspace.tabs,
-                retireAbsent: retireAbsent
+                retireAbsent: retireAbsent,
+                beforeInstalling: { [self] in detachTerminalTransfers(transfers, fontSize: fontSize) }
             ) { [unowned self] tab, controller, hasInstalledController in
-                if !hasInstalledController, tab.panes.isEmpty {
+                let backgroundOnly = needsProcesslessPlaceholder(for: tab, in: logicalWorkspace)
+                if !hasInstalledController, tab.panes.isEmpty, !backgroundOnly {
                     surfaceCoordinator.captureInitialPlaceholderIfNeeded(
                         tabID: tab.id,
                         controller: controller
                     )
                 }
-                let structure = InstalledTabStructure(tab: tab)
+                let structure = InstalledTabStructure(tab: tab, processlessPlaceholder: backgroundOnly)
                 let expectedSurfaceCount = max(tab.panes.count, 1)
                 let physicalTreeIntact = controller.surfaceTree.count == expectedSurfaceCount
                     && tab.panes.allSatisfy { pane in
@@ -1795,7 +1847,8 @@
                     guard install(
                         tab: tab,
                         in: controller,
-                        fontSize: fontSize
+                        fontSize: fontSize,
+                        processlessPlaceholder: backgroundOnly
                     ) else {
                         installedAll = false
                         return
@@ -1816,6 +1869,7 @@
             refreshNumberBadges()
             reconcileInputSelection(workspace)
             reconcilePaneVisibility(workspace)
+            if !controllers.isEmpty { installedWorkspaceID = workspace.id }
             return installedAll && controllers.count == workspace.tabs.count
         }
 
@@ -1828,13 +1882,15 @@
         private func install(
             tab: PolarStationNativeTab,
             in controller: TerminalController,
-            fontSize: UInt8
+            fontSize: UInt8,
+            processlessPlaceholder: Bool
         ) -> Bool {
             guard !tab.panes.isEmpty else {
                 let placeholder = surfaceCoordinator.placeholder(
                     for: tab.id,
                     controller: controller,
-                    fontSize: fontSize
+                    fontSize: fontSize,
+                    processless: processlessPlaceholder
                 )
                 replaceManagedSurfaceTree(
                     .init(view: placeholder),

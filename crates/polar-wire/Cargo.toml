@@ -1,0 +1,16 @@
+[package]
+name = "polar-wire"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+blake3 = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_cbor = { workspace = true }
+serde_bytes = { workspace = true }
+pem = { workspace = true }
+sha2 = { workspace = true }
+polar-transport = { workspace = true }
+

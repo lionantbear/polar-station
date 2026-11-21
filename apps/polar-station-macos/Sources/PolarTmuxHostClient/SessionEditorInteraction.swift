@@ -43,6 +43,7 @@ import CPolarStationDesktopClient
     public struct State: Decodable {
         public let prepare_label:String?
         public let can_prepare:Bool
+        public let diagnostics_section: String?
         public let endpoints:[CodexEndpointSettingsV1]
         public let end_preview: SessionEndPreviewV1?
         public let end_loading: Bool
@@ -103,12 +104,16 @@ import CPolarStationDesktopClient
         let tmux:Bool?
         let codex:Bool?
         let codex_service:Bool?
+        let destination:String?
         let claude:Bool?
+        let claude_login:Bool?
         let delivery:ToolSetupDeliveryV1?
         var wire: SessionEditorRequestV1? {
             switch type {
+            case "prepare_ssh_login": destination.map { .prepareSshLogin($0) }
+            case "probe_ssh_destination": destination.map { .probeSshDestination($0) }
             case "inspect_tools": .inspectTools(target:execution_target_id ?? "")
-            case "prepare_tools": .prepareTools(target:execution_target_id ?? "",tmux:tmux ?? false,codex:codex ?? false,codexService:codex_service ?? false,claude:claude ?? false,delivery:delivery ?? .externalTerminal)
+            case "prepare_tools": .prepareTools(target:execution_target_id ?? "",tmux:tmux ?? false,codex:codex ?? false,codexService:codex_service ?? false,claude:claude ?? false,claudeLogin:claude_login ?? false,delivery:delivery ?? .externalTerminal)
             case "set_creation_yolo": yolo.map { .setCreationYolo($0) }
             case "check_endpoint": .checkEndpoint(target: execution_target_id ?? "", endpoint: endpoint_id ?? "")
             case "ensure_local_codex": endpoint_id.map { .ensureLocalCodex(endpoint: $0) }
@@ -253,6 +258,7 @@ extension SessionEditorResultV1 {
         func object<T: Encodable>(_ item: T) -> Any { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(item))) ?? NSNull() }
         var value: Any = NSNull()
         switch self {
+        case .sshDestinationVerified(let machine): value = ["type":"ssh_destination_verified", "machine":object(machine)]
         case .tools(let tools): value = ["type":"tools", "tools":object(tools)]
         case .history(let rows, let next): value = ["type":"history", "threads":object(rows), "next_cursor":next as Any? ?? NSNull()]
         case .historyDetail(let detail): value = ["type":"history_detail", "detail":object(detail)]

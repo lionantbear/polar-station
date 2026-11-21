@@ -475,7 +475,7 @@ impl CodexControlService {
                     params["approvalPolicy"]=serde_json::to_value(codex_app_server_protocol::AskForApproval::Never).map_err(|_|"invalid_codex_request")?;
                     params["sandbox"]=serde_json::to_value(codex_app_server_protocol::SandboxMode::DangerFullAccess).map_err(|_|"invalid_codex_request")?;
                 }
-                let value=client.request("thread/start",params).await.map_err(RpcFailure::code)?;
+                let value=client.request_session_open("thread/start",params).await.map_err(RpcFailure::code)?;
                 let thread=value.pointer("/thread/id").and_then(Value::as_str).ok_or("invalid_thread_response")?;
                 let id=self.observe_loaded_thread(&endpoint_id,thread,None).await?;
                 if let Some(state) = self.states.write().await.get_mut(&id) {
@@ -508,7 +508,7 @@ impl CodexControlService {
                     params["approvalPolicy"] = serde_json::to_value(codex_app_server_protocol::AskForApproval::Never).map_err(|_| "invalid_codex_request")?;
                     params["sandbox"] = serde_json::to_value(codex_app_server_protocol::SandboxMode::DangerFullAccess).map_err(|_| "invalid_codex_request")?;
                 }
-                let value = client.request("thread/resume", params).await.map_err(RpcFailure::code)?;
+                let value = client.request_session_open("thread/resume", params).await.map_err(RpcFailure::code)?;
                 // Loaded/subscribed upstream Threads can ignore resume overrides.
                 // Confirm the returned effective policy; never stop active work to force it.
                 if yolo && (value.get("approvalPolicy") != Some(&serde_json::to_value(codex_app_server_protocol::AskForApproval::Never).map_err(|_| "invalid_codex_response")?)

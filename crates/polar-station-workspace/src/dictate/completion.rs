@@ -285,7 +285,8 @@ impl Engine {
         effects: &mut Vec<Effect>,
     ) {
         entry.phase = Phase::Delivering;
-        if intent.is_some() || entry.host_recording || entry.target.is_none() {
+        let setup_trial = entry.target.as_ref().is_some_and(|target| target.kind == super::TargetKind::SetupTrial);
+        if !setup_trial && (intent.is_some() || entry.host_recording || entry.target.is_none()) {
             effects.push(Effect::InsertCurrent {
                 operation_id: entry.operation_id.clone(),
                 text: entry.delivery_text(),

@@ -149,7 +149,10 @@ pub const State = struct {
             }
             tab.display_mode = .focus;
         }
-        if (selected.panes.len >= 9) return error.ChatTabFull;
+        if (content.kind == .tool_setup) tab.display_mode = .focus;
+        var placement = try @import("workspace_lifecycle.zig").planPanePlacement(allocator, selected.*, &.{}, 0, 1);
+        defer placement.deinit();
+        if (placement.value.full) return error.ChatTabFull;
         const pane_id = try newNativeIdentifier(allocator);
         const panes = try allocator.alloc(renderpkg.Pane, tab.panes.len + 1);
         @memcpy(panes[0..tab.panes.len], tab.panes);
@@ -158,7 +161,7 @@ pub const State = struct {
         @memcpy(order[0..tab.visual_pane_ids.len], tab.visual_pane_ids);
         order[order.len - 1] = pane_id;
         tab.panes = panes;
-        if (content.kind == .settings_pane) std.mem.rotate([]const u8, order, order.len - 1);
+        if (content.kind == .settings_pane or content.kind == .tool_setup) std.mem.rotate([]const u8, order, order.len - 1);
         tab.visual_pane_ids = order;
         // Explicit user open chooses the new pane; media/terminal focus changes
         // elsewhere do not select a different Composer target.
@@ -214,17 +217,12 @@ pub const State = struct {
 
     pub fn planAddSessions(allocator: std.mem.Allocator, source: renderpkg.Snapshot, tab_id: []const u8, sessions: []const controller_model.SessionIdentity) !renderpkg.Snapshot {
         const tab = source.tab(tab_id) orelse return error.UnknownTab;
-        var additions: std.ArrayListUnmanaged(controller_model.SessionIdentity) = .empty;
-        for (sessions) |session| {
-            if (source.sessionPane(session.execution_target_id, session.tmux_session_id) != null) continue;
-            var exists = false;
-            for (additions.items) |added| { if (std.mem.eql(u8, added.execution_target_id, session.execution_target_id) and std.mem.eql(u8, added.tmux_session_id, session.tmux_session_id)) { exists = true; break; } }
-            if (!exists) try additions.append(allocator, session);
-        }
-        if (tab.panes.len + additions.items.len > 9) return error.TabFull;
+        var placement = try @import("workspace_lifecycle.zig").planPanePlacement(allocator, tab.*, sessions, 0, 0);
+        defer placement.deinit();
+        if (placement.value.full) return error.TabFull;
         var candidate = source;
-        for (additions.items, 0..) |session, index| {
-            candidate = try planSnapshotAction(allocator, candidate, .{ .toggle_session_assignment = .{
+        for (placement.value.additions, 0..) |session, index| {
+            candidate = try planPreparedAction(allocator, candidate, .{ .toggle_session_assignment = .{
                 .tab_id = tab_id, .execution_target_id = session.execution_target_id, .tmux_session_id = session.tmux_session_id,
                 .pane_id = try newNativeIdentifier(allocator), .focus_new = tab.panes.len == 0 and index == 0,
                 .promote_new = tab.panes.len == 0 and index == 0,
@@ -233,23 +231,65 @@ pub const State = struct {
         return candidate;
     }
 
-    pub fn resolveSessionAssignment(workspace: renderpkg.Snapshot, action: control_intent.Action) !control_intent.Action {
-        if (action != .toggle_session_assignment) return action;
-        const assignment = action.toggle_session_assignment;
-        const target_id = assignment.tab_id orelse return error.MissingNativeIdentity;
-        const target = workspace.tab(target_id) orelse return error.UnknownTab;
-        if (target.sessionPane(assignment.execution_target_id, assignment.tmux_session_id) != null) return action;
-        const pane = workspace.sessionPane(assignment.execution_target_id, assignment.tmux_session_id) orelse return action;
-        return .{ .activate_pane = .{ .pane_id = pane.id } };
+    pub fn planSnapshotAction(allocator: std.mem.Allocator, workspace: renderpkg.Snapshot, immediate_action: ?control_intent.Action, observed_tab: ?[]const u8) !renderpkg.Snapshot {
+        if (immediate_action) |action| if (action == .move_pane) {
+            const move = action.move_pane;
+            const origin = workspace.tab(move.from_tab_id) orelse return error.UnknownTab;
+            const target = workspace.tab(move.to_tab_id) orelse return error.UnknownTab;
+            const pane = origin.pane(move.pane_id) orelse return error.UnknownPane;
+            if (pane.isTerminal() and !std.mem.eql(u8, origin.id, target.id)) {
+                if (move.to_index > target.panes.len) return error.InvalidPaneIndex;
+                var placement = try @import("workspace_lifecycle.zig").planPanePlacement(allocator, target.*, &.{.{
+                    .execution_target_id = pane.execution_target_id,
+                    .tmux_session_id = pane.tmux_session_id,
+                }}, 0, 0);
+                defer placement.deinit();
+                if (placement.value.full) return error.TabFull;
+                if (placement.value.existing.len != 0) {
+                    return @import("pane_interaction.zig").mergeDrop(allocator, workspace, origin.id, target.id, pane.id);
+                }
+            }
+        };
+        if (immediate_action) |action| if (action == .use_existing_session) {
+            const selection = action.use_existing_session;
+            var resolved = workspace;
+            for (workspace.tabs) |tab| {
+                const old = tab.sessionPane(selection.execution_target_id, selection.tmux_session_id) orelse continue;
+                const existing = tab.sessionPane(selection.replacement.execution_target_id, selection.replacement.tmux_session_id) orelse continue;
+                if (std.mem.eql(u8, old.id, existing.id)) continue;
+                resolved = try planPreparedAction(allocator, resolved, .{ .remove_pane = .{ .pane_id = old.id } }, observed_tab);
+            }
+            if (resolved.workspace_revision != workspace.workspace_revision) {
+                // One commit for removals and any remaining rebinding.
+                resolved.workspace_revision = workspace.workspace_revision;
+                // Retain the reduced membership while applying the binding.
+                return planPreparedAction(allocator, resolved, action, observed_tab);
+            }
+        };
+        if (immediate_action) |action| if (action == .toggle_session_assignment) {
+            const assignment = action.toggle_session_assignment;
+            const target = workspace.tab(assignment.tab_id orelse return error.MissingNativeIdentity) orelse return error.UnknownTab;
+            var placement = try @import("workspace_lifecycle.zig").planPanePlacement(allocator, target.*, &.{.{
+                .execution_target_id = assignment.execution_target_id,
+                .tmux_session_id = assignment.tmux_session_id,
+            }}, 0, 0);
+            defer placement.deinit();
+            if (placement.value.full) return error.TabFull;
+        };
+
+        return planPreparedAction(allocator, workspace, immediate_action, observed_tab);
     }
 
-    pub fn planSnapshotAction(allocator: std.mem.Allocator, workspace: renderpkg.Snapshot, requested_action: ?control_intent.Action, observed_tab: ?[]const u8) !renderpkg.Snapshot {
+    fn planPreparedAction(allocator: std.mem.Allocator, workspace: renderpkg.Snapshot, immediate_action: ?control_intent.Action, observed_tab: ?[]const u8) !renderpkg.Snapshot {
         const source = try view.workspace(allocator, workspace);
         if (source.tabs.len == 0) return error.InvalidWorkspace;
         const selected_native_tab_id = observed_tab orelse source.selected_tab_id;
         if (workspace.tab(selected_native_tab_id) == null) return error.UnknownTab;
-        const immediate_action = if (requested_action) |action| try resolveSessionAssignment(workspace, action) else null;
         if (immediate_action) |action| switch (action) {
+            .toggle_session_assignment => |assignment| {
+                const target = assignment.tab_id orelse return error.MissingNativeIdentity;
+                _ = workspace.tab(target) orelse return error.UnknownTab;
+            },
             .delete_tab => |deleted| {
                 // A stale menu or repeated click must not decrement the
                 // allocation unless the exact native Tab will be omitted.
@@ -319,8 +359,8 @@ pub const State = struct {
                     }
                     break :blk null;
                 } else null;
-                panes[pane_index] = if (source_pane.content) |content|
-                    try native_workspace_store.nativePane(allocator, .{ .id = source_pane.id, .content = content })
+                panes[pane_index] = if (replacement == null)
+                    (workspace.pane(source_pane.id) orelse return error.UnknownPane).pane.*
                 else
                     try controlPane(
                         allocator,
@@ -336,27 +376,17 @@ pub const State = struct {
                 source_tab,
                 immediate_action,
             )) |add| {
-                panes[pane_index] = try controlPane(
-                    allocator,
-                    add.pane_id,
-                    add.execution_target_id,
-                    add.tmux_session_id,
-                    .recovering,
-                );
+                if (workspace.sessionPane(add.execution_target_id, add.tmux_session_id)) |previous| {
+                    panes[pane_index] = previous.*;
+                    panes[pane_index].id = add.pane_id;
+                } else {
+                    panes[pane_index] = try controlPane(allocator, add.pane_id, add.execution_target_id, add.tmux_session_id, .recovering);
+                }
                 pane_index += 1;
             }
-            if (movementAddition(source, source_tab, immediate_action)) |add| {
-                const moving = workspace.pane(add.pane_id) orelse return error.UnknownPane;
-                panes[pane_index] = if (moving.pane.content) |content|
-                    try native_workspace_store.nativePane(allocator, .{ .id = add.pane_id, .content = content })
-                else
-                    try controlPane(
-                        allocator,
-                        add.pane_id,
-                        add.execution_target_id,
-                        add.tmux_session_id,
-                        add.transport_status,
-                    );
+            if (movementAddition(source, source_tab, immediate_action)) |pane_id| {
+                const moving = workspace.pane(pane_id) orelse return error.UnknownPane;
+                panes[pane_index] = moving.pane.*;
                 pane_index += 1;
             }
             std.debug.assert(pane_index == panes.len);
@@ -1043,18 +1073,11 @@ fn assignmentAddition(
     };
 }
 
-const MovementAddition = struct {
-    pane_id: []const u8,
-    execution_target_id: []const u8,
-    tmux_session_id: []const u8,
-    transport_status: controller_model.TransportStatus,
-};
-
 fn movementAddition(
     workspace: controller_model.WorkspaceMap,
     tab: controller_model.Tab,
     action: ?control_intent.Action,
-) ?MovementAddition {
+) ?[]const u8 {
     const value = action orelse return null;
     const move = switch (value) {
         .move_pane => |move| move,
@@ -1065,12 +1088,7 @@ fn movementAddition(
         if (!std.mem.eql(u8, source.id, move.from_tab_id)) continue;
         for (source.panes) |pane| {
             if (!std.mem.eql(u8, pane.id, move.pane_id)) continue;
-            return .{
-                .pane_id = pane.id,
-                .execution_target_id = pane.execution_target_id,
-                .tmux_session_id = pane.tmux_session_id,
-                .transport_status = pane.transport_status,
-            };
+            return pane.id;
         }
     }
     return null;

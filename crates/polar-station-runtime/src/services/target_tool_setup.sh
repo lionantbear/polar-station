@@ -55,5 +55,14 @@ if [ "$4" = 1 ]; then
  fi
  resolve_claude || { echo 'Installed Claude is unavailable.' >&2; exit 1; }
  "$station_claude" --version
- echo 'Claude will guide you through any required authentication when you start your session.'
+ if [ "$5" = 1 ]; then
+  if ! "$station_claude" auth status >/dev/null 2>&1; then
+   printf '\nIf Claude asks for a browser code, paste it into this terminal and press Enter.\n'
+   printf 'Use the terminal Paste command (Ctrl+Shift+V on Linux, Command+V on Mac by default).\n\n'
+   "$station_claude" auth login
+   printf '\nClaude sign-in completed.\n'
+  fi
+ else
+  echo 'Claude will guide you through any required authentication when you start your session.'
+ fi
 fi

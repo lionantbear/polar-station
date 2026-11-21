@@ -26,6 +26,9 @@ pub struct ListRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LocalRequest {
+    ResolveTerminalBinding {
+        binding: polar_tmux_types::PaneContentBindingV1,
+    },
     Show { principal: String, input: ShowRequest },
     List {
         input: ListRequest,

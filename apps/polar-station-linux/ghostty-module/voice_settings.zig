@@ -41,6 +41,8 @@ fn setEditorText(editor: *gtk.TextView, text: []const u8) void {
     editor.getBuffer().setText(value, @intCast(text.len));
 }
 
+pub const SetupSection = enum { input, account, trial };
+
 pub const Panel = struct {
     edit_lease:@import("settings_edit.zig").Lease,
     rendering_settings:bool=false,
@@ -48,8 +50,10 @@ pub const Panel = struct {
     terminology_rebase:?*gtk.Button=null,
     prompt_editor: ?*@import("settings_text_editor.zig").Panel = null,
     root: *gtk.Box,
-    setup: *gtk.Box,
-    open_setup: ?*const fn (?*anyopaque) void = null,
+    account_setup: *gtk.Box,
+    microphone_setup: *gtk.Box,
+    service_setup: *gtk.Box,
+    open_setup: ?*const fn (?*anyopaque, SetupSection) void = null,
     observations_changed: ?*const fn (?*anyopaque) void = null,
     account_connected: ?bool = null,
     service_available: ?bool = null,
@@ -130,13 +134,16 @@ pub const Panel = struct {
     pub fn create() !*Panel {
         const self = try a.create(Panel);
         const root = gtk.Box.new(.vertical, 12);
-        const setup = gtk.Box.new(.vertical, 12);
-        _ = setup.as(gobject.Object).refSink();
+        const account_setup = gtk.Box.new(.vertical, 8);
+        const microphone_setup = gtk.Box.new(.vertical, 8);
+        const service_setup = gtk.Box.new(.vertical, 8);
+        for ([_]*gtk.Box{ account_setup, microphone_setup, service_setup }) |section|
+            _ = section.as(gobject.Object).refSink();
         const status = label("Voice: checking local Host…");
-        setup.append(status.as(gtk.Widget));
+        service_setup.append(status.as(gtk.Widget));
         const account = label("Account not checked");
-        setup.append(account.as(gtk.Widget));
-        self.* = .{ .root_status=label("Voice: checking local Host…"), .edit_lease=.init(a), .reference_hint=label(""), .next_cleanup=label("Checking retention schedule…"),.import_issues=gtk.Box.new(.vertical,6),.output_mode=gtk.DropDown.new(null,null),.retention_enabled=gtk.CheckButton.newWithLabel("Automatically clean up completed history and audio"),.retention_days=gtk.SpinButton.newWithRange(1,4294967295,1), .shortcut_mode = label(""), .transcription_mode = gtk.DropDown.new(null, null), .terminology_status = label("Edit terms, then Save terminology."), .terminology_root = gtk.Box.new(.vertical, 12), .terminology_button = gtk.Button.newWithLabel("Terminology — edit names and spellings…"), .root = root, .setup = setup, .status = status, .account = account, .details = label("Select a recording to review saved ranges and text."), .cleanup = gtk.CheckButton.newWithLabel("Clean spelling, punctuation and filler words"), .context = gtk.CheckButton.newWithLabel(""), .device_names = gtk.StringList.new(null), .devices = gtk.DropDown.new(null, null), .records = gtk.Box.new(.vertical, 8), .test_editor = gtk.TextView.new(), .glossary = gtk.TextView.new(), .meter = gtk.LevelBar.newForInterval(0, 1), .usage = label("Saved audio usage: checking…"), .playback_controls = gtk.MediaControls.new(null), .speech = c.polar_station_dictate_speech_new(), .incoming = glib.AsyncQueue.new(), .outgoing = glib.AsyncQueue.new() };
+        account_setup.append(account.as(gtk.Widget));
+        self.* = .{ .root_status=label("Voice: checking local Host…"), .edit_lease=.init(a), .reference_hint=label(""), .next_cleanup=label("Checking retention schedule…"),.import_issues=gtk.Box.new(.vertical,6),.output_mode=gtk.DropDown.new(null,null),.retention_enabled=gtk.CheckButton.newWithLabel("Automatically clean up completed history and audio"),.retention_days=gtk.SpinButton.newWithRange(1,4294967295,1), .shortcut_mode = label(""), .transcription_mode = gtk.DropDown.new(null, null), .terminology_status = label("Edit terms, then Save terminology."), .terminology_root = gtk.Box.new(.vertical, 12), .terminology_button = gtk.Button.newWithLabel("Terminology — edit names and spellings…"), .root = root, .account_setup = account_setup, .microphone_setup = microphone_setup, .service_setup = service_setup, .status = status, .account = account, .details = label("Select a recording to review saved ranges and text."), .cleanup = gtk.CheckButton.newWithLabel("Clean spelling, punctuation and filler words"), .context = gtk.CheckButton.newWithLabel(""), .device_names = gtk.StringList.new(null), .devices = gtk.DropDown.new(null, null), .records = gtk.Box.new(.vertical, 8), .test_editor = gtk.TextView.new(), .glossary = gtk.TextView.new(), .meter = gtk.LevelBar.newForInterval(0, 1), .usage = label("Saved audio usage: checking…"), .playback_controls = gtk.MediaControls.new(null), .speech = c.polar_station_dictate_speech_new(), .incoming = glib.AsyncQueue.new(), .outgoing = glib.AsyncQueue.new() };
         root.append(self.root_status.as(gtk.Widget));
         self.rebase=gtk.Button.newWithLabel("");
         self.terminology_rebase=gtk.Button.newWithLabel("");
@@ -152,12 +159,12 @@ pub const Panel = struct {
         _=gtk.Editable.signals.changed.connect(self.retention_days.as(gtk.Editable),*Panel,retentionChanged,self,.{});
         inline for(.{self.devices,self.transcription_mode,self.output_mode}) |control| @import("form_controls.zig").wrapDropDown(control);
         self.device_names.append("System default");
-        const login = gtk.Box.new(.vertical, 8);
-        setup.append(login.as(gtk.Widget));
-        button(root, "Open Local Diagnostics — account, microphone and voice tests…", openSetup, self);
-        button(login, "Sign in / Switch account", signIn, self);
-        button(login, "Cancel sign-in", cancelLogin, self);
-        button(login, "Recheck", refresh, self);
+        button(root, "Audio input…", setupButton(.input), self);
+        button(root, "Account…", setupButton(.account), self);
+        button(root, "Test Voice…", setupButton(.trial), self);
+        button(account_setup, "Sign in / Switch account", signIn, self);
+        button(account_setup, "Cancel sign-in", cancelLogin, self);
+        button(account_setup, "Recheck", refresh, self);
         root.append(self.terminology_button.as(gtk.Widget));
         root.append(label("The desktop owns the actual key binding. Use the Dictate button for recordings up to 10 minutes.").as(gtk.Widget));
         root.append(label("Shortcut interaction").as(gtk.Widget));
@@ -165,11 +172,11 @@ pub const Panel = struct {
         button(root, "Open system shortcut settings…", shortcut, self);
         root.append(label("GNOME: this button opens Settings → Apps → Polar Station. Select Global Shortcuts, then Hold to Dictate. For reliable activation on GNOME use an ordinary combination such as Alt+Z. Polar Station installs its GNOME capture extension automatically. After first installation, sign out and back in once to activate it. Recording then uses complete physical key events. Other desktops use their system shortcut editor.").as(gtk.Widget));
         root.append(label("External inputs must support accessibility editing. On desktops without accessibility click events, unbound drafts stay saved: use Copy in Dictate drafts. Recording into the already focused external input uses the global shortcut.").as(gtk.Widget));
-        setup.append(label("Microphone access is managed by your desktop audio service. Choose System default or a fixed input and run the local test. A missing fixed input stops capture.").as(gtk.Widget));
+        microphone_setup.append(label("Microphone access is managed by your desktop audio service. Choose System default or a fixed input and run the local test. A missing fixed input stops capture.").as(gtk.Widget));
         try self.device_ids.append(a, try a.dupeSentinel(u8, "", 0));
         self.devices.setModel(self.device_names.as(gio.ListModel));
-        setup.append(self.devices.as(gtk.Widget));
-        button(setup, "Save microphone selection", save, self);
+        microphone_setup.append(self.devices.as(gtk.Widget));
+        button(microphone_setup, "Save microphone selection", save, self);
         root.append(label("Transcription mode · changes apply to the next recording").as(gtk.Widget));
         root.append(self.transcription_mode.as(gtk.Widget));
         _ = gobject.Object.signals.notify.connect(self.transcription_mode,*Panel,modeChanged,self,.{.detail="selected"});
@@ -199,18 +206,18 @@ pub const Panel = struct {
 
         button(root, "Save Voice settings", save, self);
         const test_row = gtk.Box.new(.vertical, 8);
-        setup.append(test_row.as(gtk.Widget));
+        service_setup.append(test_row.as(gtk.Widget));
         button(test_row, "Local mic test (10s, no upload)", localTest, self);
         button(test_row, "Transcription test", transcriptionTest, self);
         button(test_row, "Stop test", stopTest, self);
-        setup.append(self.meter.as(gtk.Widget));
-        setup.append(self.playback_controls.as(gtk.Widget));
-        button(setup, "Stop playback", stopPlayback, self);
+        service_setup.append(self.meter.as(gtk.Widget));
+        service_setup.append(self.playback_controls.as(gtk.Widget));
+        button(service_setup, "Stop playback", stopPlayback, self);
         self.test_editor.setWrapMode(.word_char);
         self.test_editor.as(gtk.Widget).setSizeRequest(-1, 100);
-        setup.append(self.test_editor.as(gtk.Widget));
-        button(setup, "Copy test text", copyTest, self);
-        setup.append(label("Test text stays here. Test recordings are marked Test and can be recovered below.").as(gtk.Widget));
+        service_setup.append(self.test_editor.as(gtk.Widget));
+        button(service_setup, "Copy test text", copyTest, self);
+        service_setup.append(label("Test text stays here. Test recordings are marked Test and can be recovered below.").as(gtk.Widget));
         root.append(label("History and storage · retention starts when a result is inserted, copied or explicitly accepted.").as(gtk.Widget));
         root.append(self.retention_enabled.as(gtk.Widget));
         root.append(label("Keep completed records for days").as(gtk.Widget));root.append(self.retention_days.as(gtk.Widget));
@@ -218,7 +225,7 @@ pub const Panel = struct {
         button(root,"Clean up by rules…",previewCleanup,self);
         root.append(label("Pending, unresolved, uncertain and pinned records are kept. Eligible audio and history text are deleted together.").as(gtk.Widget));
         root.append(self.import_issues.as(gtk.Widget));
-        setup.append(self.usage.as(gtk.Widget));
+        root.append(self.usage.as(gtk.Widget));
         root.append(self.next_cleanup.as(gtk.Widget));
         const pager = gtk.Box.new(.vertical, 8);
         root.append(pager.as(gtk.Widget));
@@ -228,8 +235,8 @@ pub const Panel = struct {
         root.append(self.records.as(gtk.Widget));
         root.append(self.details.as(gtk.Widget));
         self.details.setSelectable(1);
-        setup.append(label("Diagnostics: built-in Opus/WebM encoder · 1-second durable saves · long-form transcription segments · no shell PATH dependencies.").as(gtk.Widget));
-        button(setup, "Copy diagnostics", copyDiagnostics, self);
+        service_setup.append(label("Diagnostics: built-in Opus/WebM encoder · 1-second durable saves · long-form transcription segments · no shell PATH dependencies.").as(gtk.Widget));
+        button(service_setup, "Copy diagnostics", copyDiagnostics, self);
         inline for(.{self.cleanup,self.context,self.retention_enabled,enabled}) |control| @import("form_controls.zig").wrapCheck(control);
         wrapCaption(self.terminology_button.getChild());
         self.thread = try std.Thread.spawn(.{}, worker, .{self});
@@ -275,10 +282,17 @@ pub const Panel = struct {
         self.actions.deinit(a);
         self.edit_lease.deinit();
         self.device_names.unref();
-        self.setup.as(gobject.Object).unref();
+        for ([_]*gtk.Box{ self.account_setup, self.microphone_setup, self.service_setup }) |section|
+            section.as(gobject.Object).unref();
         a.destroy(self);
     }
-    fn openSetup(_: *gtk.Button, self: *Panel) callconv(.c) void { if (self.open_setup) |open| open(self.callback_context); }
+    fn setupButton(comptime section: SetupSection) *const fn (*gtk.Button, *Panel) callconv(.c) void {
+        return struct {
+            fn clicked(_: *gtk.Button, self: *Panel) callconv(.c) void {
+                if (self.open_setup) |open| open(self.callback_context, section);
+            }
+        }.clicked;
+    }
 
     pub fn recheckAccount(self: *Panel) void {
         self.send(.{ .op = "voice_refresh" });
@@ -775,7 +789,11 @@ pub const Panel = struct {
         } else if (eq(action.op, "play")) self.send(.{ .op = "export_audio", .id = action.id, .start_sample = action.start }) else if (eq(action.op, "pin")) self.send(.{ .op = "pin", .id = action.id, .pinned = action.pinned }) else if (eq(action.op, "accept")) self.send(.{ .op = "accept", .id = action.id, .now_ms = @as(i64, @intCast(std.Io.Timestamp.now(global.io(), .real).toMilliseconds())) }) else self.send(.{ .op = action.op, .id = action.id });
     }
     fn parentWindow(self: *Panel) ?*gtk.Window {
-        return gobject.ext.cast(gtk.Window, self.setup.as(gtk.Widget).getRoot() orelse self.root.as(gtk.Widget).getRoot() orelse return null);
+        for ([_]*gtk.Box{ self.account_setup, self.microphone_setup, self.service_setup, self.root }) |section| {
+            const root = section.as(gtk.Widget).getRoot() orelse continue;
+            return gobject.ext.cast(gtk.Window, root);
+        }
+        return null;
     }
     fn closeDialogs(self: *Panel) void {
         self.cleanup_confirmation.close();

@@ -1,0 +1,81 @@
+--- a/include/ghostty.h
++++ b/include/ghostty.h
+@@ -1180,4 +1180,5 @@
+                                                      const ghostty_surface_config_s*);
+ GHOSTTY_API ghostty_surface_t ghostty_surface_new_display(ghostty_app_t, const ghostty_surface_config_s*);
++GHOSTTY_API ghostty_surface_t ghostty_surface_new_station_terminal(ghostty_app_t, const ghostty_surface_config_s*, const char*);
+ GHOSTTY_API bool ghostty_surface_display_geometry(ghostty_surface_t, double*, double*, double*, double*);
+ GHOSTTY_API bool ghostty_surface_display_text(ghostty_surface_t, uint32_t, const uint8_t*, uintptr_t);
+--- a/src/apprt/embedded.zig
++++ b/src/apprt/embedded.zig
+@@ -455,4 +455,5 @@
+     inspector: ?*Inspector = null,
+     station_display_only: bool = false,
++    station_terminal_config: ?[:0]const u8 = null,
+ 
+     /// The current title of the surface. The embedded apprt saves this so
+@@ -504,5 +505,5 @@
+ 
+     pub fn init(self: *Surface, app: *App, opts: Options) !void {
+-        return self.initWithMode(app, opts, false);
++        return self.initWithMode(app, opts, false, null);
+     }
+ 
+@@ -511,7 +512,12 @@
+     }
+ 
+-    fn initWithMode(self: *Surface, app: *App, opts: Options, display_only: bool) !void {
++    pub fn stationTerminalConfig(self: *const Surface) ?[:0]const u8 {
++        return self.station_terminal_config;
++    }
++
++    fn initWithMode(self: *Surface, app: *App, opts: Options, display_only: bool, terminal_config: ?[:0]const u8) !void {
+         self.* = .{
+             .station_display_only = display_only,
++            .station_terminal_config = terminal_config,
+             .app = app,
+             .platform = try .init(opts.platform_tag, opts.platform),
+@@ -625,4 +631,5 @@
+         // Initialize our surface right away. We're given a view that is
+         // ready to use.
++        defer self.station_terminal_config = null;
+         try self.core_surface.init(
+             app.core_app.alloc,
+@@ -1870,7 +1877,17 @@
+     export fn ghostty_surface_new_display(app: *App, opts: *const apprt.Surface.Options) ?*Surface {
+         const surface = app.core_app.alloc.create(Surface) catch return null;
+-        surface.initWithMode(app, opts.*, true) catch |err| {
++        surface.initWithMode(app, opts.*, true, null) catch |err| {
+             app.core_app.alloc.destroy(surface);
+             log.err("error initializing Station display err={}", .{err});
++            return null;
++        };
++        return surface;
++    }
++
++    export fn ghostty_surface_new_station_terminal(app: *App, opts: *const apprt.Surface.Options, config: [*:0]const u8) ?*Surface {
++        const surface = app.core_app.alloc.create(Surface) catch return null;
++        surface.initWithMode(app, opts.*, false, std.mem.span(config)) catch |err| {
++            app.core_app.alloc.destroy(surface);
++            log.err("error initializing Station terminal err={}", .{err});
+             return null;
+         };
+--- a/macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift
++++ b/macos/Sources/Ghostty/Surface View/SurfaceView_AppKit.swift
+@@ -232,5 +232,5 @@
+         override var acceptsFirstResponder: Bool { return true }
+ 
+-        init(_ app: ghostty_app_t, baseConfig: SurfaceConfiguration? = nil, uuid: UUID? = nil, stationDisplayOnly: Bool = false) {
++        init(_ app: ghostty_app_t, baseConfig: SurfaceConfiguration? = nil, uuid: UUID? = nil, stationDisplayOnly: Bool = false, stationTerminalConfig: String? = nil) {
+             self.stationIsDisplayOnly = stationDisplayOnly
+             self.markedText = NSMutableAttributedString()
+@@ -395,4 +395,9 @@
+             let surface = surface_cfg.withCValue(view: self) { surface_cfg_c in
+                 surface_cfg_c.userdata = callbackUserdata
++                if let stationTerminalConfig {
++                    return stationTerminalConfig.withCString {
++                        ghostty_surface_new_station_terminal(app, &surface_cfg_c, $0)
++                    }
++                }
+                 return stationDisplayOnly
+                     ? ghostty_surface_new_display(app, &surface_cfg_c)

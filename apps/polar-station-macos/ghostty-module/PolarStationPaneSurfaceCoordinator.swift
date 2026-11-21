@@ -138,6 +138,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
 
     private var residentPanes: [String: ResidentPane] = [:]
     private var placeholders: [String: Ghostty.SurfaceView] = [:]
+    private var backgroundPlaceholders: [String: Ghostty.SurfaceView] = [:]
     private var retirementLeases: [String: RetirementLease] = [:]
     private var failedRetirementLeaseIDs: Set<String> = []
     private var retirementState = NativeSurfaceRetirementState()
@@ -177,6 +178,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         readyBindingGenerations.removeAll()
         residentPanes.removeAll()
         placeholders.removeAll()
+        backgroundPlaceholders.removeAll()
         retirementLeases.removeAll()
         failedRetirementLeaseIDs.removeAll()
         retirementState = NativeSurfaceRetirementState()
@@ -206,6 +208,48 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
 
     func surface(for paneID: String) -> Ghostty.SurfaceView? {
         residentPanes[paneID]?.surface ?? setupPanes[paneID]?.view ?? displayPanes[paneID]?.display.view
+    }
+
+    var residentTerminalPaneIDs: Set<String> { Set(residentPanes.keys) }
+
+    struct TerminalTransfer {
+        let from: String
+        let to: String
+        let surface: Ghostty.SurfaceView
+    }
+
+    func terminalTransfers(to workspace: PolarStationNativeWorkspace) -> [TerminalTransfer] {
+        guard let backendPath = backendSocket?()?.path, !backendSuspended else { return [] }
+        let panes = workspace.tabs.flatMap(\.panes)
+        let desiredIDs = Set(panes.map(\.id))
+        let terminals = panes.compactMap { pane -> (id: String, binding: Binding)? in
+            guard pane.content == nil, let target = pane.executionTargetID, let session = pane.tmuxSessionID
+            else { return nil }
+            return (pane.id, binding(executionTargetID: target, tmuxSessionID: session, source: pane.source))
+        }
+        return terminals.compactMap { terminal in
+            guard residentPanes[terminal.id] == nil,
+                  !terminals.contains(where: { $0.id != terminal.id && $0.binding == terminal.binding })
+            else { return nil }
+            let sources = residentPanes.filter { id, resident in
+                !desiredIDs.contains(id) && resident.binding == terminal.binding && resident.backendPath == backendPath
+            }
+            guard sources.count == 1, let source = sources.first else { return nil }
+            return .init(from: source.key, to: terminal.id, surface: source.value.surface)
+        }
+    }
+
+    func commitTerminalTransfers(_ transfers: [TerminalTransfer]) {
+        for transfer in transfers {
+            guard let resident = residentPanes.removeValue(forKey: transfer.from) else { continue }
+            residentPanes[transfer.to] = resident
+            if let overlay = recoveryOverlays.removeValue(forKey: transfer.from) {
+                let paneID = transfer.to
+                overlay.action = { [weak self] command in self?.sendRecovery(paneID: paneID, command: command) }
+                recoveryOverlays[paneID] = overlay
+            }
+            if focusedPaneID == transfer.from { focusedPaneID = transfer.to }
+        }
     }
 
     @discardableResult
@@ -323,8 +367,20 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
     func placeholder(
         for tabID: String,
         controller: TerminalController,
-        fontSize: UInt8
+        fontSize: UInt8,
+        processless: Bool = false
     ) -> Ghostty.SurfaceView {
+        if processless {
+            if let existing = backgroundPlaceholders[tabID] { return existing }
+            guard let app = controller.ghostty.app else { preconditionFailure("Ghostty runtime is unavailable") }
+            var configuration = Ghostty.SurfaceConfiguration()
+            configuration.fontSize = Float32(fontSize)
+            let view = Ghostty.SurfaceView(app, baseConfig: configuration, stationDisplayOnly: true)
+            backgroundPlaceholders[tabID] = view
+            placeholders[tabID] = nil
+            return view
+        }
+        backgroundPlaceholders[tabID] = nil
         if let existing = placeholders[tabID] {
             return existing
         }
@@ -335,6 +391,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
 
     func removePlaceholder(for tabID: String) {
         placeholders[tabID] = nil
+        backgroundPlaceholders[tabID] = nil
     }
 
     func placeholderSnapshot() -> [String: Ghostty.SurfaceView] {
@@ -349,6 +406,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
 
     func prunePlaceholders(retaining tabIDs: Set<String>) {
         placeholders = placeholders.filter { tabIDs.contains($0.key) }
+        backgroundPlaceholders = backgroundPlaceholders.filter { tabIDs.contains($0.key) }
     }
 
     func rebindChangedPaneContent(
@@ -603,35 +661,11 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
         fontSize: UInt8
     ) -> ResidentPane {
         let identifier = UUID().uuidString.lowercased()
-        let paneDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("polar-tmux/panes", isDirectory: true)
-        try? FileManager.default.createDirectory(
-            at: paneDirectory,
-            withIntermediateDirectories: true
-        )
-        let helper = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Helpers/polar-tmux").path
         let channelID = "macos-surface-\(identifier)"
-        let controlSocketURL = paneDirectory
-            .appendingPathComponent("pane-\(identifier.prefix(12)).sock")
-        var arguments = [
-            helper, "pane-host",
-            "--channel-id", channelID,
-            "--channel-generation", "1",
-            "--control-socket", controlSocketURL.path,
-            "--host-socket", backendSocket?()?.path ?? "/unavailable-station-backend.sock",
-            "--initial-execution-target", initialBinding.executionTargetID,
-            "--initial-session", initialBinding.tmuxSessionID,
-        ]
-        if let source = initialBinding.source {
-            let data = try? JSONEncoder().encode(source)
-            // Encoding failure must reject launch, never drop the identity guard.
-            arguments += ["--initial-source", data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"]
-        }
+        let terminalConfig = terminalConfiguration(initialBinding, channelID: channelID)
         var configuration = Ghostty.SurfaceConfiguration()
         configuration.fontSize = Float32(fontSize)
-        configuration.command = arguments.map(shellQuote).joined(separator: " ")
-        let surface = makeSurface(controller, configuration: configuration)
+        let surface = makeSurface(controller, configuration: configuration, terminalConfig: terminalConfig)
         if let handle = surface.surface { ghostty_surface_set_polar_native_control(handle, true) }
         return ResidentPane(
             surface: surface,
@@ -639,7 +673,7 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
             binding: initialBinding,
             channelID: channelID,
             channelGeneration: 1,
-            controlSocketURL: controlSocketURL,
+            controlSocketURL: URL(string: "station-terminal:")!,
             contentRevision: 1,
             backendPath: backendSocket?()?.path ?? "/unavailable-station-backend.sock"
         )
@@ -882,16 +916,35 @@ final class PolarStationPaneSurfaceCoordinator: NSObject {
 
     private func makeSurface(
         _ controller: TerminalController,
-        configuration: Ghostty.SurfaceConfiguration
+        configuration: Ghostty.SurfaceConfiguration,
+        terminalConfig: String? = nil
     ) -> Ghostty.SurfaceView {
         guard let app = controller.ghostty.app else {
             preconditionFailure("Ghostty runtime is unavailable")
         }
-        return Ghostty.SurfaceView(app, baseConfig: configuration)
+        return Ghostty.SurfaceView(app, baseConfig: configuration, stationTerminalConfig: terminalConfig)
     }
 
-    private func shellQuote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    private func terminalConfiguration(_ binding: Binding, channelID: String) -> String {
+        struct Config: Encodable {
+            struct Channel: Encodable {
+                let id: String
+                let generation: UInt64 = 1
+            }
+            let binding: PolarTmuxPaneContentBinding
+            let size = ["columns": 80, "rows": 24]
+            let channel: Channel
+        }
+        let content = PolarTmuxPaneContentBinding(
+            executionTarget: binding.executionTargetID,
+            tmuxSessionID: binding.tmuxSessionID,
+            source: binding.source
+        )
+        do {
+            return String(decoding: try JSONEncoder().encode(Config(binding: content, channel: .init(id: channelID))), as: UTF8.self)
+        } catch {
+            preconditionFailure("Invalid direct Station terminal binding")
+        }
     }
 
     private func token(for object: AnyObject) -> String {

@@ -7,7 +7,13 @@ use serde::{Deserialize, Serialize};
 pub enum SettingsRoute {
     #[default]
     Home,
-    Setup { remote: bool },
+    Setup {
+        remote: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        section: Option<String>,
+    },
     AppearanceGroup,
     Agents,
     Intelligence,
@@ -22,6 +28,11 @@ pub enum SettingsRoute {
     Notifications,
     Connectors,
     Resources { resource: Option<String> },
+}
+impl SettingsRoute {
+    fn setup(remote: bool) -> Self {
+        Self::Setup { remote, target: None, section: None }
+    }
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct SettingsEntry {
@@ -64,9 +75,11 @@ impl SettingsNavigation {
                 if route != self.route {
                     // Navigation depth is semantic, not a log of every clicked object.
                     // A feature link always has the directory as its parent.
-                    self.history = match route {
-                        SettingsRoute::Home => vec![],
-                        SettingsRoute::Workspace | SettingsRoute::TmuxStatusBar => vec![SettingsRoute::Home, SettingsRoute::AppearanceGroup],
+                    self.history = match (&self.route, &route) {
+                        (source @ SettingsRoute::Voice { .. }, SettingsRoute::Setup { section: Some(_), .. }) => vec![SettingsRoute::Home, source.clone()],
+                        (SettingsRoute::Setup { .. }, SettingsRoute::Setup { .. }) => self.history.clone(),
+                        (_, SettingsRoute::Home) => vec![],
+                        (_, SettingsRoute::Workspace | SettingsRoute::TmuxStatusBar) => vec![SettingsRoute::Home, SettingsRoute::AppearanceGroup],
                         _ => vec![SettingsRoute::Home],
                     };
                     self.route = route;
@@ -108,8 +121,8 @@ impl SettingsNavigation {
                 SettingsRoute::Resources { .. } => "Resources",
             },
             scopes: vec![
-                entry("This computer", "", "desktopcomputer", SettingsRoute::Setup { remote: false }),
-                entry("Remote hosts", "", "network", SettingsRoute::Setup { remote: true }),
+                entry("This computer", "", "desktopcomputer", SettingsRoute::setup(false)),
+                entry("Remote hosts", "", "network", SettingsRoute::setup(true)),
             ],
             entries: match &self.route {
                 SettingsRoute::AppearanceGroup => vec![
@@ -122,7 +135,7 @@ impl SettingsNavigation {
                     entry("Session intelligence", "Summaries and monitoring", "sparkles", SettingsRoute::Intelligence),
                 ],
                 _ => vec![
-                entry("Setup & diagnostics", "This computer and remote hosts", "checkmark.shield", SettingsRoute::Setup { remote: false }),
+                entry("Setup & diagnostics", "This computer and remote hosts", "checkmark.shield", SettingsRoute::setup(false)),
                 entry("Appearance & Workspace", "Theme, text and layout", "paintbrush", SettingsRoute::AppearanceGroup),
                 entry("Station Backend", "Local compact or full Polar; applies to every Workspace", "server.rack", SettingsRoute::StationBackend),
                 entry("Voice", "Dictate, cleanup and terminology", "mic", SettingsRoute::Voice { section: None }),

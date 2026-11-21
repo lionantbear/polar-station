@@ -443,6 +443,15 @@ pub const Controller = struct {
                 }
             }
             self.updateRecordingNotification();
+            if (self.editor) |editor| if (self.target_id) |target_id| {
+                const entries = field(self.view(), "entries");
+                if (entries == .array) for (entries.array.items) |entry| {
+                    const target = field(entry, "target");
+                    if (!same(string(target, "kind"), "setup_trial") or !same(string(target, "identity"), target_id)) continue;
+                    @import("main.zig").diagnosticsDictateProgress(editor, string(entry, "phase"), string(entry, "error"));
+                    break;
+                };
+            };
             if (self.changed) |f| f(self.context);
             const effects = field(parsed.value, "effects");
             if (effects == .array) for (effects.array.items) |effect| self.execute(effect);
@@ -595,6 +604,18 @@ pub const Controller = struct {
         self.submitted_id = a.dupe(u8,id) catch return;
         self.input(.{.type="refine_context",.context_id=context_id,.project=project,.operation_id=id,.target=.{.kind="editor",.identity=id,.revision=id,.context=""},.text=self.original.?});
     }
+    pub fn startSetupTrial(self: *Controller, editor: *gtk.TextView) bool {
+        if (!self.enabled() or !same(string(self.presentation(), "action"), "start")) return false;
+        const id = std.fmt.allocPrint(a, "{x}", .{@import("station_random.zig").int(u128)}) catch return false;
+        defer a.free(id);
+        self.captureTarget(editor, id) catch return false;
+        self.cancelled = false;
+        self.submitted_id = a.dupe(u8, id) catch return false;
+        self.input(.{ .type = "start", .operation_id = id, .targets = .{.{
+            .kind = "setup_trial", .identity = id, .revision = id, .context = "",
+        }} });
+        return true;
+    }
     pub fn toggle(self: *Controller, editor: ?*gtk.TextView) void {
         const reference=if(editor) |view_| selectedText(view_) else null;
         defer if(reference) |text| glib.free(text);
@@ -744,7 +765,7 @@ pub const Controller = struct {
                 self.reloadVoiceSettings();
                 return;
             }
-            const begin = std.json.Stringify.valueAlloc(a, .{ .op = "capture_begin", .id = id, .context = field(effect, "context"), .project=field(effect,"project"), .reference = string(effect, "reference") }, .{}) catch return;
+            const begin = std.json.Stringify.valueAlloc(a, .{ .op = "capture_begin", .id = id, .context = field(effect, "context"), .project=field(effect,"project"), .reference = string(effect, "reference"), .is_test = boolean(effect, "is_test") }, .{}) catch return;
             defer a.free(begin);
             const reply = c.polar_station_dictate_service_request(self.speech, begin.ptr, begin.len);
             if (reply == null) {
@@ -882,6 +903,9 @@ pub const Controller = struct {
                     const inserted = bufferText(buffer);
                     defer glib.free(inserted);
                     outcome = if (same(std.mem.span(inserted), expected)) .applied else .unknown;
+                    if (outcome == .applied and same(string(field(effect, "target"), "kind"), "setup_trial") and
+                        std.mem.trim(u8, text, " \t\r\n").len != 0)
+                        @import("main.zig").diagnosticsDictateSucceeded(editor);
                 }
             };
             if(outcome==.applied) if(self.refine_lease) |lease| if(self.refined) |notify| notify(self.context,lease.value,self.original orelse "",string(effect,"text"),self.refine_english);

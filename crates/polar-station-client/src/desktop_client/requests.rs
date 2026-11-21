@@ -1,5 +1,5 @@
 //! One correlation ledger for all desktop control APIs. No native/UI ownership.
-use polar_station_protocol::{DesktopSendError, LocalClientFrame, LocalHostFrame, SessionEditorRequestV1};
+use polar_station_protocol::{AgentProviderV1, ClientApplicationMessage, ControlCenterCommandV1, ControlCenterIntentV1, DesktopSendError, LocalClientFrame, LocalHostFrame, QuickSessionKindV1, SessionEditorRequestV1};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, time::Duration};
@@ -7,6 +7,7 @@ use tokio::time::Instant;
 
 pub(super) const LIMIT: usize = 64;
 const TIMEOUT: Duration = Duration::from_secs(8);
+const CODEX_NEW_RESUME_TIMEOUT: Duration = Duration::from_secs(15);
 const CODEX_PREPARATION_TIMEOUT: Duration = Duration::from_secs(50);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFailure {
@@ -65,10 +66,19 @@ impl Requests {
             .as_str()
             .or_else(|| command["type"].as_str())
             .unwrap_or("");
-        let timeout = if verb == "session_editor" && command["request"]["type"] == "ensure_local_codex" {
-            CODEX_PREPARATION_TIMEOUT
-        } else {
-            TIMEOUT
+        let timeout = match frame {
+            LocalClientFrame::ApplicationRequest {
+                request: ClientApplicationMessage::ControlCenterV1(request),
+            } => match &request.command {
+                ControlCenterCommandV1::SessionEditor { request: SessionEditorRequestV1::EnsureLocalCodex { .. } } => CODEX_PREPARATION_TIMEOUT,
+                ControlCenterCommandV1::SubmitIntent {
+                    intent: ControlCenterIntentV1::CreateCodexSession { .. }
+                        | ControlCenterIntentV1::CreateAgentSession { provider: AgentProviderV1::Codex, .. }
+                        | ControlCenterIntentV1::QuickCreateSession { kind: QuickSessionKindV1::Codex, .. },
+                } => CODEX_NEW_RESUME_TIMEOUT,
+                _ => TIMEOUT,
+            },
+            _ => TIMEOUT,
         };
         // Unknown commands are conservatively effectful, never safe to replay.
         let mutation = if verb == "session_editor" {

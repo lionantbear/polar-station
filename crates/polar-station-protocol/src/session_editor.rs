@@ -42,7 +42,9 @@ impl ToolSetupLaunchV1 {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SessionEditorRequestV1 {
     InspectTools { execution_target_id:String },
-    PrepareTools { execution_target_id:String, tmux:bool, codex:bool, codex_service:bool, #[serde(default, skip_serializing_if = "is_false")] claude:bool, #[serde(default,skip_serializing_if="ToolSetupDeliveryV1::is_external")] delivery:ToolSetupDeliveryV1 },
+    ProbeSshDestination { destination: String },
+    PrepareSshLogin { destination: String },
+    PrepareTools { execution_target_id:String, tmux:bool, codex:bool, codex_service:bool, #[serde(default, skip_serializing_if = "is_false")] claude:bool, #[serde(default, skip_serializing_if = "is_false")] claude_login:bool, #[serde(default,skip_serializing_if="ToolSetupDeliveryV1::is_external")] delivery:ToolSetupDeliveryV1 },
     SetCreationYolo { yolo: bool },
     CheckEndpoint { execution_target_id: String, endpoint_id: String },
     EnsureLocalCodex { endpoint_id: String },
@@ -75,7 +77,7 @@ pub enum SessionEditorRequestV1 {
 impl SessionEditorRequestV1 {
     pub fn is_read_only(&self) -> bool {
         match self {
-            Self::SetCreationYolo { .. } | Self::PrepareTools { .. } | Self::EnsureLocalCodex { .. } => false,
+            Self::SetCreationYolo { .. } | Self::PrepareTools { .. } | Self::EnsureLocalCodex { .. } | Self::ProbeSshDestination { .. } | Self::PrepareSshLogin { .. } => false,
             Self::InspectTools { .. } | Self::CheckEndpoint { .. } | Self::HistoryDetail { .. }
             | Self::History { .. }
             | Self::LaunchContext { .. }
@@ -87,8 +89,15 @@ impl SessionEditorRequestV1 {
 
     pub(crate) fn validate(&self) -> Result<(), ProtocolValidationError> {
         let target = match self {
-            Self::PrepareTools { execution_target_id,tmux,codex,codex_service,claude,.. } => { if (!codex && !tmux && !claude) || (*codex_service && !codex) {return Err(ProtocolValidationError::InvalidControlCenterCommand)} execution_target_id },
+            Self::PrepareTools { execution_target_id,tmux,codex,codex_service,claude,claude_login,.. } => { if (!codex && !tmux && !claude) || (*codex_service && !codex) || (*claude_login && !claude) {return Err(ProtocolValidationError::InvalidControlCenterCommand)} execution_target_id },
             Self::InspectTools { execution_target_id } => execution_target_id,
+            Self::ProbeSshDestination { destination } | Self::PrepareSshLogin { destination } => {
+                return if crate::is_canonical_ssh_destination(destination) {
+                    Ok(())
+                } else {
+                    Err(ProtocolValidationError::InvalidControlCenterCommand)
+                };
+            }
             Self::SetCreationYolo { .. } => return Ok(()),
             Self::EnsureLocalCodex { endpoint_id } => {
                 return crate::validate_stable_identifier(endpoint_id, "Codex endpoint");
@@ -166,6 +175,25 @@ pub struct SessionEndPreviewV1 {
 #[derive(Debug,Clone,Copy,PartialEq,Eq,Serialize,Deserialize)]
 #[serde(rename_all="snake_case")]
 pub enum SessionToolStateV1 { Available, Missing, Unavailable }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SetupAuthenticationV1 {
+    Ready,
+    SignInRequired,
+    Unsupported,
+    CheckFailed,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSetupChecksV1 {
+    pub codex_auth: Option<SetupAuthenticationV1>,
+    pub codex_server_ready: Option<bool>,
+    pub claude_auth: Option<SetupAuthenticationV1>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ssh_aliases: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tmux_archive_bytes: Option<usize>,
+}
 #[derive(Debug,Clone,PartialEq,Eq,Serialize,Deserialize)]
 pub struct SessionTargetToolsV1 {
  #[serde(default,skip_serializing_if="is_false")]
@@ -175,11 +203,14 @@ pub struct SessionTargetToolsV1 {
  pub default_local_codex_endpoint: Option<String>,
  #[serde(default, skip_serializing_if = "Option::is_none")]
  pub claude: Option<SessionToolStateV1>,
+ #[serde(default, skip_serializing_if = "Option::is_none")]
+ pub setup_checks: Option<SessionSetupChecksV1>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEditorResultV1 {
     Tools { tools:Vec<SessionTargetToolsV1> },
+    SshDestinationVerified { machine: crate::MachineConnectionV1 },
     HistoryDetail { detail: crate::CodexHistoryDetailV1 },
     History { threads: Vec<crate::CodexHistoryThreadV1>, next_cursor: Option<String> },
     LaunchContext {
@@ -207,6 +238,7 @@ pub enum SessionEditorResultV1 {
 impl SessionEditorResultV1 {
     pub(crate) fn validate(&self) -> Result<(), ProtocolValidationError> {
         match self {
+            Self::SshDestinationVerified { machine } => crate::validate_stable_identifier(&machine.id, "execution target"),
             Self::ToolsPrepared {setup} => setup.validate(),
             Self::ToolsLaunched {execution_target_id} => crate::validate_stable_identifier(execution_target_id,"execution target"),
             Self::Tools { tools } => {

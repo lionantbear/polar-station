@@ -12,14 +12,17 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::Instrument;
 
 use anyhow::{bail, Context, Result};
-use polar_tmux_core::{ContentChannel, ContentChannelAction, PendingContentTransition};
+use polar_tmux_core::{ContentChannel, ContentChannelAction};
+use polar_station_client::terminal_content::{
+    bridge_frame_for_action, commit_response, recovery_request, recovery_response,
+    sanitized_operation_message, ResponseIdentity,
+};
 use polar_station_protocol::{
-    ExecutionTarget, LocalClientFrame, PaneContentApiV1, PaneContentBindingV1,
-    PaneContentCommandV1, PaneContentRequestV1, PaneContentResponseV1, PaneContentResultV1,
-    ProtocolError, TerminalBridgeFrameV1, TerminalBridgeHelloV1, TerminalConsumerLifecycleV1,
+    ExecutionTarget, PaneContentApiV1, PaneContentBindingV1,
+    PaneContentCommandV1, PaneContentRequestV1, PaneContentResultV1,
+    TerminalBridgeFrameV1, TerminalBridgeHelloV1, TerminalConsumerLifecycleV1,
     TerminalConsumerStatusV1, TerminalSizeV1, PROTOCOL_VERSION, SESSION_RUNTIME_API_VERSION,
 };
 use tokio::{
@@ -29,13 +32,13 @@ use tokio::{
 };
 
 use crate::local_ipc;
+use polar_station_client::terminal_bridge::{
+    connect_terminal_bridge, BridgeConnection, ConnectedBridge, ReconnectBackoff,
+    StartupTerminalReplyFilter, BRIDGE_QUEUE_CAPACITY,
+};
+
 
 const TERMINAL_CHUNK_BYTES: usize = 16 * 1024;
-const BRIDGE_QUEUE_CAPACITY: usize = 64;
-const INITIAL_RECONNECT_DELAY: Duration = Duration::from_millis(50);
-const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(1);
-const STARTUP_REPLY_FILTER_WINDOW: Duration = Duration::from_secs(5);
-const MAX_STARTUP_REPLY_BYTES: usize = 128;
 
 use crate::terminal_io::AsyncTerminalFd;
 
@@ -111,168 +114,6 @@ impl ConsumerConnectionIdentity {
                 .checked_add(1)
                 .context("Pane Host Consumer generation exhausted")?,
         })
-    }
-}
-
-#[derive(Debug)]
-struct ReconnectBackoff {
-    next: Duration,
-}
-
-impl Default for ReconnectBackoff {
-    fn default() -> Self {
-        Self {
-            next: INITIAL_RECONNECT_DELAY,
-        }
-    }
-}
-
-impl ReconnectBackoff {
-    fn next_delay(&mut self) -> Duration {
-        let delay = self.next;
-        self.next = std::cmp::min(self.next.saturating_mul(2), MAX_RECONNECT_DELAY);
-        delay
-    }
-
-    fn reset(&mut self) {
-        self.next = INITIAL_RECONNECT_DELAY;
-    }
-}
-
-#[derive(Debug, Default)]
-struct StartupTerminalReplyFilter {
-    active_until: Option<Instant>,
-    pending: Vec<u8>,
-}
-
-impl StartupTerminalReplyFilter {
-    fn arm(&mut self, now: Instant) {
-        self.active_until = Some(now + STARTUP_REPLY_FILTER_WINDOW);
-        self.pending.clear();
-    }
-
-    fn consume(&mut self, input: &[u8], now: Instant, unavailable: bool) -> Vec<u8> {
-        // Automatic replies received during recovery are not evidence that a
-        // user's keystrokes were lost. Reuse the existing bounded parser;
-        // forward focus reports normally once the attachment is Ready.
-        let active = unavailable || self.active_until.is_some_and(|deadline| now < deadline);
-        if !active {
-            self.active_until = None;
-            let mut output = std::mem::take(&mut self.pending);
-            output.extend_from_slice(input);
-            return output;
-        }
-
-        self.pending.extend_from_slice(input);
-        let mut output = Vec::with_capacity(self.pending.len());
-        let mut offset = 0;
-        while offset < self.pending.len() {
-            if self.pending[offset] != 0x1b {
-                output.push(self.pending[offset]);
-                offset += 1;
-                continue;
-            }
-            let input = &self.pending[offset..];
-            let reply =
-                if unavailable && (input.starts_with(b"\x1b[I") || input.starts_with(b"\x1b[O")) {
-                    StartupReplyMatch::Complete(3)
-                } else {
-                    startup_identity_reply(input)
-                };
-            match reply {
-                StartupReplyMatch::Complete(length) => offset += length,
-                StartupReplyMatch::Prefix => break,
-                StartupReplyMatch::NoMatch => {
-                    output.push(self.pending[offset]);
-                    offset += 1;
-                }
-            }
-        }
-        self.pending.drain(..offset);
-        output
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StartupReplyMatch {
-    Complete(usize),
-    Prefix,
-    NoMatch,
-}
-
-fn startup_identity_reply(input: &[u8]) -> StartupReplyMatch {
-    const SECONDARY_ATTRIBUTES_PREFIX: &[u8] = b"\x1b[>";
-    const GHOSTTY_VERSION_PREFIX: &[u8] = b"\x1bP>|ghostty ";
-
-    if SECONDARY_ATTRIBUTES_PREFIX.starts_with(input) {
-        return StartupReplyMatch::Prefix;
-    }
-    if input.starts_with(SECONDARY_ATTRIBUTES_PREFIX) {
-        let mut saw_digit = false;
-        for (index, byte) in input[SECONDARY_ATTRIBUTES_PREFIX.len()..]
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            let length = SECONDARY_ATTRIBUTES_PREFIX.len() + index + 1;
-            match byte {
-                b'0'..=b'9' => saw_digit = true,
-                b';' if saw_digit => {}
-                b'c' if saw_digit => return StartupReplyMatch::Complete(length),
-                _ => return StartupReplyMatch::NoMatch,
-            }
-            if length >= MAX_STARTUP_REPLY_BYTES {
-                return StartupReplyMatch::NoMatch;
-            }
-        }
-        return StartupReplyMatch::Prefix;
-    }
-
-    if GHOSTTY_VERSION_PREFIX.starts_with(input) {
-        return StartupReplyMatch::Prefix;
-    }
-    if input.starts_with(GHOSTTY_VERSION_PREFIX) {
-        let payload = &input[GHOSTTY_VERSION_PREFIX.len()..];
-        let mut index = 0;
-        while index < payload.len() {
-            if payload[index] == 0x1b {
-                if index + 1 == payload.len() {
-                    return StartupReplyMatch::Prefix;
-                }
-                if payload[index + 1] == b'\\' {
-                    return StartupReplyMatch::Complete(GHOSTTY_VERSION_PREFIX.len() + index + 2);
-                }
-                return StartupReplyMatch::NoMatch;
-            }
-            if !payload[index].is_ascii_graphic() {
-                return StartupReplyMatch::NoMatch;
-            }
-            index += 1;
-            if GHOSTTY_VERSION_PREFIX.len() + index >= MAX_STARTUP_REPLY_BYTES {
-                return StartupReplyMatch::NoMatch;
-            }
-        }
-        return StartupReplyMatch::Prefix;
-    }
-
-    StartupReplyMatch::NoMatch
-}
-
-struct ConnectedBridge {
-    reader: tokio::net::unix::OwnedReadHalf,
-    writer: tokio::net::unix::OwnedWriteHalf,
-    status: TerminalConsumerStatusV1,
-}
-
-struct BridgeConnection {
-    outbound: mpsc::Sender<TerminalBridgeFrameV1>,
-    reader: tokio::task::JoinHandle<Result<()>>,
-    writer: tokio::task::JoinHandle<Result<()>>,
-}
-impl Drop for BridgeConnection {
-    fn drop(&mut self) {
-        self.reader.abort();
-        self.writer.abort();
     }
 }
 
@@ -399,33 +240,18 @@ pub async fn run(
                             // Initial and later statuses share the same transition path.
                             // In particular, Ready must replay an early native focus with
                             // the current PTY grid, rather than leaving the Hello grid active.
-                            let (sender, receiver) = mpsc::channel(BRIDGE_QUEUE_CAPACITY);
-                            sender.try_send(connected.status).context("initial bridge status queue unavailable")?;
+                            let output = Arc::clone(&terminal_output);
+                            let (bridge, receiver) = connected.start(
+                                Arc::clone(&desired_revision),
+                                control_views.clone(),
+                                channel.channel_id().to_owned(),
+                                move |bytes| {
+                                    let output = Arc::clone(&output);
+                                    async move { output.write_all(&bytes).await.context("terminal output closed") }
+                                },
+                            )?;
                             statuses = receiver;
-                            let (outbound, mut frames) = mpsc::channel(BRIDGE_QUEUE_CAPACITY);
-                            let mut writer = connected.writer;
-                            let trace_channel = channel.channel_id().to_owned();
-                            let reader = tokio::spawn(read_host_frames(connected.reader, sender, Arc::clone(&terminal_output), Arc::clone(&desired_revision), control_views.clone()));
-                            let writer = tokio::spawn(async move {
-                                let mut focus_ordinal: u64 = 0;
-                                while let Some(frame) = frames.recv().await {
-                                    tokio::time::timeout(Duration::from_secs(8), local_ipc::write_terminal_bridge_frame(&mut writer, &frame)).await
-                                        .context("Host write timed out")??;
-                                    if let TerminalBridgeFrameV1::Control(intent) = &frame {
-                                        tracing::info!(target: "polar_station_operation", component="PaneHost", event="pane_control_forwarded",
-                                            consumer_id=trace_channel.as_str(), sequence=intent.sequence, viewport_revision=intent.viewport_revision,
-                                            operation_id=format!("{}-{}", trace_channel, intent.sequence),
-                                            content_generation=intent.binding_generation, focused=intent.focused,
-                                            columns=intent.size.columns, rows=intent.size.rows);
-                                    }
-                                    if let TerminalBridgeFrameV1::Focus { focused, binding_generation, size } = frame {
-                                        focus_ordinal += 1;
-                                        tracing::info!(target: "polar_station_operation", component="PaneHost", event="pane_focus_forwarded", consumer_id=trace_channel.as_str(), ordinal=focus_ordinal, content_generation=binding_generation, focused, columns=size.columns, rows=size.rows);
-                                    }
-                                }
-                                Ok(())
-                            });
-                            connection = Some(BridgeConnection { outbound, reader, writer });
+                            connection = Some(bridge);
                         }
                         Err(error) => {
                             tracing::warn!(%error, "Pane Host bridge unavailable");
@@ -435,7 +261,7 @@ pub async fn run(
                 }
                 _ = async {
                     match connection.as_mut() {
-                        Some(c) => tokio::select! { _ = &mut c.reader => {}, _ = &mut c.writer => {} },
+                        Some(c) => c.disconnected().await,
                         None => std::future::pending().await,
                     }
                 } => {
@@ -622,149 +448,6 @@ pub async fn run(
     result
 }
 
-async fn connect_terminal_bridge(
-    host_socket: &Path,
-    hello: TerminalBridgeHelloV1,
-) -> Result<ConnectedBridge> {
-    local_ipc::verify_server_socket(host_socket)?;
-    let mut host = UnixStream::connect(host_socket)
-        .await
-        .with_context(|| format!("failed to connect to Host at {}", host_socket.display()))?;
-    let expected_binding = hello.initial_binding.clone();
-    let consumer_id = hello.consumer_id.clone();
-    let consumer_generation = hello.consumer_generation;
-    local_ipc::write_json_frame(
-        &mut host,
-        &LocalClientFrame::TerminalBridgeV2 {
-            hello: polar_station_protocol::TerminalBridgeHelloV2 {
-                base: hello,
-                terminal_control_version: polar_station_protocol::TERMINAL_CONTROL_API_VERSION,
-            },
-        },
-    )
-    .await?;
-    let status = read_next_status(&mut host).await?;
-    anyhow::ensure!(
-        status.binding == expected_binding,
-        "Host acknowledged a different terminal binding"
-    );
-    anyhow::ensure!(
-        status.consumer_id == consumer_id && status.consumer_generation == consumer_generation,
-        "Host Consumer identity mismatch"
-    );
-    anyhow::ensure!(
-        status.recovery.is_some(),
-        "Host does not support terminal recovery status; update the matching runtime"
-    );
-    anyhow::ensure!(
-        matches!(
-            local_ipc::read_terminal_bridge_frame(&mut host).await?,
-            Some(TerminalBridgeFrameV1::ControlStatus(_))
-        ),
-        "Host does not support terminal control; install the matching runtime"
-    );
-    let (reader, writer) = host.into_split();
-    Ok(ConnectedBridge {
-        reader,
-        writer,
-        status,
-    })
-}
-
-fn bridge_frame_for_action(
-    action: &ContentChannelAction,
-    binding_generation: u64,
-) -> Option<TerminalBridgeFrameV1> {
-    match action {
-        ContentChannelAction::Attach { binding }
-        | ContentChannelAction::RestartChild { binding }
-        | ContentChannelAction::ReplaceChild { to: binding, .. }
-        | ContentChannelAction::SwitchClient { to: binding, .. } => {
-            Some(TerminalBridgeFrameV1::Bind {
-                binding: binding.clone(),
-                binding_generation,
-            })
-        }
-        ContentChannelAction::Detach { .. } => {
-            Some(TerminalBridgeFrameV1::Detach { binding_generation })
-        }
-        ContentChannelAction::Retire { .. } => Some(TerminalBridgeFrameV1::Retire),
-        ContentChannelAction::KeepBinding { .. } => {
-            Some(TerminalBridgeFrameV1::RetainBinding { binding_generation })
-        }
-        ContentChannelAction::KeepDetached => None,
-    }
-}
-
-fn commit_response(
-    channel: &mut ContentChannel,
-    transition: PendingContentTransition,
-    identity: ResponseIdentity,
-) -> PaneContentResponseV1 {
-    if channel.commit(transition).is_err() {
-        return identity.rejected(
-            "content_state_changed",
-            "Pane content state changed before the operation completed",
-            true,
-        );
-    }
-    match channel.binding() {
-        Some(binding) => identity.ready(binding.clone()),
-        None => identity.detached(),
-    }
-}
-
-fn recovery_request(request: &PaneContentRequestV1, channel: &ContentChannel) -> Result<bool> {
-    if !matches!(
-        request.command,
-        PaneContentCommandV1::ObserveRecovery
-            | PaneContentCommandV1::Focus { .. }
-            | PaneContentCommandV1::TerminalControl { .. }
-            | PaneContentCommandV1::ProbeTerminalControl
-            | PaneContentCommandV1::ProbeRecovery
-            | PaneContentCommandV1::DismissRecovery
-    ) {
-        return Ok(false);
-    }
-    request.validate()?;
-    if matches!(
-        request.command,
-        PaneContentCommandV1::TerminalControl { .. }
-    ) {
-        anyhow::ensure!(
-            request.content_revision == channel.content_revision().max(1),
-            "stale terminal control binding"
-        );
-    }
-    anyhow::ensure!(
-        request.channel_id == channel.channel_id()
-            && request.channel_generation == channel.channel_generation(),
-        "stale recovery channel"
-    );
-    Ok(true)
-}
-
-fn recovery_response(
-    request: &PaneContentRequestV1,
-    view: polar_station_protocol::TerminalRecoveryViewV1,
-) -> PaneContentResponseV1 {
-    PaneContentResponseV1 {
-        protocol_version: PROTOCOL_VERSION,
-        api: request.api,
-        request_id: request.request_id.clone(),
-        channel_id: request.channel_id.clone(),
-        channel_generation: request.channel_generation,
-        content_revision: if matches!(request.command, PaneContentCommandV1::ObserveRecovery) {
-            view.content_generation
-        } else {
-            request.content_revision
-        },
-        result: PaneContentResultV1::Recovery {
-            view: Box::new(view),
-        },
-    }
-}
-
 async fn serve_recovery_subscription(
     mut stream: tokio::net::UnixStream,
     request: PaneContentRequestV1,
@@ -790,60 +473,6 @@ async fn serve_recovery_subscription(
     }
 }
 
-async fn read_host_frames(
-    mut reader: tokio::net::unix::OwnedReadHalf,
-    statuses: mpsc::Sender<TerminalConsumerStatusV1>,
-    stdout: Arc<AsyncTerminalFd>,
-    desired_revision: Arc<std::sync::atomic::AtomicU64>,
-    control: tokio::sync::watch::Sender<polar_station_protocol::TerminalControlStatusV1>,
-) -> Result<()> {
-    let mut observed_revision = 0;
-    let mut first_output = true;
-    let mut consumer_id = String::new();
-    let mut generation = 0;
-    while let Some(frame) = local_ipc::read_terminal_bridge_frame(&mut reader).await? {
-        match frame {
-            TerminalBridgeFrameV1::ControlStatus(status) => {
-                if status.binding_generation
-                    == desired_revision.load(std::sync::atomic::Ordering::Acquire)
-                    && status.sequence >= control.borrow().sequence
-                {
-                    control.send_replace(status);
-                }
-            }
-            TerminalBridgeFrameV1::Output(bytes) => {
-                if observed_revision == desired_revision.load(std::sync::atomic::Ordering::Acquire)
-                {
-                    let sequence = control.borrow().sequence;
-                    let span = tracing::info_span!(target: "polar_station_operation", "terminal_native_output_write", component="PaneHost",
-                        consumer_id=consumer_id.as_str(), sequence, operation_id=format!("{consumer_id}-{sequence}"), bytes=bytes.len(), outcome="cancelled");
-                    let result = stdout.write_all(&bytes).instrument(span.clone()).await;
-                    span.record("outcome", if result.is_ok() { "ok" } else { "failed" });
-                    result?;
-                    if first_output {
-                        tracing::info!(target: "polar_station_operation", component="PaneHost", event="pane_terminal_output_written",
-                            consumer_id=consumer_id.as_str(), generation, content_generation=observed_revision, bytes=bytes.len() as u64);
-                        first_output = false;
-                    }
-                }
-            }
-            TerminalBridgeFrameV1::Status(status) => {
-                if observed_revision != status.content_generation {
-                    first_output = true;
-                }
-                observed_revision = status.content_generation;
-                consumer_id = status.consumer_id.clone();
-                generation = status.consumer_generation;
-                if statuses.send(status).await.is_err() {
-                    return Ok(());
-                }
-            }
-            _ => bail!("Polar Tmux Host sent a Consumer-only terminal frame"),
-        }
-    }
-    Ok(())
-}
-
 async fn forward_terminal_input(outbound: mpsc::Sender<Vec<u8>>) -> Result<()> {
     forward_terminal_input_from_fd(libc::STDIN_FILENO, outbound).await
 }
@@ -860,17 +489,6 @@ async fn forward_terminal_input_from_fd(fd: RawFd, outbound: mpsc::Sender<Vec<u8
             .send(buffer[..read].to_vec())
             .await
             .context("terminal bridge writer closed")?;
-    }
-}
-
-async fn read_next_status(stream: &mut UnixStream) -> Result<TerminalConsumerStatusV1> {
-    match local_ipc::read_terminal_bridge_frame(stream).await? {
-        Some(TerminalBridgeFrameV1::Status(status)) => Ok(status),
-        Some(TerminalBridgeFrameV1::Output(_)) => {
-            bail!("Host emitted terminal output before bridge readiness")
-        }
-        Some(_) => bail!("Host sent a Consumer-only terminal frame"),
-        None => bail!("Host closed before terminal bridge readiness"),
     }
 }
 
@@ -943,62 +561,6 @@ fn bounded_environment_value(name: &str) -> Option<String> {
         && value == value.trim()
         && !value.chars().any(char::is_control))
     .then_some(value)
-}
-
-fn sanitized_operation_message(error: &anyhow::Error) -> String {
-    let raw = error.to_string().replace(['\n', '\r', '\t'], " ");
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        "Pane content operation failed".to_owned()
-    } else {
-        trimmed.chars().take(512).collect()
-    }
-}
-
-struct ResponseIdentity {
-    request_id: String,
-    channel_id: String,
-    channel_generation: u64,
-    content_revision: u64,
-}
-
-impl From<&PaneContentRequestV1> for ResponseIdentity {
-    fn from(request: &PaneContentRequestV1) -> Self {
-        Self {
-            request_id: request.request_id.clone(),
-            channel_id: request.channel_id.clone(),
-            channel_generation: request.channel_generation,
-            content_revision: request.content_revision,
-        }
-    }
-}
-
-impl ResponseIdentity {
-    fn response(self, result: PaneContentResultV1) -> PaneContentResponseV1 {
-        PaneContentResponseV1 {
-            protocol_version: PROTOCOL_VERSION,
-            api: PaneContentApiV1::PaneContentV1,
-            request_id: self.request_id,
-            channel_id: self.channel_id,
-            channel_generation: self.channel_generation,
-            content_revision: self.content_revision,
-            result,
-        }
-    }
-
-    fn ready(self, binding: PaneContentBindingV1) -> PaneContentResponseV1 {
-        self.response(PaneContentResultV1::Accepted { binding })
-    }
-
-    fn detached(self) -> PaneContentResponseV1 {
-        self.response(PaneContentResultV1::Detached)
-    }
-
-    fn rejected(self, code: &str, message: &str, retryable: bool) -> PaneContentResponseV1 {
-        self.response(PaneContentResultV1::Rejected {
-            error: ProtocolError::new(code, message, retryable),
-        })
-    }
 }
 
 struct SocketGuard<'a>(&'a Path);

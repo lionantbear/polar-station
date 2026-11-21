@@ -6,7 +6,8 @@ use polar_transport::AccessPlaneEndpointHints;
 use crate::canonical::signable::trust_decision_signable_with_plane_endpoints;
 use crate::errors::TrustError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TrustDecisionKind {
     Approve,
     Reject,

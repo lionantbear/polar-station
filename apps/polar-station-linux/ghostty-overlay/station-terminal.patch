@@ -1,0 +1,99 @@
+--- a/src/apprt/gtk/Surface.zig
++++ b/src/apprt/gtk/Surface.zig
+@@ -14,4 +14,9 @@
+ // Selected by the native constructor before the GLArea is realized.
+ station_display_only: bool = false,
++station_terminal_config: ?[:0]const u8 = null,
++
++pub fn stationTerminalConfig(self: *const Self) ?[:0]const u8 {
++    return self.station_terminal_config;
++}
+ 
+ pub fn stationDisplayOnly(self: *const Self) bool {
+--- a/src/apprt/gtk/class/Overrides.zig
++++ b/src/apprt/gtk/class/Overrides.zig
+@@ -18,4 +18,5 @@
+ station_surface: ?*@import("surface.zig").Surface = null,
+ station_display_only: bool = false,
++station_terminal_config: ?[:0]const u8 = null,
+ station_wait_after_command: bool = false,
+ 
+--- a/src/apprt/gtk/class/surface.zig
++++ b/src/apprt/gtk/class/surface.zig
+@@ -775,4 +775,7 @@
+         const priv: *Private = self.private();
+         priv.rt_surface.station_display_only = overrides.station_display_only;
++        if (overrides.station_terminal_config) |json| {
++            priv.rt_surface.station_terminal_config = alloc.dupeSentinel(u8, json, 0) catch @panic("Station terminal configuration allocation failed");
++        }
+         priv.overrides = .{
+             .station_wait_after_command = overrides.station_wait_after_command,
+@@ -2083,4 +2086,8 @@
+             glib.free(@ptrCast(@constCast(v)));
+             priv.title_override = null;
++        }
++        if (priv.rt_surface.station_terminal_config) |json| {
++            alloc.free(json);
++            priv.rt_surface.station_terminal_config = null;
+         }
+         if (priv.overrides.command) |c| {
+--- a/src/termio/backend.zig
++++ b/src/termio/backend.zig
+@@ -137,4 +137,5 @@
+             .station => null,
+             .exec => |*exec| exec.getProcessInfo(info),
++            .display => null,
+         };
+     }
+--- a/src/apprt/gtk/class/window.zig
++++ b/src/apprt/gtk/class/window.zig
+@@ -494,4 +494,5 @@
+                 .shell_integration = overrides.shell_integration,
+                 .station_surface = overrides.station_surface,
++                .station_terminal_config = overrides.station_terminal_config,
+                 .working_directory = overrides.working_directory,
+                 .title = overrides.title,
+@@ -516,4 +517,5 @@
+                 .shell_integration = overrides.shell_integration,
+                 .station_surface = overrides.station_surface,
++                .station_terminal_config = overrides.station_terminal_config,
+                 .working_directory = overrides.working_directory,
+                 .title = overrides.title,
+--- a/src/apprt/gtk/class/tab.zig
++++ b/src/apprt/gtk/class/tab.zig
+@@ -210,4 +210,5 @@
+             .shell_integration = overrides.shell_integration,
+             .station_surface = overrides.station_surface,
++            .station_terminal_config = overrides.station_terminal_config,
+             .working_directory = overrides.working_directory,
+             .title = overrides.title,
+--- a/src/apprt/gtk/class/split_tree.zig
++++ b/src/apprt/gtk/class/split_tree.zig
+@@ -231,4 +231,5 @@
+         const surface: *Surface = overrides.station_surface orelse Surface.new(.{
+             .command = overrides.command,
++            .station_terminal_config = overrides.station_terminal_config,
+             .shell_integration = overrides.shell_integration,
+             .working_directory = overrides.working_directory,
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -1561,7 +1561,7 @@
+                     .preedit = preedit,
+                     .scrollbar = scrollbar,
+                     .overlay_features = overlay_features,
+-                    .polar_trace_key = if (state.polar_trace_parsed) state.polar_trace_key else 0,
++                    .polar_trace_key = if (state.terminalState().polar_trace_parsed) state.terminalState().polar_trace_key else 0,
+                 };
+             };
+ 
+--- a/src/polar_station_trace.zig
++++ b/src/polar_station_trace.zig
+@@ -44,7 +44,7 @@
+     if (!enabled()) return 0;
+     state.mutex.lockUncancelable(global.io());
+     defer state.mutex.unlock(global.io());
+-    return state.polar_trace_key;
++    return state.terminalState().polar_trace_key;
+ }
+ 
+ extern fn polar_station_trace_native_grid(u32, u64, u32, u32, u32, u32) callconv(.c) void;

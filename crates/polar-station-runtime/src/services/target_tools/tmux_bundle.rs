@@ -14,6 +14,12 @@ fn payload(os: &str, arch: &str) -> Result<&'static [u8]> {
         _ => anyhow::bail!("No official tmux 3.8 package for {os}/{arch}"),
     })
 }
+pub(super) async fn size(target: &TmuxTarget) -> Option<usize> {
+    let facts = super::super::target_directory::target_output(target, "uname -sm").await.ok()?;
+    let facts = std::str::from_utf8(&facts).ok()?;
+    let (os, arch) = facts.trim().split_once(' ')?;
+    Some(payload(os, arch).ok()?.len() + include_bytes!("tmux-3.8/LICENSES.tar.gz").len())
+}
 fn quote(value: &str) -> String { format!("'{}'", value.replace('\'', "'\\''")) }
 
 async fn upload(target: &TmuxTarget, path: &str, bytes: &[u8]) -> Result<()> {

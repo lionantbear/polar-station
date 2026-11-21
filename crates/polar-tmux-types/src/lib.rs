@@ -376,5 +376,10 @@ pub use polar_local_access_contract::{ProtocolError, ProtocolValidationError, va
 
 mod terminal_feedback;
 pub use terminal_feedback::terminal_feedback;
+mod content_channel;
+pub use content_channel::{
+    ContentChannel, ContentChannelAction, ContentChannelError, ContentChannelPhase,
+    PendingContentTransition,
+};
 
 

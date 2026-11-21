@@ -33,6 +33,22 @@ impl SessionClient {
         );
         Ok(())
     }
+    pub async fn resolve_terminal_binding(
+        &self,
+        binding: polar_station_protocol::PaneContentBindingV1,
+    ) -> Result<polar_station_protocol::TerminalBindingIdentityV1> {
+        self.target(binding.execution_target.as_str())?;
+        binding.validate()?;
+        let expected_target = binding.execution_target.clone();
+        let identity: polar_station_protocol::TerminalBindingIdentityV1 =
+            self.call(Request::ResolveTerminalBinding { binding }).await?;
+        anyhow::ensure!(
+            identity.execution_target == expected_target && identity.target_revision > 0,
+            "terminal binding resolution returned a different target"
+        );
+        identity.session.validate()?;
+        Ok(identity)
+    }
     async fn call<T: serde::de::DeserializeOwned>(&self, request: Request) -> Result<T> {
         tokio::time::timeout(Duration::from_secs(30), async {
             let metadata = std::fs::symlink_metadata(&self.path)

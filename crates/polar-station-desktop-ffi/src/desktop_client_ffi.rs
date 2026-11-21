@@ -1,14 +1,15 @@
 //! Narrow C ABI for native Polar Station presentation adapters.
 //!
-//! The ABI carries typed JSON control frames and client-state events only. It
-//! intentionally has no terminal-byte function: Pane Host remains the sole
-//! terminal bridge.
+//! Control messages use typed JSON. Direct Termio connections use the
+//! byte-oriented ABI in the terminal module.
+
+mod terminal;
 
 use std::{
     ffi::{c_char, c_void, CStr, CString},
     panic::{catch_unwind, AssertUnwindSafe},
     ptr,
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 use polar_station_protocol::LocalClientFrame;
@@ -203,7 +204,7 @@ pub extern "C" fn polar_station_trace_presentation(
 }
 
 pub struct DesktopClientHandle {
-    client: Mutex<DesktopClient>,
+    client: Arc<Mutex<DesktopClient>>,
 }
 
 /// Initial terminal projection before an observer is available. Release with
@@ -254,9 +255,9 @@ pub unsafe extern "C" fn polar_station_desktop_client_new(
         })
         .ok()?;
         *SELECTED_BACKEND.get_or_init(||Mutex::new(None)).lock().unwrap_or_else(|v|v.into_inner()) = Some(client.backend_socket_reader());
-        Some(Box::into_raw(Box::new(DesktopClientHandle {
-            client: Mutex::new(client),
-        })))
+        let client = Arc::new(Mutex::new(client));
+        terminal::register_process_client(Arc::downgrade(&client));
+        Some(Box::into_raw(Box::new(DesktopClientHandle { client })))
     }))
     .ok()
     .flatten()

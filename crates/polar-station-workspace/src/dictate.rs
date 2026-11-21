@@ -45,6 +45,7 @@ pub enum TargetKind {
     Editor,
     IdeaNode,
     DefaultEditor,
+    SetupTrial,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {
@@ -389,6 +390,7 @@ pub enum Effect {
         reference: String,
         operation_id: String,
         maximum_ms: u32,
+        is_test: bool,
         context: Option<String>,
     },
     Transcribe {
@@ -613,6 +615,7 @@ impl Engine {
             return serde_json::Value::Null;
         }
         let active = entry.phase.active();
+        let setup_trial = entry.target.as_ref().is_some_and(|target| target.kind == TargetKind::SetupTrial);
         let mode = match entry.transcription_mode {
             Some(polar_dictate::TranscriptionMode::Realtime) => "Realtime",
             Some(polar_dictate::TranscriptionMode::Segmented) => "Dictate",
@@ -646,14 +649,15 @@ impl Engine {
             "heading":heading,"failure_notice":failure_notice,"output_mode":entry.output_mode,"transcription_mode":entry.transcription_mode,"reference":entry.reference,"copy_text":entry.delivery_text(),
             "operation_id":entry.operation_id,"phase":entry.phase,"text":entry.text,
             "status":status,
-            "can_stop":false,
+            "can_stop":setup_trial && entry.phase == Phase::Recording,
+            "stop_label":"Stop",
             "can_cancel":active && !matches!(entry.phase,Phase::Delivering|Phase::Submitting),
             "can_copy":!entry.text.is_empty(),
             "can_edit":!active && entry.phase != Phase::Delivered && !entry.raw.is_empty(),
             "can_insert":!active && !matches!(entry.phase,Phase::Delivered|Phase::Unknown|Phase::Failed) && !entry.inserted && valid_text(&entry.text),
             "can_retry":can_retry,
             "can_available":matches!(entry.phase,Phase::Transcribing|Phase::Rewriting),
-            "actions":preview::actions(entry,self.preview_actions.get(&entry.operation_id).map(|c|c.refine_mode),self.completion_available(entry)),
+            "actions":if setup_trial {serde_json::json!([])} else {preview::actions(entry,self.preview_actions.get(&entry.operation_id).map(|c|c.refine_mode),self.completion_available(entry))},
             "can_history":entry.phase==Phase::Failed && entry.saved_samples>0,"history_label":"History",
             "hide_after_ms":if preview::dismissible(entry) && !self.panel_interaction.contains(&entry.operation_id) {5000}else{0},"can_view_inputs":true,"inputs_label":"View inputs",
             "title":"Dictate","stop_label":"Stop","cancel_label":"Cancel",
@@ -1248,7 +1252,7 @@ impl Engine {
                         .into_iter()
                         .filter(Target::usable)
                         .min_by_key(|t| match t.kind {
-                            TargetKind::Editor => 0,
+                            TargetKind::Editor | TargetKind::SetupTrial => 0,
                             TargetKind::IdeaNode => 1,
                             TargetKind::DefaultEditor => 2,
                         })
@@ -1262,6 +1266,7 @@ impl Engine {
                     reference: reference.clone(),
                     operation_id: operation_id.clone(),
                     maximum_ms: MAX_RECORDING_MS,
+                    is_test: target.as_ref().is_some_and(|target| target.kind == TargetKind::SetupTrial),
                     context: target.as_ref().map(|t| t.context.clone()),
                 });
                 self.entries.push(Entry {
@@ -1439,7 +1444,9 @@ impl Engine {
                             }
                             DeliveryOutcome::Applied => {
                                 entry.inserted=true;
-                                if self.preview_actions.remove(&entry.operation_id).is_some_and(|choice|choice.sends()) {
+                                if self.preview_actions.remove(&entry.operation_id).is_some_and(|choice|choice.sends())
+                                    && !entry.target.as_ref().is_some_and(|target| target.kind == TargetKind::SetupTrial)
+                                {
                                     effects.push(Effect::SubmitInserted{operation_id:entry.operation_id.clone(),text:entry.delivery_text()});
                                     Phase::Submitting
                                 } else {Phase::Delivered}

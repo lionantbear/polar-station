@@ -305,6 +305,8 @@ pub enum SignerError {
     InvalidBatch,
     #[error("device rejected the request before signing")]
     PolicyDenied,
+    #[error("Hear already has a bound signer session")]
+    SessionAlreadyBound,
     #[error("device queue is full")]
     QueueFull,
     #[error("deadline elapsed before execution")]

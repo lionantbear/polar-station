@@ -31,6 +31,18 @@ pub(super) async fn local_request(
         });
         runtime.bind(&backend)?;
         Ok::<_, anyhow::Error>(match input {
+            polar_station_session::LocalRequest::ResolveTerminalBinding { binding } => {
+                let identity = tokio::time::timeout(
+                    Duration::from_secs(8),
+                    crate::host::terminal_runtime::resolve_terminal_binding(
+                        &state.targets,
+                        &state.ssh_connections,
+                        &state.session_lifecycle,
+                        &binding,
+                    ),
+                ).await??;
+                serde_json::to_value(identity)?
+            }
             polar_station_session::LocalRequest::Show { principal, input } => serde_json::to_value(
                 runtime.show(&format!("session-peer:{uid}:{principal}"), input).await?
             )?,

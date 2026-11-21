@@ -2,40 +2,51 @@
 mod tmux_bundle;
 use anyhow::{Context, Result};
 use polar_tmux_core::{TmuxAvailability, TmuxClient, TmuxTarget};
-use polar_station_protocol::{SessionTargetToolsV1, SessionToolStateV1 as State};
+use polar_station_protocol::{
+    SessionSetupChecksV1, SessionTargetToolsV1, SessionToolStateV1 as State,
+    SetupAuthenticationV1 as Auth,
+};
 use std::{io::Write, process::Stdio, time::Duration};
 pub(super) const CODEX_RESOLVE:&str="station_codex=codex; if ! command -v codex >/dev/null 2>&1 && [ -x \"$HOME/.local/bin/codex\" ]; then station_codex=\"$HOME/.local/bin/codex\"; fi";
 pub(super) const CLAUDE_RESOLVE:&str="station_claude=claude; if ! command -v claude >/dev/null 2>&1 && [ -x \"$HOME/.local/bin/claude\" ]; then station_claude=\"$HOME/.local/bin/claude\"; fi";
-pub(super) async fn inspect(client: &TmuxClient, id: &str, enabled: bool) -> SessionTargetToolsV1 {
+pub(super) async fn inspect(client: &TmuxClient, id: &str, enabled: bool, diagnostic: bool) -> SessionTargetToolsV1 {
     let tmux = async {
-        match tokio::time::timeout(Duration::from_secs(2), client.availability()).await {
+        let state = match tokio::time::timeout(Duration::from_secs(2), client.availability()).await {
             Ok(Ok(TmuxAvailability::Available { .. })) => State::Available,
             Ok(Ok(TmuxAvailability::ExecutableMissing { .. })) => State::Missing,
             _ => State::Unavailable,
-        }
+        };
+        let bytes = if diagnostic && state == State::Missing {
+            tokio::time::timeout(Duration::from_millis(700), tmux_bundle::size(client.target()))
+                .await.ok().flatten()
+        } else {
+            None
+        };
+        (state, bytes)
     };
-    let codex = async {
-        let script=format!("{CODEX_RESOLVE}; if command -v \"$station_codex\" >/dev/null 2>&1; then printf available; else printf missing; fi");
-        match tokio::time::timeout(
-            Duration::from_secs(2),
-            super::target_directory::target_output(client.target(), &script),
-        )
-        .await
-        {
-            Ok(Ok(b)) if b == b"available" => State::Available,
-            Ok(Ok(b)) if b == b"missing" => State::Missing,
-            _ => State::Unavailable,
-        }
-    };
-    let claude = async {
-        let script=format!("{CLAUDE_RESOLVE}; if command -v \"$station_claude\" >/dev/null 2>&1; then printf available; else printf missing; fi");
-        match tokio::time::timeout(Duration::from_secs(2), super::target_directory::target_output(client.target(), &script)).await {
-            Ok(Ok(b)) if b == b"available" => State::Available,
-            Ok(Ok(b)) if b == b"missing" => State::Missing,
-            _ => State::Unavailable,
-        }
-    };
-    let (tmux, codex, claude) = tokio::join!(tmux, codex, claude);
+    let codex = inspect_agent(client.target(), CODEX_RESOLVE, "station_codex",
+        (enabled && diagnostic).then_some(r#"
+            if status=$("$station_codex" login status 2>&1); then printf ready
+            elif [ "$status" = 'Not logged in' ]; then printf sign_in
+            else printf failed; fi
+        "#));
+    let claude = inspect_agent(client.target(), CLAUDE_RESOLVE, "station_claude",
+        diagnostic.then_some(r#"
+            if ! "$station_claude" auth status --help >/dev/null 2>&1; then
+                printf unsupported
+            else
+                code=0; status=$("$station_claude" auth status 2>/dev/null) || code=$?
+                printf '%s\n%s' "$code" "$status"
+            fi
+        "#));
+    let ((tmux, tmux_archive_bytes), (codex, codex_check), (claude, claude_check)) = tokio::join!(tmux, codex, claude);
+    let setup_checks = diagnostic.then(|| SessionSetupChecksV1 {
+        codex_auth: codex_check.as_deref().map(decode_codex_auth),
+        codex_server_ready: None,
+        ssh_aliases: Vec::new(),
+        tmux_archive_bytes,
+        claude_auth: claude_check.as_deref().map(decode_claude_auth),
+    });
     SessionTargetToolsV1 {
         native_setup:true,
         execution_target_id: id.into(),
@@ -44,21 +55,79 @@ pub(super) async fn inspect(client: &TmuxClient, id: &str, enabled: bool) -> Ses
         codex_control_enabled: enabled,
         default_local_codex_endpoint: None,
         claude: Some(claude),
+        setup_checks,
     }
 }
-pub(super) fn script(tmux: bool, codex: bool, codex_service: bool, claude: bool) -> String {
+async fn inspect_agent(
+    target: &TmuxTarget,
+    resolve: &str,
+    executable: &str,
+    auth_check: Option<&str>,
+) -> (State, Option<String>) {
+    let checks = auth_check.unwrap_or("");
+    let script = format!(r#"{resolve}
+        if command -v "${executable}" >/dev/null 2>&1; then
+            printf 'available\n'
+            {checks}
+        else
+            printf 'missing\n'
+        fi
+    "#);
+    let Ok(Ok(output)) = tokio::time::timeout(
+        Duration::from_secs(2),
+        super::target_directory::target_output(target, &script),
+    ).await else {
+        return (State::Unavailable, None);
+    };
+    let Ok(output) = std::str::from_utf8(&output) else {
+        return (State::Unavailable, None);
+    };
+    match output.split_once('\n') {
+        Some(("missing", _)) => (State::Missing, None),
+        Some(("available", status)) => (State::Available, auth_check.map(|_| status.trim().into())),
+        _ => (State::Unavailable, None),
+    }
+}
+
+fn decode_codex_auth(status: &str) -> Auth {
+    match status {
+        "ready" => Auth::Ready,
+        "sign_in" => Auth::SignInRequired,
+        _ => Auth::CheckFailed,
+    }
+}
+
+fn decode_claude_auth(status: &str) -> Auth {
+    if status == "unsupported" {
+        return Auth::Unsupported;
+    }
+    let Some((exit, json)) = status.split_once('\n') else {
+        return Auth::CheckFailed;
+    };
+    let Ok(result) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Auth::CheckFailed;
+    };
+    match (exit, result.get("loggedIn").and_then(serde_json::Value::as_bool)) {
+        ("0", Some(true)) => Auth::Ready,
+        ("1", Some(false)) => Auth::SignInRequired,
+        _ => Auth::CheckFailed,
+    }
+}
+
+pub(super) fn script(tmux: bool, codex: bool, codex_service: bool, claude: bool, claude_login: bool) -> String {
     format!(
-        "set -- {} {} {} {}\n{}",
+        "set -- {} {} {} {} {}\n{}",
         u8::from(tmux),
         u8::from(codex),
         u8::from(codex_service),
         u8::from(claude),
+        u8::from(claude_login),
         include_str!("target_tool_setup.sh").replace("@TMUX_INSTALL@", include_str!("target_tools/install_tmux.sh")).replace("@CODEX_RESOLVE@", CODEX_RESOLVE).replace("@CLAUDE_RESOLVE@", CLAUDE_RESOLVE)
     )
 }
-pub(super) async fn prepared_script(target: &TmuxTarget, tmux: bool, codex: bool, codex_service: bool, claude: bool) -> Result<String> {
+pub(super) async fn prepared_script(target: &TmuxTarget, tmux: bool, codex: bool, codex_service: bool, claude: bool, claude_login: bool) -> Result<String> {
     let prefix = if tmux { tmux_bundle::stage(target).await? } else { String::new() };
-    Ok(format!("{prefix}\n{}", script(tmux, codex, codex_service, claude)))
+    Ok(format!("{prefix}\n{}", script(tmux, codex, codex_service, claude, claude_login)))
 }
 /// Prepare the original target command without starting a terminal or installer.
 pub(super) fn prepare(
@@ -94,8 +163,9 @@ pub(super) async fn launch(
     codex: bool,
     codex_service: bool,
     claude: bool,
+    claude_login: bool,
 ) -> Result<()> {
-    let script=prepared_script(target,tmux,codex,codex_service,claude).await?;
+    let script=prepared_script(target,tmux,codex,codex_service,claude,claude_login).await?;
     let command=quoted_command(target,&script)?;
     let dir = tempfile::Builder::new()
         .prefix("polar-station-tools-")

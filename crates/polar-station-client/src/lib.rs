@@ -1,5 +1,9 @@
 //! Authenticated Station IPC clients; no Host execution or provider ownership.
 pub mod desktop_client;
+pub mod desktop_terminal;
+#[cfg(unix)]
+pub mod terminal_bridge;
+pub mod terminal_content;
 pub mod session_client;
 pub mod dictate_client;
 pub mod dictate_speech;

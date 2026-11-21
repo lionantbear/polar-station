@@ -288,7 +288,9 @@ struct SessionEditorSheet: View {
                     Text("This computer").tag(localTargetID)
                     ForEach(remoteTargets) { Text($0.label).tag($0.id) }
                 }.labelsHidden().frame(minWidth: 120, maxWidth: 180).accessibilityLabel("Host")
-                if let label=editor.state?.prepare_label {
+                if let section = editor.state?.diagnostics_section, let open = toolSetup?.openDiagnostics {
+                    Button("Setup & Diagnostics") { open(selectedTargetID, section, request.id) }
+                } else if let label=editor.state?.prepare_label {
                     Button(label){editor.action("prepare_tools")}.disabled(editor.state?.can_prepare != true)
                 }
                 if sessionType == "codex" {

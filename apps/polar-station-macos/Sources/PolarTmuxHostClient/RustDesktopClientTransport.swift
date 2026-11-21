@@ -174,7 +174,8 @@ public final class PolarTmuxRustDesktopTransport:
 
     public func sendContent(socketURL: URL, request: PolarTmuxPaneContentRequest) throws {
         guard let active = activeHandle() else { throw PolarTmuxLocalIPCError.connectionClosed }
-        let data = try JSONSerialization.data(withJSONObject: ["socket_path": socketURL.path, "request": JSONSerialization.jsonObject(with: JSONEncoder().encode(request))])
+        let path = socketURL.scheme == "station-terminal" ? "" : socketURL.path
+        let data = try JSONSerialization.data(withJSONObject: ["socket_path": path, "request": JSONSerialization.jsonObject(with: JSONEncoder().encode(request))])
         let accepted = String(decoding: data, as: UTF8.self).withCString { polar_station_desktop_client_send_content_json(active.pointer, $0) }
         guard accepted else { throw PolarTmuxLocalIPCError.connectionClosed }
     }

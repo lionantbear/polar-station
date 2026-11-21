@@ -68,6 +68,47 @@ pub struct TerminalAttachment {
     pub transport_generation: Option<SshTransportGenerationV1>,
 }
 
+/// Resolve a live reference using the same observation and provenance guards
+/// as attach. This acquires no PTY and does not grant authority to attach.
+pub async fn resolve_terminal_binding(
+    targets: &crate::target_registry::TargetRegistry,
+    ssh: &crate::ssh_connection_manager::SshConnectionManager,
+    lifecycle: &super::session_lifecycle::SessionLifecycle,
+    binding: &PaneContentBindingV1,
+) -> Result<polar_station_protocol::TerminalBindingIdentityV1> {
+    binding.validate()?;
+    let target_id = binding.execution_target.as_str();
+    if let Some(source) = &binding.source {
+        portable::check_host(targets, target_id, source)?;
+        anyhow::ensure!(source.session.is_some(), "Original Session identity unavailable");
+    }
+    let target = targets.get(target_id).context("terminal target missing")?;
+    let attach = target.managed_client_for_attach(ssh).await?;
+    lifecycle.wait_for_attachment_observation(target_id, ssh).await;
+    let gate = target.operation_gate();
+    let _operation = gate.read().await;
+    let actual = lifecycle
+        .attachment_binding(target_id, &binding.tmux_session_id, attach.transport_generation.as_ref())
+        .await?
+        .context("The bound tmux Session no longer exists")?;
+    if let Some(source) = &binding.source {
+        portable::check_host(targets, target_id, source)?;
+        portable::check_session(source, &actual)?;
+        portable::check_original_agent(&attach.client, &actual.session_id, source).await?;
+    }
+    let target_revision = target.configuration_revision();
+    anyhow::ensure!(
+        targets.get(target_id).is_some_and(|current| current.configuration_revision() == target_revision)
+            && ssh.transport_generation(target_id).await == attach.transport_generation,
+        "terminal target changed during identity resolution",
+    );
+    Ok(polar_station_protocol::TerminalBindingIdentityV1 {
+        execution_target: binding.execution_target.clone(),
+        target_revision,
+        session: portable::observed_identity(&actual),
+    })
+}
+
 /// Dropping this future cancels preparation; the bridge owns one attempt per
 /// Consumer and drops it on Bind, Detach, retirement or transport replacement.
 #[tracing::instrument(target = "polar_station_operation", name = "pane_backend_prepare", skip_all,
@@ -181,13 +222,7 @@ pub async fn attach_terminal(
     if let Some(source) = &binding.source {
         portable::check_host(&targets, binding.execution_target.as_str(), source)?;
         portable::check_session(source, &identity)?;
-        if let Some(original) = &source.original_agent_id {
-            let sessions = attach.client.list_sessions().await?;
-            let current = sessions.iter().find(|s| s.id == identity.session_id)
-                .context("The original agent Session is no longer present")?;
-            anyhow::ensure!(polar_station_workspace::SessionKind::from_terminal_name(&current.name)
-                .is_some_and(|(_, id)| id == original), "The original agent Session no longer matches");
-        }
+        portable::check_original_agent(&attach.client, &identity.session_id, source).await?;
         // A connection editor can replace a target while I/O was pending.
         anyhow::ensure!(targets.get(binding.execution_target.as_str())
             .is_some_and(|current| current.configuration_revision() == target.configuration_revision()),
@@ -282,11 +317,12 @@ async fn spawn_backend(
     deferred: bool,
     lifetimes: &TerminalLifetimes,
 ) -> Result<BackendPty> {
-    let ticket = lifetimes.acquire()?;
+    let ticket = lifetimes.acquire_for(&consumer.status().consumer_id).await?;
     let consumer = consumer.clone();
     let span = tracing::info_span!(target: "polar_station_operation", "terminal_spawn_dispatch", component="PTY");
     tokio::task::spawn_blocking(move || {
         let _entered = span.enter();
+        ticket.ensure_current()?;
         tracing::info!(target: "polar_station_operation", component="PTY", event="terminal_spawn_worker_started");
         BackendPty::spawn_inner(&plan, binding.as_ref(), consumer.terminal_size(),
             consumer.terminal_type(), consumer.locale(), consumer.status().consumer_id.as_str(), deferred, ticket)

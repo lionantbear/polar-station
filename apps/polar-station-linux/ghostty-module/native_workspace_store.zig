@@ -133,8 +133,16 @@ pub const Catalog = struct {
         errdefer counts.deinit(allocator);
         for (self.workspaces) |workspace| {
             if (!self.isOpen(workspace.workspace_id)) continue;
-            for (workspace.tabs) |tab| for (tab.panes) |pane| {
+            for (workspace.tabs, 0..) |tab, index| for (tab.panes) |pane| {
                 if (!pane.isTerminal()) continue;
+                if (renderpkg.canShareTerminal(workspace, pane)) {
+                    const counted = for (workspace.tabs[0..index]) |previous| {
+                        if (previous.sessionPane(pane.execution_target_id, pane.tmux_session_id)) |other| {
+                            if (renderpkg.sameTerminal(pane, other.*)) break true;
+                        }
+                    } else false;
+                    if (counted) continue;
+                }
                 const entry = try counts.getOrPut(allocator, .{
                     .target = pane.execution_target_id,
                     .session = pane.tmux_session_id,
@@ -157,7 +165,7 @@ pub const OwnedCatalog = struct {
     ) !OwnedCatalog {
         const encoded = try encodeCatalog(allocator, source);
         defer allocator.free(encoded);
-        var result=try decodeCatalog(allocator, encoded);
+        var result=try decodeCatalogInternal(allocator, encoded, false);
         errdefer result.deinit();
         const a=result.arena.allocator();
         if(source.legacy_settings.len>0) {
@@ -366,6 +374,10 @@ pub fn decodeCatalog(
     allocator: std.mem.Allocator,
     json: []const u8,
 ) !OwnedCatalog {
+    return decodeCatalogInternal(allocator, json, true);
+}
+
+fn decodeCatalogInternal(allocator: std.mem.Allocator, json: []const u8, repair_duplicates: bool) !OwnedCatalog {
     var version = try std.json.parseFromSlice(
         VersionEnvelope,
         allocator,
@@ -403,8 +415,46 @@ pub fn decodeCatalog(
         };
     }
     value=try retireLegacySettings(alloc,value);
+    if (repair_duplicates) {
+        const workspaces = try alloc.dupe(renderpkg.Snapshot, value.workspaces);
+        var repaired = false;
+        for (workspaces) |*workspace| {
+            const candidate = try normalizeSessionPanes(alloc, workspace.*);
+            repaired = repaired or candidate.workspace_revision != workspace.workspace_revision;
+            workspace.* = candidate;
+        }
+        if (repaired) {
+            value.workspaces = workspaces;
+            value.catalog_revision = try std.math.add(u64, value.catalog_revision, 1);
+            value.settings_migrated = true;
+        }
+    }
     try validateCatalog(value);
     return .{ .arena = arena, .value = value };
+}
+
+fn normalizeSessionPanes(allocator: std.mem.Allocator, original: renderpkg.Snapshot) !renderpkg.Snapshot {
+    var result = original;
+    for (original.tabs) |tab| {
+        const focused = if (tab.focused_pane_id) |id| tab.pane(id) else null;
+        for (tab.panes, 0..) |pane, index| {
+            if (!pane.isTerminal()) continue;
+            const survivor = if (focused) |preferred| blk: {
+                if (renderpkg.sameTerminal(pane, preferred.*)) break :blk preferred.*;
+                break :blk firstMatchingTerminal(tab.panes[0..index], pane) orelse pane;
+            } else firstMatchingTerminal(tab.panes[0..index], pane) orelse pane;
+            if (!std.mem.eql(u8, pane.id, survivor.id))
+                result = try @import("native_workspace_state.zig").State.planSnapshotAction(
+                    allocator, result, .{ .remove_pane = .{ .pane_id = pane.id } }, null,
+                );
+        }
+    }
+    return result;
+}
+
+fn firstMatchingTerminal(panes: []const renderpkg.Pane, pane: renderpkg.Pane) ?renderpkg.Pane {
+    for (panes) |existing| if (renderpkg.sameTerminal(existing, pane)) return existing;
+    return null;
 }
 
 /// Use the same native removal operations as user actions; never create a Session.
@@ -811,6 +861,8 @@ pub fn encodeWorkspace(a:std.mem.Allocator,snapshot:renderpkg.Snapshot) ![]u8 {
 pub fn decodeWorkspace(a:std.mem.Allocator,bytes:[]const u8) !OwnedSnapshot {
     var arena=std.heap.ArenaAllocator.init(a);errdefer arena.deinit();
     const saved=try std.json.parseFromSliceLeaky(PersistedWorkspace,arena.allocator(),bytes,.{.allocate=.alloc_always,.ignore_unknown_fields=true});
-    const value=try nativeWorkspace(arena.allocator(),saved);try validateSnapshot(value);
+    const decoded = try nativeWorkspace(arena.allocator(), saved);
+    const value = try normalizeSessionPanes(arena.allocator(), decoded);
+    try validateSnapshot(value);
     return .{.arena=arena,.value=value};
 }

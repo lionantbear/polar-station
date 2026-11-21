@@ -4,7 +4,7 @@
 //! layout knowledge. It decides only which content operation is required to
 //! make one physical terminal channel show one tmux Session.
 
-use polar_tmux_types::{
+use crate::{
     PaneContentBindingV1, PaneContentCommandV1, PaneContentRequestV1, ProtocolValidationError,
 };
 

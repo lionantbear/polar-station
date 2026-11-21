@@ -1,12 +1,13 @@
 public enum NativeWindowRestorationPolicy {
-    private static let processLocalAuxiliaryWindowIdentifiers: Set<String> = [
+    private static let stationOwnedWindowIdentifiers: Set<String> = [
         "resources",
         "iphone",
+        "TerminalWindowRestoration",
     ]
 
     public static func shouldDiscardPersistedWindow(
         identifier: String
     ) -> Bool {
-        processLocalAuxiliaryWindowIdentifiers.contains(identifier)
+        stationOwnedWindowIdentifiers.contains(identifier)
     }
 }

@@ -26,10 +26,11 @@ pub const ConnectionChange = union(enum) {
 };
 pub const ConnectionUpdate = struct { expected_revision: []const u8, change: ConnectionChange };
 pub const EditorRequest = struct {
-    tmux:?bool=null, codex:?bool=null,codex_service:?bool=null,claude:?bool=null,
+    tmux:?bool=null, codex:?bool=null,codex_service:?bool=null,claude:?bool=null,claude_login:?bool=null,
     delivery:?enum {external_terminal,native_pane}=null,
     type: []const u8,
     execution_target_id: ?[]const u8 = null,
+    destination: ?[]const u8 = null,
     yolo: ?bool = null,
     cursor: ?[]const u8 = null,
     search_term: ?[]const u8 = null,

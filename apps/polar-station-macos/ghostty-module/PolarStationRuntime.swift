@@ -59,11 +59,17 @@
         let settingsConnections = ConnectionsInteraction()
         let connectionsFormBuffer = ConnectionsFormBuffer()
         let diagnostics=DiagnosticsInteraction()
+        @Published var returnToSessionEditor: (@MainActor () -> Void)?
         var toolSetup:ToolSetupNativePorts {
             ToolSetupNativePorts(launch:{[weak self] setup,started,exited in
                 guard let self else {started("The originating workspace is unavailable.");return}
                 executor.launchSetup(setup,started:started,exited:exited)
-            },focus:{[weak self] in self?.executor.focusSetup($0)})
+            },focus:{[weak self] in self?.executor.focusSetup($0)}, openDiagnostics: { [weak self] target, section, editor in
+                guard let self else { return }
+                let original = NSApp.windows.first { $0.identifier?.rawValue == "polar-station-session-editor-" + editor.uuidString }
+                returnToSessionEditor = { [weak original] in original?.makeKeyAndOrderFront(nil) }
+                PolarStationRuntime.shared.openSettingsRoute(.init(page:"setup", remote:target != "local", section:section,target:target), in:self)
+            })
         }
         let presentation = ControlCenterPresentationState()
         let applicationShortcuts = ApplicationShortcutCommandState()
@@ -574,6 +580,18 @@
         }
 
         func configureDictateShortcut(_ text:String, reply:@escaping @MainActor ([String:Any])->Void) {lgpWorkspace.dictate.configureShortcut(text,reply:reply)}
+        var dictateShortcutHint: String {
+            lgpWorkspace.dictate.presentation["shortcut_hint"] as? String ?? ""
+        }
+        func stopSetupDictate() { lgpWorkspace.dictate.stopSetupTrial() }
+        func startSetupDictate(progress: @escaping (String, String?) -> Void, insert: @escaping (String) -> StationDictateTarget.Delivery) -> Bool {
+            guard lgpWorkspace.dictate.enabled,
+                  lgpWorkspace.dictate.presentation["action"] as? String == "start" else { return false }
+            let target = StationDictateTarget(kind: "setup_trial", context: "", insert: insert)
+            target.setupProgress = progress
+            lgpWorkspace.dictate.toggle(targets: [target], setupTrial: true)
+            return true
+        }
         func recoverDictateRecording(_ id:String) {lgpWorkspace.dictate.recoverRecording(id)}
         func dictateKeyEvent(_ event: NSEvent) -> Bool { !backendSwitchInProgress && lgpWorkspace.dictate.handleShortcut(event) }
         func dictateShortcutStatus(_ status: String) { lgpWorkspace.dictate.shortcutStatus(status) }
@@ -1383,7 +1401,8 @@
                     return
                 }
                 if let self,let context, content.kind == .localDiagnostics || content.kind == .remoteHosts {
-                    display.mountNativeContent(NSHostingView(rootView: PolarStationDiagnosticsRoot(model: self.model, remote: content.kind == .remoteHosts,context:context)))
+                    display.mountNativeContent(NSHostingView(rootView: PolarStationDiagnosticsRoot(
+                        model:self.model, route:.init(page:"setup", remote:content.kind == .remoteHosts), context:context)))
                 }
                 self?.lgpWorkspace.created(id, content: content, display: display, window: window)
                 context?.executor.reconcileInputSelection()
@@ -1445,6 +1464,13 @@
                     guard let view = owner?.layoutView(), view.workspaceID == target.workspaceID,
                           let tab = view.tab(target.tabID) else { return false }
                     return tab.panes.contains { $0.executionTargetID == identity.executionTargetID && $0.tmuxSessionID == identity.tmuxSessionID }
+                }, focusExisting: { [weak self, weak owner] identity in
+                    guard let self, let owner, let view = owner.layoutView(), view.workspaceID == target.workspaceID,
+                          view.selectedTabID == target.tabID, let tab = view.tab(target.tabID),
+                          let pane = tab.panes.first(where: { $0.executionTargetID == identity.executionTargetID && $0.tmuxSessionID == identity.tmuxSessionID }),
+                          view.selectedPaneID != pane.paneID,
+                          let context = self.context(workspaceID: target.workspaceID) else { return }
+                    self.performLocalWorkspaceOperation(.activatePane(paneID: pane.paneID), in: context)
                 })
             }
             lgpWorkspace.chooseIdeaSession = { [weak self] workspaceID, pane, view in

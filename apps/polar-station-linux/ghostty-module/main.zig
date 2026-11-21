@@ -60,12 +60,18 @@ const DiagnosticAttachment = struct {
     page: *diagnostics_page.Page,
     widget: *gtk.Widget,
     lease: ?@import("auxiliary_window.zig").ContentLease = null,
+    trial: ?DiagnosticsDictateTrial = null,
+};
+const DiagnosticsDictateTrial = struct {
+    result: *gtk.TextView,
+    phase: enum { starting, recording, transcribing, rewriting, delivering, failed, cancelled, review, pending, unknown } = .starting,
 };
 
 const PendingControlEffectKind = enum {
     connection_update,
     ssh_target,
     session_create,
+    resume_lookup,
     quick_create,
     session_rename,
     session_kill,
@@ -693,7 +699,7 @@ fn diagnosticsCreated(context: ?*anyopaque, pane: []const u8, window: []const u8
     if (current.lgp) |lgp| lgp.hooks().created(pane, window, host, content, display);
     if (content.kind == .settings_text) {
         const editor = current.prompt_editor orelse return;
-        _ = current.settings_panel.setupWidget();
+        _ = current.settings_panel.voicePanel();
         if (current.prompt_pane) |old| {
             if(old.display != display) old.display.surface.stationRetireExternalWidget();
             current.allocator.free(old.id);current.allocator.free(old.field);
@@ -715,12 +721,13 @@ fn diagnosticsCreated(context: ?*anyopaque, pane: []const u8, window: []const u8
         current.allocator.free(owned_pane); current.allocator.destroy(entry); return;
     };
     entry.page = page;
+    page.on_connect = connectDiagnosticsDestination;
     page.on_editor_close = diagnosticsCloseEditor;
     current.diagnostics.put(current.allocator, owned_pane, entry) catch {
         page.deinit(); current.allocator.free(owned_pane); current.allocator.destroy(entry); return;
     };
     display.surface.stationSetExternalWidget(page.widget());
-    _ = current.settings_panel.setupWidget();
+    _ = current.settings_panel.voicePanel();
     renderDiagnostics(current);
     refreshDiagnostics(current);
 }
@@ -863,9 +870,20 @@ fn renderDiagnostics(current: *State) void {
 
 }
 
+fn connectDiagnosticsDestination(context: ?*anyopaque, destination: []const u8) void {
+    const entry: *DiagnosticsEntry = @ptrCast(@alignCast(context orelse return));
+    const controller = ensureWindowController(entry.owner, entry.host) orelse return;
+    dispatchDiagnosticsFrom(entry.owner, .{ .type = "connect_destination", .destination = destination }, controller.controller_id);
+}
 fn diagnosticsRefresh(context: ?*anyopaque) void {
     const entry: *DiagnosticsEntry = @ptrCast(@alignCast(context orelse return));
     refreshDiagnostics(entry.owner);
+}
+fn diagnosticsReturnToEditor(context: ?*anyopaque) void {
+    const entry: *DiagnosticsEntry = @ptrCast(@alignCast(context orelse return));
+    const controller = ensureWindowController(entry.owner, entry.host) orelse return;
+    controller.editor_behind_diagnostics = false;
+    controller.presentEditorAfterSetup();
 }
 fn refreshDiagnostics(current: *State) void { dispatchDiagnostics(current, .{ .type = "refresh" }); }
 fn diagnosticsAction(context: ?*anyopaque, group: []const u8, row: []const u8, bytes: []const u8) void {
@@ -897,6 +915,11 @@ fn dispatchDiagnosticsFrom(current: *State, input: anytype, controller_id:u64) v
             launchToolSetup(.{.controller_id=controller_id,.token=effect.token,.kind=.diagnostics},effect.setup orelse continue);
         } else if(std.mem.eql(u8,effect.type,"focus_setup")) {
             focusToolSetup(controller_id,effect.setup_id orelse continue);
+        } else if (std.mem.eql(u8, effect.type, "save_machine")) {
+            sendControllerRequest(current, controller_id, .{ .update_connection = .{
+                .expected_revision = effect.expected_revision orelse continue,
+                .change = .{ .save_machine = effect.machine orelse continue },
+            } });
         } else if (effect.action) |action| {
             diagnosticsPresent(current, action);
         }
@@ -980,6 +1003,35 @@ fn clearDiagnosticAttachment(current: *State) void {
     }
     current.diagnostic_attachment = null;
 }
+pub fn diagnosticsDictateSucceeded(editor: *gtk.TextView) void {
+    const current = if (state) |*value| value else return;
+    const attachment = current.diagnostic_attachment orelse return;
+    const trial = attachment.trial orelse return;
+    if (trial.result != editor) return;
+    trial.result.setEditable(0);
+    trial.result.as(gtk.Widget).setVisible(1);
+    dispatchDiagnostics(current, .{ .type = "dictate_trial_succeeded" });
+}
+
+pub fn diagnosticsDictateProgress(editor: *gtk.TextView, phase: []const u8, failure: []const u8) void {
+    const current = if (state) |*value| value else return;
+    const attachment = if (current.diagnostic_attachment) |*value| value else return;
+    const trial = if (attachment.trial) |*value| value else return;
+    if (trial.result != editor or editor.as(gtk.Widget).getRoot() == null) return;
+    const next = std.meta.stringToEnum(@TypeOf(trial.phase), phase) orelse return;
+    if (next == trial.phase) return;
+    trial.phase = next;
+    dispatchDiagnostics(current, .{ .type = "dictate_trial_progress", .phase = phase, .@"error" = if (failure.len > 0) @as(?[]const u8, failure) else null });
+}
+
+fn diagnosticsDictate() DiagnosticsDictateTrial {
+    const result = gtk.TextView.new();
+    result.as(gtk.Widget).setSizeRequest(-1, 54);
+    result.as(gtk.Widget).setVisible(0);
+    result.setWrapMode(.word_char);
+    return .{ .result = result };
+}
+
 fn diagnosticsPresent(current: *State, action: std.json.Value) void {
     const field = @import("dictate.zig").string;
     const kind = field(action, "type");
@@ -987,10 +1039,18 @@ fn diagnosticsPresent(current: *State, action: std.json.Value) void {
     const selection = current.diagnostic_selection orelse return;
     const page = selection.entry.page orelse return;
     var lease: ?@import("auxiliary_window.zig").ContentLease = null;
-    const widget: ?*gtk.Widget = if (std.mem.eql(u8, kind, "edit_voice_setup") or
-        std.mem.eql(u8, kind, "open_microphone_settings") or std.mem.eql(u8, kind, "request_microphone_access") or
-        std.mem.eql(u8, kind, "open_external_input_settings") or std.mem.eql(u8, kind, "request_external_input_access"))
-        current.settings_panel.setupWidget()
+    const trial = if (std.mem.eql(u8, kind, "try_dictate")) diagnosticsDictate() else null;
+    const widget: ?*gtk.Widget = if (trial) |value|
+        value.result.as(gtk.Widget)
+    else if (std.mem.eql(u8, kind, "edit_voice_setup")) blk: {
+        const voice = current.settings_panel.voicePanel() orelse break :blk null;
+        const section = field(action, "section");
+        const box = if (std.mem.eql(u8, section, "account")) voice.account_setup
+            else if (std.mem.eql(u8, section, "microphone")) voice.microphone_setup
+            else if (std.mem.eql(u8, section, "service")) voice.service_setup
+            else break :blk null;
+        break :blk box.as(gtk.Widget);
+    }
     else if (std.mem.eql(u8, kind, "edit_resource")) blk: {
         lease = current.resources_panel.embed(current.resources_model.projection(), field(action, "resource_id"));
         break :blk if (lease) |value| value.widget else null;
@@ -1002,10 +1062,14 @@ fn diagnosticsPresent(current: *State, action: std.json.Value) void {
         break :blk if (lease) |value| value.widget else null;
     };
     if (widget) |child| {
-        page.setEditor(selection.group, selection.row, child) catch { if (lease) |value| value.restore(); return; };
-        current.diagnostic_attachment = .{ .page = page, .widget = child, .lease = lease };
+        page.setEditor(selection.group, selection.row, child, trial == null) catch { if (lease) |value| value.restore(); return; };
+        current.diagnostic_attachment = .{ .page = page, .widget = child, .lease = lease, .trial = trial };
         current.diagnostic_host.context = current;
         if (lease) |value| value.bind(&current.diagnostic_host);
+        if (trial) |value| {
+            const started = if (current.lgp) |lgp| lgp.dictate.startSetupTrial(value.result) else false;
+            if (!started) diagnosticsDictateProgress(value.result, "failed", "Dictate is unavailable. Check audio input or finish the current recording.");
+        }
     }
 }
 
@@ -1088,12 +1152,19 @@ fn mountSettingsDiagnostics(current: *State, controller: *controller_pane.Contro
         const owned=current.allocator.dupe(u8,key) catch {current.allocator.destroy(value);return;};
         value.*=.{.owner=current,.pane=owned,.display=null,.host=controller.host_window};
         value.page=diagnostics_page.Page.create(current.allocator,if(remote) .remote else .local,value,diagnosticsAction,diagnosticsRefresh) catch {current.allocator.free(owned);current.allocator.destroy(value);return;};
+        value.page.?.on_connect = connectDiagnosticsDestination;
         value.page.?.on_editor_close=diagnosticsCloseEditor;
+        value.page.?.on_return_to_editor=diagnosticsReturnToEditor;
         current.diagnostics.put(current.allocator,owned,value) catch {value.page.?.deinit();current.allocator.free(owned);current.allocator.destroy(value);return;};
         entry=value;
     }
     page.mount(entry.?.page.?.widget());
-    _ = current.settings_panel.setupWidget(); renderDiagnostics(current);refreshDiagnostics(current);
+    entry.?.page.?.return_to_editor.as(gtk.Widget).setVisible(@intFromBool(controller.editor_behind_diagnostics and controller.editor_open));
+    _ = current.settings_panel.voicePanel();
+    renderDiagnostics(current);
+    const field = @import("dictate.zig").string;
+    entry.?.page.?.reveal(if (remote) field(route, "target") else "", field(route, "section"));
+    refreshDiagnostics(current);
 }
 
 const workspace_local = @import("workspace_transfer_window.zig");
@@ -2269,7 +2340,18 @@ fn handleHostFrame(
                 releaseCreationReservation(current, pending.value);
                 defer current.allocator.free(pending.key);
                 defer if (pending.value.selection_json) |json| current.allocator.free(json);
-                if (pending.value.kind == .quick_create) {
+                if (pending.value.kind == .resume_lookup) {
+                    if (controllerById(current, pending.value.controller_id)) |controller| {
+                        if (controller.editor_submission == pending.value.end_token and controller.session_create_window != null) {
+                            if (outcome.kind == .projection and response_applied) {
+                                if (std.json.parseFromSlice(controller_pane.Action, current.allocator, pending.value.selection_json.?, .{})) |parsed_resume| {
+                                    defer parsed_resume.deinit();
+                                    sendControllerRequestChecked(current, pending.value.controller_id, parsed_resume.value, true);
+                                } else |_| controller.sessionCreateRejected("The requested Resume could not be read.");
+                            } else controller.sessionCreateRejected(outcome.error_message orelse "The Host could not check the existing Session.");
+                        }
+                    }
+                } else if (pending.value.kind == .quick_create) {
                     _ = completeQuickCreate(current, pending.value, outcome);
                 } else if (outcome.kind.accepted() and pending.value.kind == .session_create) {
                     if (completeQuickCreate(current, pending.value, outcome)) {
@@ -2914,6 +2996,7 @@ fn presentAcceptedControlEffect(
         .ssh_target => controller.sshTargetAccepted(),
         .quick_create => {},
         .session_create => controller.sessionCreateAccepted(),
+        .resume_lookup => unreachable,
         .session_rename => controller.renameAccepted(),
         .session_kill => controller.sessionEndResult(effect.end_token, null),
         .diagnostics => unreachable,
@@ -2950,6 +3033,10 @@ fn presentRejectedControlEffect(
         .connection_update => controller.connectionResult(message orelse "Connection save failed."),
         .ssh_target => controller.sshTargetRejected(),
         .session_create => controller.sessionCreateRejected(message),
+        .resume_lookup => {
+            if (controller.editor_submission == effect.end_token and controller.session_create_window != null)
+                controller.sessionCreateRejected(message orelse "The Host could not check the existing Session.");
+        },
         .session_rename => controller.renameRejected(message),
         .session_kill => controller.sessionEndResult(effect.end_token, message orelse "Session end result is unknown. Refresh before retrying."),
         .diagnostics => unreachable,
@@ -2994,6 +3081,10 @@ fn sendControllerRequest(
     controller_id: u64,
     action: controller_pane.Action,
 ) void {
+    sendControllerRequestChecked(current, controller_id, action, false);
+}
+
+fn sendControllerRequestChecked(current: *State, controller_id: u64, action: controller_pane.Action, resume_checked: bool) void {
     if (current.quitting) return;
     const executor = current.controllerExecutor(controller_id) orelse return;
     if (action == .invoke_action and (std.mem.eql(u8, action.invoke_action.action_id, "workspace.window.new") or std.mem.eql(u8, action.invoke_action.action_id, "native.open_local_terminal"))) {
@@ -3239,6 +3330,70 @@ fn sendControllerRequest(
         else => {},
     }
     const projection = current.controller_model.projection() orelse return;
+    var resume_remaining: std.ArrayList([]const u8) = .empty;
+    defer resume_remaining.deinit(current.allocator);
+    if (effective_action == .create_agent_session) {
+        const job = &effective_action.create_agent_session;
+        if (std.mem.eql(u8, job.mode, "resume") and !job.open_local_cli) {
+            if (controllerById(current, controller_id)) |controller| {
+                const workspace_id = controller.session_create_workspace_id orelse return;
+                const tab_id = controller.session_create_tab_id orelse return;
+                const snapshot = executor.nativeWorkspaceSnapshot() orelse return;
+                if (!std.mem.eql(u8, snapshot.workspace_id, workspace_id) or snapshot.tab(tab_id) == null) {
+                    controller.sessionCreateRejected("The Tab that opened Resume is unavailable.");
+                    return;
+                }
+                const single = [_][]const u8{job.session_id orelse ""};
+                const selected = if (job.session_ids.len != 0) job.session_ids else
+                    if (job.session_id != null) single[0..] else &.{};
+                var existing: std.ArrayList(controller_model.SessionIdentity) = .empty;
+                defer existing.deinit(current.allocator);
+                for (selected) |id| {
+                    if (existingResumeSession(projection, job.execution_target_id, job.provider, job.endpoint_id, id)) |session| {
+                        existing.append(current.allocator, session) catch return;
+                    } else {
+                        for (resume_remaining.items) |pending| {
+                            if (std.mem.eql(u8, pending, id)) break;
+                        } else resume_remaining.append(current.allocator, id) catch return;
+                    }
+                }
+                if (resume_remaining.items.len != 0 and !resume_checked) {
+                    requestResumeProjection(current, controller, effective_action) catch
+                        controller.sessionCreateRejected("The Host could not check the existing Sessions.");
+                    return;
+                }
+                var placement = @import("workspace_lifecycle.zig").planPanePlacement(
+                    current.allocator, snapshot.tab(tab_id).?.*, existing.items,
+                    executor.sessionPaneReservations(tab_id, ""), resume_remaining.items.len,
+                ) catch return;
+                defer placement.deinit();
+                if (placement.value.full) {
+                    controller.sessionCreateRejected("The original Tab has insufficient room for the selected Sessions.");
+                    return;
+                }
+                if (existing.items.len != 0) {
+                    executor.appendSessions(workspace_id, tab_id, existing.items) catch {
+                        controller.sessionCreateRejected("The original Tab has insufficient room for the selected Sessions.");
+                        return;
+                    };
+                    if (resume_remaining.items.len == 0) {
+                        if (selected.len == 1) if (executor.nativePaneIdForSessionInTab(tab_id, existing.items[0].execution_target_id, existing.items[0].tmux_session_id)) |pane| {
+                            if (std.mem.eql(u8, executor.nativeSelectedTabId() orelse "", tab_id) and
+                                !std.mem.eql(u8, executor.nativeSelectedPaneId(tab_id) orelse "", pane))
+                                _ = executor.applyNativeWorkspaceAction(.{ .activate_pane = .{ .pane_id = pane } }) catch false;
+                        };
+                        controller.sessionCreateAccepted();
+                        current.renderControllers();
+                        return;
+                    }
+                }
+                if (resume_remaining.items.len != 0) {
+                    job.session_ids = resume_remaining.items;
+                    job.session_id = resume_remaining.items[0];
+                }
+            }
+        }
+    }
     var request_id = nextRequestId(current) orelse return;
     defer current.allocator.free(request_id);
     if (effective_action == .create_session or effective_action == .create_agent_session or effective_action == .create_codex_session) {
@@ -3374,8 +3529,8 @@ fn beginQuickCreate(current: *State, window: *Window, codex: bool) bool {
     const projection = current.controller_model.projection() orelse return false;
     const enabled = projection.action(if (codex) "session.quick.create.codex" else "session.quick.create.shell") orelse return false;
     if (!enabled.enabled) return false;
-    const target = executor.quickCreateTarget(window) catch |err| {
-        reportQuickCreateError(current, if (err == error.TabFull) "This Tab already has nine Panes." else "The current managed terminal is unavailable. Select a Pane and try again.");
+    const target = executor.quickCreateTarget(window) catch {
+        reportQuickCreateError(current, "The current managed terminal is unavailable. Select a Pane and try again.");
         current.renderControllers();
         return true;
     };
@@ -3434,6 +3589,53 @@ fn beginQuickCreate(current: *State, window: *Window, codex: bool) bool {
     return true;
 }
 
+fn requestResumeProjection(current: *State, controller: *controller_pane.Controller, action: controller_pane.Action) !void {
+    var pending = current.pending_control_effects.valueIterator();
+    while (pending.next()) |entry| {
+        if (entry.kind == .resume_lookup and entry.controller_id == controller.controller_id and entry.end_token == controller.editor_submission)
+            return;
+    }
+    const request_id = nextRequestId(current) orelse return error.OutOfMemory;
+    errdefer current.allocator.free(request_id);
+    const captured = try std.json.Stringify.valueAlloc(current.allocator, action, .{});
+    errdefer current.allocator.free(captured);
+    const payload = try control_center_intent.encodeGetProjection(current.allocator, request_id, current.frontend_instance_id);
+    defer current.allocator.free(payload);
+    try current.pending_control_effects.put(current.allocator, request_id, .{
+        .kind = .resume_lookup,
+        .controller_id = controller.controller_id,
+        .end_token = controller.editor_submission,
+        .selection_json = captured,
+    });
+    errdefer _ = current.pending_control_effects.remove(request_id);
+    try current.client.sendJson(payload);
+}
+
+fn existingResumeSession(
+    projection: *const controller_model.Projection,
+    target: []const u8,
+    provider: []const u8,
+    endpoint: ?[]const u8,
+    id: []const u8,
+) ?controller_model.SessionIdentity {
+    if (std.mem.eql(u8, provider, "codex")) {
+        for (projection.agent_sessions) |agent| {
+            if (std.mem.eql(u8, target, agent.execution_target_id) and
+                std.mem.eql(u8, endpoint orelse "", agent.endpoint_id) and
+                std.mem.eql(u8, id, agent.thread_id) and agent.terminals.len == 1)
+                return agent.terminals[0];
+        }
+    } else if (std.mem.eql(u8, provider, "claude")) {
+        for (projection.sessions.rows) |row| {
+            if (std.mem.eql(u8, row.identity.execution_target_id, target) and
+                std.mem.eql(u8, row.session_kind, "claude_plane") and
+                std.mem.eql(u8, row.original_agent_id orelse "", id) and row.transport_status == .online)
+                return row.identity;
+        }
+    }
+    return null;
+}
+
 fn completeQuickCreate(current: *State, effect: PendingControlEffect, outcome: protocol.ControlCenterResponseOutcome) bool {
     if (outcome.batch) |batch| {
         const capture = std.json.parseFromSlice(QuickCreateCapture, current.allocator, effect.selection_json orelse return false, .{}) catch return false;
@@ -3464,15 +3666,22 @@ fn completeQuickCreate(current: *State, effect: PendingControlEffect, outcome: p
     const executor = current.executorForWorkspace(saved.workspace_id) orelse return false;
     const snapshot = executor.nativeWorkspaceSnapshot() orelse return false;
     const tab = snapshot.tab(saved.tab_id);
-    if (!std.mem.eql(u8, snapshot.workspace_id, saved.workspace_id) or tab == null or tab.?.panes.len >= 9) {
+    if (!std.mem.eql(u8, snapshot.workspace_id, saved.workspace_id) or tab == null) {
         reportQuickCreateError(current, "Session created, but the original Tab is unavailable or full. Add it from Sessions.");
         return false;
     }
     if (executor.nativePaneIdForSessionInTab(saved.tab_id, session.execution_target_id, session.tmux_session_id)) |existing| {
-        if (std.mem.eql(u8, snapshot.selected_tab_id, saved.tab_id)) {
+        if (std.mem.eql(u8, snapshot.selected_tab_id, saved.tab_id) and
+            !std.mem.eql(u8, executor.nativeSelectedPaneId(saved.tab_id) orelse "", existing)) {
             _ = executor.applyNativeWorkspaceAction(.{ .activate_pane = .{ .pane_id = existing } }) catch return false;
         }
         return true;
+    }
+    var placement = @import("workspace_lifecycle.zig").planPanePlacement(current.allocator, tab.?.*, &.{session}, 0, 0) catch return false;
+    defer placement.deinit();
+    if (placement.value.full) {
+        reportQuickCreateError(current, "Session is available in Sessions, but the original Tab is full.");
+        return false;
     }
     const focus = if (activeGhosttyWindow(current.app)) |window| blk: {
         const selected = executor.quickCreateTarget(window) catch break :blk false;
@@ -3881,7 +4090,16 @@ fn settingsAction(context: ?*anyopaque, action: settings_panel.Action) void {
             openSettingsRoute(current,.{.page="connectors"});
             return;
         },
-        .open_diagnostics => { openSettingsRoute(current,.{.page="setup",.remote=false}); return; },
+        .open_voice_input, .open_voice_account, .open_voice_test => {
+            const section: []const u8 = switch (action) {
+                .open_voice_input => "voice_input_device",
+                .open_voice_account => "voice_account",
+                .open_voice_test => "voice_trial",
+                else => unreachable,
+            };
+            openSettingsRoute(current, .{ .page = "setup", .remote = false, .section = section });
+            return;
+        },
         .open_resources => { openSettingsRoute(current,.{.page="resources"});requestResourcesProjection(current);return; },
         .open_connections => { openSettingsRoute(current,.{.page="connections"});return; },
         .open_workspace_font => { openSettingsRoute(current,.{.page="workspace"});return; },
@@ -3908,7 +4126,7 @@ fn settingsAction(context: ?*anyopaque, action: settings_panel.Action) void {
         .test_summary => |value| settings.encodeTestSessionSummary(current.allocator, request_id, value),
         .inspect_codex_notify => settings.encodeGetCodexNotifyStatus(current.allocator, request_id),
         .configure_codex_notify => settings.encodeConfigureCodexNotify(current.allocator, request_id),
-        .open_workspace_font, .open_connections, .open_resources, .open_diagnostics, .open_codex, .open_connectors, .voice_changed, .voice_observed, .voice_shortcuts, .dictate_recover, .dictate_deleted, .preview_tmux_status_bar => unreachable,
+        .open_workspace_font, .open_connections, .open_resources, .open_voice_input, .open_voice_account, .open_voice_test, .open_codex, .open_connectors, .voice_changed, .voice_observed, .voice_shortcuts, .dictate_recover, .dictate_deleted, .preview_tmux_status_bar => unreachable,
     } catch |err| {
         if (section != null) current.settings_panel.edit_lease.failed(request_id);
         current.settings_panel.showError(if (err == error.WorkspaceUnavailable) "The selected workspace or pane changed. Review the preview and save again." else @errorName(err));

@@ -22,7 +22,7 @@
                 Button("Open Layout") {
                     PolarStationRuntime.shared.previewWorkspace(windowContext.executor.workspaceID, in: windowContext)
                 }
-            case "setup": PolarStationDiagnosticsRoot(model:model,remote:route.remote ?? false,context:windowContext)
+            case "setup": PolarStationDiagnosticsRoot(model:model,route:route,context:windowContext)
             case "connections":
                 if let projection = model.projection {
                     ConnectionsView(interaction:windowContext.settingsConnections,formBuffer:windowContext.connectionsFormBuffer,projection:projection.connections,controlRevision:projection.controlRevision,
@@ -122,7 +122,7 @@
                 authorizeMessages: model.authorizeMessagesSender,
                 saveMessages: { model.saveMessagesSender($0,recipient:$1,editLease:formBuffer.messagesEdits) { clean in if clean {formBuffer.messagesRecipient=""} } },
                 voicePlatform: voiceTools.request, initialVoicePage: initialVoicePage,
-                openSetup: { PolarStationRuntime.shared.openSettingsRoute(.init(page:"setup", remote:false), in: windowContext) },
+                openSetup: { section in PolarStationRuntime.shared.openSettingsRoute(.init(page:"setup", remote:false, section:section), in: windowContext) },
                 embedded:embedded, initialPage:initialPage,promptEditor:promptEditor,editLease:editLease,formBuffer:formBuffer,voiceFormBuffer:voiceFormBuffer
             )
             .polarStationInterfaceTextScale(
@@ -134,21 +134,29 @@
     @MainActor
     struct PolarStationDiagnosticsRoot: View {
         @ObservedObject var model: ControlCenterStore
-        let remote: Bool
-        let context:PolarStationWindowContext
+        let route: SettingsNavigation.Route
+        private var remote: Bool { route.remote ?? false }
+        @ObservedObject var context:PolarStationWindowContext
         @ObservedObject private var interaction:DiagnosticsInteraction
-        init(model:ControlCenterStore,remote:Bool,context:PolarStationWindowContext) {
-            self.model=model;self.remote=remote;self.context=context;self.interaction=context.diagnostics;self.connectionsInteraction=context.settingsConnections
+        init(model:ControlCenterStore,route:SettingsNavigation.Route,context:PolarStationWindowContext) {
+            self.model=model;self.route=route;self.context=context;self.interaction=context.diagnostics;self.connectionsInteraction=context.settingsConnections
+            _selectedMachine = State(initialValue: route.target)
         }
         @ObservedObject private var connectionsInteraction:ConnectionsInteraction
         @State private var editor: DiagnosticsInteraction.Action?
         @State private var editorRow: String?
         @State private var editorGroup: String?
+        @State private var manualDestination = ""
+        @State private var selectedAlias: String?
+        @State private var selectedMachine: String?
+        @State private var testTranscript = ""
+        @State private var trialID: UUID?
         @State private var voiceFacts: [String: Any] = [:]
         @State private var voice = VoiceClient()
         private var voiceTools:PolarStationVoiceTools { PolarStationRuntime.shared.settingsVoiceTools }
         @State private var retainedRow: DiagnosticsInteraction.Row?
         @State private var retainedHost: DiagnosticsInteraction.Host?
+        @State private var revealedSection: String?
 
         private func object<T: Encodable>(_ value: T) -> Any {
             (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? NSNull()
@@ -156,9 +164,19 @@
         @MainActor private func updateFacts() {
             interaction.toolSetup=context.toolSetup
             interaction.read = model.readSessionEditor
+            interaction.saveMachine = { revision, machine in
+                guard let controlRevision = model.projection?.controlRevision else { return }
+                model.submitSSHTarget(.init(controlRevision: controlRevision,
+                    operation: .updateConnection(expectedRevision: revision, change: .saveMachine(machine)))) { error in
+                    interaction.showOperationError(error)
+                }
+            }
             interaction.present = { action in
                 switch action.type {
                 case "reconnect_host": model.retryBackend()
+                case "try_dictate":
+                    testTranscript = ""
+                    startTrial()
                 case "request_microphone_access":
                     AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in await sampleVoice() } }
                 case "open_microphone_settings": MicrophonePermissionPresentation.openSettings()
@@ -193,6 +211,7 @@
             updateFacts()
         }
         var body: some View {
+            ScrollViewReader { scroll in
             ScrollView {
                 VStack(alignment:.leading, spacing:16) {
                     if let projection = interaction.projection {
@@ -201,29 +220,91 @@
                             Spacer()
                             Button(projection.refresh_label) { interaction.refresh(); Task { await sampleVoice() } }.disabled(interaction.busy)
                         }
-                        if remote {
-                            ForEach(projection.remote_setup) { row in render(row, group:"remote_setup") }
-                            if projection.remote.isEmpty { Text(projection.empty_remote_label) }
-                            ForEach(visibleHosts(projection.remote)) { host in
-                                Text(host.name).font(.headline)
-                                ForEach(visibleRows(host.rows, group:host.id)) { row in render(row, group:host.id) }
+                        if let returnToSessionEditor = context.returnToSessionEditor {
+                            Button("Back to Add Session") {
+                                context.returnToSessionEditor = nil
+                                returnToSessionEditor()
                             }
-                        } else { ForEach(visibleRows(projection.local, group:"local")) { row in render(row, group:"local") } }
+                        }
+                        if remote {
+                            let aliases = projection.remote_setup.filter { $0.id.hasPrefix("ssh:") }
+                            Text("Add a host").font(.headline)
+                            if !aliases.isEmpty {
+                                Picker("SSH alias", selection: selection($selectedAlias, ids: aliases.map(\.id))) {
+                                    ForEach(aliases) { row in Text(row.title).tag(row.id) }
+                                }
+                                if let row = aliases.first(where: { $0.id == selectedAlias }) ?? aliases.first {
+                                    render(row, group: "remote_setup")
+                                }
+                            }
+                            TextField("SSH destination", text: $manualDestination)
+                                .disabled(interaction.busy || editor != nil)
+                            Button("Connect") {
+                                let destination = manualDestination.trimmingCharacters(in: .whitespacesAndNewlines)
+                                selectedAlias = "ssh:" + destination
+                                interaction.connectDestination(destination)
+                            }.disabled(interaction.busy || editor != nil || manualDestination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            ForEach(projection.remote_setup.filter { !$0.id.hasPrefix("ssh:") }) { row in render(row, group:"remote_setup") }
+                            let hosts = visibleHosts(projection.remote)
+                            if hosts.isEmpty { Text(projection.empty_remote_label) }
+                            else {
+                                Picker("Managed host", selection: selection($selectedMachine, ids: hosts.map(\.id))) {
+                                    ForEach(hosts) { host in Text(host.name).tag(host.id) }
+                                }.disabled(editor != nil)
+                                if let host = hosts.first(where: { $0.id == selectedMachine }) ?? hosts.first {
+                                    renderCards(host.rows, group: host.id, sections: projection.capability_sections ?? [:])
+                                }
+                            }
+                        } else {
+                            renderCards(projection.local, group: "local", sections: projection.capability_sections ?? [:])
+                        }
                     }
                     if let message = interaction.message { Text(message).foregroundStyle(.secondary).textSelection(.enabled) }
                     if interaction.busy { ProgressView() }
                 }.padding(24).frame(maxWidth:.infinity, alignment:.leading)
             }
+            .onAppear { revealSection(scroll) }
+            .onChange(of: route) { _ in
+                revealedSection = nil
+                selectedMachine = route.target
+                revealSection(scroll)
+            }
+            .onChange(of: interaction.projection) { _ in revealSection(scroll) }
+            }
             .stationTheme()
             .polarStationInterfaceTextScale(percent:model.settingsProjection?.appearance.interfaceTextScalePercent ?? 100)
-            .task { updateFacts(); model.loadResources(); await sampleVoice() }
-            .onDisappear {interaction.present=nil}
+            .task { updateFacts(); interaction.refresh(); model.loadResources(); await sampleVoice() }
+            .onDisappear {
+                interaction.present=nil; interaction.saveMachine=nil
+                if trialID != nil && testTranscript.isEmpty {
+                    interaction.dictateTrialProgress("cancelled")
+                }
+                trialID = nil
+            }
             .onChange(of:model.backendAvailability) { _ in updateFacts() }
             .onChange(of:model.projection?.controlRevision) { _ in updateFacts() }
             .onChange(of:model.resourcesProjection?.revision) { _ in updateFacts() }
             .onReceive(NotificationCenter.default.publisher(for:NSApplication.didBecomeActiveNotification)) { _ in
                 interaction.returned(); Task { await sampleVoice() }
             }
+        }
+        private func revealSection(_ scroll: ScrollViewProxy) {
+            guard let id = route.section, revealedSection != id,
+                  let projection = interaction.projection else { return }
+            let host = remote ? projection.remote.first(where: { $0.id == selectedMachine }) : nil
+            guard let row = (remote ? host?.rows : projection.local)?.first(where: { $0.id == id }) else { return }
+            revealedSection = id
+            scroll.scrollTo(id, anchor: .top)
+            if row.action?.type == "edit_voice_setup" {
+                retainedRow = row
+                editorRow = id
+                editorGroup = host?.id ?? "local"
+                editor = row.action
+            }
+        }
+        private func selection(_ value: Binding<String?>, ids: [String]) -> Binding<String> {
+            Binding(get: { value.wrappedValue.flatMap { ids.contains($0) ? $0 : nil } ?? ids.first ?? "" },
+                    set: { value.wrappedValue = $0 })
         }
         private func visibleHosts(_ hosts: [DiagnosticsInteraction.Host]) -> [DiagnosticsInteraction.Host] {
             guard editor != nil, let retainedHost, !hosts.contains(where: { $0.id == retainedHost.id }) else { return hosts }
@@ -233,19 +314,69 @@
             guard editor != nil, editorGroup == group, let retainedRow, !rows.contains(where: { $0.id == retainedRow.id }) else { return rows }
             return rows + [retainedRow]
         }
+        private struct DiagnosticsCard: Identifiable {
+            let id: String
+            let title: String?
+            var rows: [DiagnosticsInteraction.Row]
+        }
+
+        private func renderCards(
+            _ rows: [DiagnosticsInteraction.Row], group: String, sections: [String: String]
+        ) -> some View {
+            var cards: [DiagnosticsCard] = []
+            for row in visibleRows(rows, group: group) {
+                let section = sections[row.id]
+                let id = section.map { "section/" + $0 } ?? row.id
+                if let index = cards.firstIndex(where: { $0.id == id }) {
+                    cards[index].rows.append(row)
+                } else {
+                    cards.append(DiagnosticsCard(id: id, title: section, rows: [row]))
+                }
+            }
+            return ForEach(cards) { card in
+                VStack(alignment: .leading, spacing: 10) {
+                    if let title = card.title { Text(title).font(.headline) }
+                    ForEach(card.rows) { row in render(row, group: group).id(row.id) }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        private func startTrial() {
+            let attempt = UUID()
+            trialID = attempt
+            let started = PolarStationRuntime.shared.startSetupDictate(progress: { phase, error in
+                guard trialID == attempt else { return }
+                interaction.dictateTrialProgress(phase, error:error)
+            }) { text in
+                guard trialID == attempt, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .unchanged }
+                testTranscript = text
+                interaction.dictateTrialSucceeded()
+                return .applied
+            }
+            if !started {
+                interaction.dictateTrialProgress("failed", error:"Dictate is unavailable. Check audio input or finish the current recording.")
+            }
+        }
         @ViewBuilder private func render(_ row: DiagnosticsInteraction.Row, group: String) -> some View {
             VStack(alignment:.leading, spacing:10) {
                 HStack(alignment:.top, spacing:12) {
                     Image(systemName: row.state == "ready" ? "checkmark.circle.fill" : "info.circle")
                         .foregroundStyle(row.state == "ready" ? Color.green : Color.secondary)
                     VStack(alignment:.leading, spacing:4) { Text(row.title).font(.headline); Text(row.detail).foregroundStyle(.secondary) }
-                    Spacer(minLength:8)
-                    if let action = row.action, let label = row.action_label {
-                        Button(label) {
-                            retainedRow = row; retainedHost = interaction.projection?.remote.first(where: { $0.id == group })
-                            editorRow = row.id; editorGroup = group; interaction.perform(action)
-                        }.disabled(interaction.busy || editor != nil)
-                    }
+                }
+                if let action = row.action, let label = row.action_label {
+                    Button(label) {
+                        retainedRow = row
+                        retainedHost = interaction.projection?.remote.first(where: { $0.id == group })
+                        editorRow = row.id
+                        editorGroup = group
+                        interaction.perform(action)
+                    }.disabled(interaction.busy || editor != nil)
+                }
+                if row.id == "voice_trial", row.state == "ready", !testTranscript.isEmpty {
+                    Text(testTranscript).textSelection(.enabled)
                 }
                 if editorRow == row.id, editorGroup == group, let action = editor {
                     setupEditor(action)

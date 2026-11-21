@@ -125,6 +125,13 @@ impl CodexControlService {
         Some(id)
     }
 
+    pub(super) async fn default_endpoint_ready(&self, target: &str) -> Option<bool> {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let id = self.discover_account_endpoint(target).await?;
+            Some(self.endpoint(&id).await.is_ok())
+        }).await.ok().flatten()
+    }
+
     pub(super) async fn check_default_endpoints(&self, target: &str) {
         let check = |id: Option<String>| async move {
             if let Some(id) = id { let _ = self.endpoint(&id).await; }

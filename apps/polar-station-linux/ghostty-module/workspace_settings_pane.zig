@@ -462,7 +462,6 @@ pub const Pane = struct {
         const same_tab = std.mem.eql(u8, source.tab.id, binding.tab.id);
         const widget = binding.widget;
         if (source.pane_id) |pane| {
-            if (!same_tab and binding.tab.pane_ids.len >= 9) return null;
             var destination = binding.tab.pane_ids.len - @intFromBool(same_tab);
             var css: [:0]const u8 = "pane-drop-append";
             if (binding.pane_id) |anchor| {

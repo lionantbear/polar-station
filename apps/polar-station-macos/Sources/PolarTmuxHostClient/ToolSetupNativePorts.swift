@@ -6,8 +6,10 @@ import CPolarStationDesktopClient
     public typealias Launch = @MainActor (ToolSetupLaunchV1, @escaping @MainActor (String?) -> Void, @escaping @MainActor (UInt32?) -> Void) -> Void
     public let launch: Launch
     public let focus: @MainActor (String) -> Void
-    public init(launch:@escaping Launch,focus:@escaping @MainActor (String)->Void) {
+    public let openDiagnostics: (@MainActor (String, String, UUID) -> Void)?
+    public init(launch:@escaping Launch,focus:@escaping @MainActor (String)->Void, openDiagnostics: (@MainActor (String, String, UUID) -> Void)? = nil) {
         self.launch=launch;self.focus=focus
+        self.openDiagnostics = openDiagnostics
     }
 }
 public struct ToolSetupCopy:Decodable {
